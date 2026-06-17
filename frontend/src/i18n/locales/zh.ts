@@ -404,6 +404,7 @@ export default {
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
+    externalPayment: '购买套餐',
     buySubscription: '充值/订阅',
     docs: '文档',
     myOrders: '我的订单',

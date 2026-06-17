@@ -30,3 +30,14 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar external payment entry', () => {
+  it('keeps the configured payment shop URL as a direct sidebar link', () => {
+    expect(componentSource).toContain("const EXTERNAL_PAYMENT_URL = 'https://pay.ldxp.cn/shop/Y5TXJ2DO'")
+    expect(componentSource).toContain("label: t('nav.externalPayment')")
+    expect(componentSource).toContain('externalUrl: EXTERNAL_PAYMENT_URL')
+    expect(componentSource).toContain(':href="item.externalUrl"')
+    expect(componentSource).toContain('target="_blank"')
+    expect(componentSource).toContain('rel="noopener noreferrer"')
+  })
+})
