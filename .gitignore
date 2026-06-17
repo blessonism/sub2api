@@ -119,10 +119,13 @@ tests
 CLAUDE.md
 .claude
 scripts
+!.trellis/scripts/
+!.trellis/scripts/**
 .code-review-state
 #openspec/
 code-reviews/
 AGENTS.md
+!AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
@@ -131,10 +134,13 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/FORK_WORKFLOW_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
 .codex/
+!.codex/
+!.codex/**
 frontend/coverage/
 aicodex
 output/
