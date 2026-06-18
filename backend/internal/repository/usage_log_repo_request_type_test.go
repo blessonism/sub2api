@@ -537,6 +537,104 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	registeredAt := time.Date(2024, 12, 1, 8, 0, 0, 0, time.UTC)
+
+	rows := sqlmock.NewRows([]string{
+		"rank", "user_id", "email", "username", "status", "registered_at",
+		"requests", "tokens", "cost", "actual_cost", "account_cost",
+		"total_requests", "total_tokens", "total_cost", "total_actual_cost", "total_account_cost",
+	}).AddRow(
+		int64(1), int64(7), "alice@example.com", "alice", "active", registeredAt,
+		int64(6), int64(2000), 3.4, 2.8, 1.7,
+		int64(6), int64(2000), 3.4, 2.8, 1.7,
+	)
+
+	mock.ExpectQuery("WITH user_usage AS").
+		WithArgs(start, end, "%alice%", int64(3), "claude-opus", "active", 20).
+		WillReturnRows(rows)
+
+	got, err := repo.GetAdminTokenLeaderboard(context.Background(), start, end, usagestats.AdminTokenLeaderboardFilters{
+		Email:      "alice",
+		GroupID:    3,
+		Model:      "claude-opus",
+		ModelType:  usagestats.ModelSourceRequested,
+		UserStatus: "active",
+		Limit:      20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &usagestats.AdminTokenLeaderboardResponse{
+		Ranking: []usagestats.AdminTokenLeaderboardUser{
+			{
+				Rank:         1,
+				UserID:       7,
+				Email:        "alice@example.com",
+				Username:     "alice",
+				Status:       "active",
+				RegisteredAt: registeredAt,
+				Requests:     6,
+				Tokens:       2000,
+				Cost:         3.4,
+				ActualCost:   2.8,
+				AccountCost:  1.7,
+			},
+		},
+		TotalRequests:    6,
+		TotalTokens:      2000,
+		TotalCost:        3.4,
+		TotalActualCost:  2.8,
+		TotalAccountCost: 1.7,
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	userID := int64(7)
+
+	mock.ExpectQuery("COALESCE\\(ul.api_key_id, 0\\) as api_key_id").
+		WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"api_key_id", "api_key_name", "requests", "tokens", "cost", "actual_cost", "account_cost",
+		}).AddRow(int64(11), "prod-key", int64(3), int64(900), 1.2, 1.1, 0.7))
+
+	mock.ExpectQuery("COALESCE\\(ul.group_id, 0\\) as group_id").
+		WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "group_name", "requests", "tokens", "cost", "actual_cost", "account_cost",
+		}).AddRow(int64(5), "vip", int64(2), int64(600), 0.9, 0.8, 0.5))
+
+	mock.ExpectQuery("COALESCE\\(NULLIF\\(TRIM").
+		WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"model", "requests", "tokens", "cost", "actual_cost", "account_cost",
+		}).AddRow("claude-opus", int64(4), int64(1200), 1.6, 1.4, 0.9))
+
+	got, err := repo.GetAdminTokenLeaderboardUserDetails(context.Background(), start, end, userID, usagestats.AdminTokenLeaderboardFilters{})
+	require.NoError(t, err)
+	require.Equal(t, &usagestats.AdminTokenLeaderboardUserDetails{
+		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
+			{APIKeyID: 11, APIKeyName: "prod-key", Requests: 3, Tokens: 900, Cost: 1.2, ActualCost: 1.1, AccountCost: 0.7},
+		},
+		Groups: []usagestats.AdminTokenLeaderboardGroupUsage{
+			{GroupID: 5, GroupName: "vip", Requests: 2, Tokens: 600, Cost: 0.9, ActualCost: 0.8, AccountCost: 0.5},
+		},
+		Models: []usagestats.AdminTokenLeaderboardModelUsage{
+			{Model: "claude-opus", Requests: 4, Tokens: 1200, Cost: 1.6, ActualCost: 1.4, AccountCost: 0.9},
+		},
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

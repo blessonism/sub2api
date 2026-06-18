@@ -240,6 +240,93 @@ export interface UserSpendingRankingParams
   limit?: number
 }
 
+export interface AdminTokenLeaderboardParams
+  extends Pick<TrendParams, 'start_date' | 'end_date'> {
+  email?: string
+  group_id?: number
+  model?: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
+  user_status?: 'active' | 'disabled' | ''
+  limit?: 10 | 20 | 50 | 100
+}
+
+export interface AdminTokenLeaderboardUser {
+  rank: number
+  user_id: number
+  email: string
+  username: string
+  status: string
+  registered_at: string
+  requests: number
+  tokens: number
+  cost: number
+  actual_cost: number
+  account_cost: number
+}
+
+export interface AdminTokenLeaderboardResponse {
+  ranking: AdminTokenLeaderboardUser[]
+  total_requests: number
+  total_tokens: number
+  total_cost: number
+  total_actual_cost: number
+  total_account_cost: number
+  start_date: string
+  end_date: string
+  limit: number
+}
+
+export interface AdminTokenLeaderboardMetricRow {
+  requests: number
+  tokens: number
+  cost: number
+  actual_cost: number
+  account_cost: number
+}
+
+export interface AdminTokenLeaderboardAPIKeyUsage extends AdminTokenLeaderboardMetricRow {
+  api_key_id: number
+  api_key_name: string
+}
+
+export interface AdminTokenLeaderboardGroupUsage extends AdminTokenLeaderboardMetricRow {
+  group_id: number
+  group_name: string
+}
+
+export interface AdminTokenLeaderboardModelUsage extends AdminTokenLeaderboardMetricRow {
+  model: string
+}
+
+export interface AdminTokenLeaderboardUserDetailsResponse {
+  user_id: number
+  api_keys: AdminTokenLeaderboardAPIKeyUsage[]
+  groups: AdminTokenLeaderboardGroupUsage[]
+  models: AdminTokenLeaderboardModelUsage[]
+  start_date: string
+  end_date: string
+}
+
+export interface AdminTokenLeaderboardGrantBalanceRequest {
+  user_ids: number[]
+  amount: number
+  notes?: string
+}
+
+export interface AdminTokenLeaderboardGrantBalanceUser {
+  user_id: number
+  email: string
+  username: string
+  balance: number
+  granted_amount: number
+}
+
+export interface AdminTokenLeaderboardGrantBalanceResponse {
+  granted_count: number
+  amount: number
+  users: AdminTokenLeaderboardGrantBalanceUser[]
+}
+
 /**
  * Get user usage trend data
  * @param params - Query parameters for filtering
@@ -263,6 +350,39 @@ export async function getUserSpendingRanking(
   const { data } = await apiClient.get<UserSpendingRankingResponse>('/admin/dashboard/users-ranking', {
     params
   })
+  return data
+}
+
+export async function getAdminTokenLeaderboard(
+  params?: AdminTokenLeaderboardParams
+): Promise<AdminTokenLeaderboardResponse> {
+  const { data } = await apiClient.get<AdminTokenLeaderboardResponse>(
+    '/admin/dashboard/token-leaderboard',
+    { params }
+  )
+  return data
+}
+
+export async function getAdminTokenLeaderboardUserDetails(
+  userId: number,
+  params?: AdminTokenLeaderboardParams
+): Promise<AdminTokenLeaderboardUserDetailsResponse> {
+  const { data } = await apiClient.get<AdminTokenLeaderboardUserDetailsResponse>(
+    `/admin/dashboard/token-leaderboard/users/${userId}/details`,
+    { params }
+  )
+  return data
+}
+
+export async function grantAdminTokenLeaderboardBalance(
+  params: AdminTokenLeaderboardParams | undefined,
+  request: AdminTokenLeaderboardGrantBalanceRequest
+): Promise<AdminTokenLeaderboardGrantBalanceResponse> {
+  const { data } = await apiClient.post<AdminTokenLeaderboardGrantBalanceResponse>(
+    '/admin/dashboard/token-leaderboard/grant-balance',
+    request,
+    { params }
+  )
   return data
 }
 
@@ -332,6 +452,9 @@ export const dashboardAPI = {
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getUserSpendingRanking,
+  getAdminTokenLeaderboard,
+  getAdminTokenLeaderboardUserDetails,
+  grantAdminTokenLeaderboardBalance,
   getBatchUsersUsage,
   getBatchApiKeysUsage
 }

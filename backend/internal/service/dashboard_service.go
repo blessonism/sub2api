@@ -365,6 +365,35 @@ func (s *DashboardService) GetUserSpendingRanking(ctx context.Context, startTime
 	return ranking, nil
 }
 
+type adminTokenLeaderboardRepo interface {
+	GetAdminTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, filters usagestats.AdminTokenLeaderboardFilters) (*usagestats.AdminTokenLeaderboardResponse, error)
+	GetAdminTokenLeaderboardUserDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (*usagestats.AdminTokenLeaderboardUserDetails, error)
+}
+
+func (s *DashboardService) GetAdminTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, filters usagestats.AdminTokenLeaderboardFilters) (*usagestats.AdminTokenLeaderboardResponse, error) {
+	repo, ok := s.usageRepo.(adminTokenLeaderboardRepo)
+	if !ok {
+		return nil, errors.New("admin token leaderboard repository not available")
+	}
+	ranking, err := repo.GetAdminTokenLeaderboard(ctx, startTime, endTime, filters)
+	if err != nil {
+		return nil, fmt.Errorf("get admin token leaderboard: %w", err)
+	}
+	return ranking, nil
+}
+
+func (s *DashboardService) GetAdminTokenLeaderboardUserDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (*usagestats.AdminTokenLeaderboardUserDetails, error) {
+	repo, ok := s.usageRepo.(adminTokenLeaderboardRepo)
+	if !ok {
+		return nil, errors.New("admin token leaderboard repository not available")
+	}
+	details, err := repo.GetAdminTokenLeaderboardUserDetails(ctx, startTime, endTime, userID, filters)
+	if err != nil {
+		return nil, fmt.Errorf("get admin token leaderboard user details: %w", err)
+	}
+	return details, nil
+}
+
 func (s *DashboardService) GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) ([]usagestats.UserBreakdownItem, error) {
 	stats, err := s.usageRepo.GetUserBreakdownStats(ctx, startTime, endTime, dim, limit)
 	if err != nil {

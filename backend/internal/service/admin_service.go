@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -38,6 +39,7 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
+	GrantUserBalances(ctx context.Context, grants []BalanceGrantInput, notes string) ([]BalanceGrantResult, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
@@ -154,6 +156,16 @@ type UpdateUserInput struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
+}
+
+type BalanceGrantInput struct {
+	UserID int64
+	Amount float64
+}
+
+type BalanceGrantResult struct {
+	User         *User
+	BalanceDelta float64
 }
 
 type AdminBindAuthIdentityInput struct {
@@ -1047,6 +1059,103 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	return user, nil
+}
+
+func (s *adminServiceImpl) GrantUserBalances(ctx context.Context, grants []BalanceGrantInput, notes string) ([]BalanceGrantResult, error) {
+	if len(grants) == 0 {
+		return nil, fmt.Errorf("grant list cannot be empty")
+	}
+	if s.entClient == nil {
+		return nil, fmt.Errorf("entClient is nil, cannot perform batch balance grant")
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin balance grant transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	results := make([]BalanceGrantResult, 0, len(grants))
+	changedUserIDs := make([]int64, 0, len(grants))
+	now := time.Now()
+	for _, grant := range grants {
+		if grant.UserID <= 0 {
+			return nil, fmt.Errorf("invalid user id: %d", grant.UserID)
+		}
+		if math.IsNaN(grant.Amount) || math.IsInf(grant.Amount, 0) || grant.Amount <= 0 {
+			return nil, fmt.Errorf("grant amount must be positive")
+		}
+
+		user, err := s.userRepo.GetByID(txCtx, grant.UserID)
+		if err != nil {
+			return nil, err
+		}
+		oldBalance := user.Balance
+		user.Balance += grant.Amount
+		if user.Balance < 0 {
+			return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance)
+		}
+		if err := s.userRepo.Update(txCtx, user); err != nil {
+			return nil, err
+		}
+
+		balanceDiff := user.Balance - oldBalance
+		if balanceDiff != 0 {
+			code, err := GenerateRedeemCode()
+			if err != nil {
+				return nil, fmt.Errorf("generate adjustment redeem code: %w", err)
+			}
+			adjustmentRecord := &RedeemCode{
+				Code:   code,
+				Type:   AdjustmentTypeAdminBalance,
+				Value:  balanceDiff,
+				Status: StatusUsed,
+				UsedBy: &user.ID,
+				UsedAt: &now,
+				Notes:  notes,
+			}
+			if err := s.redeemCodeRepo.Create(txCtx, adjustmentRecord); err != nil {
+				return nil, fmt.Errorf("create balance adjustment record: %w", err)
+			}
+			changedUserIDs = append(changedUserIDs, user.ID)
+		}
+		results = append(results, BalanceGrantResult{
+			User:         user,
+			BalanceDelta: balanceDiff,
+		})
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit balance grant transaction: %w", err)
+	}
+
+	s.invalidateBalanceGrantCaches(ctx, changedUserIDs)
+	return results, nil
+}
+
+func (s *adminServiceImpl) invalidateBalanceGrantCaches(ctx context.Context, userIDs []int64) {
+	if len(userIDs) == 0 {
+		return
+	}
+	if s.authCacheInvalidator != nil {
+		for _, userID := range userIDs {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+		}
+	}
+	if s.billingCacheService == nil {
+		return
+	}
+	ids := append([]int64(nil), userIDs...)
+	go func() {
+		cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, userID := range ids {
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, userID); err != nil {
+				logger.LegacyPrintf("service.admin", "invalidate user balance cache failed: user_id=%d err=%v", userID, err)
+			}
+		}
+	}()
 }
 
 func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error) {

@@ -363,6 +363,11 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyTokenLeaderboardUserVisible controls whether the user-facing Token
+	// leaderboard is available to non-admin users. Defaults to true; admin leaderboard is
+	// always protected by admin auth and is not affected by this switch.
+	SettingKeyTokenLeaderboardUserVisible = "token_leaderboard_user_visible"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

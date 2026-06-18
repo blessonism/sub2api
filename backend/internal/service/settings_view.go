@@ -179,6 +179,9 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Token Leaderboard user visibility
+	TokenLeaderboardUserVisible bool `json:"token_leaderboard_user_visible"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -295,6 +298,9 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Token Leaderboard user visibility
+	TokenLeaderboardUserVisible bool `json:"token_leaderboard_user_visible"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
