@@ -635,6 +635,60 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	currentUserID := int64(9)
+
+	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens"}).
+		AddRow("top", int64(1), int64(2), "beta@example.com", int64(9), int64(900)).
+		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900)).
+		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120))
+
+	mock.ExpectQuery("WITH user_usage AS \\(").
+		WithArgs(start, end, 2, currentUserID).
+		WillReturnRows(rows)
+
+	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 2, currentUserID)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.UserTokenLeaderboardRow{
+		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900},
+		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900},
+	}, got.Ranking)
+	require.NotNil(t, got.MyRank)
+	require.Equal(t, &usagestats.UserTokenLeaderboardRow{
+		Rank:     4,
+		UserID:   currentUserID,
+		Email:    "current@example.com",
+		Requests: 3,
+		Tokens:   120,
+	}, got.MyRank)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetUserTokenLeaderboardDefaultsLimitToTop10(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	currentUserID := int64(9)
+
+	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens"})
+	mock.ExpectQuery("WITH user_usage AS \\(").
+		WithArgs(start, end, 10, currentUserID).
+		WillReturnRows(rows)
+
+	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 0, currentUserID)
+	require.NoError(t, err)
+	require.Empty(t, got.Ranking)
+	require.Nil(t, got.MyRank)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

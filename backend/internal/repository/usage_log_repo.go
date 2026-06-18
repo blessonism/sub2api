@@ -2737,6 +2737,85 @@ func (r *usageLogRepository) getAdminTokenLeaderboardModelDetails(ctx context.Co
 	return result, nil
 }
 
+// GetUserTokenLeaderboard 返回今日 Token 消耗榜单，并额外带回当前用户排名。
+func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, limit int, currentUserID int64) (result *usagestats.UserTokenLeaderboardRows, err error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	query := `
+		WITH user_usage AS (
+			SELECT
+				ul.user_id,
+				COALESCE(u.email, '') as email,
+				COUNT(*) as requests,
+				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens
+			FROM usage_logs ul
+			LEFT JOIN users u ON ul.user_id = u.id
+			WHERE ul.created_at >= $1 AND ul.created_at < $2
+			GROUP BY ul.user_id, u.email
+		),
+		ranked AS (
+			SELECT
+				ROW_NUMBER() OVER (ORDER BY tokens DESC, requests DESC, user_id ASC) as rank,
+				user_id,
+				email,
+				requests,
+				tokens
+			FROM user_usage
+		),
+		selected AS (
+			SELECT 'top' as row_type, rank, user_id, email, requests, tokens
+			FROM ranked
+			WHERE rank <= $3
+			UNION ALL
+			SELECT 'current' as row_type, rank, user_id, email, requests, tokens
+			FROM ranked
+			WHERE user_id = $4
+			  AND NOT EXISTS (
+				SELECT 1 FROM ranked WHERE user_id = $4 AND rank <= $3
+			  )
+		)
+		SELECT row_type, rank, user_id, email, requests, tokens
+		FROM selected
+		ORDER BY CASE WHEN row_type = 'top' THEN 0 ELSE 1 END, rank ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	out := &usagestats.UserTokenLeaderboardRows{
+		Ranking: make([]usagestats.UserTokenLeaderboardRow, 0, limit),
+	}
+	for rows.Next() {
+		var rowType string
+		var row usagestats.UserTokenLeaderboardRow
+		if err = rows.Scan(&rowType, &row.Rank, &row.UserID, &row.Email, &row.Requests, &row.Tokens); err != nil {
+			return nil, err
+		}
+		if row.UserID == currentUserID {
+			rowCopy := row
+			out.MyRank = &rowCopy
+		}
+		if rowType == "top" {
+			out.Ranking = append(out.Ranking, row)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats = usagestats.UserDashboardStats
 

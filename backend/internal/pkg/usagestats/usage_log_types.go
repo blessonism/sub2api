@@ -236,6 +236,39 @@ type AdminTokenLeaderboardUserDetails struct {
 	Models  []AdminTokenLeaderboardModelUsage  `json:"models"`
 }
 
+// UserTokenLeaderboardRow 是仓储返回的内部排行榜行，包含完整邮箱，禁止直接作为普通用户响应返回。
+type UserTokenLeaderboardRow struct {
+	Rank     int64  `json:"-"`
+	UserID   int64  `json:"-"`
+	Email    string `json:"-"`
+	Requests int64  `json:"-"`
+	Tokens   int64  `json:"-"`
+}
+
+// UserTokenLeaderboardRows 保存 Top 榜单和当前用户排名的内部查询结果。
+type UserTokenLeaderboardRows struct {
+	Ranking []UserTokenLeaderboardRow `json:"-"`
+	MyRank  *UserTokenLeaderboardRow  `json:"-"`
+}
+
+// UserTokenLeaderboardItem 是普通用户可见的排行榜条目，只包含脱敏邮箱。
+type UserTokenLeaderboardItem struct {
+	Rank          int64  `json:"rank"`
+	MaskedEmail   string `json:"masked_email"`
+	Requests      int64  `json:"requests"`
+	Tokens        int64  `json:"tokens"`
+	IsCurrentUser bool   `json:"is_current_user"`
+}
+
+// UserTokenLeaderboardResponse 是用户侧今日 Token 排行榜响应。
+type UserTokenLeaderboardResponse struct {
+	Ranking   []UserTokenLeaderboardItem `json:"ranking"`
+	MyRank    UserTokenLeaderboardItem   `json:"my_rank"`
+	StartDate string                     `json:"start_date"`
+	EndDate   string                     `json:"end_date"`
+	Limit     int                        `json:"limit"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

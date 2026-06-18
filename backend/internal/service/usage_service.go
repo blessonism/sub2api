@@ -16,6 +16,8 @@ var (
 	ErrUsageLogNotFound = infraerrors.NotFound("USAGE_LOG_NOT_FOUND", "usage log not found")
 )
 
+const userTokenLeaderboardLimit = 10
+
 // CreateUsageLogRequest 创建使用日志请求
 type CreateUsageLogRequest struct {
 	UserID                int64   `json:"user_id"`
@@ -323,6 +325,58 @@ func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, star
 		return nil, fmt.Errorf("get user model stats: %w", err)
 	}
 	return stats, nil
+}
+
+// GetUserTokenLeaderboard 返回普通用户可见的今日 Token 排行榜，并在服务层完成邮箱脱敏。
+func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UserTokenLeaderboardResponse, error) {
+	rows, err := s.usageRepo.GetUserTokenLeaderboard(ctx, startTime, endTime, userTokenLeaderboardLimit, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user token leaderboard: %w", err)
+	}
+	if rows == nil {
+		rows = &usagestats.UserTokenLeaderboardRows{}
+	}
+
+	ranking := make([]usagestats.UserTokenLeaderboardItem, 0, len(rows.Ranking))
+	for _, row := range rows.Ranking {
+		ranking = append(ranking, userTokenLeaderboardPublicItem(row, userID))
+	}
+
+	myRank := usagestats.UserTokenLeaderboardItem{
+		Rank:          0,
+		MaskedEmail:   "***",
+		Requests:      0,
+		Tokens:        0,
+		IsCurrentUser: true,
+	}
+	if rows.MyRank != nil {
+		myRank = userTokenLeaderboardPublicItem(*rows.MyRank, userID)
+		myRank.IsCurrentUser = true
+	} else if s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("get current user: %w", err)
+		}
+		myRank.MaskedEmail = MaskEmail(user.Email)
+	}
+
+	return &usagestats.UserTokenLeaderboardResponse{
+		Ranking:   ranking,
+		MyRank:    myRank,
+		StartDate: startTime.Format("2006-01-02"),
+		EndDate:   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
+		Limit:     userTokenLeaderboardLimit,
+	}, nil
+}
+
+func userTokenLeaderboardPublicItem(row usagestats.UserTokenLeaderboardRow, currentUserID int64) usagestats.UserTokenLeaderboardItem {
+	return usagestats.UserTokenLeaderboardItem{
+		Rank:          row.Rank,
+		MaskedEmail:   MaskEmail(row.Email),
+		Requests:      row.Requests,
+		Tokens:        row.Tokens,
+		IsCurrentUser: row.UserID == currentUserID,
+	}
 }
 
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.

@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     tokenLeaderboard: 'Token Leaderboard',
+    leaderboard: 'Leaderboard',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -1195,6 +1196,27 @@ export default {
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
+  },
+
+  leaderboard: {
+    title: 'Leaderboard',
+    description: 'Today token ranking',
+    today: 'Today',
+    todayRange: 'Today: {date}',
+    myRank: 'My Rank',
+    rank: 'Rank',
+    user: 'User',
+    tokens: 'Tokens',
+    requests: 'Requests',
+    topUsers: 'Top {limit}',
+    topTokens: 'Top Tokens',
+    leaderboard: 'Leaderboard',
+    noRank: 'No rank',
+    unranked: 'Unranked',
+    noData: 'No usage today',
+    noDataDescription: 'No token usage has been recorded today.',
+    failedToLoad: 'Failed to load leaderboard',
+    retry: 'Retry'
   },
 
   // Profile

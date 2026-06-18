@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     tokenLeaderboard: 'Token 排行榜',
+    leaderboard: '排行榜',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -1199,6 +1200,27 @@ export default {
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
+  },
+
+  leaderboard: {
+    title: '排行榜',
+    description: '今日 Token 排名',
+    today: '今日',
+    todayRange: '今日：{date}',
+    myRank: '我的排名',
+    rank: '排名',
+    user: '用户',
+    tokens: 'Token',
+    requests: '请求数',
+    topUsers: 'Top {limit}',
+    topTokens: 'Token 榜',
+    leaderboard: '排行榜',
+    noRank: '暂无排名',
+    unranked: '未上榜',
+    noData: '今日暂无用量',
+    noDataDescription: '今天还没有产生 Token 使用记录。',
+    failedToLoad: '加载排行榜失败',
+    retry: '重试'
   },
 
   // Profile
