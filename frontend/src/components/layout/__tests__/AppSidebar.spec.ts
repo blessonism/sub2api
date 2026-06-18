@@ -49,6 +49,13 @@ describe('AppSidebar admin token leaderboard entry', () => {
   })
 })
 
+describe('AppSidebar admin balance summary entry', () => {
+  it('keeps the balance summary as an admin-only navigation item', () => {
+    expect(componentSource).toContain("path: '/admin/balance-summary'")
+    expect(componentSource).toContain("label: t('nav.balanceSummary')")
+  })
+})
+
 describe('AppSidebar leaderboard entry', () => {
   it('adds leaderboard to the shared user and admin personal navigation declaration', () => {
     expect(componentSource).toContain("{ path: '/leaderboard', label: t('nav.leaderboard'), icon: ChartIcon }")

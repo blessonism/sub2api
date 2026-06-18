@@ -22,6 +22,7 @@ type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
 	adminService       adminBalanceUpdater
+	balanceSummary     adminBalanceSummaryService
 	startTime          time.Time // Server start time for uptime calculation
 }
 
@@ -29,14 +30,21 @@ type adminBalanceUpdater interface {
 	GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error)
 }
 
+type adminBalanceSummaryService interface {
+	GetBalanceSummary(ctx context.Context) (*service.AdminBalanceSummary, error)
+	UpdateBalanceSummaryExclusions(ctx context.Context, userIDs []int64) (*service.AdminBalanceSummary, error)
+}
+
 // NewDashboardHandler creates a new admin dashboard handler
 func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService, adminService service.AdminService) *DashboardHandler {
-	return &DashboardHandler{
+	h := &DashboardHandler{
 		dashboardService:   dashboardService,
 		aggregationService: aggregationService,
 		adminService:       adminService,
+		balanceSummary:     adminService,
 		startTime:          time.Now(),
 	}
+	return h
 }
 
 // parseTimeRange parses start_date, end_date query parameters
@@ -139,6 +147,50 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 type DashboardAggregationBackfillRequest struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
+}
+
+type BalanceSummaryExclusionsRequest struct {
+	UserIDs *[]int64 `json:"user_ids" binding:"required"`
+}
+
+// GetBalanceSummary handles admin balance liability summary.
+// GET /api/v1/admin/dashboard/balance-summary
+func (h *DashboardHandler) GetBalanceSummary(c *gin.Context) {
+	if h.balanceSummary == nil {
+		response.InternalError(c, "Admin service not available")
+		return
+	}
+	summary, err := h.balanceSummary.GetBalanceSummary(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
+}
+
+// UpdateBalanceSummaryExclusions saves the internal-user exclusion list and returns refreshed summary.
+// PUT /api/v1/admin/dashboard/balance-summary/exclusions
+func (h *DashboardHandler) UpdateBalanceSummaryExclusions(c *gin.Context) {
+	if h.balanceSummary == nil {
+		response.InternalError(c, "Admin service not available")
+		return
+	}
+
+	var req BalanceSummaryExclusionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.UserIDs == nil {
+		response.BadRequest(c, "user_ids is required")
+		return
+	}
+	summary, err := h.balanceSummary.UpdateBalanceSummaryExclusions(c.Request.Context(), *req.UserIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
 }
 
 // BackfillAggregation handles triggering aggregation backfill

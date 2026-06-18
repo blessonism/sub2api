@@ -33,7 +33,9 @@ type balanceGrantCall struct {
 }
 
 type dashboardBalanceGrantCapture struct {
-	calls []balanceGrantCall
+	calls          []balanceGrantCall
+	summary        *service.AdminBalanceSummary
+	updatedUserIDs []int64
 }
 
 func (s *dashboardBalanceGrantCapture) GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error) {
@@ -54,6 +56,29 @@ func (s *dashboardBalanceGrantCapture) GrantUserBalances(ctx context.Context, gr
 		})
 	}
 	return results, nil
+}
+
+func (s *dashboardBalanceGrantCapture) GetBalanceSummary(context.Context) (*service.AdminBalanceSummary, error) {
+	if s.summary != nil {
+		return s.summary, nil
+	}
+	return &service.AdminBalanceSummary{
+		TotalUsers:    2,
+		IncludedUsers: 2,
+		TotalBalance:  12.5,
+	}, nil
+}
+
+func (s *dashboardBalanceGrantCapture) UpdateBalanceSummaryExclusions(_ context.Context, userIDs []int64) (*service.AdminBalanceSummary, error) {
+	s.updatedUserIDs = make([]int64, len(userIDs))
+	copy(s.updatedUserIDs, userIDs)
+	return &service.AdminBalanceSummary{
+		TotalUsers:        2,
+		IncludedUsers:     1,
+		ExcludedUserCount: len(userIDs),
+		TotalBalance:      10,
+		ExcludedUserIDs:   append([]int64(nil), userIDs...),
+	}, nil
 }
 
 func (s *dashboardUsageRepoCapture) GetUsageTrendWithFilters(
@@ -139,12 +164,18 @@ func (s *dashboardUsageRepoCapture) GetAdminTokenLeaderboardUserDetails(
 	}, nil
 }
 
-func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture, balanceSvc ...adminBalanceUpdater) *gin.Engine {
+type dashboardAdminBalanceService interface {
+	adminBalanceUpdater
+	adminBalanceSummaryService
+}
+
+func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture, balanceSvc ...dashboardAdminBalanceService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
 	handler := NewDashboardHandler(dashboardSvc, nil, nil)
 	if len(balanceSvc) > 0 {
 		handler.adminService = balanceSvc[0]
+		handler.balanceSummary = balanceSvc[0]
 	}
 	router := gin.New()
 	router.GET("/admin/dashboard/trend", handler.GetUsageTrend)
@@ -153,6 +184,8 @@ func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture, balanceS
 	router.GET("/admin/dashboard/token-leaderboard", handler.GetAdminTokenLeaderboard)
 	router.POST("/admin/dashboard/token-leaderboard/grant-balance", handler.GrantAdminTokenLeaderboardBalance)
 	router.GET("/admin/dashboard/token-leaderboard/users/:user_id/details", handler.GetAdminTokenLeaderboardUserDetails)
+	router.GET("/admin/dashboard/balance-summary", handler.GetBalanceSummary)
+	router.PUT("/admin/dashboard/balance-summary/exclusions", handler.UpdateBalanceSummaryExclusions)
 	return router
 }
 
@@ -375,4 +408,76 @@ func TestAdminTokenLeaderboardGrantBalanceRejectsDuplicateUsers(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Empty(t, balanceSvc.calls)
 	require.Contains(t, rec.Body.String(), "duplicate")
+}
+
+func TestAdminBalanceSummaryReturnsSummary(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{
+		summary: &service.AdminBalanceSummary{
+			TotalUsers:        3,
+			IncludedUsers:     2,
+			ExcludedUserCount: 1,
+			TotalBalance:      12.5,
+			ByRole: []service.AdminBalanceSummaryBucket{
+				{Key: service.RoleUser, UserCount: 2, Balance: 12.5},
+			},
+		},
+	}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/balance-summary", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "\"total_users\":3")
+	require.Contains(t, rec.Body.String(), "\"excluded_user_count\":1")
+	require.Contains(t, rec.Body.String(), "\"total_balance\":12.5")
+}
+
+func TestAdminBalanceSummaryUpdateExclusionsSavesIDs(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	body := bytes.NewBufferString(`{"user_ids":[5,7]}`)
+	req := httptest.NewRequest(http.MethodPut, "/admin/dashboard/balance-summary/exclusions", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []int64{5, 7}, balanceSvc.updatedUserIDs)
+	require.Contains(t, rec.Body.String(), "\"excluded_user_ids\":[5,7]")
+}
+
+func TestAdminBalanceSummaryUpdateExclusionsRequiresUserIDsField(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	for _, body := range []string{`{}`, `{"user_ids":null}`} {
+		req := httptest.NewRequest(http.MethodPut, "/admin/dashboard/balance-summary/exclusions", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Nil(t, balanceSvc.updatedUserIDs)
+	}
+}
+
+func TestAdminBalanceSummaryUpdateExclusionsAllowsExplicitEmptyList(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	req := httptest.NewRequest(http.MethodPut, "/admin/dashboard/balance-summary/exclusions", bytes.NewBufferString(`{"user_ids":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, balanceSvc.updatedUserIDs)
+	require.Empty(t, balanceSvc.updatedUserIDs)
 }

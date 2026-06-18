@@ -554,6 +554,37 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
 }
 
+func (r *userRepository) ListBalanceSummaryUsers(ctx context.Context) ([]service.User, error) {
+	users, err := r.client.User.Query().
+		Where(dbuser.DeletedAtIsNil()).
+		Select(
+			dbuser.FieldID,
+			dbuser.FieldEmail,
+			dbuser.FieldUsername,
+			dbuser.FieldRole,
+			dbuser.FieldStatus,
+			dbuser.FieldBalance,
+		).
+		Order(dbent.Asc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]service.User, 0, len(users))
+	for _, u := range users {
+		result = append(result, service.User{
+			ID:       u.ID,
+			Email:    u.Email,
+			Username: u.Username,
+			Role:     u.Role,
+			Status:   u.Status,
+			Balance:  u.Balance,
+		})
+	}
+	return result, nil
+}
+
 func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
