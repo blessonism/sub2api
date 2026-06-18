@@ -486,8 +486,7 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
-  if (item.email) return item.email
-  return t('admin.redeem.userPrefix', { id: item.user_id })
+  return item.email?.trim() || '-'
 }
 
 const getRankingRowLabel = (item: RankingDisplayItem): string => {
