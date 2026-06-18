@@ -162,6 +162,80 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// AdminTokenLeaderboardFilters 表示管理员 Token 排行榜的查询条件。
+type AdminTokenLeaderboardFilters struct {
+	Email      string
+	GroupID    int64
+	Model      string
+	ModelType  string
+	UserStatus string
+	Limit      int
+}
+
+// AdminTokenLeaderboardUser 表示管理员 Token 排行榜中的用户聚合行。
+type AdminTokenLeaderboardUser struct {
+	Rank         int64     `json:"rank"`
+	UserID       int64     `json:"user_id"`
+	Email        string    `json:"email"`
+	Username     string    `json:"username"`
+	Status       string    `json:"status"`
+	RegisteredAt time.Time `json:"registered_at"`
+	Requests     int64     `json:"requests"`
+	Tokens       int64     `json:"tokens"`
+	Cost         float64   `json:"cost"`
+	ActualCost   float64   `json:"actual_cost"`
+	AccountCost  float64   `json:"account_cost"`
+}
+
+// AdminTokenLeaderboardResponse 表示管理员排行榜聚合结果。
+type AdminTokenLeaderboardResponse struct {
+	Ranking          []AdminTokenLeaderboardUser `json:"ranking"`
+	TotalRequests    int64                       `json:"total_requests"`
+	TotalTokens      int64                       `json:"total_tokens"`
+	TotalCost        float64                     `json:"total_cost"`
+	TotalActualCost  float64                     `json:"total_actual_cost"`
+	TotalAccountCost float64                     `json:"total_account_cost"`
+}
+
+// AdminTokenLeaderboardAPIKeyUsage 表示某个用户按 API Key 聚合的用量明细。
+type AdminTokenLeaderboardAPIKeyUsage struct {
+	APIKeyID    int64   `json:"api_key_id"`
+	APIKeyName  string  `json:"api_key_name"`
+	Requests    int64   `json:"requests"`
+	Tokens      int64   `json:"tokens"`
+	Cost        float64 `json:"cost"`
+	ActualCost  float64 `json:"actual_cost"`
+	AccountCost float64 `json:"account_cost"`
+}
+
+// AdminTokenLeaderboardGroupUsage 表示某个用户按分组聚合的用量明细。
+type AdminTokenLeaderboardGroupUsage struct {
+	GroupID     int64   `json:"group_id"`
+	GroupName   string  `json:"group_name"`
+	Requests    int64   `json:"requests"`
+	Tokens      int64   `json:"tokens"`
+	Cost        float64 `json:"cost"`
+	ActualCost  float64 `json:"actual_cost"`
+	AccountCost float64 `json:"account_cost"`
+}
+
+// AdminTokenLeaderboardModelUsage 表示某个用户按模型聚合的用量明细。
+type AdminTokenLeaderboardModelUsage struct {
+	Model       string  `json:"model"`
+	Requests    int64   `json:"requests"`
+	Tokens      int64   `json:"tokens"`
+	Cost        float64 `json:"cost"`
+	ActualCost  float64 `json:"actual_cost"`
+	AccountCost float64 `json:"account_cost"`
+}
+
+// AdminTokenLeaderboardUserDetails 表示管理员展开单个用户后的多维明细。
+type AdminTokenLeaderboardUserDetails struct {
+	APIKeys []AdminTokenLeaderboardAPIKeyUsage `json:"api_keys"`
+	Groups  []AdminTokenLeaderboardGroupUsage  `json:"groups"`
+	Models  []AdminTokenLeaderboardModelUsage  `json:"models"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

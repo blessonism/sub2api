@@ -183,6 +183,15 @@ func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, 
 	return &user, nil
 }
 
+func (s *stubAdminService) GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error) {
+	results := make([]service.BalanceGrantResult, 0, len(grants))
+	for _, grant := range grants {
+		user := service.User{ID: grant.UserID, Balance: grant.Amount, Status: service.StatusActive}
+		results = append(results, service.BalanceGrantResult{User: &user, BalanceDelta: grant.Amount})
+	}
+	return results, nil
+}
+
 func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
 	return len(userIDs), nil
 }

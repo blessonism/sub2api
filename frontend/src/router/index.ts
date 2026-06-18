@@ -391,6 +391,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/token-leaderboard',
+    name: 'AdminTokenLeaderboard',
+    component: () => import('@/views/admin/TokenLeaderboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Token Leaderboard',
+      titleKey: 'admin.tokenLeaderboard.title',
+      descriptionKey: 'admin.tokenLeaderboard.description'
+    }
+  },
+  {
     path: '/admin/ops',
     name: 'AdminOps',
     component: () => import('@/views/admin/ops/OpsDashboard.vue'),

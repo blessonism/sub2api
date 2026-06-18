@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -19,14 +21,20 @@ import (
 type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
+	adminService       adminBalanceUpdater
 	startTime          time.Time // Server start time for uptime calculation
 }
 
+type adminBalanceUpdater interface {
+	GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error)
+}
+
 // NewDashboardHandler creates a new admin dashboard handler
-func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
+func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService, adminService service.AdminService) *DashboardHandler {
 	return &DashboardHandler{
 		dashboardService:   dashboardService,
 		aggregationService: aggregationService,
+		adminService:       adminService,
 		startTime:          time.Now(),
 	}
 }
@@ -490,6 +498,132 @@ func parseRankingLimit(raw string) int {
 	return limit
 }
 
+func parseAdminTokenLeaderboardLimit(raw string) (int, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return 10, true
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, false
+	}
+	switch limit {
+	case 10, 20, 50, 100:
+		return limit, true
+	default:
+		return 0, false
+	}
+}
+
+func parseAdminTokenLeaderboardFilters(c *gin.Context) (usagestats.AdminTokenLeaderboardFilters, string) {
+	limit, ok := parseAdminTokenLeaderboardLimit(c.DefaultQuery("limit", "10"))
+	if !ok {
+		return usagestats.AdminTokenLeaderboardFilters{}, "Invalid limit, use 10/20/50/100"
+	}
+
+	modelSource := strings.TrimSpace(c.DefaultQuery("model_source", usagestats.ModelSourceRequested))
+	if !usagestats.IsValidModelSource(modelSource) {
+		return usagestats.AdminTokenLeaderboardFilters{}, "Invalid model_source, use requested/upstream/mapping"
+	}
+
+	status := strings.TrimSpace(c.Query("user_status"))
+	if status != "" && status != "active" && status != "disabled" {
+		return usagestats.AdminTokenLeaderboardFilters{}, "Invalid user_status, use active/disabled"
+	}
+
+	var groupID int64
+	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 0 {
+			return usagestats.AdminTokenLeaderboardFilters{}, "Invalid group_id"
+		}
+		groupID = id
+	}
+
+	return usagestats.AdminTokenLeaderboardFilters{
+		Email:      strings.TrimSpace(c.Query("email")),
+		GroupID:    groupID,
+		Model:      strings.TrimSpace(c.Query("model")),
+		ModelType:  modelSource,
+		UserStatus: status,
+		Limit:      limit,
+	}, ""
+}
+
+type AdminTokenLeaderboardGrantBalanceRequest struct {
+	UserIDs []int64 `json:"user_ids" binding:"required"`
+	Amount  float64 `json:"amount" binding:"required,gt=0"`
+	Notes   string  `json:"notes"`
+}
+
+type AdminTokenLeaderboardGrantBalanceResult struct {
+	UserID        int64   `json:"user_id"`
+	Email         string  `json:"email"`
+	Username      string  `json:"username"`
+	Balance       float64 `json:"balance"`
+	GrantedAmount float64 `json:"granted_amount"`
+}
+
+const defaultAdminTokenLeaderboardGrantNotes = "Token leaderboard Top10 grant"
+
+func validateAdminTokenLeaderboardGrantRequest(req AdminTokenLeaderboardGrantBalanceRequest) ([]int64, string) {
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
+		return nil, "amount must be a finite number greater than 0"
+	}
+	if len(req.UserIDs) == 0 {
+		return nil, "user_ids is required"
+	}
+	if len(req.UserIDs) > 10 {
+		return nil, "user_ids cannot contain more than 10 users"
+	}
+
+	seen := make(map[int64]struct{}, len(req.UserIDs))
+	cleaned := make([]int64, 0, len(req.UserIDs))
+	for _, id := range req.UserIDs {
+		if id <= 0 {
+			return nil, "user_ids must only contain positive user IDs"
+		}
+		if _, ok := seen[id]; ok {
+			return nil, "user_ids cannot contain duplicate user IDs"
+		}
+		seen[id] = struct{}{}
+		cleaned = append(cleaned, id)
+	}
+	return cleaned, ""
+}
+
+func selectAdminTokenLeaderboardTop10Rows(userIDs []int64, ranking []usagestats.AdminTokenLeaderboardUser) ([]usagestats.AdminTokenLeaderboardUser, string) {
+	top10ByID := make(map[int64]usagestats.AdminTokenLeaderboardUser, len(ranking))
+	for _, row := range ranking {
+		if row.Rank <= 0 || row.Rank > 10 {
+			continue
+		}
+		top10ByID[row.UserID] = row
+	}
+
+	rows := make([]usagestats.AdminTokenLeaderboardUser, 0, len(userIDs))
+	missing := make([]int64, 0)
+	for _, userID := range userIDs {
+		row, ok := top10ByID[userID]
+		if !ok {
+			missing = append(missing, userID)
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if len(missing) > 0 {
+		return nil, "selected users must be in the current Top10: " + formatInt64List(missing)
+	}
+	return rows, ""
+}
+
+func formatInt64List(ids []int64) string {
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, strconv.FormatInt(id, 10))
+	}
+	return strings.Join(parts, ",")
+}
+
 // GetUserSpendingRanking handles getting user spending ranking data.
 // GET /api/v1/admin/dashboard/users-ranking
 func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
@@ -529,6 +663,158 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 	dashboardUsersRankingCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
+}
+
+// GetAdminTokenLeaderboard handles the admin-only Token leaderboard.
+// GET /api/v1/admin/dashboard/token-leaderboard
+func (h *DashboardHandler) GetAdminTokenLeaderboard(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+	filters, msg := parseAdminTokenLeaderboardFilters(c)
+	if msg != "" {
+		response.BadRequest(c, msg)
+		return
+	}
+
+	leaderboard, err := h.dashboardService.GetAdminTokenLeaderboard(c.Request.Context(), startTime, endTime, filters)
+	if err != nil {
+		response.Error(c, 500, "Failed to get admin token leaderboard")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"ranking":            leaderboard.Ranking,
+		"total_requests":     leaderboard.TotalRequests,
+		"total_tokens":       leaderboard.TotalTokens,
+		"total_cost":         leaderboard.TotalCost,
+		"total_actual_cost":  leaderboard.TotalActualCost,
+		"total_account_cost": leaderboard.TotalAccountCost,
+		"start_date":         startTime.Format("2006-01-02"),
+		"end_date":           endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"limit":              filters.Limit,
+	})
+}
+
+// GrantAdminTokenLeaderboardBalance grants balance to selected users from the current Top10 leaderboard.
+// POST /api/v1/admin/dashboard/token-leaderboard/grant-balance
+func (h *DashboardHandler) GrantAdminTokenLeaderboardBalance(c *gin.Context) {
+	if h.adminService == nil {
+		response.InternalError(c, "Admin service not available")
+		return
+	}
+
+	startTime, endTime := parseTimeRange(c)
+	filters, msg := parseAdminTokenLeaderboardFilters(c)
+	if msg != "" {
+		response.BadRequest(c, msg)
+		return
+	}
+
+	var req AdminTokenLeaderboardGrantBalanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	userIDs, msg := validateAdminTokenLeaderboardGrantRequest(req)
+	if msg != "" {
+		response.BadRequest(c, msg)
+		return
+	}
+
+	// 赠额只允许针对同一筛选条件下的当前前十名，不能使用页面 TopN 扩展到第 11 名以后。
+	filters.Limit = 10
+	leaderboard, err := h.dashboardService.GetAdminTokenLeaderboard(c.Request.Context(), startTime, endTime, filters)
+	if err != nil {
+		response.Error(c, 500, "Failed to validate admin token leaderboard Top10")
+		return
+	}
+	selectedRows, msg := selectAdminTokenLeaderboardTop10Rows(userIDs, leaderboard.Ranking)
+	if msg != "" {
+		response.BadRequest(c, msg)
+		return
+	}
+
+	notes := strings.TrimSpace(req.Notes)
+	if notes == "" {
+		notes = defaultAdminTokenLeaderboardGrantNotes
+	}
+
+	grants := make([]service.BalanceGrantInput, 0, len(selectedRows))
+	for _, row := range selectedRows {
+		grants = append(grants, service.BalanceGrantInput{UserID: row.UserID, Amount: req.Amount})
+	}
+
+	grantResults, err := h.adminService.GrantUserBalances(c.Request.Context(), grants, notes)
+	if err != nil {
+		response.Error(c, 500, "Failed to grant balance to selected users")
+		return
+	}
+
+	rowsByID := make(map[int64]usagestats.AdminTokenLeaderboardUser, len(selectedRows))
+	for _, row := range selectedRows {
+		rowsByID[row.UserID] = row
+	}
+	results := make([]AdminTokenLeaderboardGrantBalanceResult, 0, len(grantResults))
+	for _, grantResult := range grantResults {
+		if grantResult.User == nil {
+			continue
+		}
+		result := AdminTokenLeaderboardGrantBalanceResult{
+			UserID:        grantResult.User.ID,
+			Email:         grantResult.User.Email,
+			Username:      grantResult.User.Username,
+			Balance:       grantResult.User.Balance,
+			GrantedAmount: req.Amount,
+		}
+		if result.Email == "" || result.Username == "" {
+			if row, ok := rowsByID[grantResult.User.ID]; ok {
+				if result.Email == "" {
+					result.Email = row.Email
+				}
+				if result.Username == "" {
+					result.Username = row.Username
+				}
+			}
+		}
+		results = append(results, result)
+	}
+
+	response.Success(c, gin.H{
+		"granted_count": len(results),
+		"amount":        req.Amount,
+		"users":         results,
+	})
+}
+
+// GetAdminTokenLeaderboardUserDetails handles admin-only per-user leaderboard details.
+// GET /api/v1/admin/dashboard/token-leaderboard/users/:user_id/details
+func (h *DashboardHandler) GetAdminTokenLeaderboardUserDetails(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+	filters, msg := parseAdminTokenLeaderboardFilters(c)
+	if msg != "" {
+		response.BadRequest(c, msg)
+		return
+	}
+
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+
+	details, err := h.dashboardService.GetAdminTokenLeaderboardUserDetails(c.Request.Context(), startTime, endTime, userID, filters)
+	if err != nil {
+		response.Error(c, 500, "Failed to get admin token leaderboard user details")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"api_keys":   details.APIKeys,
+		"groups":     details.Groups,
+		"models":     details.Models,
+		"start_date": startTime.Format("2006-01-02"),
+		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"user_id":    userID,
+	})
 }
 
 // GetBatchUsersUsage handles getting usage stats for multiple users

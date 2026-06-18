@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,37 @@ type dashboardUsageRepoCapture struct {
 	rankingLimit     int
 	ranking          []usagestats.UserSpendingRankingItem
 	rankingTotal     float64
+	tokenFilters     usagestats.AdminTokenLeaderboardFilters
+	tokenDetailsUser int64
+}
+
+type balanceGrantCall struct {
+	grants []service.BalanceGrantInput
+	notes  string
+}
+
+type dashboardBalanceGrantCapture struct {
+	calls []balanceGrantCall
+}
+
+func (s *dashboardBalanceGrantCapture) GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error) {
+	s.calls = append(s.calls, balanceGrantCall{
+		grants: append([]service.BalanceGrantInput(nil), grants...),
+		notes:  notes,
+	})
+	results := make([]service.BalanceGrantResult, 0, len(grants))
+	for _, grant := range grants {
+		results = append(results, service.BalanceGrantResult{
+			User: &service.User{
+				ID:       grant.UserID,
+				Email:    "granted@example.com",
+				Username: "granted",
+				Balance:  42.5,
+			},
+			BalanceDelta: grant.Amount,
+		})
+	}
+	return results, nil
 }
 
 func (s *dashboardUsageRepoCapture) GetUsageTrendWithFilters(
@@ -66,14 +98,61 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	}, nil
 }
 
-func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture) *gin.Engine {
+func (s *dashboardUsageRepoCapture) GetAdminTokenLeaderboard(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	filters usagestats.AdminTokenLeaderboardFilters,
+) (*usagestats.AdminTokenLeaderboardResponse, error) {
+	s.tokenFilters = filters
+	return &usagestats.AdminTokenLeaderboardResponse{
+		Ranking: []usagestats.AdminTokenLeaderboardUser{
+			{
+				Rank:         1,
+				UserID:       7,
+				Email:        "alice@example.com",
+				Username:     "alice",
+				Status:       "active",
+				RegisteredAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				Requests:     3,
+				Tokens:       1200,
+				ActualCost:   1.25,
+			},
+		},
+		TotalRequests:   3,
+		TotalTokens:     1200,
+		TotalActualCost: 1.25,
+	}, nil
+}
+
+func (s *dashboardUsageRepoCapture) GetAdminTokenLeaderboardUserDetails(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	userID int64,
+	filters usagestats.AdminTokenLeaderboardFilters,
+) (*usagestats.AdminTokenLeaderboardUserDetails, error) {
+	s.tokenDetailsUser = userID
+	s.tokenFilters = filters
+	return &usagestats.AdminTokenLeaderboardUserDetails{
+		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
+			{APIKeyID: 3, APIKeyName: "prod", Requests: 2, Tokens: 800, ActualCost: 0.8},
+		},
+	}, nil
+}
+
+func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture, balanceSvc ...adminBalanceUpdater) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
-	handler := NewDashboardHandler(dashboardSvc, nil)
+	handler := NewDashboardHandler(dashboardSvc, nil, nil)
+	if len(balanceSvc) > 0 {
+		handler.adminService = balanceSvc[0]
+	}
 	router := gin.New()
 	router.GET("/admin/dashboard/trend", handler.GetUsageTrend)
 	router.GET("/admin/dashboard/models", handler.GetModelStats)
 	router.GET("/admin/dashboard/users-ranking", handler.GetUserSpendingRanking)
+	router.GET("/admin/dashboard/token-leaderboard", handler.GetAdminTokenLeaderboard)
+	router.POST("/admin/dashboard/token-leaderboard/grant-balance", handler.GrantAdminTokenLeaderboardBalance)
+	router.GET("/admin/dashboard/token-leaderboard/users/:user_id/details", handler.GetAdminTokenLeaderboardUserDetails)
 	return router
 }
 
@@ -198,4 +277,102 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
+}
+
+func TestAdminTokenLeaderboardFiltersForwarded(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/token-leaderboard?limit=20&email=alice&group_id=9&model=claude&model_source=upstream&user_status=active", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, usagestats.AdminTokenLeaderboardFilters{
+		Email:      "alice",
+		GroupID:    9,
+		Model:      "claude",
+		ModelType:  usagestats.ModelSourceUpstream,
+		UserStatus: "active",
+		Limit:      20,
+	}, repo.tokenFilters)
+	require.Contains(t, rec.Body.String(), "\"email\":\"alice@example.com\"")
+}
+
+func TestAdminTokenLeaderboardRejectsUnsupportedLimit(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/token-leaderboard?limit=12", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminTokenLeaderboardDetailsParsesUserID(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/token-leaderboard/users/42/details?limit=50", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.tokenDetailsUser)
+	require.Equal(t, 50, repo.tokenFilters.Limit)
+	require.Contains(t, rec.Body.String(), "\"api_key_name\":\"prod\"")
+}
+
+func TestAdminTokenLeaderboardGrantBalanceUsesTop10AndAdminBalance(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	body := bytes.NewBufferString(`{"user_ids":[7],"amount":3.5,"notes":"campaign bonus"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/dashboard/token-leaderboard/grant-balance?limit=50&email=alice", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 10, repo.tokenFilters.Limit)
+	require.Equal(t, "alice", repo.tokenFilters.Email)
+	require.Equal(t, []balanceGrantCall{
+		{grants: []service.BalanceGrantInput{{UserID: 7, Amount: 3.5}}, notes: "campaign bonus"},
+	}, balanceSvc.calls)
+	require.Contains(t, rec.Body.String(), "\"granted_count\":1")
+	require.Contains(t, rec.Body.String(), "\"balance\":42.5")
+}
+
+func TestAdminTokenLeaderboardGrantBalanceRejectsNonTop10User(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	body := bytes.NewBufferString(`{"user_ids":[8],"amount":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/dashboard/token-leaderboard/grant-balance", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, balanceSvc.calls)
+	require.Contains(t, rec.Body.String(), "current Top10")
+}
+
+func TestAdminTokenLeaderboardGrantBalanceRejectsDuplicateUsers(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{}
+	balanceSvc := &dashboardBalanceGrantCapture{}
+	router := newDashboardRequestTypeTestRouter(repo, balanceSvc)
+
+	body := bytes.NewBufferString(`{"user_ids":[7,7],"amount":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/dashboard/token-leaderboard/grant-balance", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, balanceSvc.calls)
+	require.Contains(t, rec.Body.String(), "duplicate")
 }

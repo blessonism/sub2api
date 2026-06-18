@@ -2445,6 +2445,298 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}, nil
 }
 
+// GetAdminTokenLeaderboard 返回管理员 Token 排行榜聚合结果。
+func (r *usageLogRepository) GetAdminTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, filters usagestats.AdminTokenLeaderboardFilters) (result *usagestats.AdminTokenLeaderboardResponse, err error) {
+	if filters.Limit <= 0 {
+		filters.Limit = 10
+	}
+
+	whereClause, args := buildAdminTokenLeaderboardWhere(startTime, endTime, filters, 0)
+	args = append(args, filters.Limit)
+	limitPosition := len(args)
+
+	query := fmt.Sprintf(`
+		WITH user_usage AS (
+			SELECT
+				ul.user_id,
+				COALESCE(u.email, '') as email,
+				COALESCE(u.username, '') as username,
+				COALESCE(u.status, '') as status,
+				COALESCE(u.created_at, to_timestamp(0)) as registered_at,
+				COUNT(*) as requests,
+				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens,
+				COALESCE(SUM(ul.total_cost), 0) as cost,
+				COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
+				COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
+			FROM usage_logs ul
+			LEFT JOIN users u ON u.id = ul.user_id
+			WHERE %s
+			GROUP BY ul.user_id, u.email, u.username, u.status, u.created_at
+		),
+		ranked AS (
+			SELECT
+				ROW_NUMBER() OVER (ORDER BY tokens DESC, actual_cost DESC, requests DESC, user_id ASC) as rank,
+				user_id,
+				email,
+				username,
+				status,
+				registered_at,
+				requests,
+				tokens,
+				cost,
+				actual_cost,
+				account_cost,
+				COALESCE(SUM(requests) OVER (), 0) as total_requests,
+				COALESCE(SUM(tokens) OVER (), 0) as total_tokens,
+				COALESCE(SUM(cost) OVER (), 0) as total_cost,
+				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
+				COALESCE(SUM(account_cost) OVER (), 0) as total_account_cost
+			FROM user_usage
+		)
+		SELECT
+			rank,
+			user_id,
+			email,
+			username,
+			status,
+			registered_at,
+			requests,
+			tokens,
+			cost,
+			actual_cost,
+			account_cost,
+			total_requests,
+			total_tokens,
+			total_cost,
+			total_actual_cost,
+			total_account_cost
+		FROM ranked
+		WHERE rank <= $%d
+		ORDER BY rank ASC
+	`, whereClause, limitPosition)
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	out := &usagestats.AdminTokenLeaderboardResponse{
+		Ranking: make([]usagestats.AdminTokenLeaderboardUser, 0, filters.Limit),
+	}
+	for rows.Next() {
+		var row usagestats.AdminTokenLeaderboardUser
+		if err = rows.Scan(
+			&row.Rank,
+			&row.UserID,
+			&row.Email,
+			&row.Username,
+			&row.Status,
+			&row.RegisteredAt,
+			&row.Requests,
+			&row.Tokens,
+			&row.Cost,
+			&row.ActualCost,
+			&row.AccountCost,
+			&out.TotalRequests,
+			&out.TotalTokens,
+			&out.TotalCost,
+			&out.TotalActualCost,
+			&out.TotalAccountCost,
+		); err != nil {
+			return nil, err
+		}
+		out.Ranking = append(out.Ranking, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetAdminTokenLeaderboardUserDetails 返回管理员排行榜中单个用户的展开明细。
+func (r *usageLogRepository) GetAdminTokenLeaderboardUserDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (result *usagestats.AdminTokenLeaderboardUserDetails, err error) {
+	out := &usagestats.AdminTokenLeaderboardUserDetails{}
+	if userID <= 0 {
+		return out, nil
+	}
+
+	if out.APIKeys, err = r.getAdminTokenLeaderboardAPIKeyDetails(ctx, startTime, endTime, userID, filters); err != nil {
+		return nil, err
+	}
+	if out.Groups, err = r.getAdminTokenLeaderboardGroupDetails(ctx, startTime, endTime, userID, filters); err != nil {
+		return nil, err
+	}
+	if out.Models, err = r.getAdminTokenLeaderboardModelDetails(ctx, startTime, endTime, userID, filters); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func buildAdminTokenLeaderboardWhere(startTime, endTime time.Time, filters usagestats.AdminTokenLeaderboardFilters, userID int64) (string, []any) {
+	conditions := []string{"ul.created_at >= $1", "ul.created_at < $2"}
+	args := []any{startTime, endTime}
+
+	if userID > 0 {
+		conditions = append(conditions, fmt.Sprintf("ul.user_id = $%d", len(args)+1))
+		args = append(args, userID)
+	}
+	if email := strings.TrimSpace(filters.Email); email != "" {
+		conditions = append(conditions, fmt.Sprintf("LOWER(COALESCE(u.email, '')) LIKE $%d", len(args)+1))
+		args = append(args, "%"+strings.ToLower(email)+"%")
+	}
+	if filters.GroupID > 0 {
+		conditions = append(conditions, fmt.Sprintf("ul.group_id = $%d", len(args)+1))
+		args = append(args, filters.GroupID)
+	}
+	if model := strings.TrimSpace(filters.Model); model != "" {
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", resolveModelDimensionExpression(filters.ModelType), len(args)+1))
+		args = append(args, model)
+	}
+	if status := strings.TrimSpace(filters.UserStatus); status != "" {
+		conditions = append(conditions, fmt.Sprintf("u.status = $%d", len(args)+1))
+		args = append(args, status)
+	}
+
+	return strings.Join(conditions, " AND "), args
+}
+
+func (r *usageLogRepository) getAdminTokenLeaderboardAPIKeyDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (result []usagestats.AdminTokenLeaderboardAPIKeyUsage, err error) {
+	whereClause, args := buildAdminTokenLeaderboardWhere(startTime, endTime, filters, userID)
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(ul.api_key_id, 0) as api_key_id,
+			COALESCE(k.name, '') as api_key_name,
+			COUNT(*) as requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(ul.total_cost), 0) as cost,
+			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
+		FROM usage_logs ul
+		LEFT JOIN users u ON u.id = ul.user_id
+		LEFT JOIN api_keys k ON k.id = ul.api_key_id
+		WHERE %s
+		GROUP BY ul.api_key_id, k.name
+		ORDER BY tokens DESC, actual_cost DESC, requests DESC, api_key_id ASC
+	`, whereClause)
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	result = make([]usagestats.AdminTokenLeaderboardAPIKeyUsage, 0)
+	for rows.Next() {
+		var row usagestats.AdminTokenLeaderboardAPIKeyUsage
+		if err = rows.Scan(&row.APIKeyID, &row.APIKeyName, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost, &row.AccountCost); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *usageLogRepository) getAdminTokenLeaderboardGroupDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (result []usagestats.AdminTokenLeaderboardGroupUsage, err error) {
+	whereClause, args := buildAdminTokenLeaderboardWhere(startTime, endTime, filters, userID)
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(ul.group_id, 0) as group_id,
+			COALESCE(g.name, '') as group_name,
+			COUNT(*) as requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(ul.total_cost), 0) as cost,
+			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
+		FROM usage_logs ul
+		LEFT JOIN users u ON u.id = ul.user_id
+		LEFT JOIN groups g ON g.id = ul.group_id
+		WHERE %s
+		GROUP BY ul.group_id, g.name
+		ORDER BY tokens DESC, actual_cost DESC, requests DESC, group_id ASC
+	`, whereClause)
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	result = make([]usagestats.AdminTokenLeaderboardGroupUsage, 0)
+	for rows.Next() {
+		var row usagestats.AdminTokenLeaderboardGroupUsage
+		if err = rows.Scan(&row.GroupID, &row.GroupName, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost, &row.AccountCost); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *usageLogRepository) getAdminTokenLeaderboardModelDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (result []usagestats.AdminTokenLeaderboardModelUsage, err error) {
+	whereClause, args := buildAdminTokenLeaderboardWhere(startTime, endTime, filters, userID)
+	modelExpr := resolveModelDimensionExpression(filters.ModelType)
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(NULLIF(TRIM(%s), ''), '') as model,
+			COUNT(*) as requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(ul.total_cost), 0) as cost,
+			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
+		FROM usage_logs ul
+		LEFT JOIN users u ON u.id = ul.user_id
+		WHERE %s
+		GROUP BY model
+		ORDER BY tokens DESC, actual_cost DESC, requests DESC, model ASC
+	`, modelExpr, whereClause)
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	result = make([]usagestats.AdminTokenLeaderboardModelUsage, 0)
+	for rows.Next() {
+		var row usagestats.AdminTokenLeaderboardModelUsage
+		if err = rows.Scan(&row.Model, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost, &row.AccountCost); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats = usagestats.UserDashboardStats
 

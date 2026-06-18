@@ -41,3 +41,10 @@ describe('AppSidebar external payment entry', () => {
     expect(componentSource).toContain('rel="noopener noreferrer"')
   })
 })
+
+describe('AppSidebar admin token leaderboard entry', () => {
+  it('keeps the admin Token leaderboard as an admin-only navigation item', () => {
+    expect(componentSource).toContain("path: '/admin/token-leaderboard'")
+    expect(componentSource).toContain("label: t('nav.tokenLeaderboard')")
+  })
+})
