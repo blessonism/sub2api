@@ -139,6 +139,50 @@ func (s *UserRepoSuite) TestGetByEmail_NotFound() {
 	s.Require().Error(err, "expected error for non-existent email")
 }
 
+func (s *UserRepoSuite) TestListBalanceSummaryUsersExcludesDeletedAndKeepsDisabledAdmin() {
+	user := s.mustCreateUser(&service.User{
+		Email:   "balance-summary-user@test.com",
+		Role:    service.RoleUser,
+		Status:  service.StatusActive,
+		Balance: 10.5,
+	})
+	disabled := s.mustCreateUser(&service.User{
+		Email:   "balance-summary-disabled@test.com",
+		Role:    service.RoleUser,
+		Status:  service.StatusDisabled,
+		Balance: 20.25,
+	})
+	admin := s.mustCreateUser(&service.User{
+		Email:   "balance-summary-admin@test.com",
+		Role:    service.RoleAdmin,
+		Status:  service.StatusActive,
+		Balance: 30,
+	})
+	deleted := s.mustCreateUser(&service.User{
+		Email:   "balance-summary-deleted@test.com",
+		Role:    service.RoleUser,
+		Status:  service.StatusActive,
+		Balance: 999,
+	})
+	s.Require().NoError(s.client.User.DeleteOneID(deleted.ID).Exec(s.ctx))
+
+	got, err := s.repo.ListBalanceSummaryUsers(s.ctx)
+	s.Require().NoError(err)
+
+	byID := make(map[int64]service.User, len(got))
+	for _, u := range got {
+		byID[u.ID] = u
+	}
+
+	s.Require().Contains(byID, user.ID)
+	s.Require().Contains(byID, disabled.ID)
+	s.Require().Contains(byID, admin.ID)
+	s.Require().NotContains(byID, deleted.ID)
+	s.Require().Equal(service.StatusDisabled, byID[disabled.ID].Status)
+	s.Require().Equal(service.RoleAdmin, byID[admin.ID].Role)
+	s.Require().Equal(20.25, byID[disabled.ID].Balance)
+}
+
 func (s *UserRepoSuite) TestExistsByEmail_NormalizesSpacingAndCaseOnPostgres() {
 	s.mustCreateUser(&service.User{Email: " Legacy@Example.com "})
 

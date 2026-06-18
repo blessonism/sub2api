@@ -192,6 +192,22 @@ func (s *stubAdminService) GrantUserBalances(ctx context.Context, grants []servi
 	return results, nil
 }
 
+func (s *stubAdminService) GetBalanceSummary(ctx context.Context) (*service.AdminBalanceSummary, error) {
+	return &service.AdminBalanceSummary{
+		TotalUsers:    len(s.users),
+		IncludedUsers: len(s.users),
+	}, nil
+}
+
+func (s *stubAdminService) UpdateBalanceSummaryExclusions(ctx context.Context, userIDs []int64) (*service.AdminBalanceSummary, error) {
+	return &service.AdminBalanceSummary{
+		TotalUsers:        len(s.users),
+		IncludedUsers:     len(s.users) - len(userIDs),
+		ExcludedUserCount: len(userIDs),
+		ExcludedUserIDs:   append([]int64(nil), userIDs...),
+	}, nil
+}
+
 func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
 	return len(userIDs), nil
 }

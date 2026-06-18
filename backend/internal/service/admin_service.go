@@ -40,6 +40,8 @@ type AdminService interface {
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	GrantUserBalances(ctx context.Context, grants []BalanceGrantInput, notes string) ([]BalanceGrantResult, error)
+	GetBalanceSummary(ctx context.Context) (*AdminBalanceSummary, error)
+	UpdateBalanceSummaryExclusions(ctx context.Context, userIDs []int64) (*AdminBalanceSummary, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
@@ -166,6 +168,37 @@ type BalanceGrantInput struct {
 type BalanceGrantResult struct {
 	User         *User
 	BalanceDelta float64
+}
+
+type AdminBalanceSummaryBucket struct {
+	Key           string  `json:"key"`
+	UserCount     int     `json:"user_count"`
+	Balance       float64 `json:"balance"`
+	ExcludedCount int     `json:"excluded_count"`
+}
+
+type AdminBalanceSummaryExcludedUser struct {
+	UserID   int64   `json:"user_id"`
+	Email    string  `json:"email,omitempty"`
+	Username string  `json:"username,omitempty"`
+	Role     string  `json:"role,omitempty"`
+	Status   string  `json:"status,omitempty"`
+	Balance  float64 `json:"balance,omitempty"`
+	Valid    bool    `json:"valid"`
+	Reason   string  `json:"reason,omitempty"`
+}
+
+type AdminBalanceSummary struct {
+	TotalUsers        int                               `json:"total_users"`
+	IncludedUsers     int                               `json:"included_users"`
+	ExcludedUserCount int                               `json:"excluded_user_count"`
+	InvalidExclusions int                               `json:"invalid_exclusions"`
+	TotalBalance      float64                           `json:"total_balance"`
+	ByRole            []AdminBalanceSummaryBucket       `json:"by_role"`
+	ByStatus          []AdminBalanceSummaryBucket       `json:"by_status"`
+	ExcludedUserIDs   []int64                           `json:"excluded_user_ids"`
+	ExcludedUsersList []AdminBalanceSummaryExcludedUser `json:"excluded_users"`
+	GeneratedAt       time.Time                         `json:"generated_at"`
 }
 
 type AdminBindAuthIdentityInput struct {

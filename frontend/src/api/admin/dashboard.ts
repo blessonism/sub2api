@@ -327,6 +327,37 @@ export interface AdminTokenLeaderboardGrantBalanceResponse {
   users: AdminTokenLeaderboardGrantBalanceUser[]
 }
 
+export interface AdminBalanceSummaryBucket {
+  key: string
+  user_count: number
+  balance: number
+  excluded_count: number
+}
+
+export interface AdminBalanceSummaryExcludedUser {
+  user_id: number
+  email?: string
+  username?: string
+  role?: 'admin' | 'user' | string
+  status?: 'active' | 'disabled' | string
+  balance?: number
+  valid: boolean
+  reason?: string
+}
+
+export interface AdminBalanceSummaryResponse {
+  total_users: number
+  included_users: number
+  excluded_user_count: number
+  invalid_exclusions: number
+  total_balance: number
+  by_role: AdminBalanceSummaryBucket[]
+  by_status: AdminBalanceSummaryBucket[]
+  excluded_user_ids: number[]
+  excluded_users: AdminBalanceSummaryExcludedUser[]
+  generated_at: string
+}
+
 /**
  * Get user usage trend data
  * @param params - Query parameters for filtering
@@ -382,6 +413,23 @@ export async function grantAdminTokenLeaderboardBalance(
     '/admin/dashboard/token-leaderboard/grant-balance',
     request,
     { params }
+  )
+  return data
+}
+
+export async function getAdminBalanceSummary(): Promise<AdminBalanceSummaryResponse> {
+  const { data } = await apiClient.get<AdminBalanceSummaryResponse>(
+    '/admin/dashboard/balance-summary'
+  )
+  return data
+}
+
+export async function updateAdminBalanceSummaryExclusions(
+  userIds: number[]
+): Promise<AdminBalanceSummaryResponse> {
+  const { data } = await apiClient.put<AdminBalanceSummaryResponse>(
+    '/admin/dashboard/balance-summary/exclusions',
+    { user_ids: userIds }
   )
   return data
 }
@@ -455,6 +503,8 @@ export const dashboardAPI = {
   getAdminTokenLeaderboard,
   getAdminTokenLeaderboardUserDetails,
   grantAdminTokenLeaderboardBalance,
+  getAdminBalanceSummary,
+  updateAdminBalanceSummaryExclusions,
   getBatchUsersUsage,
   getBatchApiKeysUsage
 }

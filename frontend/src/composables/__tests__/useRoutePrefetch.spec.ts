@@ -25,6 +25,7 @@ const createMockRouter = (): Router => {
 
   const routes: Partial<RouteRecordNormalized>[] = [
     { path: '/admin/dashboard', components: { default: mockImportFn } },
+    { path: '/admin/balance-summary', components: { default: mockImportFn } },
     { path: '/admin/accounts', components: { default: mockImportFn } },
     { path: '/admin/users', components: { default: mockImportFn } },
     { path: '/admin/groups', components: { default: mockImportFn } },
@@ -92,7 +93,18 @@ describe('useRoutePrefetch', () => {
       const route = createMockRoute('/admin/dashboard')
       const config = _getPrefetchConfig(route)
 
-      expect(config).toHaveLength(2)
+      expect(config).toHaveLength(_adminPrefetchMap['/admin/dashboard'].length)
+      expect(_adminPrefetchMap['/admin/dashboard']).toContain('/admin/balance-summary')
+    })
+
+    it('余额汇总页应该返回相邻管理员路由预加载配置', () => {
+      const { _getPrefetchConfig } = useRoutePrefetch(mockRouter)
+      const route = createMockRoute('/admin/balance-summary')
+      const config = _getPrefetchConfig(route)
+
+      expect(config).toHaveLength(_adminPrefetchMap['/admin/balance-summary'].length)
+      expect(_adminPrefetchMap['/admin/balance-summary']).toContain('/admin/dashboard')
+      expect(_adminPrefetchMap['/admin/balance-summary']).toContain('/admin/users')
     })
 
     it('普通用户 dashboard 应该返回正确的预加载配置', () => {
@@ -191,7 +203,8 @@ describe('useRoutePrefetch', () => {
   describe('预加载映射表', () => {
     it('管理员预加载映射表应该包含正确的路由', () => {
       expect(_adminPrefetchMap).toHaveProperty('/admin/dashboard')
-      expect(_adminPrefetchMap['/admin/dashboard']).toHaveLength(2)
+      expect(_adminPrefetchMap['/admin/dashboard']).toContain('/admin/balance-summary')
+      expect(_adminPrefetchMap).toHaveProperty('/admin/balance-summary')
     })
 
     it('用户预加载映射表应该包含正确的路由', () => {
