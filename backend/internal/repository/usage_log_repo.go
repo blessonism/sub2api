@@ -114,6 +114,14 @@ const usageLogSuccessFilterUL = "ul.actual_cost > 0"
 // 配套要求查询里 LEFT JOIN groups g ON g.id = ul.group_id 与 LEFT JOIN accounts a ON a.id = ul.account_id。
 const usageLogEffectivePlatformExpr = "COALESCE(NULLIF(g.platform,''), a.platform)"
 
+// userSpendingRankingCostExpr 是管理员用户消耗榜的用户额度消耗口径。
+// 正常新数据使用 actual_cost；订阅历史记录如果 actual_cost 缺失/为 0，
+// 则用 total_cost * rate_multiplier 回补，避免订阅套餐额度消耗从排行榜里消失。
+var userSpendingRankingCostExpr = fmt.Sprintf(
+	"CASE WHEN (u.subscription_id IS NOT NULL OR u.billing_type = %d) AND COALESCE(u.actual_cost, 0) <= 0 THEN COALESCE(u.total_cost, 0) * COALESCE(u.rate_multiplier, 1) ELSE COALESCE(u.actual_cost, 0) END",
+	service.BillingTypeSubscription,
+)
+
 // dateFormatWhitelist 将 granularity 参数映射为 PostgreSQL TO_CHAR 格式字符串，防止外部输入直接拼入 SQL
 var dateFormatWhitelist = map[string]string{
 	"hour":  "YYYY-MM-DD HH24:00",
@@ -2371,12 +2379,12 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		limit = 12
 	}
 
-	query := `
+	query := fmt.Sprintf(`
 		WITH user_spend AS (
 			SELECT
 				u.user_id,
 				COALESCE(us.email, '') as email,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
+				COALESCE(SUM(%s), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u
@@ -2409,7 +2417,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			total_tokens
 		FROM ranked
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
-	`
+	`, userSpendingRankingCostExpr)
 
 	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
 	if err != nil {

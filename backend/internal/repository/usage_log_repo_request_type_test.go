@@ -537,6 +537,31 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetUserSpendingRankingBackfillsSubscriptionQuotaCost(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(8), "sub@example.com", 6.0, int64(3), int64(1200), 6.0, int64(3), int64(1200))
+
+	mock.ExpectQuery(fmt.Sprintf("CASE WHEN \\(u\\.subscription_id IS NOT NULL OR u\\.billing_type = %d\\) AND COALESCE\\(u\\.actual_cost, 0\\) <= 0", service.BillingTypeSubscription)).
+		WithArgs(start, end, 5).
+		WillReturnRows(rows)
+
+	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 5)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.UserSpendingRankingItem{
+		{UserID: 8, Email: "sub@example.com", ActualCost: 6.0, Requests: 3, Tokens: 1200},
+	}, got.Ranking)
+	require.InDelta(t, 6.0, got.TotalActualCost, 1e-9)
+	require.Equal(t, int64(3), got.TotalRequests)
+	require.Equal(t, int64(1200), got.TotalTokens)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
