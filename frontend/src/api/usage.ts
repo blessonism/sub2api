@@ -53,6 +53,22 @@ export interface UserDashboardStats {
   by_platform?: PlatformDashboardStats[]
 }
 
+export interface UserTokenLeaderboardItem {
+  rank: number
+  masked_email: string
+  requests: number
+  tokens: number
+  is_current_user: boolean
+}
+
+export interface UserTokenLeaderboardResponse {
+  ranking: UserTokenLeaderboardItem[]
+  my_rank: UserTokenLeaderboardItem
+  start_date: string
+  end_date: string
+  limit: number
+}
+
 export interface TrendParams {
   start_date?: string
   end_date?: string
@@ -257,6 +273,15 @@ export async function getDashboardModels(params?: {
 }
 
 /**
+ * 获取今日用户 Token 排行榜。
+ * @returns 当前自然日 Token 排行榜
+ */
+export async function getDashboardLeaderboard(): Promise<UserTokenLeaderboardResponse> {
+  const { data } = await apiClient.get<UserTokenLeaderboardResponse>('/usage/dashboard/leaderboard')
+  return data
+}
+
+/**
  * Get daily usage details for one API key owned by the current user.
  * @param apiKeyId - API key ID
  * @param days - Number of days to include (1-90)
@@ -334,6 +359,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getDashboardLeaderboard,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage,
   // Error requests
