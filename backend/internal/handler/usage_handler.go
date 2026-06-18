@@ -442,6 +442,13 @@ func apiKeyDailyUsageRange(days int, userTZ string) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+func userTodayUsageRange(userTZ string) (time.Time, time.Time) {
+	now := timezone.NowInUserLocation(userTZ)
+	startTime := timezone.StartOfDayInUserLocation(now, userTZ)
+	endTime := timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+	return startTime, endTime
+}
+
 // DashboardStats handles getting user dashboard statistics
 // GET /api/v1/usage/dashboard/stats
 func (h *UsageHandler) DashboardStats(c *gin.Context) {
@@ -508,6 +515,25 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		"start_date": startTime.Format("2006-01-02"),
 		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
+}
+
+// DashboardLeaderboard 获取用户侧今日 Token 排行榜。
+// GET /api/v1/usage/dashboard/leaderboard
+func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	startTime, endTime := userTodayUsageRange(c.Query("timezone"))
+	leaderboard, err := h.usageService.GetUserTokenLeaderboard(c.Request.Context(), subject.UserID, startTime, endTime)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, leaderboard)
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage
