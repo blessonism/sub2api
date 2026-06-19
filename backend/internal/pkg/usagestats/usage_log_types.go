@@ -186,13 +186,14 @@ type UserTokenLeaderboardItem struct {
 	IsCurrentUser bool   `json:"is_current_user"`
 }
 
-// UserTokenLeaderboardResponse 是用户侧今日 Token 排行榜响应。
+// UserTokenLeaderboardResponse 是用户侧 Token 排行榜响应。
 type UserTokenLeaderboardResponse struct {
 	Ranking   []UserTokenLeaderboardItem `json:"ranking"`
 	MyRank    UserTokenLeaderboardItem   `json:"my_rank"`
 	StartDate string                     `json:"start_date"`
 	EndDate   string                     `json:"end_date"`
 	Limit     int                        `json:"limit"`
+	Period    string                     `json:"period"`
 }
 
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).

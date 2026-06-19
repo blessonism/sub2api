@@ -38,12 +38,36 @@ describe('usage leaderboard api', () => {
       start_date: '2026-06-18',
       end_date: '2026-06-18',
       limit: 10,
+      period: 'day',
     }
     get.mockResolvedValue({ data: response })
 
     const result = await getDashboardLeaderboard()
 
-    expect(get).toHaveBeenCalledWith('/usage/dashboard/leaderboard')
+    expect(get).toHaveBeenCalledWith('/usage/dashboard/leaderboard', { params: undefined })
+    expect(result).toEqual(response)
+  })
+
+  it('passes the requested leaderboard period', async () => {
+    const response: UserTokenLeaderboardResponse = {
+      ranking: [],
+      my_rank: {
+        rank: 0,
+        masked_email: 'm***e@example.com',
+        requests: 0,
+        tokens: 0,
+        is_current_user: true,
+      },
+      start_date: '2026-06-14',
+      end_date: '2026-06-20',
+      limit: 10,
+      period: 'week',
+    }
+    get.mockResolvedValue({ data: response })
+
+    const result = await getDashboardLeaderboard({ period: 'week' })
+
+    expect(get).toHaveBeenCalledWith('/usage/dashboard/leaderboard', { params: { period: 'week' } })
     expect(result).toEqual(response)
   })
 })

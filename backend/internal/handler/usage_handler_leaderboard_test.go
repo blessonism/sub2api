@@ -20,12 +20,16 @@ type leaderboardUsageRepoStub struct {
 
 	rows          *usagestats.UserTokenLeaderboardRows
 	called        bool
+	startTime     time.Time
+	endTime       time.Time
 	limit         int
 	currentUserID int64
 }
 
 func (s *leaderboardUsageRepoStub) GetUserTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, limit int, currentUserID int64) (*usagestats.UserTokenLeaderboardRows, error) {
 	s.called = true
+	s.startTime = startTime
+	s.endTime = endTime
 	s.limit = limit
 	s.currentUserID = currentUserID
 	return s.rows, nil
@@ -79,8 +83,44 @@ func TestDashboardLeaderboardReturnsMaskedEmailsOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, 10, got.Data.Limit)
+	require.Equal(t, "day", got.Data.Period)
 	require.Equal(t, "a***a@example.com", got.Data.Ranking[0].MaskedEmail)
 	require.Equal(t, "c***t@example.com", got.Data.MyRank.MaskedEmail)
 	require.Equal(t, int64(12), got.Data.MyRank.Rank)
 	require.True(t, got.Data.MyRank.IsCurrentUser)
+}
+
+func TestDashboardLeaderboardSupportsWeekPeriod(t *testing.T) {
+	currentUserID := int64(9)
+	usageRepo := &leaderboardUsageRepoStub{rows: &usagestats.UserTokenLeaderboardRows{}}
+	router := newLeaderboardTestRouter(usageRepo, currentUserID)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/leaderboard?timezone=UTC&period=week", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, usageRepo.called)
+	require.Equal(t, 7, int(usageRepo.endTime.Sub(usageRepo.startTime).Hours()/24))
+	require.Equal(t, 0, usageRepo.startTime.Hour())
+	require.Equal(t, 0, usageRepo.endTime.Hour())
+
+	var got struct {
+		Code int                                     `json:"code"`
+		Data usagestats.UserTokenLeaderboardResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "week", got.Data.Period)
+}
+
+func TestDashboardLeaderboardRejectsInvalidPeriod(t *testing.T) {
+	usageRepo := &leaderboardUsageRepoStub{rows: &usagestats.UserTokenLeaderboardRows{}}
+	router := newLeaderboardTestRouter(usageRepo, 9)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/leaderboard?period=month", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.False(t, usageRepo.called)
 }

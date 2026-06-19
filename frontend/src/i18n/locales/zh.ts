@@ -1203,9 +1203,12 @@ export default {
 
   leaderboard: {
     title: '排行榜',
-    description: '今日 Token 排名',
+    description: 'Token 消耗排名',
     today: '今日',
+    periodDay: '日榜',
+    periodWeek: '周榜',
     todayRange: '今日：{date}',
+    weekRange: '近 7 天：{start} - {end}',
     myRank: '我的排名',
     rank: '排名',
     user: '用户',
@@ -1218,6 +1221,8 @@ export default {
     unranked: '未上榜',
     noData: '今日暂无用量',
     noDataDescription: '今天还没有产生 Token 使用记录。',
+    noDataWeek: '近 7 天暂无用量',
+    noDataWeekDescription: '最近 7 个自然日还没有产生 Token 使用记录。',
     failedToLoad: '加载排行榜失败',
     retry: '重试'
   },
@@ -1500,6 +1505,8 @@ export default {
       viewModelDistribution: '模型分布',
       viewSpendingRanking: '用户消费榜',
       spendingRankingTitle: '用户消费榜',
+      spendingRankingPeriodDay: '日榜',
+      spendingRankingPeriodWeek: '周榜',
       spendingRankingUser: '用户',
       spendingRankingRequests: '请求',
       spendingRankingTokens: 'Token',

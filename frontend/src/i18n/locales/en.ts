@@ -1199,9 +1199,12 @@ export default {
 
   leaderboard: {
     title: 'Leaderboard',
-    description: 'Today token ranking',
+    description: 'Token usage ranking',
     today: 'Today',
+    periodDay: 'Daily',
+    periodWeek: 'Weekly',
     todayRange: 'Today: {date}',
+    weekRange: 'Last 7 days: {start} - {end}',
     myRank: 'My Rank',
     rank: 'Rank',
     user: 'User',
@@ -1214,6 +1217,8 @@ export default {
     unranked: 'Unranked',
     noData: 'No usage today',
     noDataDescription: 'No token usage has been recorded today.',
+    noDataWeek: 'No usage in the last 7 days',
+    noDataWeekDescription: 'No token usage has been recorded in the last 7 natural days.',
     failedToLoad: 'Failed to load leaderboard',
     retry: 'Retry'
   },
@@ -1490,6 +1495,8 @@ export default {
       viewModelDistribution: 'Model Distribution',
       viewSpendingRanking: 'User Spending Ranking',
       spendingRankingTitle: 'User Spending Ranking',
+      spendingRankingPeriodDay: 'Daily',
+      spendingRankingPeriodWeek: 'Weekly',
       spendingRankingUser: 'User',
       spendingRankingRequests: 'Requests',
       spendingRankingTokens: 'Tokens',
