@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用已有日期范围与榜单模式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "用户 dashboard API 页面类型与测试要求"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "用户可见用量排行榜接口隐私与测试要求"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "排行榜周期字段跨后端与前端传递"}
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}

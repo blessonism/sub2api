@@ -63,11 +63,12 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	}
 	svc := NewUsageService(repo, nil, nil, nil)
 
-	got, err := svc.GetUserTokenLeaderboard(context.Background(), currentUserID, start, end)
+	got, err := svc.GetUserTokenLeaderboard(context.Background(), currentUserID, start, end, "day")
 
 	require.NoError(t, err)
 	require.Equal(t, 10, repo.limit)
 	require.Equal(t, 10, got.Limit)
+	require.Equal(t, "day", got.Period)
 	require.Equal(t, currentUserID, repo.currentUserID)
 	require.Equal(t, start, repo.startTime)
 	require.Equal(t, end, repo.endTime)
@@ -90,11 +91,12 @@ func TestUsageServiceGetUserTokenLeaderboardReturnsZeroRankWhenCurrentUserHasNoU
 	userRepo := &usageLeaderboardUserRepoStub{user: &User{ID: 7, Email: "no-usage@example.com"}}
 	svc := NewUsageService(repo, userRepo, nil, nil)
 
-	got, err := svc.GetUserTokenLeaderboard(context.Background(), 7, start, end)
+	got, err := svc.GetUserTokenLeaderboard(context.Background(), 7, start, end, "week")
 
 	require.NoError(t, err)
 	require.Empty(t, got.Ranking)
 	require.Equal(t, 10, got.Limit)
+	require.Equal(t, "week", got.Period)
 	require.Equal(t, int64(0), got.MyRank.Rank)
 	require.Equal(t, int64(0), got.MyRank.Requests)
 	require.Equal(t, int64(0), got.MyRank.Tokens)

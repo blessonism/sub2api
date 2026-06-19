@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { UserTokenLeaderboardResponse } from '@/api/usage'
 import LeaderboardView from '../LeaderboardView.vue'
 
 const { getDashboardLeaderboard } = vi.hoisted(() => ({
@@ -16,6 +17,9 @@ const messages: Record<string, string> = {
   'common.refresh': 'Refresh',
   'leaderboard.title': 'Leaderboard',
   'leaderboard.todayRange': 'Today: {date}',
+  'leaderboard.weekRange': 'Last 7 days: {start} - {end}',
+  'leaderboard.periodDay': 'Daily',
+  'leaderboard.periodWeek': 'Weekly',
   'leaderboard.myRank': 'My Rank',
   'leaderboard.tokens': 'Tokens',
   'leaderboard.requests': 'Requests',
@@ -30,6 +34,8 @@ const messages: Record<string, string> = {
   'leaderboard.retry': 'Retry',
   'leaderboard.noData': 'No usage today',
   'leaderboard.noDataDescription': 'No token usage has been recorded today.',
+  'leaderboard.noDataWeek': 'No usage in the last 7 days',
+  'leaderboard.noDataWeekDescription': 'No token usage has been recorded in the last 7 natural days.',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -61,6 +67,16 @@ function mountView() {
       },
     },
   })
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
 }
 
 describe('LeaderboardView', () => {
@@ -104,6 +120,7 @@ describe('LeaderboardView', () => {
       start_date: '2026-06-18',
       end_date: '2026-06-18',
       limit: 10,
+      period: 'day',
     })
 
     const wrapper = mountView()
@@ -113,6 +130,8 @@ describe('LeaderboardView', () => {
     expect(text).toContain('a***a@example.com')
     expect(text).toContain('m***e@example.com')
     expect(text).toContain('Top 10')
+    expect(text).toContain('Today: 2026-06-18')
+    expect(getDashboardLeaderboard).toHaveBeenCalledWith({ period: 'day' })
     expect(text).toContain('#11')
     expect(text).toContain('0.18M')
     expect(text).toContain('1.25M')
@@ -136,6 +155,7 @@ describe('LeaderboardView', () => {
       start_date: '2026-06-18',
       end_date: '2026-06-18',
       limit: 10,
+      period: 'day',
     })
 
     const wrapper = mountView()
@@ -143,6 +163,125 @@ describe('LeaderboardView', () => {
 
     expect(wrapper.get('[data-testid="empty"]').text()).toContain('No usage today')
     expect(wrapper.text()).toContain('Unranked')
+  })
+
+  it('switches to weekly leaderboard and updates empty copy', async () => {
+    getDashboardLeaderboard
+      .mockResolvedValueOnce({
+        ranking: [
+          {
+            rank: 1,
+            masked_email: 'a***a@example.com',
+            requests: 10,
+            tokens: 1_200_000,
+            is_current_user: false,
+          },
+        ],
+        my_rank: {
+          rank: 3,
+          masked_email: 'm***e@example.com',
+          requests: 2,
+          tokens: 180_000,
+          is_current_user: true,
+        },
+        start_date: '2026-06-20',
+        end_date: '2026-06-20',
+        limit: 10,
+        period: 'day',
+      })
+      .mockResolvedValueOnce({
+        ranking: [],
+        my_rank: {
+          rank: 0,
+          masked_email: 'm***e@example.com',
+          requests: 0,
+          tokens: 0,
+          is_current_user: true,
+        },
+        start_date: '2026-06-14',
+        end_date: '2026-06-20',
+        limit: 10,
+        period: 'week',
+      })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Weekly')!.trigger('click')
+    await flushPromises()
+
+    expect(getDashboardLeaderboard).toHaveBeenLastCalledWith({ period: 'week' })
+    expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
+    expect(wrapper.get('[data-testid="empty"]').text()).toContain('No usage in the last 7 days')
+  })
+
+  it('keeps the latest weekly leaderboard when the previous daily request resolves late', async () => {
+    const dailyRequest = createDeferred<UserTokenLeaderboardResponse>()
+    const weeklyRequest = createDeferred<UserTokenLeaderboardResponse>()
+    getDashboardLeaderboard
+      .mockReturnValueOnce(dailyRequest.promise)
+      .mockReturnValueOnce(weeklyRequest.promise)
+
+    const wrapper = mountView()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Weekly')!.trigger('click')
+    expect(getDashboardLeaderboard).toHaveBeenNthCalledWith(1, { period: 'day' })
+    expect(getDashboardLeaderboard).toHaveBeenNthCalledWith(2, { period: 'week' })
+
+    weeklyRequest.resolve({
+      ranking: [
+        {
+          rank: 1,
+          masked_email: 'w***k@example.com',
+          requests: 70,
+          tokens: 7_000_000,
+          is_current_user: true,
+        },
+      ],
+      my_rank: {
+        rank: 1,
+        masked_email: 'w***k@example.com',
+        requests: 70,
+        tokens: 7_000_000,
+        is_current_user: true,
+      },
+      start_date: '2026-06-14',
+      end_date: '2026-06-20',
+      limit: 10,
+      period: 'week',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
+    expect(wrapper.text()).toContain('w***k@example.com')
+
+    dailyRequest.resolve({
+      ranking: [
+        {
+          rank: 1,
+          masked_email: 'd***y@example.com',
+          requests: 10,
+          tokens: 1_000_000,
+          is_current_user: true,
+        },
+      ],
+      my_rank: {
+        rank: 1,
+        masked_email: 'd***y@example.com',
+        requests: 10,
+        tokens: 1_000_000,
+        is_current_user: true,
+      },
+      start_date: '2026-06-20',
+      end_date: '2026-06-20',
+      limit: 10,
+      period: 'day',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
+    expect(wrapper.text()).toContain('w***k@example.com')
+    expect(wrapper.text()).not.toContain('d***y@example.com')
   })
 
   it('renders error state when leaderboard request fails', async () => {

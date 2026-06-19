@@ -67,6 +67,13 @@ export interface UserTokenLeaderboardResponse {
   start_date: string
   end_date: string
   limit: number
+  period: UserTokenLeaderboardPeriod
+}
+
+export type UserTokenLeaderboardPeriod = 'day' | 'week'
+
+export interface UserTokenLeaderboardParams {
+  period?: UserTokenLeaderboardPeriod
 }
 
 export interface TrendParams {
@@ -273,11 +280,11 @@ export async function getDashboardModels(params?: {
 }
 
 /**
- * 获取今日用户 Token 排行榜。
- * @returns 当前自然日 Token 排行榜
+ * 获取用户 Token 排行榜。
+ * @returns 指定周期的 Token 排行榜
  */
-export async function getDashboardLeaderboard(): Promise<UserTokenLeaderboardResponse> {
-  const { data } = await apiClient.get<UserTokenLeaderboardResponse>('/usage/dashboard/leaderboard')
+export async function getDashboardLeaderboard(params?: UserTokenLeaderboardParams): Promise<UserTokenLeaderboardResponse> {
+  const { data } = await apiClient.get<UserTokenLeaderboardResponse>('/usage/dashboard/leaderboard', { params })
   return data
 }
 
