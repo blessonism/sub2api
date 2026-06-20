@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"testing"
 
@@ -75,6 +76,12 @@ func (s *userGroupRateRepoStubForGroupRate) DeleteByGroupID(_ context.Context, g
 
 func (s *userGroupRateRepoStubForGroupRate) DeleteByUserID(_ context.Context, _ int64) error {
 	panic("unexpected DeleteByUserID call")
+}
+
+func requireApplicationErrorStatus(t *testing.T, err error, status int) {
+	t.Helper()
+	require.Error(t, err)
+	require.Equal(t, status, infraerrors.Code(err))
 }
 
 func TestAdminService_GetGroupRateMultipliers(t *testing.T) {
@@ -163,7 +170,9 @@ func TestAdminService_ClearGroupRateMultipliers(t *testing.T) {
 
 func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 	t.Run("syncs entries to repo", func(t *testing.T) {
-		repo := &userGroupRateRepoStubForGroupRate{}
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+		}
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		entries := []GroupRateMultiplierInput{
@@ -183,9 +192,102 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("rejects invalid user IDs", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
+			{UserID: 0, RateMultiplier: 1.25},
+		})
+		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
+		require.Empty(t, repo.syncedEntries)
+	})
+
+	t.Run("rejects duplicate user IDs before sync", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
+			{UserID: 1, RateMultiplier: 1.25},
+			{UserID: 1, RateMultiplier: 1.50},
+		})
+		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
+		require.Empty(t, repo.syncedEntries)
+	})
+
+	t.Run("rejects non-positive and non-finite rates before sync", func(t *testing.T) {
+		for _, rate := range []float64{0, -0.1, math.NaN(), math.Inf(1)} {
+			repo := &userGroupRateRepoStubForGroupRate{
+				getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+			}
+			svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+			err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
+				{UserID: 1, RateMultiplier: rate},
+			})
+			requireApplicationErrorStatus(t, err, http.StatusBadRequest)
+			require.Empty(t, repo.syncedEntries)
+		}
+	})
+
+	t.Run("rejects rates with more than two decimals before sync", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
+			{UserID: 1, RateMultiplier: 1.234},
+		})
+		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
+		require.Empty(t, repo.syncedEntries)
+	})
+
+	t.Run("allows unchanged legacy rate with more than two decimals", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{
+				10: {
+					{UserID: 1, RateMultiplier: ptrFloat(1.25)},
+					{UserID: 2, RateMultiplier: ptrFloat(1.2345)},
+				},
+			},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		entries := []GroupRateMultiplierInput{
+			{UserID: 1, RateMultiplier: 1.50},
+			{UserID: 2, RateMultiplier: 1.2345},
+		}
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, entries)
+		require.NoError(t, err)
+		require.Equal(t, entries, repo.syncedEntries)
+	})
+
+	t.Run("rejects changed legacy rate with more than two decimals", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{
+				10: {
+					{UserID: 2, RateMultiplier: ptrFloat(1.2345)},
+				},
+			},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
+			{UserID: 2, RateMultiplier: 1.2346},
+		})
+		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
+		require.Empty(t, repo.syncedEntries)
+	})
+
 	t.Run("propagates repo error", func(t *testing.T) {
 		repo := &userGroupRateRepoStubForGroupRate{
-			syncGroupErr: errors.New("sync failed"),
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+			syncGroupErr:     errors.New("sync failed"),
 		}
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否重复实现日期与榜单逻辑"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端 API 类型与页面契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查用户可见排行榜接口隐私边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层日期与 period 契约"}

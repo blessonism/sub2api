@@ -13,11 +13,11 @@
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="flex items-end gap-[2px] h-5 w-full">
+    <div v-else class="grid items-end gap-px sm:gap-[2px] h-5 w-full min-w-0" :style="timelineGridStyle">
       <div
         v-for="(bar, idx) in displayBars"
         :key="idx"
-        class="flex-1 min-w-[3px] rounded-sm"
+        class="w-full min-w-0 rounded-sm"
         :class="bar.colorClass"
         :style="{ height: bar.heightPct + '%' }"
         :title="bar.title"
@@ -100,7 +100,7 @@ const displayBars = computed<Bar[]>(() => {
     const status = point.status as keyof typeof STATUS_HEIGHT
     const colorClass = STATUS_COLOR[status] ?? STATUS_COLOR.empty
     const heightPct = STATUS_HEIGHT[status] ?? STATUS_HEIGHT.empty
-    const latency = formatLatency(point.latency_ms)
+    const latency = formatTimelineLatency(point.latency_ms)
     const relative = formatRelativeTime(point.checked_at)
     const label = statusLabel(point.status)
     bars.push({
@@ -112,4 +112,13 @@ const displayBars = computed<Bar[]>(() => {
 
   return bars
 })
+
+const timelineGridStyle = computed(() => ({
+  gridTemplateColumns: `repeat(${Math.max(1, displayBars.value.length)}, minmax(0, 1fr))`,
+}))
+
+function formatTimelineLatency(ms: number | null | undefined): string {
+  if (ms == null || Number.isNaN(ms)) return t('monitorCommon.latencyEmpty')
+  return `${formatLatency(ms)}ms`
+}
 </script>

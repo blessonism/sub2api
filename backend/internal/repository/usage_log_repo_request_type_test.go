@@ -556,11 +556,14 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
+	betaLastUsed := start.Add(12 * time.Hour)
+	alphaLastUsed := start.Add(10 * time.Hour)
+	gammaLastUsed := start.Add(8 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
-		AddRow(int64(2), "beta@example.com", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
-		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
-		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
+	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "last_used_at", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(2), "beta@example.com", 12.5, int64(9), int64(900), betaLastUsed, 40.0, int64(30), int64(2600)).
+		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), alphaLastUsed, 40.0, int64(30), int64(2600)).
+		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), gammaLastUsed, 40.0, int64(30), int64(2600))
 
 	mock.ExpectQuery("WITH user_spend AS \\(").
 		WithArgs(start, end, 12).
@@ -570,9 +573,9 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.UserSpendingRankingResponse{
 		Ranking: []usagestats.UserSpendingRankingItem{
-			{UserID: 2, Email: "beta@example.com", ActualCost: 12.5, Requests: 9, Tokens: 900},
-			{UserID: 1, Email: "alpha@example.com", ActualCost: 12.5, Requests: 8, Tokens: 800},
-			{UserID: 3, Email: "gamma@example.com", ActualCost: 4.25, Requests: 5, Tokens: 300},
+			{UserID: 2, Email: "beta@example.com", ActualCost: 12.5, Requests: 9, Tokens: 900, LastUsedAt: betaLastUsed},
+			{UserID: 1, Email: "alpha@example.com", ActualCost: 12.5, Requests: 8, Tokens: 800, LastUsedAt: alphaLastUsed},
+			{UserID: 3, Email: "gamma@example.com", ActualCost: 4.25, Requests: 5, Tokens: 300, LastUsedAt: gammaLastUsed},
 		},
 		TotalActualCost: 40.0,
 		TotalRequests:   30,
@@ -634,6 +637,32 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 		TotalActualCost:  2.8,
 		TotalAccountCost: 1.7,
 	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetUserSpendingRankingBackfillsSubscriptionQuotaCost(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	lastUsed := start.Add(15 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "last_used_at", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(8), "sub@example.com", 6.0, int64(3), int64(1200), lastUsed, 6.0, int64(3), int64(1200))
+
+	mock.ExpectQuery(fmt.Sprintf("CASE WHEN \\(u\\.subscription_id IS NOT NULL OR u\\.billing_type = %d\\) AND COALESCE\\(u\\.actual_cost, 0\\) <= 0", service.BillingTypeSubscription)).
+		WithArgs(start, end, 5).
+		WillReturnRows(rows)
+
+	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 5)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.UserSpendingRankingItem{
+		{UserID: 8, Email: "sub@example.com", ActualCost: 6.0, Requests: 3, Tokens: 1200, LastUsedAt: lastUsed},
+	}, got.Ranking)
+	require.InDelta(t, 6.0, got.TotalActualCost, 1e-9)
+	require.Equal(t, int64(3), got.TotalRequests)
+	require.Equal(t, int64(1200), got.TotalTokens)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

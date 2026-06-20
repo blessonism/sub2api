@@ -1513,6 +1513,7 @@ export interface UserSpendingRankingItem {
   actual_cost: number
   requests: number
   tokens: number
+  last_used_at: string | null
 }
 
 export interface UserSpendingRankingResponse {

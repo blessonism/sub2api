@@ -8,7 +8,7 @@
 
 * 当前仓库是 `Wei-Shaw/sub2api` 的下游二开仓库，所有仓库改动必须遵循 `.trellis/spec/guides/downstream-fork-workflow.md`。
 * 本任务 base branch 已记录为 `custom/main`，任务分支已记录为 `feature/admin-token-usage-leaderboard`。
-* 原工作区 `/Users/suki/code/sub2api` 当前在 `feature/token-usage-leaderboard`，且存在用户侧排行榜相关未提交改动；本任务实现改在干净 worktree `/Users/suki/code/sub2api-admin-token-usage-leaderboard` 完成。
+* 原工作区 `/Users/suki/code/sub2api` 曾在 `feature/token-usage-leaderboard`，且存在用户侧排行榜相关改动；管理员实现改在干净 worktree `/Users/suki/code/sub2api-admin-token-usage-leaderboard` 完成。
 * 需求来源来自 `.trellis/tasks/06-18-token-usage-leaderboard/prd.md` 的 `Future admin leaderboard`。
 * 用户侧排行榜已经实现为普通用户只看今日 Token Top10、自己的排名、邮箱打码；统计口径为同一用户当日所有 Key、所有分组的非图片 Token 总和，即 `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`，不统计 `image_output_tokens`。
 * 管理员版需要展示更完整的运营和排查信息，但不能导致普通用户接口返回完整邮箱。
@@ -25,7 +25,7 @@
 * 新增独立管理员版 Token 排行榜，不混入普通用户排行榜页面。
 * 管理员可查看完整邮箱、用户 ID、用户名、账号状态和注册时间。
 * 支持日期选择：今日、昨日、近 7 天、近 30 天、自定义日期范围。
-* 指标包含请求数、非图片 Token 总量、实际扣除额度 `actual_cost`；如现有数据模型和页面空间适合，同时展示标准计费 `cost` 和账号成本 `account_cost`。
+* 指标包含请求数、非图片 Token 总量、实际扣除额度 `actual_cost`、标准计费 `cost` 和账号成本 `account_cost`。
 * 支持 TopN 选择：Top10、Top20、Top50、Top100。
 * 支持按邮箱搜索，并按分组、模型、用户状态、时间范围筛选。
 * 支持展开单个用户明细，查看该用户 API Key 用量、分组用量、模型用量、请求数、Token 和消耗额度。
@@ -49,8 +49,8 @@
 * [x] 管理员能勾选当前排行榜 Top10 内的用户，输入赠送额度和备注后一键批量赠送。
 * [x] 后端会拒绝空用户列表、非正数额度、超过 10 个用户、重复用户 ID，以及不属于当前 Top10 的用户。
 * [x] 批量赠送成功后会复用单用户余额调整流水，并刷新排行榜数据。
-* [ ] 管理员可在系统设置中切换普通用户侧排行榜可见性。
-* [ ] `仅管理员可看` 时普通用户侧排行榜入口隐藏，普通用户接口拒绝访问；管理员版排行榜不受影响。
+* [x] 管理员可在系统设置中切换普通用户侧排行榜可见性。
+* [x] `仅管理员可看` 时普通用户侧排行榜入口隐藏，普通用户接口拒绝访问；管理员版排行榜不受影响。
 * [x] 现有 `/admin/dashboard/users-ranking` 行为不被破坏。
 * [x] 普通用户排行榜响应仍不包含完整邮箱。
 * [x] 明确不提供 CSV 导出入口。
@@ -94,6 +94,5 @@
 * 候选后端位置：`backend/internal/handler/usage_handler.go`、`backend/internal/service/usage_service.go`、`backend/internal/repository/usage_log_repo.go`、`backend/internal/pkg/usagestats/usage_log_types.go`、管理员路由文件。
 * 候选前端位置：`frontend/src/api/admin/dashboard.ts`、`frontend/src/router/index.ts`、管理员 dashboard/usage 视图、i18n 文案和相关测试。
 * 实现前需要确认 backend/frontend spec context 已加入 `implement.jsonl` 和 `check.jsonl`，并避免无关修改进入本任务。
-* 实际后端实现：`GET /api/v1/admin/dashboard/token-leaderboard` 与 `GET /api/v1/admin/dashboard/token-leaderboard/users/:user_id/details`。
+* 实际后端实现：`GET /api/v1/admin/dashboard/token-leaderboard`、`POST /api/v1/admin/dashboard/token-leaderboard/grant-balance` 与 `GET /api/v1/admin/dashboard/token-leaderboard/users/:user_id/details`。
 * 实际前端实现：`/admin/token-leaderboard` 独立管理员页面，侧栏入口为 `nav.tokenLeaderboard`。
-* 当前 clean worktree 不混入原 `/Users/suki/code/sub2api` 的用户侧排行榜未提交实现；本任务先落地系统级可见性配置和管理员设置入口，用户侧接口/页面在用户侧排行榜分支合入本任务基线后接入同一个开关。

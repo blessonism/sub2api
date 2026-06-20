@@ -449,6 +449,24 @@ func userTodayUsageRange(userTZ string) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+const (
+	userTokenLeaderboardPeriodDay  = "day"
+	userTokenLeaderboardPeriodWeek = "week"
+)
+
+func userTokenLeaderboardRange(period, userTZ string) (time.Time, time.Time, string, bool) {
+	switch strings.TrimSpace(period) {
+	case "", userTokenLeaderboardPeriodDay:
+		startTime, endTime := userTodayUsageRange(userTZ)
+		return startTime, endTime, userTokenLeaderboardPeriodDay, true
+	case userTokenLeaderboardPeriodWeek:
+		startTime, endTime := apiKeyDailyUsageRange(7, userTZ)
+		return startTime, endTime, userTokenLeaderboardPeriodWeek, true
+	default:
+		return time.Time{}, time.Time{}, "", false
+	}
+}
+
 // DashboardStats handles getting user dashboard statistics
 // GET /api/v1/usage/dashboard/stats
 func (h *UsageHandler) DashboardStats(c *gin.Context) {
@@ -517,7 +535,7 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	})
 }
 
-// DashboardLeaderboard 获取用户侧今日 Token 排行榜。
+// DashboardLeaderboard 获取用户侧 Token 排行榜，支持日榜和自然日近 7 天周榜。
 // GET /api/v1/usage/dashboard/leaderboard
 func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
@@ -526,8 +544,13 @@ func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
 		return
 	}
 
-	startTime, endTime := userTodayUsageRange(c.Query("timezone"))
-	leaderboard, err := h.usageService.GetUserTokenLeaderboard(c.Request.Context(), subject.UserID, startTime, endTime)
+	startTime, endTime, period, ok := userTokenLeaderboardRange(c.Query("period"), c.Query("timezone"))
+	if !ok {
+		response.BadRequest(c, "Invalid period, use day or week")
+		return
+	}
+
+	leaderboard, err := h.usageService.GetUserTokenLeaderboard(c.Request.Context(), subject.UserID, startTime, endTime, period)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

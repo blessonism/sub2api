@@ -12,6 +12,7 @@ const messages: Record<string, string> = {
   'admin.dashboard.spendingRankingRequests': 'Requests',
   'admin.dashboard.spendingRankingTokens': 'Tokens',
   'admin.dashboard.spendingRankingSpend': 'Spend',
+  'admin.dashboard.spendingRankingLastUsed': 'Last Used',
   'admin.dashboard.spendingRankingOther': 'Others',
   'admin.dashboard.model': 'Model',
   'admin.dashboard.requests': 'Requests',
@@ -21,7 +22,6 @@ const messages: Record<string, string> = {
   'admin.dashboard.metricTokens': 'By Tokens',
   'admin.dashboard.metricActualCost': 'By Actual Cost',
   'admin.dashboard.noDataAvailable': 'No data available',
-  'admin.redeem.userPrefix': 'User #{id}',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -41,6 +41,10 @@ vi.mock('vue-chartjs', () => ({
   },
 }))
 
+vi.mock('@/utils/format', () => ({
+  formatDateTime: (value: string | Date | null | undefined) => value ? `formatted:${value}` : '',
+}))
+
 describe('ModelDistributionChart', () => {
   const modelStats = [
     {
@@ -53,6 +57,7 @@ describe('ModelDistributionChart', () => {
       total_tokens: 1000,
       cost: 1.5,
       actual_cost: 0.2,
+      account_cost: 0.1,
     },
     {
       model: 'model-b',
@@ -64,6 +69,7 @@ describe('ModelDistributionChart', () => {
       total_tokens: 500,
       cost: 0.5,
       actual_cost: 1.4,
+      account_cost: 0.7,
     },
   ]
 
@@ -132,8 +138,8 @@ describe('ModelDistributionChart', () => {
         modelStats: [],
         enableRankingView: true,
         rankingItems: [
-          { user_id: 1, email: 'alpha@example.com', actual_cost: 12, requests: 10, tokens: 1000 },
-          { user_id: 2, email: 'beta@example.com', actual_cost: 8, requests: 6, tokens: 600 },
+          { user_id: 1, email: 'alpha@example.com', actual_cost: 12, requests: 10, tokens: 1000, last_used_at: '2026-06-19T08:30:00Z' },
+          { user_id: 2, email: 'beta@example.com', actual_cost: 8, requests: 6, tokens: 600, last_used_at: '2026-06-19T07:20:00Z' },
         ],
         rankingTotalActualCost: 30,
         rankingTotalRequests: 20,
@@ -167,5 +173,39 @@ describe('ModelDistributionChart', () => {
     expect(rows[2].text()).toContain('4')
     expect(rows[2].text()).toContain('400')
     expect(rows[2].text()).toContain('$10.00')
+    expect(rows[0].text()).toContain('formatted:2026-06-19T08:30:00Z')
+    expect(rows[2].text()).toContain('-')
+  })
+
+  it('does not render user id in the spending ranking fallback label', async () => {
+    const wrapper = mount(ModelDistributionChart, {
+      props: {
+        modelStats: [],
+        enableRankingView: true,
+        rankingItems: [
+          { user_id: 42, email: '', actual_cost: 12, requests: 10, tokens: 1000, last_used_at: '2026-06-19T08:30:00Z' },
+        ],
+        rankingTotalActualCost: 12,
+        rankingTotalRequests: 10,
+        rankingTotalTokens: 1000,
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true,
+        },
+      },
+    })
+
+    const rankingButton = wrapper.findAll('button').find((button) => button.text() === 'User Spending Ranking')
+    expect(rankingButton).toBeTruthy()
+    await rankingButton!.trigger('click')
+
+    const chartData = JSON.parse(wrapper.find('.chart-data').text())
+    expect(chartData.labels).toEqual(['#1 -'])
+
+    const rowText = wrapper.find('tbody tr').text()
+    expect(rowText).toContain('-')
+    expect(rowText).not.toContain('42')
+    expect(rowText).not.toContain('User #42')
   })
 })
