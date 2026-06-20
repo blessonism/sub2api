@@ -280,6 +280,21 @@ const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
+const createOutlineIcon = (...paths: string[]) => ({
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      paths.map((d) =>
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d,
+        })
+      )
+    )
+})
+
 const DashboardIcon = {
   render: () =>
     h(
@@ -324,6 +339,23 @@ const ChartIcon = {
       ]
     )
 }
+
+const UsageIcon = createOutlineIcon(
+  'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'
+)
+
+const LeaderboardIcon = createOutlineIcon(
+  'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'
+)
+
+const PolicyIcon = createOutlineIcon(
+  'M9 12.75L11.25 15 15 9.75',
+  'M12 3.75l7.5 3v5.25c0 4.142-3.164 7.615-7.5 8.25-4.336-.635-7.5-4.108-7.5-8.25V6.75l7.5-3z'
+)
+
+const TrophyIcon = createOutlineIcon(
+  'M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.504-1.125-1.125-1.125h-.872m-5.006 0h5.006m-5.006 0h-.872A1.125 1.125 0 007.5 15.375v3.375m7.003-4.5a7.454 7.454 0 001.768-4.522M9.497 14.25A7.454 7.454 0 017.73 9.728m8.54 0A7.5 7.5 0 017.73 9.728m8.54 0c1.514-1.238 2.48-3.12 2.48-5.228V2.721A49.892 49.892 0 0012 2.25c-2.291 0-4.545.16-6.75.47V4.5c0 2.108.966 3.99 2.48 5.228'
+)
 
 const GiftIcon = {
   render: () =>
@@ -370,6 +402,17 @@ const UsersIcon = {
     )
 }
 
+const UserPlusIcon = createOutlineIcon(
+  'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z'
+)
+
+const AffiliateIcon = createOutlineIcon(
+  'M12 10.5a3 3 0 100-6 3 3 0 000 6z',
+  'M6 21a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z',
+  'M18 21a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z',
+  'M10.65 10.2L7.35 16.5m6-6.3l3.3 6.3M8.25 18.75h7.5'
+)
+
 const FolderIcon = {
   render: () =>
     h(
@@ -400,6 +443,10 @@ const ChannelIcon = {
     )
 }
 
+const AvailableChannelsIcon = createOutlineIcon(
+  'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'
+)
+
 const CreditCardIcon = {
   render: () =>
     h(
@@ -415,30 +462,23 @@ const CreditCardIcon = {
     )
 }
 
-const RechargeSubscriptionIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'currentColor', viewBox: '0 0 1024 1024' },
-      [
-        h('path', {
-          d: 'M512 992C247.3 992 32 776.7 32 512S247.3 32 512 32s480 215.3 480 480c0 84.4-22.2 167.4-64.2 240-8.9 15.3-28.4 20.6-43.7 11.7-15.3-8.8-20.5-28.4-11.7-43.7 36.4-62.9 55.6-134.8 55.6-208 0-229.4-186.6-416-416-416S96 282.6 96 512s186.6 416 416 416c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
-        }),
-        h('path', {
-          d: 'M640 512H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32zM640 640H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
-        }),
-        h('path', {
-          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z'
-        }),
-        h('path', {
-          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l128-128c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-128 128c-6.3 6.3-14.5 9.4-22.7 9.4z'
-        }),
-        h('path', {
-          d: 'M512 736c-17.7 0-32-14.3-32-32V448c0-17.7 14.3-32 32-32s32 14.3 32 32v256c0 17.7-14.3 32-32 32zM896 992H512c-17.7 0-32-14.3-32-32s14.3-32 32-32h306.8l-73.4-73.4c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c9.2 9.2 11.9 22.9 6.9 34.9S908.9 992 896 992z'
-        })
-      ]
-    )
-}
+const WalletIcon = createOutlineIcon(
+  'M21 12.79V8.25A2.25 2.25 0 0018.75 6H5.25A2.25 2.25 0 003 8.25v7.5A2.25 2.25 0 005.25 18h13.5A2.25 2.25 0 0021 15.75v-2.54',
+  'M21 12.75h-4.875a2.625 2.625 0 010-5.25H21m-4.875 5.25h.008v.008h-.008v-.008z'
+)
+
+const SubscriptionIcon = createOutlineIcon(
+  'M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z'
+)
+
+const ShoppingBagIcon = createOutlineIcon(
+  'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5M4.5 10.5h15l-.75 9A2.25 2.25 0 0116.5 21h-9a2.25 2.25 0 01-2.25-1.5l-.75-9z'
+)
+
+const ExternalPaymentIcon = createOutlineIcon(
+  'M13.5 6H6.75A2.25 2.25 0 004.5 8.25v9A2.25 2.25 0 006.75 19.5h9A2.25 2.25 0 0018 17.25v-6.75',
+  'M15 4.5h4.5V9m0-4.5L10.5 13.5'
+)
 
 const GlobeIcon = {
   render: () =>
@@ -595,6 +635,37 @@ const OrderListIcon = {
     )
 }
 
+const OrderManageIcon = createOutlineIcon(
+  'M9 5.25H7.5A2.25 2.25 0 005.25 7.5v12A2.25 2.25 0 007.5 21h9a2.25 2.25 0 002.25-2.25v-12A2.25 2.25 0 0016.5 4.5H15M9 5.25a3 3 0 006 0M9 5.25a3 3 0 016 0',
+  'M9 12h6m-6 3h6m-6 3h3'
+)
+
+const ActivityIcon = createOutlineIcon(
+  'M3.75 12h3l2.25-6 4.5 12 2.25-6h4.5'
+)
+
+const UserUsageIcon = createOutlineIcon(
+  'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z',
+  'M3.75 12h2.25l1.5-3.75 3 7.5 1.5-3.75h2.25M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+)
+
+const CouponIcon = createOutlineIcon(
+  'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.879.879 2.303.879 3.182 0l4.318-4.318c.879-.879.879-2.303 0-3.182L11.16 3.66A2.25 2.25 0 009.568 3z',
+  'M8.25 8.25h.008v.008H8.25V8.25zm7.5 7.5h.008v.008h-.008v-.008zM15.75 8.25l-7.5 7.5'
+)
+
+const RebateIcon = createOutlineIcon(
+  'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+)
+
+const TransferIcon = createOutlineIcon(
+  'M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5'
+)
+
+const PlanIcon = createOutlineIcon(
+  'M9 12h6m-6 3h6m-6 3h3M9 5.25H7.5A2.25 2.25 0 005.25 7.5v12A2.25 2.25 0 007.5 21h9a2.25 2.25 0 002.25-2.25v-12A2.25 2.25 0 0016.5 4.5H15M9 5.25a3 3 0 006 0M9 5.25a3 3 0 016 0'
+)
+
 const ChevronDoubleRightIcon = {
   render: () =>
     h(
@@ -624,6 +695,12 @@ const SignalIcon = {
       ]
     )
 }
+
+const StatusPulseIcon = createOutlineIcon(
+  'M12 9.75a2.25 2.25 0 110 4.5 2.25 2.25 0 010-4.5z',
+  'M7.5 12a4.5 4.5 0 019 0m-12 0a7.5 7.5 0 0115 0',
+  'M6 18h12'
+)
 
 const ShieldIcon = {
   render: () =>
@@ -698,16 +775,16 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/leaderboard', label: t('nav.leaderboard'), icon: ChartIcon },
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: 'external-payment', label: t('nav.externalPayment'), icon: RechargeSubscriptionIcon, externalUrl: EXTERNAL_PAYMENT_URL },
-    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/usage', label: t('nav.usage'), icon: UsageIcon, hideInSimpleMode: true },
+    { path: '/leaderboard', label: t('nav.leaderboard'), icon: TrophyIcon },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: AvailableChannelsIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/monitor', label: t('nav.channelStatus'), icon: StatusPulseIcon, featureFlag: flagChannelMonitor },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: SubscriptionIcon, hideInSimpleMode: true },
+    { path: 'external-payment', label: t('nav.externalPayment'), icon: ExternalPaymentIcon, externalUrl: EXTERNAL_PAYMENT_URL },
+    { path: '/purchase', label: t('nav.buySubscription'), icon: ShoppingBagIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    { path: '/affiliate', label: t('nav.affiliate'), icon: AffiliateIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -751,10 +828,10 @@ const customMenuItemsForAdmin = computed(() => {
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/admin/token-leaderboard', label: t('nav.tokenLeaderboard'), icon: ChartIcon },
-    { path: '/admin/token-usage-policies', label: t('nav.tokenUsagePolicies'), icon: ChartIcon },
-    { path: '/admin/balance-summary', label: t('nav.balanceSummary'), icon: CreditCardIcon },
-    { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
+    { path: '/admin/token-leaderboard', label: t('nav.tokenLeaderboard'), icon: LeaderboardIcon },
+    { path: '/admin/token-usage-policies', label: t('nav.tokenUsagePolicies'), icon: PolicyIcon },
+    { path: '/admin/balance-summary', label: t('nav.balanceSummary'), icon: WalletIcon },
+    { path: '/admin/ops', label: t('nav.ops'), icon: ActivityIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     {
@@ -774,18 +851,18 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
-    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: CouponIcon, hideInSimpleMode: true },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),
-      icon: UsersIcon,
+      icon: AffiliateIcon,
       hideInSimpleMode: true,
       expandOnly: true,
       featureFlag: flagAffiliate,
       children: [
-        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon },
-        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon },
-        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
+        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UserPlusIcon },
+        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: RebateIcon },
+        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: TransferIcon },
       ],
     },
     {
@@ -797,11 +874,11 @@ const adminNavItems = computed((): NavItem[] => {
       featureFlag: flagAdminPayment,
       children: [
         { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderManageIcon },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: PlanIcon },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+    { path: '/admin/usage', label: t('nav.usage'), icon: UserUsageIcon }
   ]
 
   const visible = applyFeatureFlags(baseItems)
