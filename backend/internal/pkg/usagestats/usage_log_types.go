@@ -381,6 +381,15 @@ type UsageLogFilters struct {
 	EndTime     *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
+	// SharedIPUsers 将管理员使用记录限制为当前筛选条件下同一 IP 关联多个用户的记录。
+	SharedIPUsers bool
+}
+
+// SharedIPUsersSummary 汇总管理员同 IP 多用户筛选结果。
+type SharedIPUsersSummary struct {
+	IPCount     int64 `json:"ip_count"`
+	UserCount   int64 `json:"user_count"`
+	RecordCount int64 `json:"record_count"`
 }
 
 // UsageStats represents usage statistics

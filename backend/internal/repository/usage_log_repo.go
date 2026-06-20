@@ -3156,8 +3156,7 @@ func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64
 // UsageLogFilters represents filters for usage log queries
 type UsageLogFilters = usagestats.UsageLogFilters
 
-// ListWithFilters lists usage logs with optional filters (for admin)
-func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func buildUsageLogFilterConditions(filters UsageLogFilters) ([]string, []any) {
 	conditions := make([]string, 0, 9)
 	args := make([]any, 0, 9)
 
@@ -3193,6 +3192,33 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, *filters.EndTime)
 	}
 
+	return conditions, args
+}
+
+func appendSharedIPUsersCondition(conditions []string) []string {
+	baseWhereClause := buildWhere(conditions)
+	ipConditions := make([]string, 0, 3)
+	if baseWhereClause != "" {
+		ipConditions = append(ipConditions, strings.TrimPrefix(baseWhereClause, "WHERE "))
+	}
+	ipConditions = append(ipConditions, "ip_address IS NOT NULL", "ip_address <> ''")
+	conditions = append(conditions, fmt.Sprintf(`ip_address IN (
+		SELECT ip_address
+		FROM usage_logs
+		%s
+		GROUP BY ip_address
+		HAVING COUNT(DISTINCT user_id) > 1
+	)`, buildWhere(ipConditions)))
+	return conditions
+}
+
+// ListWithFilters lists usage logs with optional filters (for admin)
+func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	conditions, args := buildUsageLogFilterConditions(filters)
+	if filters.SharedIPUsers {
+		conditions = appendSharedIPUsersCondition(conditions)
+	}
+
 	whereClause := buildWhere(conditions)
 	var (
 		logs []service.UsageLog
@@ -3214,8 +3240,24 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 	return logs, page, nil
 }
 
+func (r *usageLogRepository) GetSharedIPUsersSummary(ctx context.Context, filters UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
+	conditions, args := buildUsageLogFilterConditions(filters)
+	conditions = appendSharedIPUsersCondition(conditions)
+	whereClause := buildWhere(conditions)
+
+	query := "SELECT COUNT(DISTINCT ip_address), COUNT(DISTINCT user_id), COUNT(*) FROM usage_logs " + whereClause
+	summary := &usagestats.SharedIPUsersSummary{}
+	if err := scanSingleRow(ctx, r.sql, query, args, &summary.IPCount, &summary.UserCount, &summary.RecordCount); err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
 func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
 	if filters.ExactTotal {
+		return false
+	}
+	if filters.SharedIPUsers {
 		return false
 	}
 	// 强选择过滤下记录集通常较小，保留精确总数。

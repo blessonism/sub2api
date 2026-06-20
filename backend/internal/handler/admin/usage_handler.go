@@ -57,6 +57,15 @@ type CreateUsageCleanupTaskRequest struct {
 	Timezone    string  `json:"timezone"`
 }
 
+type adminUsageListResponse struct {
+	Items                []dto.AdminUsageLog              `json:"items"`
+	Total                int64                            `json:"total"`
+	Page                 int                              `json:"page"`
+	PageSize             int                              `json:"page_size"`
+	Pages                int                              `json:"pages"`
+	SharedIPUsersSummary *usagestats.SharedIPUsersSummary `json:"shared_ip_users_summary,omitempty"`
+}
+
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
@@ -69,6 +78,15 @@ func (h *UsageHandler) List(c *gin.Context) {
 			return
 		}
 		exactTotal = parsed
+	}
+	sharedIPUsers := false
+	if sharedIPUsersRaw := strings.TrimSpace(c.Query("shared_ip_users")); sharedIPUsersRaw != "" {
+		parsed, err := strconv.ParseBool(sharedIPUsersRaw)
+		if err != nil {
+			response.BadRequest(c, "Invalid shared_ip_users value, use true or false")
+			return
+		}
+		sharedIPUsers = parsed
 	}
 
 	// Parse filters
@@ -172,18 +190,19 @@ func (h *UsageHandler) List(c *gin.Context) {
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		BillingMode: billingMode,
-		StartTime:   startTime,
-		EndTime:     endTime,
-		ExactTotal:  exactTotal,
+		UserID:        userID,
+		APIKeyID:      apiKeyID,
+		AccountID:     accountID,
+		GroupID:       groupID,
+		Model:         model,
+		RequestType:   requestType,
+		Stream:        stream,
+		BillingType:   billingType,
+		BillingMode:   billingMode,
+		StartTime:     startTime,
+		EndTime:       endTime,
+		ExactTotal:    exactTotal,
+		SharedIPUsers: sharedIPUsers,
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -196,7 +215,33 @@ func (h *UsageHandler) List(c *gin.Context) {
 	for i := range records {
 		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 	}
-	response.Paginated(c, out, result.Total, page, pageSize)
+
+	var sharedIPUsersSummary *usagestats.SharedIPUsersSummary
+	if sharedIPUsers {
+		summary, err := h.usageService.GetSharedIPUsersSummary(c.Request.Context(), filters)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		sharedIPUsersSummary = summary
+	}
+
+	pages := 1
+	if result != nil && result.Pages > 0 {
+		pages = result.Pages
+	}
+	total := int64(0)
+	if result != nil {
+		total = result.Total
+	}
+	response.Success(c, adminUsageListResponse{
+		Items:                out,
+		Total:                total,
+		Page:                 page,
+		PageSize:             pageSize,
+		Pages:                pages,
+		SharedIPUsersSummary: sharedIPUsersSummary,
+	})
 }
 
 // Stats handles getting usage statistics with filters
