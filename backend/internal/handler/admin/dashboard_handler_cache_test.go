@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -16,8 +17,16 @@ import (
 
 type dashboardUsageRepoCacheProbe struct {
 	service.UsageLogRepository
+	stats           *usagestats.DashboardStats
 	trendCalls      atomic.Int32
 	usersTrendCalls atomic.Int32
+}
+
+func (r *dashboardUsageRepoCacheProbe) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
+	if r.stats != nil {
+		return r.stats, nil
+	}
+	return &usagestats.DashboardStats{}, nil
 }
 
 func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithFilters(
@@ -115,4 +124,36 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
 	require.Equal(t, int32(1), repo.usersTrendCalls.Load())
+}
+
+func TestDashboardHandler_GetStats_IncludesOperationalMetrics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{
+		stats: &usagestats.DashboardStats{
+			ActiveUsers:                11,
+			TodayActiveUsers:           11,
+			YesterdayActiveUsers:       7,
+			TotalUserBalance:           123.45,
+			SubscriptionRemainingValue: 67.89,
+		},
+	}
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	handler := NewDashboardHandler(dashboardSvc, nil, nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/stats", handler.GetStats)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/stats", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, float64(11), body.Data["active_users"])
+	require.Equal(t, float64(11), body.Data["today_active_users"])
+	require.Equal(t, float64(7), body.Data["yesterday_active_users"])
+	require.Equal(t, 123.45, body.Data["total_user_balance"])
+	require.Equal(t, 67.89, body.Data["subscription_remaining_value"])
 }
