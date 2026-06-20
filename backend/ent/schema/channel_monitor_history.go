@@ -33,6 +33,11 @@ func (ChannelMonitorHistory) Fields() []ent.Field {
 			MaxLen(200),
 		field.Enum("status").
 			Values("operational", "degraded", "failed", "error"),
+		// override_status 为空表示使用系统自动检测状态；非空时作为用户展示与统计的有效状态。
+		field.Enum("override_status").
+			Values("operational", "degraded", "failed").
+			Optional().
+			Nillable(),
 		field.Int("latency_ms").
 			Optional().
 			Nillable(),

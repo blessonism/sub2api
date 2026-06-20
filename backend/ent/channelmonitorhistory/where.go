@@ -190,6 +190,36 @@ func StatusNotIn(vs ...Status) predicate.ChannelMonitorHistory {
 	return predicate.ChannelMonitorHistory(sql.FieldNotIn(FieldStatus, vs...))
 }
 
+// OverrideStatusEQ applies the EQ predicate on the "override_status" field.
+func OverrideStatusEQ(v OverrideStatus) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldOverrideStatus, v))
+}
+
+// OverrideStatusNEQ applies the NEQ predicate on the "override_status" field.
+func OverrideStatusNEQ(v OverrideStatus) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNEQ(FieldOverrideStatus, v))
+}
+
+// OverrideStatusIn applies the In predicate on the "override_status" field.
+func OverrideStatusIn(vs ...OverrideStatus) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldIn(FieldOverrideStatus, vs...))
+}
+
+// OverrideStatusNotIn applies the NotIn predicate on the "override_status" field.
+func OverrideStatusNotIn(vs ...OverrideStatus) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNotIn(FieldOverrideStatus, vs...))
+}
+
+// OverrideStatusIsNil applies the IsNil predicate on the "override_status" field.
+func OverrideStatusIsNil() predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldIsNull(FieldOverrideStatus))
+}
+
+// OverrideStatusNotNil applies the NotNil predicate on the "override_status" field.
+func OverrideStatusNotNil() predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNotNull(FieldOverrideStatus))
+}
+
 // LatencyMsEQ applies the EQ predicate on the "latency_ms" field.
 func LatencyMsEQ(v int) predicate.ChannelMonitorHistory {
 	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldLatencyMs, v))
