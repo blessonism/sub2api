@@ -72,6 +72,10 @@ type channelMonitorUpdateRequest struct {
 	BodyOverride     *map[string]any    `json:"body_override"`
 }
 
+type channelMonitorHistoryOverrideRequest struct {
+	Status string `json:"status" binding:"required,oneof=operational degraded failed"`
+}
+
 type channelMonitorResponse struct {
 	ID                  int64                                `json:"id"`
 	Name                string                               `json:"name"`
@@ -111,13 +115,15 @@ type channelMonitorCheckResultResponse struct {
 }
 
 type channelMonitorHistoryItemResponse struct {
-	ID            int64  `json:"id"`
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
+	ID              int64   `json:"id"`
+	Model           string  `json:"model"`
+	Status          string  `json:"status"`
+	OverrideStatus  *string `json:"override_status"`
+	EffectiveStatus string  `json:"effective_status"`
+	LatencyMs       *int    `json:"latency_ms"`
+	PingLatencyMs   *int    `json:"ping_latency_ms"`
+	Message         string  `json:"message"`
+	CheckedAt       string  `json:"checked_at"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -183,14 +189,23 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 
 func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonitorHistoryItemResponse {
 	return channelMonitorHistoryItemResponse{
-		ID:            e.ID,
-		Model:         e.Model,
-		Status:        e.Status,
-		LatencyMs:     e.LatencyMs,
-		PingLatencyMs: e.PingLatencyMs,
-		Message:       e.Message,
-		CheckedAt:     e.CheckedAt.UTC().Format(time.RFC3339),
+		ID:              e.ID,
+		Model:           e.Model,
+		Status:          e.Status,
+		OverrideStatus:  e.OverrideStatus,
+		EffectiveStatus: effectiveHistoryStatus(e),
+		LatencyMs:       e.LatencyMs,
+		PingLatencyMs:   e.PingLatencyMs,
+		Message:         e.Message,
+		CheckedAt:       e.CheckedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func effectiveHistoryStatus(e *service.ChannelMonitorHistoryEntry) string {
+	if e.EffectiveStatus != "" {
+		return e.EffectiveStatus
+	}
+	return e.Status
 }
 
 // ParseChannelMonitorID 提取并校验路径参数 :id（admin 与 user handler 共享）。
@@ -199,6 +214,15 @@ func ParseChannelMonitorID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
 		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_MONITOR_ID", "invalid monitor id"))
+		return 0, false
+	}
+	return id, true
+}
+
+func parseChannelMonitorHistoryID(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("history_id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_MONITOR_HISTORY_ID", "invalid monitor history id"))
 		return 0, false
 	}
 	return id, true
@@ -420,6 +444,47 @@ func (h *ChannelMonitorHandler) History(c *gin.Context) {
 		out = append(out, historyEntryToResponse(e))
 	}
 	response.Success(c, gin.H{"items": out})
+}
+
+// UpdateHistoryOverride PUT /api/v1/admin/channel-monitors/:id/history/:history_id/override
+func (h *ChannelMonitorHandler) UpdateHistoryOverride(c *gin.Context) {
+	id, ok := ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	historyID, ok := parseChannelMonitorHistoryID(c)
+	if !ok {
+		return
+	}
+	var req channelMonitorHistoryOverrideRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
+		return
+	}
+	entry, err := h.monitorService.SetHistoryOverrideStatus(c.Request.Context(), id, historyID, &req.Status)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, historyEntryToResponse(entry))
+}
+
+// ClearHistoryOverride DELETE /api/v1/admin/channel-monitors/:id/history/:history_id/override
+func (h *ChannelMonitorHandler) ClearHistoryOverride(c *gin.Context) {
+	id, ok := ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	historyID, ok := parseChannelMonitorHistoryID(c)
+	if !ok {
+		return
+	}
+	entry, err := h.monitorService.SetHistoryOverrideStatus(c.Request.Context(), id, historyID, nil)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, historyEntryToResponse(entry))
 }
 
 // parseHistoryLimit 解析 history 接口的 limit query。

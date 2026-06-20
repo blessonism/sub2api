@@ -71,6 +71,26 @@ func (_u *ChannelMonitorHistoryUpdate) SetNillableStatus(v *channelmonitorhistor
 	return _u
 }
 
+// SetOverrideStatus sets the "override_status" field.
+func (_u *ChannelMonitorHistoryUpdate) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpdate {
+	_u.mutation.SetOverrideStatus(v)
+	return _u
+}
+
+// SetNillableOverrideStatus sets the "override_status" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableOverrideStatus(v *channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetOverrideStatus(*v)
+	}
+	return _u
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearOverrideStatus() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearOverrideStatus()
+	return _u
+}
+
 // SetLatencyMs sets the "latency_ms" field.
 func (_u *ChannelMonitorHistoryUpdate) SetLatencyMs(v int) *ChannelMonitorHistoryUpdate {
 	_u.mutation.ResetLatencyMs()
@@ -214,6 +234,11 @@ func (_u *ChannelMonitorHistoryUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OverrideStatus(); ok {
+		if err := channelmonitorhistory.OverrideStatusValidator(v); err != nil {
+			return &ValidationError{Name: "override_status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.override_status": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Message(); ok {
 		if err := channelmonitorhistory.MessageValidator(v); err != nil {
 			return &ValidationError{Name: "message", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.message": %w`, err)}
@@ -242,6 +267,12 @@ func (_u *ChannelMonitorHistoryUpdate) sqlSave(ctx context.Context) (_node int, 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(channelmonitorhistory.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OverrideStatus(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOverrideStatus, field.TypeEnum, value)
+	}
+	if _u.mutation.OverrideStatusCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldOverrideStatus, field.TypeEnum)
 	}
 	if value, ok := _u.mutation.LatencyMs(); ok {
 		_spec.SetField(channelmonitorhistory.FieldLatencyMs, field.TypeInt, value)
@@ -358,6 +389,26 @@ func (_u *ChannelMonitorHistoryUpdateOne) SetNillableStatus(v *channelmonitorhis
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.SetOverrideStatus(v)
+	return _u
+}
+
+// SetNillableOverrideStatus sets the "override_status" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableOverrideStatus(v *channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetOverrideStatus(*v)
+	}
+	return _u
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearOverrideStatus() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearOverrideStatus()
 	return _u
 }
 
@@ -517,6 +568,11 @@ func (_u *ChannelMonitorHistoryUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OverrideStatus(); ok {
+		if err := channelmonitorhistory.OverrideStatusValidator(v); err != nil {
+			return &ValidationError{Name: "override_status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.override_status": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Message(); ok {
 		if err := channelmonitorhistory.MessageValidator(v); err != nil {
 			return &ValidationError{Name: "message", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.message": %w`, err)}
@@ -562,6 +618,12 @@ func (_u *ChannelMonitorHistoryUpdateOne) sqlSave(ctx context.Context) (_node *C
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(channelmonitorhistory.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OverrideStatus(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOverrideStatus, field.TypeEnum, value)
+	}
+	if _u.mutation.OverrideStatusCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldOverrideStatus, field.TypeEnum)
 	}
 	if value, ok := _u.mutation.LatencyMs(); ok {
 		_spec.SetField(channelmonitorhistory.FieldLatencyMs, field.TypeInt, value)

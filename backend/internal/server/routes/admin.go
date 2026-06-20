@@ -654,6 +654,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		monitors.DELETE("/:id", h.Admin.ChannelMonitor.Delete)
 		monitors.POST("/:id/run", h.Admin.ChannelMonitor.Run)
 		monitors.GET("/:id/history", h.Admin.ChannelMonitor.History)
+		monitors.PUT("/:id/history/:history_id/override", h.Admin.ChannelMonitor.UpdateHistoryOverride)
+		monitors.DELETE("/:id/history/:history_id/override", h.Admin.ChannelMonitor.ClearHistoryOverride)
 	}
 
 	templates := admin.Group("/channel-monitor-templates")

@@ -241,18 +241,58 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 	}
 	out := make([]*service.ChannelMonitorHistoryEntry, 0, len(rows))
 	for _, row := range rows {
-		entry := &service.ChannelMonitorHistoryEntry{
-			ID:            row.ID,
-			Model:         row.Model,
-			Status:        string(row.Status),
-			LatencyMs:     row.LatencyMs,
-			PingLatencyMs: row.PingLatencyMs,
-			Message:       row.Message,
-			CheckedAt:     row.CheckedAt,
-		}
-		out = append(out, entry)
+		out = append(out, historyEntToService(row))
 	}
 	return out, nil
+}
+
+func historyEntToService(row *dbent.ChannelMonitorHistory) *service.ChannelMonitorHistoryEntry {
+	if row == nil {
+		return nil
+	}
+	entry := &service.ChannelMonitorHistoryEntry{
+		ID:             row.ID,
+		Model:          row.Model,
+		Status:         string(row.Status),
+		OverrideStatus: enumPtrToString(row.OverrideStatus),
+		LatencyMs:      row.LatencyMs,
+		PingLatencyMs:  row.PingLatencyMs,
+		Message:        row.Message,
+		CheckedAt:      row.CheckedAt,
+	}
+	entry.EffectiveStatus = effectiveMonitorStatus(entry.Status, entry.OverrideStatus)
+	return entry
+}
+
+func enumPtrToString[T ~string](v *T) *string {
+	if v == nil {
+		return nil
+	}
+	s := string(*v)
+	return &s
+}
+
+func effectiveMonitorStatus(status string, override *string) string {
+	if override != nil {
+		return *override
+	}
+	return status
+}
+
+func (r *channelMonitorRepository) SetHistoryOverrideStatus(ctx context.Context, monitorID int64, historyID int64, status *string) (*service.ChannelMonitorHistoryEntry, error) {
+	client := clientFromContext(ctx, r.client)
+	updater := client.ChannelMonitorHistory.UpdateOneID(historyID).
+		Where(channelmonitorhistory.MonitorIDEQ(monitorID))
+	if status == nil {
+		updater = updater.ClearOverrideStatus()
+	} else {
+		updater = updater.SetOverrideStatus(channelmonitorhistory.OverrideStatus(*status))
+	}
+	row, err := updater.Save(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrChannelMonitorHistoryNotFound, nil)
+	}
+	return historyEntToService(row), nil
 }
 
 // ---------- 用户视图聚合（原生 SQL） ----------
@@ -262,7 +302,13 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
 	const q = `
 		SELECT DISTINCT ON (model)
-		    model, status, latency_ms, ping_latency_ms, checked_at
+		    model,
+		    status,
+		    override_status,
+		    COALESCE(override_status, status) AS effective_status,
+		    latency_ms,
+		    ping_latency_ms,
+		    checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
@@ -277,9 +323,11 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 	for rows.Next() {
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var override sql.NullString
+		if err := rows.Scan(&l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
 		}
+		assignNullString(&l.OverrideStatus, override)
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
 		out = append(out, l)
@@ -297,8 +345,16 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 	*dst = &v
 }
 
+func assignNullString(dst **string, n sql.NullString) {
+	if !n.Valid {
+		return
+	}
+	v := n.String
+	*dst = &v
+}
+
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
-// "可用" = status IN (operational, degraded)。
+// "可用" = effective_status IN (operational, degraded)，人工覆盖状态优先生效。
 //
 // 数据来源：明细表只保留 1 天；窗口前其余天数走聚合表。
 // 明细保留 30 天（monitorHistoryRetentionDays），窗口 <= 30 天时直接扫 histories，
@@ -310,7 +366,7 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 	const q = `
 		SELECT model,
 		       COUNT(*)                                                             AS total,
-		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       COUNT(*) FILTER (WHERE COALESCE(override_status, status) IN ('operational','degraded')) AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
 		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
 		            ELSE NULL END                                                   AS avg_latency_ms
@@ -369,7 +425,14 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	}
 	const q = `
 		SELECT DISTINCT ON (monitor_id, model)
-		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
+		    monitor_id,
+		    model,
+		    status,
+		    override_status,
+		    COALESCE(override_status, status) AS effective_status,
+		    latency_ms,
+		    ping_latency_ms,
+		    checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
 		ORDER BY monitor_id, model, checked_at DESC
@@ -384,9 +447,11 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		var monitorID int64
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var override sql.NullString
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
+		assignNullString(&l.OverrideStatus, override)
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
 		out[monitorID] = append(out[monitorID], l)
@@ -425,6 +490,8 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		ranked AS (
 		    SELECT h.monitor_id,
 		           h.status,
+		           h.override_status,
+		           COALESCE(h.override_status, h.status) AS effective_status,
 		           h.latency_ms,
 		           h.ping_latency_ms,
 		           h.checked_at,
@@ -433,7 +500,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		    JOIN targets t
 		      ON t.monitor_id = h.monitor_id AND t.model = h.model
 		)
-		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
+		SELECT monitor_id, status, override_status, effective_status, latency_ms, ping_latency_ms, checked_at
 		FROM ranked
 		WHERE rn <= $3
 		ORDER BY monitor_id, checked_at DESC
@@ -448,9 +515,11 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		var monitorID int64
 		entry := &service.ChannelMonitorHistoryEntry{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&monitorID, &entry.Status, &latency, &ping, &entry.CheckedAt); err != nil {
+		var override sql.NullString
+		if err := rows.Scan(&monitorID, &entry.Status, &override, &entry.EffectiveStatus, &latency, &ping, &entry.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan recent history row: %w", err)
 		}
+		assignNullString(&entry.OverrideStatus, override)
 		assignNullInt(&entry.LatencyMs, latency)
 		assignNullInt(&entry.PingLatencyMs, ping)
 		out[monitorID] = append(out[monitorID], entry)
@@ -512,7 +581,7 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		SELECT monitor_id,
 		       model,
 		       COUNT(*)                                                             AS total,
-		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       COUNT(*) FILTER (WHERE COALESCE(override_status, status) IN ('operational','degraded')) AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
 		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
 		            ELSE NULL END                                                   AS avg_latency_ms
@@ -567,11 +636,11 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		    model,
 		    $1::date AS bucket_date,
 		    COUNT(*)                                                         AS total_checks,
-		    COUNT(*) FILTER (WHERE status IN ('operational','degraded'))     AS ok_count,
-		    COUNT(*) FILTER (WHERE status = 'operational')                   AS operational_count,
-		    COUNT(*) FILTER (WHERE status = 'degraded')                      AS degraded_count,
-		    COUNT(*) FILTER (WHERE status = 'failed')                        AS failed_count,
-		    COUNT(*) FILTER (WHERE status = 'error')                         AS error_count,
+		    COUNT(*) FILTER (WHERE COALESCE(override_status, status) IN ('operational','degraded')) AS ok_count,
+		    COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'operational') AS operational_count,
+		    COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'degraded')    AS degraded_count,
+		    COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'failed')      AS failed_count,
+		    COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'error')       AS error_count,
 		    COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0)             AS sum_latency_ms,
 		    COUNT(latency_ms)                                                AS count_latency,
 		    COALESCE(SUM(ping_latency_ms) FILTER (WHERE ping_latency_ms IS NOT NULL), 0)   AS sum_ping_latency_ms,

@@ -41,6 +41,20 @@ func (_c *ChannelMonitorHistoryCreate) SetStatus(v channelmonitorhistory.Status)
 	return _c
 }
 
+// SetOverrideStatus sets the "override_status" field.
+func (_c *ChannelMonitorHistoryCreate) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetOverrideStatus(v)
+	return _c
+}
+
+// SetNillableOverrideStatus sets the "override_status" field if the given value is not nil.
+func (_c *ChannelMonitorHistoryCreate) SetNillableOverrideStatus(v *channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryCreate {
+	if v != nil {
+		_c.SetOverrideStatus(*v)
+	}
+	return _c
+}
+
 // SetLatencyMs sets the "latency_ms" field.
 func (_c *ChannelMonitorHistoryCreate) SetLatencyMs(v int) *ChannelMonitorHistoryCreate {
 	_c.mutation.SetLatencyMs(v)
@@ -168,6 +182,11 @@ func (_c *ChannelMonitorHistoryCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.status": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.OverrideStatus(); ok {
+		if err := channelmonitorhistory.OverrideStatusValidator(v); err != nil {
+			return &ValidationError{Name: "override_status", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.override_status": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.Message(); ok {
 		if err := channelmonitorhistory.MessageValidator(v); err != nil {
 			return &ValidationError{Name: "message", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.message": %w`, err)}
@@ -213,6 +232,10 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(channelmonitorhistory.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.OverrideStatus(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOverrideStatus, field.TypeEnum, value)
+		_node.OverrideStatus = &value
 	}
 	if value, ok := _c.mutation.LatencyMs(); ok {
 		_spec.SetField(channelmonitorhistory.FieldLatencyMs, field.TypeInt, value)
@@ -332,6 +355,24 @@ func (u *ChannelMonitorHistoryUpsert) SetStatus(v channelmonitorhistory.Status) 
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *ChannelMonitorHistoryUpsert) UpdateStatus() *ChannelMonitorHistoryUpsert {
 	u.SetExcluded(channelmonitorhistory.FieldStatus)
+	return u
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (u *ChannelMonitorHistoryUpsert) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldOverrideStatus, v)
+	return u
+}
+
+// UpdateOverrideStatus sets the "override_status" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateOverrideStatus() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldOverrideStatus)
+	return u
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (u *ChannelMonitorHistoryUpsert) ClearOverrideStatus() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldOverrideStatus)
 	return u
 }
 
@@ -492,6 +533,27 @@ func (u *ChannelMonitorHistoryUpsertOne) SetStatus(v channelmonitorhistory.Statu
 func (u *ChannelMonitorHistoryUpsertOne) UpdateStatus() *ChannelMonitorHistoryUpsertOne {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetOverrideStatus(v)
+	})
+}
+
+// UpdateOverrideStatus sets the "override_status" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateOverrideStatus() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateOverrideStatus()
+	})
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearOverrideStatus() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearOverrideStatus()
 	})
 }
 
@@ -829,6 +891,27 @@ func (u *ChannelMonitorHistoryUpsertBulk) SetStatus(v channelmonitorhistory.Stat
 func (u *ChannelMonitorHistoryUpsertBulk) UpdateStatus() *ChannelMonitorHistoryUpsertBulk {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetOverrideStatus(v channelmonitorhistory.OverrideStatus) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetOverrideStatus(v)
+	})
+}
+
+// UpdateOverrideStatus sets the "override_status" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateOverrideStatus() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateOverrideStatus()
+	})
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearOverrideStatus() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearOverrideStatus()
 	})
 }
 

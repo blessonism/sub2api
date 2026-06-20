@@ -150,4 +150,10 @@ var (
 	ErrChannelMonitorAPIKeyDecryptFailed = infraerrors.InternalServer(
 		"CHANNEL_MONITOR_KEY_DECRYPT_FAILED", "api key decryption failed; please re-edit the monitor with a fresh key",
 	)
+	ErrChannelMonitorInvalidStatus = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_STATUS", "status must be one of operational/degraded/failed",
+	)
+	ErrChannelMonitorHistoryNotFound = infraerrors.NotFound(
+		"CHANNEL_MONITOR_HISTORY_NOT_FOUND", "channel monitor history not found",
+	)
 )
