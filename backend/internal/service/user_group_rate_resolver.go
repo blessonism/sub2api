@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -18,6 +19,8 @@ type userGroupRateResolver struct {
 	logComponent string
 }
 
+var userGroupRateResolverCaches sync.Map
+
 func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache, cacheTTL time.Duration, sf *singleflight.Group, logComponent string) *userGroupRateResolver {
 	if cacheTTL <= 0 {
 		cacheTTL = defaultUserGroupRateCacheTTL
@@ -31,6 +34,7 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 	if sf == nil {
 		sf = &singleflight.Group{}
 	}
+	userGroupRateResolverCaches.Store(cache, struct{}{})
 
 	return &userGroupRateResolver{
 		repo:         repo,
@@ -41,12 +45,32 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 	}
 }
 
+func (r *userGroupRateResolver) Invalidate(userID, groupID int64) {
+	if r == nil || r.cache == nil || userID <= 0 || groupID <= 0 {
+		return
+	}
+	r.cache.Delete(userGroupRateCacheKey(userID, groupID))
+}
+
+func invalidateUserGroupRateCache(userID, groupID int64) {
+	if userID <= 0 || groupID <= 0 {
+		return
+	}
+	key := userGroupRateCacheKey(userID, groupID)
+	userGroupRateResolverCaches.Range(func(cache, _ any) bool {
+		if c, ok := cache.(*gocache.Cache); ok && c != nil {
+			c.Delete(key)
+		}
+		return true
+	})
+}
+
 func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
 	if r == nil || userID <= 0 || groupID <= 0 {
 		return groupDefaultMultiplier
 	}
 
-	key := fmt.Sprintf("%d:%d", userID, groupID)
+	key := userGroupRateCacheKey(userID, groupID)
 	if r.cache != nil {
 		if cached, ok := r.cache.Get(key); ok {
 			if multiplier, castOK := cached.(float64); castOK {
@@ -100,4 +124,8 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		return groupDefaultMultiplier
 	}
 	return multiplier
+}
+
+func userGroupRateCacheKey(userID, groupID int64) string {
+	return fmt.Sprintf("%d:%d", userID, groupID)
 }

@@ -80,6 +80,76 @@ response.Success(c, publicResponse) // publicResponse contains masked_email only
 
 ---
 
+### Scenario: Admin token usage auto policy APIs
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing the admin feature that assigns user group-specific rate multipliers from rolling token usage.
+- This feature crosses database migrations, repository SQL, service policy decisions, admin handlers, frontend API types, and a management UI. It requires code-spec depth because contract drift can overwrite manual billing configuration or remove group access incorrectly.
+
+#### 2. Signatures
+- Route prefix: `/api/v1/admin/token-usage-policies`.
+- Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `GET /:id/runs`.
+- DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`.
+- Rate write target: `user_group_rate_multipliers(user_id, group_id).rate_multiplier`; do not update `rpm_override`.
+- Group grant target: `user_allowed_groups(user_id, group_id)`; only write columns that exist in the schema (`user_id`, `group_id`, `created_at`).
+
+#### 3. Contracts
+- Token usage is the sum of `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`.
+- Only successful billed usage participates in tier matching: `usage_logs.actual_cost > 0`.
+- Policy filters affect aggregation only: `group_id`, `model`, `request_type`, `billing_type`; they must not implicitly change the target group.
+- A policy has one fixed `target_group_id` and many ordered tiers; only one enabled policy may target the same group.
+- `manual_priority` must not overwrite an existing manual `rate_multiplier`, including the first time a user is seen before any auto assignment exists.
+- `grant_group_and_rate` may add the target group but must not remove any existing groups. Clearing may remove only the group grant that the same policy created.
+- Clearing an auto rate must set `rate_multiplier` back to the captured `previous_rate_multiplier` when present, otherwise set it to `NULL`; preserve `rpm_override`.
+
+#### 4. Validation & Error Matrix
+- Invalid policy id -> `400 INVALID_POLICY_ID`.
+- `window_days` not in `7,30` -> `400 INVALID_WINDOW_DAYS`.
+- Empty tiers -> `400 EMPTY_TIERS`.
+- Duplicate tier threshold -> `400 DUPLICATE_TIER_THRESHOLD`.
+- Tier multiplier `<= 0`, NaN, or infinity -> `400 INVALID_TIER_RATE`.
+- Duplicate enabled policy for a target group -> repository must surface the database unique constraint as an error/409-style conflict where applicable.
+- Policy already running -> `409 POLICY_ALREADY_RUNNING`.
+- Deleting a policy with real automatic assignments -> `400 POLICY_HAS_ASSIGNMENTS`; pure manual-skip takeover records should not block deletion.
+
+#### 5. Good/Base/Bad Cases
+- Good: a user with 30-day usage above the highest threshold receives only the target group-specific rate multiplier, and preview shows the same change without writing any rows.
+- Base: a user below the lowest tier and managed by the policy is cleared; `rpm_override` and unrelated groups remain untouched.
+- Bad: a first-time policy run overwrites an existing manual group rate under `manual_priority`.
+- Bad: inserting into `user_allowed_groups(updated_at)` when the join table does not define that column.
+
+#### 6. Tests Required
+- Service unit tests: defaults/validation, tier selection, downgrade, clear, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
+- Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, and grant/clear preserves unrelated group and RPM state.
+- Handler/routes tests: all admin endpoints are registered under the prefix and use admin middleware.
+- Frontend checks: API types match backend JSON names, page defaults match product defaults, preview groups create/update/downgrade/clear/skip results, and `pnpm typecheck` passes.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+// manual_priority 下首次遇到已有手动倍率时直接覆盖。
+changeType = TokenUsagePolicyChangeUpdate
+```
+
+Correct:
+```go
+// manual_priority 下首次已有手动倍率也视为人工接管。
+changeType = TokenUsagePolicyChangeSkipManual
+```
+
+Wrong:
+```sql
+INSERT INTO user_allowed_groups (user_id, group_id, created_at, updated_at) VALUES (...)
+```
+
+Correct:
+```sql
+INSERT INTO user_allowed_groups (user_id, group_id, created_at) VALUES (...)
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

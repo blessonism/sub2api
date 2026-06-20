@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     tokenLeaderboard: 'Token Leaderboard',
+    tokenUsagePolicies: 'Token Auto Policies',
     balanceSummary: 'Balance Summary',
     leaderboard: 'Leaderboard',
     redeem: 'Redeem',
@@ -1562,6 +1563,113 @@ export default {
       noDataDescription: 'No usage records match the current filters.',
       failedToLoad: 'Failed to load token leaderboard',
       failedToLoadDetails: 'Failed to load user details'
+    },
+
+    tokenUsagePolicies: {
+      title: 'Token Auto Policies',
+      description: 'Automatically assign target-group user rate multipliers from 7/30-day token usage',
+      create: 'New Policy',
+      edit: 'Edit Policy',
+      policy: 'Policy',
+      targetGroup: 'Target Group',
+      window: 'Window',
+      actionMode: 'Action',
+      conflictMode: 'Conflict',
+      frequency: 'Frequency',
+      status: 'Status',
+      lastRun: 'Last Run',
+      nextRun: 'Next Run',
+      name: 'Policy Name',
+      enabled: 'Enable policy',
+      filters: 'Usage Filters',
+      filterGroup: 'Usage Group',
+      filterModel: 'Model',
+      filterModelPlaceholder: 'Blank means all models',
+      filterRequestType: 'Request Type',
+      filterBillingType: 'Billing Type',
+      tiers: 'Tiers',
+      addTier: 'Add Tier',
+      minTokens: 'Min Tokens',
+      rateMultiplier: 'Rate Multiplier',
+      preview: 'Preview',
+      history: 'History',
+      runNow: 'Run Now',
+      running: 'Running',
+      runConfirm: 'Run policy "{name}" now?',
+      deleteConfirm: 'Delete policy "{name}"? The backend rejects deletion when automatic assignments exist.',
+      emptyTitle: 'No auto policies',
+      emptyDescription: 'Create a policy to automatically write group-specific user rate multipliers from token usage.',
+      previewEmptyTitle: 'No changes',
+      previewEmptyDescription: 'Current window usage will not create, update, downgrade, clear, or skip any users.',
+      noTiers: 'No tiers',
+      user: 'User',
+      tokenUsage: 'Token Usage',
+      oldRate: 'Old Rate',
+      newRate: 'New Rate',
+      reason: 'Reason',
+      changeType: 'Change',
+      totalUsers: 'Users',
+      createCount: 'Create',
+      updateCount: 'Update',
+      downgradeCount: 'Downgrade',
+      clearCount: 'Clear',
+      skipCount: 'Skip',
+      changes: 'Changes',
+      runType: 'Type',
+      startedAt: 'Started',
+      error: 'Error',
+      created: 'Policy created',
+      updated: 'Policy updated',
+      deleted: 'Policy deleted',
+      runQueued: 'Policy run completed',
+      loadFailed: 'Failed to load policies',
+      saveFailed: 'Failed to save policy',
+      previewFailed: 'Preview failed',
+      runFailed: 'Run failed',
+      historyFailed: 'Failed to load run history',
+      deleteFailed: 'Failed to delete policy',
+      nameRequired: 'Enter a policy name',
+      groupRequired: 'Select a target group',
+      tiersInvalid: 'Tier thresholds must be >= 0 and multipliers must be > 0',
+      tiersDuplicate: 'Tier thresholds must be unique',
+      windowDays: {
+        7: 'Last 7 days',
+        30: 'Last 30 days'
+      },
+      actionModes: {
+        rate_only: 'Set rate only',
+        grant_group_and_rate: 'Grant group and set rate'
+      },
+      conflictModes: {
+        manual_priority: 'Manual priority',
+        auto_priority: 'Auto priority'
+      },
+      frequencies: {
+        every_6h: 'Every 6 hours',
+        daily: 'Daily',
+        weekly: 'Weekly'
+      },
+      billingTypes: {
+        balance: 'Balance',
+        subscription: 'Subscription'
+      },
+      changeTypes: {
+        create: 'Create',
+        update: 'Update',
+        downgrade: 'Downgrade',
+        clear: 'Clear',
+        skip_manual: 'Manual skip'
+      },
+      runTypes: {
+        preview: 'Preview',
+        manual: 'Manual',
+        scheduled: 'Scheduled'
+      },
+      runStatuses: {
+        running: 'Running',
+        success: 'Success',
+        failed: 'Failed'
+      }
     },
 
     balanceSummary: {
