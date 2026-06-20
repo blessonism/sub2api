@@ -208,6 +208,7 @@ const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let selectedUserLoadSeq = 0
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -296,6 +297,22 @@ const selectUser = async (u: SimpleUser) => {
   }
 
   emitChange()
+}
+
+const hydrateSelectedUser = async (userId: number) => {
+  const currentSeq = ++selectedUserLoadSeq
+  try {
+    const user = await adminAPI.users.getById(userId, true)
+    if (currentSeq !== selectedUserLoadSeq || Number(filters.value.user_id) !== userId) return
+    userKeyword.value = user.email || ''
+    userResults.value = user.email
+      ? [{ id: user.id, email: user.email, deleted: Boolean(user.deleted_at) }]
+      : []
+  } catch {
+    if (currentSeq !== selectedUserLoadSeq || Number(filters.value.user_id) !== userId) return
+    userKeyword.value = ''
+    userResults.value = []
+  }
 }
 
 const clearUser = () => {
@@ -397,11 +414,22 @@ watch(
 watch(
   () => filters.value.user_id,
   (userId) => {
-    if (!userId) {
+    const numericUserId = Number(userId)
+    if (!Number.isFinite(numericUserId) || numericUserId <= 0) {
+      selectedUserLoadSeq += 1
       userKeyword.value = ''
       userResults.value = []
+      return
     }
-  }
+
+    const hasSelectedKeyword = userResults.value.some(
+      (user) => user.id === numericUserId && user.email === userKeyword.value
+    )
+    if (hasSelectedKeyword) return
+
+    void hydrateSelectedUser(numericUserId)
+  },
+  { immediate: true }
 )
 
 watch(

@@ -313,6 +313,23 @@
                   v-model:end-date="endDate"
                   @change="onDateRangeChange"
                 />
+                <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800">
+                  <button
+                    v-for="option in rankingPeriodOptions"
+                    :key="option.value"
+                    type="button"
+                    :data-testid="`admin-dashboard-ranking-period-${option.value}`"
+                    :class="[
+                      'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                      rankingQuickPeriod === option.value
+                        ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+                    ]"
+                    @click="setRankingQuickPeriod(option.value)"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
               </div>
               <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
                 {{ t('common.refresh') }}
@@ -457,16 +474,37 @@ const getLast24HoursRangeDates = (): { start: string; end: string } => {
   }
 }
 
+const getTodayRangeDates = (): { start: string; end: string } => {
+  const today = formatLocalDate(new Date())
+  return { start: today, end: today }
+}
+
+const getLast7DaysRangeDates = (): { start: string; end: string } => {
+  const endDate = new Date()
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - 6)
+  return {
+    start: formatLocalDate(startDate),
+    end: formatLocalDate(endDate)
+  }
+}
+
 // Date range
 const granularity = ref<'day' | 'hour'>('hour')
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
+type RankingQuickPeriod = 'day' | 'week'
+const rankingQuickPeriod = ref<RankingQuickPeriod | null>(null)
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
   { value: 'day', label: t('admin.dashboard.day') },
   { value: 'hour', label: t('admin.dashboard.hour') }
+])
+const rankingPeriodOptions = computed(() => [
+  { value: 'day' as const, label: t('admin.dashboard.spendingRankingPeriodDay') },
+  { value: 'week' as const, label: t('admin.dashboard.spendingRankingPeriodWeek') }
 ])
 
 // Dark mode detection
@@ -662,6 +700,14 @@ const onDateRangeChange = (range: {
   endDate: string
   preset: string | null
 }) => {
+  if (range.preset === 'today') {
+    rankingQuickPeriod.value = 'day'
+  } else if (range.preset === '7days') {
+    rankingQuickPeriod.value = 'week'
+  } else {
+    rankingQuickPeriod.value = null
+  }
+
   // Auto-select granularity based on date range
   const start = new Date(range.startDate)
   const end = new Date(range.endDate)
@@ -675,6 +721,15 @@ const onDateRangeChange = (range: {
   }
 
   loadChartData()
+}
+
+const setRankingQuickPeriod = (period: RankingQuickPeriod) => {
+  rankingQuickPeriod.value = period
+  const range = period === 'day' ? getTodayRangeDates() : getLast7DaysRangeDates()
+  startDate.value = range.start
+  endDate.value = range.end
+  granularity.value = period === 'day' ? 'hour' : 'day'
+  void loadChartData()
 }
 
 // Load data

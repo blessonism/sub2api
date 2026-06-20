@@ -187,4 +187,65 @@ describe('admin DashboardView', () => {
     expect(text).toContain('$1,234.50')
     expect(text).toContain('$678.90')
   })
+
+  it('quickly switches dashboard ranking range between daily and weekly natural days', async () => {
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: true,
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: true,
+          Line: true
+        }
+      }
+    })
+    await flushPromises()
+    getSnapshotV2.mockClear()
+    getUserUsageTrend.mockClear()
+    getUserSpendingRanking.mockClear()
+
+    const now = new Date()
+    const sixDaysAgo = new Date()
+    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6)
+    const today = formatLocalDate(now)
+    const weekStart = formatLocalDate(sixDaysAgo)
+
+    await wrapper.get('[data-testid="admin-dashboard-ranking-period-day"]').trigger('click')
+    await flushPromises()
+
+    expect(getSnapshotV2).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: today,
+      end_date: today,
+      granularity: 'hour'
+    }))
+    expect(getUserSpendingRanking).toHaveBeenLastCalledWith({
+      start_date: today,
+      end_date: today,
+      limit: 12
+    })
+
+    await wrapper.get('[data-testid="admin-dashboard-ranking-period-week"]').trigger('click')
+    await flushPromises()
+
+    expect(getSnapshotV2).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: weekStart,
+      end_date: today,
+      granularity: 'day'
+    }))
+    expect(getUserUsageTrend).toHaveBeenLastCalledWith({
+      start_date: weekStart,
+      end_date: today,
+      granularity: 'day',
+      limit: 12
+    })
+    expect(getUserSpendingRanking).toHaveBeenLastCalledWith({
+      start_date: weekStart,
+      end_date: today,
+      limit: 12
+    })
+  })
 })

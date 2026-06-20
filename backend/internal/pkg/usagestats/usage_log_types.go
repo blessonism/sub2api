@@ -154,11 +154,12 @@ type UserUsageTrendPoint struct {
 
 // UserSpendingRankingItem represents a user spending ranking row.
 type UserSpendingRankingItem struct {
-	UserID     int64   `json:"user_id"`
-	Email      string  `json:"email"`
-	ActualCost float64 `json:"actual_cost"` // 实际扣除
-	Requests   int64   `json:"requests"`
-	Tokens     int64   `json:"tokens"`
+	UserID     int64     `json:"user_id"`
+	Email      string    `json:"email"`
+	ActualCost float64   `json:"actual_cost"` // 实际扣除
+	Requests   int64     `json:"requests"`
+	Tokens     int64     `json:"tokens"`
+	LastUsedAt time.Time `json:"last_used_at"` // 最近使用时间
 }
 
 // UserSpendingRankingResponse represents ranking rows plus total spend for the time range.
@@ -267,13 +268,14 @@ type UserTokenLeaderboardItem struct {
 	IsCurrentUser bool   `json:"is_current_user"`
 }
 
-// UserTokenLeaderboardResponse 是用户侧今日 Token 排行榜响应。
+// UserTokenLeaderboardResponse 是用户侧 Token 排行榜响应。
 type UserTokenLeaderboardResponse struct {
 	Ranking   []UserTokenLeaderboardItem `json:"ranking"`
 	MyRank    UserTokenLeaderboardItem   `json:"my_rank"`
 	StartDate string                     `json:"start_date"`
 	EndDate   string                     `json:"end_date"`
 	Limit     int                        `json:"limit"`
+	Period    string                     `json:"period"`
 }
 
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).

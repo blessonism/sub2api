@@ -285,9 +285,10 @@ func TestDashboardModelStatsValidModelSource(t *testing.T) {
 
 func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 	dashboardUsersRankingCache = newSnapshotCache(5 * time.Minute)
+	lastUsed := time.Date(2025, 1, 2, 18, 30, 0, 0, time.UTC)
 	repo := &dashboardUsageRepoCapture{
 		ranking: []usagestats.UserSpendingRankingItem{
-			{UserID: 7, Email: "rank@example.com", ActualCost: 10.5, Requests: 3, Tokens: 300},
+			{UserID: 7, Email: "rank@example.com", ActualCost: 10.5, Requests: 3, Tokens: 300, LastUsedAt: lastUsed},
 		},
 		rankingTotal: 88.8,
 	}
@@ -302,6 +303,7 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "\"total_actual_cost\":88.8")
 	require.Contains(t, rec.Body.String(), "\"total_requests\":44")
 	require.Contains(t, rec.Body.String(), "\"total_tokens\":1234")
+	require.Contains(t, rec.Body.String(), "\"last_used_at\":\"2025-01-02T18:30:00Z\"")
 	require.Equal(t, "miss", rec.Header().Get("X-Snapshot-Cache"))
 
 	req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/users-ranking?limit=100&start_date=2025-01-01&end_date=2025-01-02", nil)

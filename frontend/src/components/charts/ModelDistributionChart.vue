@@ -191,6 +191,7 @@
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingRequests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingTokens') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingSpend') }}</th>
+              <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingLastUsed') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -225,6 +226,9 @@
               <td class="py-1.5 text-right text-green-600 dark:text-green-400">
                 ${{ formatCost(item.actual_cost) }}
               </td>
+              <td class="py-1.5 text-right text-gray-500 dark:text-gray-400">
+                {{ formatRankingLastUsed(item) }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -248,6 +252,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
+import { formatDateTime } from '@/utils/format'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -416,6 +421,7 @@ const otherRankingItem = computed<RankingDisplayItem | null>(() => {
     actual_cost: otherActualCost,
     requests: otherRequests,
     tokens: otherTokens,
+    last_used_at: null,
     isOther: true
   }
 })
@@ -486,13 +492,17 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
-  if (item.email) return item.email
-  return t('admin.redeem.userPrefix', { id: item.user_id })
+  return item.email?.trim() || '-'
 }
 
 const getRankingRowLabel = (item: RankingDisplayItem): string => {
   if (item.isOther) return t('admin.dashboard.spendingRankingOther')
   return getRankingUserLabel(item)
+}
+
+const formatRankingLastUsed = (item: RankingDisplayItem): string => {
+  if (item.isOther || !item.last_used_at) return '-'
+  return formatDateTime(item.last_used_at) || '-'
 }
 
 const formatCost = (value: number): string => {

@@ -7,12 +7,30 @@
             {{ t('leaderboard.title') }}
           </h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('leaderboard.todayRange', { date: displayDate }) }}
+            {{ displayRangeText }}
           </p>
         </div>
-        <button class="btn btn-secondary" :disabled="loading" @click="loadLeaderboard">
-          {{ t('common.refresh') }}
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800">
+            <button
+              v-for="option in periodOptions"
+              :key="option.value"
+              type="button"
+              :class="[
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                leaderboardPeriod === option.value
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+              ]"
+              @click="setLeaderboardPeriod(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+          <button class="btn btn-secondary" :disabled="loading" @click="loadLeaderboard">
+            {{ t('common.refresh') }}
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -74,7 +92,7 @@
             {{ t('leaderboard.leaderboard') }}
           </h2>
           <span class="text-sm text-gray-500 dark:text-gray-400">
-            {{ t('leaderboard.today') }}
+            {{ currentPeriodLabel }}
           </span>
         </div>
 
@@ -91,8 +109,8 @@
         </div>
         <div v-else-if="ranking.length === 0" class="min-h-80 px-5 py-12">
           <EmptyState
-            :title="t('leaderboard.noData')"
-            :description="t('leaderboard.noDataDescription')"
+            :title="emptyStateTitle"
+            :description="emptyStateDescription"
           />
         </div>
         <div v-else class="overflow-x-auto">
@@ -141,7 +159,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { TOKENS_PER_MILLION } from '@/utils/usagePricing'
-import { usageAPI, type UserTokenLeaderboardItem, type UserTokenLeaderboardResponse } from '@/api/usage'
+import { usageAPI, type UserTokenLeaderboardItem, type UserTokenLeaderboardPeriod, type UserTokenLeaderboardResponse } from '@/api/usage'
 
 const { t } = useI18n()
 
@@ -154,12 +172,36 @@ const emptyMyRank: UserTokenLeaderboardItem = {
 }
 
 const leaderboard = ref<UserTokenLeaderboardResponse | null>(null)
+const leaderboardPeriod = ref<UserTokenLeaderboardPeriod>('day')
 const loading = ref(true)
 const loadError = ref(false)
+let leaderboardRequestSeq = 0
 
 const ranking = computed(() => leaderboard.value?.ranking ?? [])
 const myRank = computed(() => leaderboard.value?.my_rank ?? emptyMyRank)
 const displayDate = computed(() => leaderboard.value?.start_date || new Date().toISOString().slice(0, 10))
+const displayRangeText = computed(() => {
+  if (leaderboardPeriod.value === 'week') {
+    return t('leaderboard.weekRange', {
+      start: leaderboard.value?.start_date || displayDate.value,
+      end: leaderboard.value?.end_date || displayDate.value,
+    })
+  }
+  return t('leaderboard.todayRange', { date: displayDate.value })
+})
+const periodOptions = computed(() => [
+  { value: 'day' as const, label: t('leaderboard.periodDay') },
+  { value: 'week' as const, label: t('leaderboard.periodWeek') },
+])
+const currentPeriodLabel = computed(() => (
+  leaderboardPeriod.value === 'week' ? t('leaderboard.periodWeek') : t('leaderboard.periodDay')
+))
+const emptyStateTitle = computed(() => (
+  leaderboardPeriod.value === 'week' ? t('leaderboard.noDataWeek') : t('leaderboard.noData')
+))
+const emptyStateDescription = computed(() => (
+  leaderboardPeriod.value === 'week' ? t('leaderboard.noDataWeekDescription') : t('leaderboard.noDataDescription')
+))
 const topTokenTotal = computed(() => ranking.value.reduce((sum, item) => sum + item.tokens, 0))
 
 function formatFullNumber(value: number): string {
@@ -183,17 +225,30 @@ function rankBadgeClass(rank: number): string {
 }
 
 async function loadLeaderboard(): Promise<void> {
+  const requestSeq = ++leaderboardRequestSeq
+  const period = leaderboardPeriod.value
   loading.value = true
   loadError.value = false
   try {
-    leaderboard.value = await usageAPI.getDashboardLeaderboard()
+    const response = await usageAPI.getDashboardLeaderboard({ period })
+    if (requestSeq !== leaderboardRequestSeq || period !== leaderboardPeriod.value) return
+    leaderboard.value = response
   } catch (error) {
+    if (requestSeq !== leaderboardRequestSeq || period !== leaderboardPeriod.value) return
     console.error('Failed to load token leaderboard:', error)
     leaderboard.value = null
     loadError.value = true
   } finally {
-    loading.value = false
+    if (requestSeq === leaderboardRequestSeq && period === leaderboardPeriod.value) {
+      loading.value = false
+    }
   }
+}
+
+function setLeaderboardPeriod(period: UserTokenLeaderboardPeriod): void {
+  if (leaderboardPeriod.value === period) return
+  leaderboardPeriod.value = period
+  void loadLeaderboard()
 }
 
 onMounted(() => {

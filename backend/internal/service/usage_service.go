@@ -327,8 +327,8 @@ func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, star
 	return stats, nil
 }
 
-// GetUserTokenLeaderboard 返回普通用户可见的今日 Token 排行榜，并在服务层完成邮箱脱敏。
-func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UserTokenLeaderboardResponse, error) {
+// GetUserTokenLeaderboard 返回普通用户可见的 Token 排行榜，并在服务层完成邮箱脱敏。
+func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64, startTime, endTime time.Time, period string) (*usagestats.UserTokenLeaderboardResponse, error) {
 	rows, err := s.usageRepo.GetUserTokenLeaderboard(ctx, startTime, endTime, userTokenLeaderboardLimit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user token leaderboard: %w", err)
@@ -366,6 +366,7 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 		StartDate: startTime.Format("2006-01-02"),
 		EndDate:   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
 		Limit:     userTokenLeaderboardLimit,
+		Period:    period,
 	}, nil
 }
 

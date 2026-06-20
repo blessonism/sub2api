@@ -1001,16 +1001,21 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.AccountID = id
 		}
 	}
-	if v := c.Query("request_type"); v != "" {
-		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
-			rtVal := int16(rt)
-			dim.RequestType = &rtVal
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
 		}
-	}
-	if v := c.Query("stream"); v != "" {
-		if s, err := strconv.ParseBool(v); err == nil {
-			dim.Stream = &s
+		value := int16(parsed)
+		dim.RequestType = &value
+	} else if streamStr := c.Query("stream"); streamStr != "" {
+		streamVal, err := strconv.ParseBool(streamStr)
+		if err != nil {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
 		}
+		dim.Stream = &streamVal
 	}
 	if v := c.Query("billing_type"); v != "" {
 		if bt, err := strconv.ParseInt(v, 10, 8); err == nil {
