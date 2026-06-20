@@ -396,6 +396,16 @@ func ProvideScheduledTestRunnerService(
 	return svc
 }
 
+func ProvideTokenUsageAutoPolicyRunner(
+	repo TokenUsageAutoPolicyRepository,
+	svc *TokenUsageAutoPolicyService,
+	cfg *config.Config,
+) *TokenUsageAutoPolicyRunner {
+	runner := NewTokenUsageAutoPolicyRunner(repo, svc, cfg)
+	runner.Start()
+	return runner
+}
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -594,6 +604,8 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
+	ProvideTokenUsageAutoPolicyService,
+	ProvideTokenUsageAutoPolicyRunner,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,

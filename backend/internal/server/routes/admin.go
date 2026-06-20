@@ -77,6 +77,9 @@ func RegisterAdminRoutes(
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
+		// Token 用量自动分组倍率策略
+		registerTokenUsagePolicyRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -103,6 +106,20 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerTokenUsagePolicyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	policies := admin.Group("/token-usage-policies")
+	{
+		policies.GET("", h.Admin.TokenUsagePolicy.List)
+		policies.POST("", h.Admin.TokenUsagePolicy.Create)
+		policies.GET("/:id", h.Admin.TokenUsagePolicy.Get)
+		policies.PUT("/:id", h.Admin.TokenUsagePolicy.Update)
+		policies.DELETE("/:id", h.Admin.TokenUsagePolicy.Delete)
+		policies.POST("/:id/preview", h.Admin.TokenUsagePolicy.Preview)
+		policies.POST("/:id/run", h.Admin.TokenUsagePolicy.Run)
+		policies.GET("/:id/runs", h.Admin.TokenUsagePolicy.ListRuns)
 	}
 }
 
