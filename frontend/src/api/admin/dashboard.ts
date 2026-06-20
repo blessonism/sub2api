@@ -257,6 +257,7 @@ export interface AdminTokenLeaderboardUser {
   username: string
   status: string
   registered_at: string
+  last_used_at: string
   requests: number
   tokens: number
   cost: number

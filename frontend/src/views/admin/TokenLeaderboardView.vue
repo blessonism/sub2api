@@ -76,7 +76,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div v-for="metric in summaryMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
           <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
           <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ metric.value }}</div>
@@ -133,7 +133,7 @@
           @action="loadLeaderboard"
         />
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[1180px] text-sm">
+          <table class="w-full min-w-[1080px] text-sm">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="w-12 px-4 py-3 text-left">{{ t('admin.tokenLeaderboard.select') }}</th>
@@ -144,8 +144,7 @@
                 <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.requests') }}</th>
                 <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.tokens') }}</th>
                 <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.actualCost') }}</th>
-                <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.cost') }}</th>
-                <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.accountCost') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.lastUsedAt') }}</th>
                 <th class="px-4 py-3 text-right">{{ t('admin.tokenLeaderboard.details') }}</th>
               </tr>
             </thead>
@@ -180,8 +179,7 @@
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(row.requests) }}</td>
                   <td class="px-4 py-3 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ formatNumber(row.tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(row.actual_cost) }}</td>
-                  <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(row.cost) }}</td>
-                  <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(row.account_cost) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">{{ formatLastUsedAt(row.last_used_at) }}</td>
                   <td class="px-4 py-3 text-right">
                     <button class="btn btn-secondary px-2 py-1" type="button" @click="toggleDetails(row.user_id)">
                       <Icon name="chevronDown" size="sm" :class="['transition-transform', expandedUserId === row.user_id && 'rotate-180']" />
@@ -189,7 +187,7 @@
                   </td>
                 </tr>
                 <tr v-if="expandedUserId === row.user_id">
-                  <td colspan="11" class="bg-gray-50 px-4 py-4 dark:bg-dark-900/60">
+                  <td colspan="10" class="bg-gray-50 px-4 py-4 dark:bg-dark-900/60">
                     <div v-if="detailLoading[row.user_id]" class="flex h-24 items-center justify-center">
                       <LoadingSpinner />
                     </div>
@@ -384,6 +382,18 @@ const granting = ref(false)
 const showUserIds = ref(false)
 
 const ranking = computed(() => leaderboard.value?.ranking || [])
+const latestLastUsedAt = computed(() => {
+  let latest = 0
+  let latestValue = ''
+  ranking.value.forEach((row) => {
+    const timestamp = Date.parse(row.last_used_at)
+    if (Number.isFinite(timestamp) && timestamp > latest) {
+      latest = timestamp
+      latestValue = row.last_used_at
+    }
+  })
+  return latestValue
+})
 const topTenRows = computed(() => ranking.value.filter((row) => isTopTen(row)))
 const selectedRows = computed(() => {
   const selected = new Set(selectedUserIds.value)
@@ -404,12 +414,15 @@ const summaryMetrics = computed(() => [
   { label: t('admin.tokenLeaderboard.requests'), value: formatNumber(leaderboard.value?.total_requests || 0) },
   { label: t('admin.tokenLeaderboard.tokens'), value: formatNumber(leaderboard.value?.total_tokens || 0) },
   { label: t('admin.tokenLeaderboard.actualCost'), value: formatCost(leaderboard.value?.total_actual_cost || 0) },
-  { label: t('admin.tokenLeaderboard.cost'), value: formatCost(leaderboard.value?.total_cost || 0) },
-  { label: t('admin.tokenLeaderboard.accountCost'), value: formatCost(leaderboard.value?.total_account_cost || 0) }
+  { label: t('admin.tokenLeaderboard.lastUsedAt'), value: formatLastUsedAt(latestLastUsedAt.value) }
 ])
 
 function formatCost(value: number): string {
   return formatCostFixed(value, value > 0 && value < 0.01 ? 6 : 4)
+}
+
+function formatLastUsedAt(value: string): string {
+  return formatDateTime(value) || '-'
 }
 
 function displayUser(row: AdminTokenLeaderboardUser): string {

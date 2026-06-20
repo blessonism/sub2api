@@ -188,6 +188,7 @@ type AdminTokenLeaderboardUser struct {
 	Username     string    `json:"username"`
 	Status       string    `json:"status"`
 	RegisteredAt time.Time `json:"registered_at"`
+	LastUsedAt   time.Time `json:"last_used_at"`
 	Requests     int64     `json:"requests"`
 	Tokens       int64     `json:"tokens"`
 	Cost         float64   `json:"cost"`
