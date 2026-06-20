@@ -143,6 +143,21 @@ describe('TokenLeaderboardView', () => {
     expect(wrapper.text()).toContain('alice@example.com')
   })
 
+  it('hides user ids by default and toggles them on demand', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.tokenLeaderboard.showUserIds')
+    expect(wrapper.text()).not.toContain('admin.tokenLeaderboard.userId 7')
+
+    const toggleButton = wrapper.findAll('button').find((button) => button.text() === 'admin.tokenLeaderboard.showUserIds')
+    expect(toggleButton).toBeTruthy()
+    await toggleButton!.trigger('click')
+
+    expect(wrapper.text()).toContain('admin.tokenLeaderboard.hideUserIds')
+    expect(wrapper.text()).toContain('admin.tokenLeaderboard.userId 7')
+  })
+
   it('loads per-user details when expanding a row', async () => {
     const wrapper = mountView()
     await flushPromises()
