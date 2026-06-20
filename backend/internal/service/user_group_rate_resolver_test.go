@@ -68,6 +68,22 @@ func TestUserGroupRateResolverResolve_InvalidCacheEntryLoadsRepoAndCaches(t *tes
 	require.Equal(t, int64(0), fallback)
 }
 
+func TestInvalidateUserGroupRateCacheClearsRegisteredResolverCaches(t *testing.T) {
+	cacheA := gocache.New(time.Minute, time.Minute)
+	cacheB := gocache.New(time.Minute, time.Minute)
+	resolverA := newUserGroupRateResolver(nil, cacheA, time.Minute, nil, "service.test")
+	resolverB := newUserGroupRateResolver(nil, cacheB, time.Minute, nil, "service.test")
+	resolverA.cache.Set(userGroupRateCacheKey(101, 202), 1.7, time.Minute)
+	resolverB.cache.Set(userGroupRateCacheKey(101, 202), 1.8, time.Minute)
+
+	invalidateUserGroupRateCache(101, 202)
+
+	_, ok := resolverA.cache.Get(userGroupRateCacheKey(101, 202))
+	require.False(t, ok)
+	_, ok = resolverB.cache.Get(userGroupRateCacheKey(101, 202))
+	require.False(t, ok)
+}
+
 func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolver(t *testing.T) {
 	var nilSvc *GatewayService
 	require.Equal(t, 1.3, nilSvc.getUserGroupRateMultiplier(context.Background(), 101, 202, 1.3))

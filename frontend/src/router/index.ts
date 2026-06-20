@@ -415,6 +415,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/token-usage-policies',
+    name: 'AdminTokenUsagePolicies',
+    component: () => import('@/views/admin/TokenUsagePoliciesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Token Usage Policies',
+      titleKey: 'admin.tokenUsagePolicies.title',
+      descriptionKey: 'admin.tokenUsagePolicies.description'
+    }
+  },
+  {
     path: '/admin/balance-summary',
     name: 'AdminBalanceSummary',
     component: () => import('@/views/admin/BalanceSummaryView.vue'),

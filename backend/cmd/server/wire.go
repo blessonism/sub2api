@@ -85,6 +85,7 @@ func provideCleanup(
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
+	tokenUsagePolicyRunner *service.TokenUsageAutoPolicyRunner,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -163,6 +164,12 @@ func provideCleanup(
 			{"IdempotencyCleanupService", func() error {
 				if idempotencyCleanup != nil {
 					idempotencyCleanup.Stop()
+				}
+				return nil
+			}},
+			{"TokenUsageAutoPolicyRunner", func() error {
+				if tokenUsagePolicyRunner != nil {
+					tokenUsagePolicyRunner.Stop()
 				}
 				return nil
 			}},

@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     tokenLeaderboard: 'Token 排行榜',
+    tokenUsagePolicies: 'Token 自动策略',
     balanceSummary: '余额汇总',
     leaderboard: '排行榜',
     redeem: '兑换',
@@ -1590,6 +1591,113 @@ export default {
       noDataDescription: '当前筛选条件下还没有用量记录。',
       failedToLoad: '加载 Token 排行榜失败',
       failedToLoadDetails: '加载用户明细失败'
+    },
+
+    tokenUsagePolicies: {
+      title: 'Token 自动策略',
+      description: '按用户近 7/30 天 Token 用量自动设置目标分组专属倍率',
+      create: '新建策略',
+      edit: '编辑策略',
+      policy: '策略',
+      targetGroup: '目标分组',
+      window: '统计窗口',
+      actionMode: '动作',
+      conflictMode: '冲突策略',
+      frequency: '执行频率',
+      status: '状态',
+      lastRun: '上次执行',
+      nextRun: '下次执行',
+      name: '策略名称',
+      enabled: '启用策略',
+      filters: '统计筛选',
+      filterGroup: '统计分组',
+      filterModel: '模型',
+      filterModelPlaceholder: '留空表示全部模型',
+      filterRequestType: '请求类型',
+      filterBillingType: '计费类型',
+      tiers: '档位',
+      addTier: '添加档位',
+      minTokens: '最低 Token',
+      rateMultiplier: '专属倍率',
+      preview: '预览',
+      history: '历史',
+      runNow: '立即执行',
+      running: '执行中',
+      runConfirm: '确认立即执行策略「{name}」？',
+      deleteConfirm: '确认删除策略「{name}」？已有自动归属时后端会拒绝删除。',
+      emptyTitle: '暂无自动策略',
+      emptyDescription: '创建策略后，系统会按窗口期 Token 用量自动写入分组专属倍率。',
+      previewEmptyTitle: '暂无变更',
+      previewEmptyDescription: '当前窗口期用量不会产生新增、更新、降档、清除或跳过用户。',
+      noTiers: '暂无档位',
+      user: '用户',
+      tokenUsage: 'Token 用量',
+      oldRate: '原倍率',
+      newRate: '新倍率',
+      reason: '原因',
+      changeType: '变更',
+      totalUsers: '影响用户',
+      createCount: '新增',
+      updateCount: '更新',
+      downgradeCount: '降档',
+      clearCount: '清除',
+      skipCount: '跳过',
+      changes: '变更数',
+      runType: '类型',
+      startedAt: '开始时间',
+      error: '错误',
+      created: '策略已创建',
+      updated: '策略已更新',
+      deleted: '策略已删除',
+      runQueued: '策略执行完成',
+      loadFailed: '加载策略失败',
+      saveFailed: '保存策略失败',
+      previewFailed: '预览失败',
+      runFailed: '执行失败',
+      historyFailed: '加载执行历史失败',
+      deleteFailed: '删除策略失败',
+      nameRequired: '请输入策略名称',
+      groupRequired: '请选择目标分组',
+      tiersInvalid: '档位阈值必须不小于 0，倍率必须大于 0',
+      tiersDuplicate: '档位阈值不能重复',
+      windowDays: {
+        7: '最近 7 天',
+        30: '最近 30 天'
+      },
+      actionModes: {
+        rate_only: '仅设置专属倍率',
+        grant_group_and_rate: '授权分组并设置倍率'
+      },
+      conflictModes: {
+        manual_priority: '手动设置优先',
+        auto_priority: '自动规则优先'
+      },
+      frequencies: {
+        every_6h: '每 6 小时',
+        daily: '每天',
+        weekly: '每周'
+      },
+      billingTypes: {
+        balance: '余额',
+        subscription: '订阅'
+      },
+      changeTypes: {
+        create: '新增',
+        update: '更新',
+        downgrade: '降档',
+        clear: '清除',
+        skip_manual: '手动接管跳过'
+      },
+      runTypes: {
+        preview: '预览',
+        manual: '手动',
+        scheduled: '定时'
+      },
+      runStatuses: {
+        running: '执行中',
+        success: '成功',
+        failed: '失败'
+      }
     },
 
     balanceSummary: {
