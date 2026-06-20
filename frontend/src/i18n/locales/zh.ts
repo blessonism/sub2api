@@ -1566,6 +1566,7 @@ export default {
       email: '邮箱',
       status: '状态',
       registeredAt: '注册时间',
+      lastUsedAt: '最近使用时间',
       requests: '请求数',
       tokens: '非图片 Token',
       cost: '标准计费',

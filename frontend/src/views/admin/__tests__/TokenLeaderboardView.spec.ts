@@ -87,6 +87,7 @@ describe('TokenLeaderboardView', () => {
           username: 'alice',
           status: 'active',
           registered_at: '2026-01-01T00:00:00Z',
+          last_used_at: '2026-06-18T08:30:00Z',
           requests: 5,
           tokens: 1500,
           cost: 2.2,
@@ -141,6 +142,9 @@ describe('TokenLeaderboardView', () => {
       limit: 10
     }))
     expect(wrapper.text()).toContain('alice@example.com')
+    expect(wrapper.text()).toContain('admin.tokenLeaderboard.lastUsedAt')
+    expect(wrapper.text()).not.toContain('admin.tokenLeaderboard.cost')
+    expect(wrapper.text()).not.toContain('admin.tokenLeaderboard.accountCost')
   })
 
   it('hides user ids by default and toggles them on demand', async () => {
