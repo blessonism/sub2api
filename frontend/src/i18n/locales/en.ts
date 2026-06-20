@@ -1545,6 +1545,7 @@ export default {
       email: 'Email',
       status: 'Status',
       registeredAt: 'Registered',
+      lastUsedAt: 'Last Used',
       requests: 'Requests',
       tokens: 'Non-image Tokens',
       cost: 'Standard Cost',

@@ -591,13 +591,15 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	registeredAt := time.Date(2024, 12, 1, 8, 0, 0, 0, time.UTC)
+	lastUsedAt := time.Date(2025, 1, 1, 15, 30, 0, 0, time.UTC)
 
 	rows := sqlmock.NewRows([]string{
 		"rank", "user_id", "email", "username", "status", "registered_at",
-		"requests", "tokens", "cost", "actual_cost", "account_cost",
+		"last_used_at", "requests", "tokens", "cost", "actual_cost", "account_cost",
 		"total_requests", "total_tokens", "total_cost", "total_actual_cost", "total_account_cost",
 	}).AddRow(
 		int64(1), int64(7), "alice@example.com", "alice", "active", registeredAt,
+		lastUsedAt,
 		int64(6), int64(2000), 3.4, 2.8, 1.7,
 		int64(6), int64(2000), 3.4, 2.8, 1.7,
 	)
@@ -624,6 +626,7 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 				Username:     "alice",
 				Status:       "active",
 				RegisteredAt: registeredAt,
+				LastUsedAt:   lastUsedAt,
 				Requests:     6,
 				Tokens:       2000,
 				Cost:         3.4,

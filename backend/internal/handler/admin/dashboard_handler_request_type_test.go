@@ -138,6 +138,7 @@ func (s *dashboardUsageRepoCapture) GetAdminTokenLeaderboard(
 				Username:     "alice",
 				Status:       "active",
 				RegisteredAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				LastUsedAt:   time.Date(2025, 1, 2, 8, 30, 0, 0, time.UTC),
 				Requests:     3,
 				Tokens:       1200,
 				ActualCost:   1.25,
