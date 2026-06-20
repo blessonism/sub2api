@@ -1511,6 +1511,7 @@ export default {
       spendingRankingRequests: '请求',
       spendingRankingTokens: 'Token',
       spendingRankingSpend: '消费',
+      spendingRankingLastUsed: '最近使用',
       spendingRankingOther: '其他',
       spendingRankingUsage: '用量',
       spendShort: '消费',

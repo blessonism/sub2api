@@ -1501,6 +1501,7 @@ export default {
       spendingRankingRequests: 'Requests',
       spendingRankingTokens: 'Tokens',
       spendingRankingSpend: 'Spend',
+      spendingRankingLastUsed: 'Last Used',
       spendingRankingOther: 'Others',
       spendingRankingUsage: 'Usage',
       spendShort: 'Spend',

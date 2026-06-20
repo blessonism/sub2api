@@ -53,6 +53,7 @@ const mockSearchApiKeys = vi.fn().mockResolvedValue([])
 const mockGroupsList = vi.fn().mockResolvedValue({ items: [] })
 const mockGetModelStats = vi.fn().mockResolvedValue({ models: [] })
 const mockAccountsList = vi.fn().mockResolvedValue({ items: [] })
+const mockGetUserById = vi.fn()
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -60,6 +61,7 @@ vi.mock('@/api/admin', () => ({
       searchUsers: (...args: any[]) => mockSearchUsers(...args),
       searchApiKeys: (...args: any[]) => mockSearchApiKeys(...args),
     },
+    users: { getById: (...args: any[]) => mockGetUserById(...args) },
     groups: { list: (...args: any[]) => mockGroupsList(...args) },
     dashboard: { getModelStats: (...args: any[]) => mockGetModelStats(...args) },
     accounts: { list: (...args: any[]) => mockAccountsList(...args) },
@@ -104,6 +106,8 @@ describe('UsageFilters — user search dropdown', () => {
     vi.useFakeTimers()
     mockSearchUsers.mockReset()
     mockSearchApiKeys.mockResolvedValue([])
+    mockGetUserById.mockReset()
+    mockGetUserById.mockResolvedValue({ id: 99, email: 'selected@test.com', deleted_at: null })
   })
 
   afterEach(() => {
@@ -162,6 +166,28 @@ describe('UsageFilters — user search dropdown', () => {
     // Also confirm user_id was set by checking the emitted change came through
     // (the component uses toRef so modelValue is mutated in place and 'change' is emitted)
     expect(wrapper.props('modelValue').user_id).toBe(1)
+  })
+
+  it('hydrates selected user when user_id is provided by route filters', async () => {
+    mockGetUserById.mockResolvedValue({
+      id: 7,
+      email: 'ranked@test.com',
+      deleted_at: '2026-06-01T00:00:00Z',
+    })
+
+    const wrapper = mountFilters({
+      ...defaultFilters(),
+      user_id: 7,
+    })
+
+    await flushPromises()
+
+    expect(mockGetUserById).toHaveBeenCalledWith(7, true)
+    const input = wrapper.find('input[type="text"]')
+    expect((input.element as HTMLInputElement).value).toBe('ranked@test.com')
+    expect((wrapper.vm as any).userResults).toEqual([
+      { id: 7, email: 'ranked@test.com', deleted: true },
+    ])
   })
 })
 
