@@ -686,7 +686,7 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 			"group_id", "group_name", "requests", "tokens", "cost", "actual_cost", "account_cost",
 		}).AddRow(int64(5), "vip", int64(2), int64(600), 0.9, 0.8, 0.5))
 
-	mock.ExpectQuery("COALESCE\\(NULLIF\\(TRIM").
+	mock.ExpectQuery("requested_model[\\s\\S]*GROUP BY 1").
 		WithArgs(start, end, userID).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "tokens", "cost", "actual_cost", "account_cost",
