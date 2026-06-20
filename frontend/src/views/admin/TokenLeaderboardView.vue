@@ -10,10 +10,21 @@
             {{ t('admin.tokenLeaderboard.description') }}
           </p>
         </div>
-        <button class="btn btn-primary inline-flex items-center gap-2 self-start md:self-auto" type="button" @click="loadLeaderboard">
-          <Icon name="refresh" size="sm" />
-          {{ t('admin.tokenLeaderboard.refresh') }}
-        </button>
+        <div class="flex flex-wrap gap-2 self-start md:self-auto">
+          <button
+            class="btn btn-secondary inline-flex items-center gap-2"
+            type="button"
+            :aria-pressed="showUserIds"
+            @click="showUserIds = !showUserIds"
+          >
+            <Icon :name="showUserIds ? 'eyeOff' : 'eye'" size="sm" />
+            {{ showUserIds ? t('admin.tokenLeaderboard.hideUserIds') : t('admin.tokenLeaderboard.showUserIds') }}
+          </button>
+          <button class="btn btn-primary inline-flex items-center gap-2" type="button" @click="loadLeaderboard">
+            <Icon name="refresh" size="sm" />
+            {{ t('admin.tokenLeaderboard.refresh') }}
+          </button>
+        </div>
       </div>
 
       <div class="card p-4">
@@ -155,8 +166,8 @@
                   <td class="px-4 py-3">
                     <div class="min-w-0">
                       <div class="truncate font-medium text-gray-900 dark:text-white">{{ displayUser(row) }}</div>
-                      <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('admin.tokenLeaderboard.userId') }} {{ row.user_id }} · {{ row.email }}
+                      <div v-if="secondaryUserText(row)" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ secondaryUserText(row) }}
                       </div>
                     </div>
                   </td>
@@ -370,6 +381,7 @@ const grantAmount = ref(0)
 const grantNotes = ref('')
 const grantDialogOpen = ref(false)
 const granting = ref(false)
+const showUserIds = ref(false)
 
 const ranking = computed(() => leaderboard.value?.ranking || [])
 const topTenRows = computed(() => ranking.value.filter((row) => isTopTen(row)))
@@ -401,7 +413,16 @@ function formatCost(value: number): string {
 }
 
 function displayUser(row: AdminTokenLeaderboardUser): string {
-  return row.username?.trim() || row.email || `#${row.user_id}`
+  return row.username?.trim() || row.email || t('admin.tokenLeaderboard.unknownUser')
+}
+
+function secondaryUserText(row: AdminTokenLeaderboardUser): string {
+  if (showUserIds.value) {
+    const userId = `${t('admin.tokenLeaderboard.userId')} ${row.user_id}`
+    return row.email ? `${userId} · ${row.email}` : userId
+  }
+
+  return row.username?.trim() && row.email ? row.email : ''
 }
 
 function isTopTen(row: AdminTokenLeaderboardUser): boolean {
