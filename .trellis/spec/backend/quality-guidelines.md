@@ -78,6 +78,50 @@ Correct:
 response.Success(c, publicResponse) // publicResponse contains masked_email only
 ```
 
+### Scenario: Admin dashboard operational metrics
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing fields returned by `GET /api/v1/admin/dashboard/stats`.
+- These fields feed the admin dashboard directly and often mix pre-aggregated usage data with real-time entity/accounting totals.
+
+#### 2. Signatures
+- Handler: `DashboardHandler.GetStats`.
+- Repository: `UsageLogRepository.GetDashboardStats(ctx)` and `GetDashboardStatsWithRange(ctx, start, end)`.
+- Response field names must stay snake_case and aligned with `frontend/src/types/index.ts`.
+
+#### 3. Contracts
+- `today_active_users`: same compatibility scope as legacy `active_users`.
+- `yesterday_active_users`: previous local dashboard day from `usage_dashboard_daily.active_users`.
+- Token-active users must be based on effective billed usage (`usage_logs.actual_cost > 0`), not just request rows.
+- `total_user_balance`: sum of `users.balance` for non-deleted users.
+- `subscription_remaining_value`: active, non-deleted users' subscriptions prorated by remaining validity time.
+
+#### 4. Validation & Error Matrix
+- Missing daily aggregate row -> return zero for that field.
+- Invalid dashboard range (`end <= start`) -> return error before querying.
+- Subscription without matching order/plan price -> contributes zero instead of failing the whole dashboard.
+
+#### 5. Good/Base/Bad Cases
+- Good: a zero-cost failed request increases request totals but does not increase active user counts.
+- Base: no subscription orders or plans returns `subscription_remaining_value: 0`.
+- Bad: counting `COUNT(DISTINCT user_id)` across all usage logs as token-active users.
+
+#### 6. Tests Required
+- Handler test asserts new response fields are emitted.
+- Repository/integration test covers balance pool, yesterday active users, subscription order pricing, plan fallback, and zero-cost active-user exclusion.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+SELECT COUNT(DISTINCT user_id) FROM usage_logs
+```
+
+Correct:
+```sql
+SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
+```
+
 ---
 
 ## Testing Requirements
