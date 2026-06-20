@@ -7,6 +7,7 @@ import { apiClient } from '../client'
 
 export type Provider = 'openai' | 'anthropic' | 'gemini'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
+export type ManualOverrideStatus = Exclude<MonitorStatus, 'error'>
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'
 
@@ -111,6 +112,8 @@ export interface HistoryItem {
   id: number
   model: string
   status: MonitorStatus
+  override_status: ManualOverrideStatus | null
+  effective_status: MonitorStatus
   latency_ms: number | null
   ping_latency_ms: number | null
   message: string
@@ -195,6 +198,31 @@ export async function listHistory(
   return data
 }
 
+/**
+ * Set a manual status override for one history row.
+ */
+export async function setHistoryOverride(
+  id: number,
+  historyId: number,
+  status: ManualOverrideStatus
+): Promise<HistoryItem> {
+  const { data } = await apiClient.put<HistoryItem>(
+    `/admin/channel-monitors/${id}/history/${historyId}/override`,
+    { status }
+  )
+  return data
+}
+
+/**
+ * Clear manual status override for one history row.
+ */
+export async function clearHistoryOverride(id: number, historyId: number): Promise<HistoryItem> {
+  const { data } = await apiClient.delete<HistoryItem>(
+    `/admin/channel-monitors/${id}/history/${historyId}/override`
+  )
+  return data
+}
+
 export const channelMonitorAPI = {
   list,
   get,
@@ -203,6 +231,8 @@ export const channelMonitorAPI = {
   del,
   runNow,
   listHistory,
+  setHistoryOverride,
+  clearHistoryOverride,
 }
 
 export default channelMonitorAPI

@@ -181,22 +181,26 @@ type ChannelMonitorHistoryRow struct {
 
 // ChannelMonitorHistoryEntry 历史记录查询返回行（含 ent 主键 ID）。
 type ChannelMonitorHistoryEntry struct {
-	ID            int64
-	Model         string
-	Status        string
-	LatencyMs     *int
-	PingLatencyMs *int
-	Message       string
-	CheckedAt     time.Time
+	ID              int64
+	Model           string
+	Status          string
+	OverrideStatus  *string
+	EffectiveStatus string
+	LatencyMs       *int
+	PingLatencyMs   *int
+	Message         string
+	CheckedAt       time.Time
 }
 
 // ChannelMonitorLatest 最近一次检测的简明信息（用于 UserMonitorView 聚合）。
 type ChannelMonitorLatest struct {
-	Model         string
-	Status        string
-	LatencyMs     *int
-	PingLatencyMs *int
-	CheckedAt     time.Time
+	Model           string
+	Status          string
+	OverrideStatus  *string
+	EffectiveStatus string
+	LatencyMs       *int
+	PingLatencyMs   *int
+	CheckedAt       time.Time
 }
 
 // ChannelMonitorAvailability 单个模型在某窗口内的可用率与平均延迟（用于 UserMonitorDetail 聚合）。
