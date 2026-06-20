@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,9 +16,10 @@ import (
 
 type adminUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams   pagination.PaginationParams
-	listFilters  usagestats.UsageLogFilters
-	statsFilters usagestats.UsageLogFilters
+	listParams     pagination.PaginationParams
+	listFilters    usagestats.UsageLogFilters
+	statsFilters   usagestats.UsageLogFilters
+	summaryFilters usagestats.UsageLogFilters
 }
 
 func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -34,6 +36,15 @@ func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagi
 func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
 	s.statsFilters = filters
 	return &usagestats.UsageStats{}, nil
+}
+
+func (s *adminUsageRepoCapture) GetSharedIPUsersSummary(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
+	s.summaryFilters = filters
+	return &usagestats.SharedIPUsersSummary{
+		IPCount:     2,
+		UserCount:   5,
+		RecordCount: 8,
+	}, nil
 }
 
 func newAdminUsageRequestTypeTestRouter(repo *adminUsageRepoCapture) *gin.Engine {
@@ -99,6 +110,40 @@ func TestAdminUsageListInvalidExactTotal(t *testing.T) {
 	router := newAdminUsageRequestTypeTestRouter(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/usage?exact_total=oops", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminUsageListSharedIPUsersTrue(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?shared_ip_users=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, repo.listFilters.SharedIPUsers)
+	require.True(t, repo.summaryFilters.SharedIPUsers)
+
+	var body struct {
+		Data struct {
+			SharedIPUsersSummary usagestats.SharedIPUsersSummary `json:"shared_ip_users_summary"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, int64(2), body.Data.SharedIPUsersSummary.IPCount)
+	require.Equal(t, int64(5), body.Data.SharedIPUsersSummary.UserCount)
+	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.RecordCount)
+}
+
+func TestAdminUsageListInvalidSharedIPUsers(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?shared_ip_users=oops", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

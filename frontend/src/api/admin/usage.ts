@@ -9,6 +9,16 @@ import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
 
+export interface SharedIPUsersSummary {
+  ip_count: number
+  user_count: number
+  record_count: number
+}
+
+export interface AdminUsageListResponse extends PaginatedResponse<AdminUsageLog> {
+  shared_ip_users_summary?: SharedIPUsersSummary | null
+}
+
 export interface AdminUsageStatsResponse {
   total_requests: number
   total_input_tokens: number
@@ -82,6 +92,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   user_id?: number
   exact_total?: boolean
   billing_mode?: string
+  shared_ip_users?: boolean
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }
@@ -96,8 +107,8 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
 export async function list(
   params: AdminUsageQueryParams,
   options?: { signal?: AbortSignal }
-): Promise<PaginatedResponse<AdminUsageLog>> {
-  const { data } = await apiClient.get<PaginatedResponse<AdminUsageLog>>('/admin/usage', {
+): Promise<AdminUsageListResponse> {
+  const { data } = await apiClient.get<AdminUsageListResponse>('/admin/usage', {
     params,
     signal: options?.signal
   })

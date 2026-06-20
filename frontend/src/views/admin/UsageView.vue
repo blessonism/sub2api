@@ -66,6 +66,16 @@
       </div>
       <UsageFilters v-model="filters" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
         <template #after-reset>
+          <button
+            type="button"
+            @click="toggleSharedIPUsers"
+            class="btn px-2 md:px-3"
+            :class="sharedIPUsersEnabled ? 'btn-warning' : 'btn-secondary'"
+            :title="t('admin.usage.sharedIPUsers.tooltip')"
+          >
+            <Icon name="search" size="sm" class="md:mr-1.5" :stroke-width="2" />
+            <span class="hidden md:inline">{{ t('admin.usage.sharedIPUsers.button') }}</span>
+          </button>
           <div class="relative" ref="columnDropdownRef">
             <button
               @click="showColumnDropdown = !showColumnDropdown"
@@ -109,6 +119,17 @@
         </button>
       </div>
       <div v-show="activeTab === 'usage'">
+        <div
+          v-if="sharedIPUsersEnabled"
+          class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="font-medium">{{ t('admin.usage.sharedIPUsers.summaryTitle') }}</span>
+            <span>{{ t('admin.usage.sharedIPUsers.ipCount', { count: sharedIPUsersSummary?.ip_count ?? 0 }) }}</span>
+            <span>{{ t('admin.usage.sharedIPUsers.userCount', { count: sharedIPUsersSummary?.user_count ?? 0 }) }}</span>
+            <span>{{ t('admin.usage.sharedIPUsers.recordCount', { count: sharedIPUsersSummary?.record_count ?? 0 }) }}</span>
+          </div>
+        </div>
         <UsageTable
           :data="usageLogs"
           :loading="loading"
@@ -170,7 +191,7 @@ import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
+import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, SharedIPUsersSummary } from '@/api/admin/usage'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -179,6 +200,8 @@ type EndpointSource = 'inbound' | 'upstream' | 'path'
 type ModelDistributionSource = 'requested' | 'upstream' | 'mapping'
 const route = useRoute()
 const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
+const sharedIPUsersEnabled = ref(false)
+const sharedIPUsersSummary = ref<SharedIPUsersSummary | null>(null)
 const trendData = ref<TrendDataPoint[]>([]); const requestedModelStats = ref<ModelStat[]>([]); const upstreamModelStats = ref<ModelStat[]>([]); const mappingModelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const modelStatsLoading = ref(false); const granularity = ref<'day' | 'hour'>('hour')
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
 const modelDistributionSource = ref<ModelDistributionSource>('requested')
@@ -318,6 +341,7 @@ const buildUsageListParams = (
     exact_total: exactTotal,
     ...filters.value,
     stream: legacyStream === null ? undefined : legacyStream,
+    shared_ip_users: sharedIPUsersEnabled.value || undefined,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -330,7 +354,11 @@ const loadLogs = async () => {
       buildUsageListParams(pagination.page, pagination.page_size, false),
       { signal: c.signal }
     )
-    if(!c.signal.aborted) { usageLogs.value = res.items; pagination.total = res.total }
+    if(!c.signal.aborted) {
+      usageLogs.value = res.items
+      pagination.total = res.total
+      sharedIPUsersSummary.value = sharedIPUsersEnabled.value ? (res.shared_ip_users_summary || null) : null
+    }
   } catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) } finally { if(abortController === c) loading.value = false }
 }
 const loadStats = async (force = false) => {
@@ -475,8 +503,18 @@ const resetFilters = () => {
   startDate.value = range.start
   endDate.value = range.end
   filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined }
+  sharedIPUsersEnabled.value = false
+  sharedIPUsersSummary.value = null
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
+}
+const toggleSharedIPUsers = () => {
+  sharedIPUsersEnabled.value = !sharedIPUsersEnabled.value
+  if (!sharedIPUsersEnabled.value) {
+    sharedIPUsersSummary.value = null
+  }
+  pagination.page = 1
+  loadLogs()
 }
 const handlePageChange = (p: number) => { pagination.page = p; loadLogs() }
 const handlePageSizeChange = (s: number) => { pagination.page_size = s; pagination.page = 1; loadLogs() }

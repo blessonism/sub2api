@@ -4922,6 +4922,14 @@ export default {
       billingModeImage: '按次(图片)',
       allBillingModes: '全部计费模式',
       ipAddress: 'IP',
+      sharedIPUsers: {
+        button: '同 IP 多用户',
+        tooltip: '只显示当前筛选条件下同一 IP 关联多个用户的使用记录',
+        summaryTitle: '同 IP 多用户摘要',
+        ipCount: '命中 IP：{count}',
+        userCount: '涉及用户：{count}',
+        recordCount: '命中记录：{count}'
+      },
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',

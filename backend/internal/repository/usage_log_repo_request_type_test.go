@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -338,6 +339,49 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 	require.Empty(t, logs)
 	require.NotNil(t, page)
 	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryListWithFiltersSharedIPUsers(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{
+		GroupID:       7,
+		SharedIPUsers: true,
+	}
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE group_id = \\$1 AND ip_address IN").
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery("HAVING COUNT\\(DISTINCT user_id\\) > 1").
+		WithArgs(int64(7), 20, 0).
+		WillReturnRows(sqlmock.NewRows(strings.Split(usageLogSelectColumns, ", ")))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetSharedIPUsersSummary(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	filters := usagestats.UsageLogFilters{StartTime: &start}
+
+	mock.ExpectQuery("SELECT COUNT\\(DISTINCT ip_address\\), COUNT\\(DISTINCT user_id\\), COUNT\\(\\*\\) FROM usage_logs WHERE created_at >= \\$1 AND ip_address IN").
+		WithArgs(start).
+		WillReturnRows(sqlmock.NewRows([]string{"ip_count", "user_count", "record_count"}).
+			AddRow(int64(2), int64(5), int64(8)))
+
+	summary, err := repo.GetSharedIPUsersSummary(context.Background(), filters)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), summary.IPCount)
+	require.Equal(t, int64(5), summary.UserCount)
+	require.Equal(t, int64(8), summary.RecordCount)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

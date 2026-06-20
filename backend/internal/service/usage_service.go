@@ -430,6 +430,14 @@ func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.Pa
 	return logs, result, nil
 }
 
+func (s *UsageService) GetSharedIPUsersSummary(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
+	summary, err := s.usageRepo.GetSharedIPUsersSummary(ctx, filters)
+	if err != nil {
+		return nil, fmt.Errorf("get shared IP users summary: %w", err)
+	}
+	return summary, nil
+}
+
 // GetGlobalStats returns global usage stats for a time range.
 func (s *UsageService) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	stats, err := s.usageRepo.GetGlobalStats(ctx, startTime, endTime)

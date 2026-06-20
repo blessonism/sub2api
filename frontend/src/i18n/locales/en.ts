@@ -4769,6 +4769,14 @@ export default {
       billingModeImage: 'Image',
       allBillingModes: 'All Billing Modes',
       ipAddress: 'IP',
+      sharedIPUsers: {
+        button: 'Shared IP Users',
+        tooltip: 'Show only usage records whose IP is shared by multiple users under current filters',
+        summaryTitle: 'Shared IP users summary',
+        ipCount: 'Matched IPs: {count}',
+        userCount: 'Users involved: {count}',
+        recordCount: 'Matched records: {count}'
+      },
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
