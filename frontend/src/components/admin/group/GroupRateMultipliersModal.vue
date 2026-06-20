@@ -51,44 +51,46 @@
           </div>
           <div class="w-24">
             <input
-              v-model.number="newRate"
+              v-model="newRateInput"
               type="number"
-              step="0.001"
-              min="0"
+              step="0.01"
+              min="0.01"
               autocomplete="off"
               class="hide-spinner input w-full"
-              placeholder="1.0"
+              placeholder="1.00"
             />
           </div>
           <button
             type="button"
             class="btn btn-primary shrink-0"
-            :disabled="!selectedUser || !newRate"
+            :disabled="!selectedUser || !isRateInputValid(newRateInput)"
             @click="handleAddLocal"
           >
             {{ t('common.add') }}
           </button>
         </div>
 
-        <!-- 批量调整 + 全部清空 -->
+        <!-- 批量统一设置 + 全部清空 -->
         <div v-if="localEntries.length > 0" class="mt-3 flex items-center gap-3 border-t border-gray-100 pt-3 dark:border-dark-600">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.batchAdjust') }}</span>
+          <span class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+            {{ t('admin.groups.selectedCount', { count: selectedEntryCount }) }}
+          </span>
           <div class="flex items-center gap-1.5">
-            <span class="text-xs text-gray-400">×</span>
             <input
-              v-model.number="batchFactor"
+              v-model="bulkRateInput"
               type="number"
-              step="0.1"
-              min="0"
+              step="0.01"
+              min="0.01"
               autocomplete="off"
               class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-              placeholder="0.5"
+              :placeholder="t('admin.groups.bulkRatePlaceholder')"
             />
             <button
               type="button"
               class="btn btn-primary btn-sm shrink-0 px-2.5 py-1 text-xs"
-              :disabled="!batchFactor || batchFactor <= 0"
-              @click="applyBatchFactor"
+              :disabled="selectedEntryCount === 0 || !isRateInputValid(bulkRateInput)"
+              @click="applyBulkRate"
             >
               {{ t('admin.groups.applyMultiplier') }}
             </button>
@@ -130,13 +132,21 @@
               <table class="w-full text-sm">
                 <thead class="sticky top-0 z-[1]">
                   <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-700">
+                    <th class="w-10 px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+                        :checked="isAllCurrentPageSelected"
+                        :aria-label="t('admin.groups.selectCurrentPage')"
+                        @change="toggleCurrentPageSelection(($event.target as HTMLInputElement).checked)"
+                      />
+                    </th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
-                    <th v-if="showFinalRate" class="px-3 py-2 text-left text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.groups.finalRate') }}</th>
                     <th class="w-10 px-2 py-2"></th>
                   </tr>
                 </thead>
@@ -146,6 +156,15 @@
                     :key="entry.user_id"
                     class="hover:bg-gray-50 dark:hover:bg-dark-700/50"
                   >
+                    <td class="px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+                        :checked="selectedEntryIds.has(entry.user_id)"
+                        :aria-label="t('admin.groups.selectRateEntry')"
+                        @change="toggleEntrySelection(entry.user_id, ($event.target as HTMLInputElement).checked)"
+                      />
+                    </td>
                     <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ entry.user_email }}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-gray-400 dark:text-gray-500">{{ entry.user_id }}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-white">{{ entry.user_name || '-' }}</td>
@@ -165,17 +184,14 @@
                     <td class="whitespace-nowrap px-3 py-2">
                       <input
                         type="number"
-                        step="0.001"
-                        min="0.001"
+                        step="0.01"
+                        min="0.01"
                         autocomplete="off"
                         :value="entry.rate_multiplier ?? ''"
                         :placeholder="String(props.group?.rate_multiplier ?? 1)"
                         class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
                         @change="updateLocalRate(entry.user_id, ($event.target as HTMLInputElement).value)"
                       />
-                    </td>
-                    <td v-if="showFinalRate" class="whitespace-nowrap px-3 py-2 font-medium text-primary-600 dark:text-primary-400">
-                      {{ computeFinalRate(entry.rate_multiplier) }}
                     </td>
                     <td class="px-2 py-2">
                       <button
@@ -273,10 +289,12 @@ const searchQuery = ref('')
 const searchResults = ref<AdminUser[]>([])
 const showDropdown = ref(false)
 const selectedUser = ref<AdminUser | null>(null)
-const newRate = ref<number | null>(null)
+const newRateInput = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
-const batchFactor = ref<number | null>(null)
+const bulkRateInput = ref('')
+const selectedEntryIds = ref<Set<number>>(new Set())
+const changedRateEntryIds = ref<Set<number>>(new Set())
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
@@ -288,18 +306,6 @@ const platformColorClass = computed(() => {
     default: return 'text-blue-700 dark:text-blue-400'
   }
 })
-
-// 是否显示"最终倍率"预览列
-const showFinalRate = computed(() => {
-  return batchFactor.value != null && batchFactor.value > 0 && batchFactor.value !== 1
-})
-
-// 计算最终倍率预览
-const computeFinalRate = (rate: number | null | undefined) => {
-  const base = rate ?? props.group?.rate_multiplier ?? 1
-  if (!batchFactor.value) return base
-  return parseFloat((base * batchFactor.value).toFixed(6))
-}
 
 // 检测是否有未保存的修改
 const isDirty = computed(() => {
@@ -313,8 +319,44 @@ const paginatedLocalEntries = computed(() => {
   return localEntries.value.slice(start, start + pageSize.value)
 })
 
+const selectedEntryCount = computed(() => selectedEntryIds.value.size)
+
+const isAllCurrentPageSelected = computed(() => {
+  return paginatedLocalEntries.value.length > 0 &&
+    paginatedLocalEntries.value.every(entry => selectedEntryIds.value.has(entry.user_id))
+})
+
+const parseRateInput = (value: string | number | null | undefined): number | null => {
+  const trimmed = String(value ?? '').trim()
+  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) return null
+  const rate = Number(trimmed)
+  if (!Number.isFinite(rate) || rate <= 0) return null
+  return rate
+}
+
+const isRateInputValid = (value: string | number | null | undefined) => parseRateInput(value) != null
+
 const cloneEntries = (entries: GroupRateMultiplierEntry[]): LocalEntry[] => {
   return entries.map(e => ({ ...e }))
+}
+
+const resetSelection = () => {
+  selectedEntryIds.value = new Set()
+}
+
+const resetChangedRateEntries = () => {
+  changedRateEntryIds.value = new Set()
+}
+
+const markRateEntryChanged = (userId: number) => {
+  const next = new Set(changedRateEntryIds.value)
+  next.add(userId)
+  changedRateEntryIds.value = next
+}
+
+const pruneSelection = () => {
+  const existingIDs = new Set(localEntries.value.map(entry => entry.user_id))
+  selectedEntryIds.value = new Set([...selectedEntryIds.value].filter(id => existingIDs.has(id)))
 }
 
 const loadEntries = async () => {
@@ -325,6 +367,8 @@ const loadEntries = async () => {
     // 仅显示已设置 rate_multiplier 的条目；rpm_override 在另一个弹窗管理，保留不动
     serverEntries.value = raw.filter(e => e.rate_multiplier != null)
     localEntries.value = cloneEntries(serverEntries.value)
+    resetSelection()
+    resetChangedRateEntries()
     adjustPage()
   } catch (error) {
     appStore.showError(t('admin.groups.failedToLoad'))
@@ -344,11 +388,13 @@ const adjustPage = () => {
 watch(() => props.show, (val) => {
   if (val && props.group) {
     currentPage.value = 1
-    batchFactor.value = null
     searchQuery.value = ''
     searchResults.value = []
     selectedUser.value = null
-    newRate.value = null
+    newRateInput.value = ''
+    bulkRateInput.value = ''
+    resetSelection()
+    resetChangedRateEntries()
     loadEntries()
   }
 })
@@ -386,7 +432,11 @@ const selectUser = (user: AdminUser) => {
 
 // 本地添加（或覆盖已有用户）
 const handleAddLocal = () => {
-  if (!selectedUser.value || !newRate.value) return
+  const parsedRate = parseRateInput(newRateInput.value)
+  if (!selectedUser.value || parsedRate == null) {
+    appStore.showError(t('admin.groups.invalidRateMultiplier'))
+    return
+  }
   const user = selectedUser.value
   const idx = localEntries.value.findIndex(e => e.user_id === user.id)
   const entry: LocalEntry = {
@@ -395,7 +445,7 @@ const handleAddLocal = () => {
     user_email: user.email,
     user_notes: user.notes || '',
     user_status: user.status || 'active',
-    rate_multiplier: newRate.value,
+    rate_multiplier: parsedRate,
     rpm_override: null
   }
   if (idx >= 0) {
@@ -403,9 +453,10 @@ const handleAddLocal = () => {
   } else {
     localEntries.value.push(entry)
   }
+  markRateEntryChanged(user.id)
   searchQuery.value = ''
   selectedUser.value = null
-  newRate.value = null
+  newRateInput.value = ''
   adjustPage()
 }
 
@@ -417,37 +468,79 @@ const updateLocalRate = (userId: number, value: string) => {
     entry.rate_multiplier = null
     return
   }
-  const num = parseFloat(value)
-  if (isNaN(num)) return
-  entry.rate_multiplier = num
+  const parsedRate = parseRateInput(value)
+  if (parsedRate == null) {
+    appStore.showError(t('admin.groups.invalidRateMultiplier'))
+    return
+  }
+  entry.rate_multiplier = parsedRate
+  markRateEntryChanged(userId)
 }
 
 // 本地删除
 const removeLocal = (userId: number) => {
   localEntries.value = localEntries.value.filter(e => e.user_id !== userId)
+  pruneSelection()
   adjustPage()
 }
 
-// 批量乘数应用到本地
-const applyBatchFactor = () => {
-  if (!batchFactor.value || batchFactor.value <= 0) return
-  for (const entry of localEntries.value) {
-    if (entry.rate_multiplier != null) {
-      entry.rate_multiplier = parseFloat((entry.rate_multiplier * batchFactor.value).toFixed(6))
+const toggleEntrySelection = (userId: number, checked: boolean) => {
+  const next = new Set(selectedEntryIds.value)
+  if (checked) {
+    next.add(userId)
+  } else {
+    next.delete(userId)
+  }
+  selectedEntryIds.value = next
+}
+
+const toggleCurrentPageSelection = (checked: boolean) => {
+  const next = new Set(selectedEntryIds.value)
+  for (const entry of paginatedLocalEntries.value) {
+    if (checked) {
+      next.add(entry.user_id)
+    } else {
+      next.delete(entry.user_id)
     }
   }
-  batchFactor.value = null
+  selectedEntryIds.value = next
+}
+
+// 批量统一设置选中条目的倍率
+const applyBulkRate = () => {
+  if (selectedEntryCount.value === 0) {
+    appStore.showError(t('admin.groups.selectRateEntriesFirst'))
+    return
+  }
+  const parsedRate = parseRateInput(bulkRateInput.value)
+  if (parsedRate == null) {
+    appStore.showError(t('admin.groups.invalidRateMultiplier'))
+    return
+  }
+  for (const entry of localEntries.value) {
+    if (selectedEntryIds.value.has(entry.user_id)) {
+      entry.rate_multiplier = parsedRate
+      markRateEntryChanged(entry.user_id)
+    }
+  }
+  bulkRateInput.value = ''
+  resetSelection()
+  appStore.showSuccess(t('admin.groups.rateAdjusted'))
 }
 
 // 本地清空
 const clearAllLocal = () => {
   localEntries.value = []
+  resetSelection()
+  resetChangedRateEntries()
 }
 
 // 取消：恢复到服务器数据
 const handleCancel = () => {
   localEntries.value = cloneEntries(serverEntries.value)
-  batchFactor.value = null
+  bulkRateInput.value = ''
+  resetSelection()
+  resetChangedRateEntries()
   adjustPage()
 }
 
@@ -462,6 +555,10 @@ const handleSave = async () => {
         user_id: e.user_id,
         rate_multiplier: e.rate_multiplier as number
       }))
+    if (entries.some(e => changedRateEntryIds.value.has(e.user_id) && !isRateInputValid(String(e.rate_multiplier)))) {
+      appStore.showError(t('admin.groups.invalidRateMultiplier'))
+      return
+    }
     await adminAPI.groups.batchSetGroupRateMultipliers(props.group.id, entries)
     appStore.showSuccess(t('admin.groups.rateSaved'))
     emit('success')
@@ -479,6 +576,9 @@ const handleClose = () => {
   if (isDirty.value) {
     localEntries.value = cloneEntries(serverEntries.value)
   }
+  bulkRateInput.value = ''
+  resetSelection()
+  resetChangedRateEntries()
   emit('close')
 }
 
