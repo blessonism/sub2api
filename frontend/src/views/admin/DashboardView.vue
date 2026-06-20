@@ -95,7 +95,90 @@
           </div>
         </div>
 
-        <!-- Row 2: Token Stats -->
+        <!-- 第 2 行：运营指标 -->
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <!-- 今日活跃用户 -->
+          <div class="card p-4">
+            <div class="flex items-center gap-3">
+              <div class="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
+                <Icon name="users" size="md" class="text-cyan-600 dark:text-cyan-400" :stroke-width="2" />
+              </div>
+              <div class="min-w-0">
+                <p class="break-words text-xs font-medium leading-tight text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.todayActiveUsers') }}
+                </p>
+                <p class="break-words text-xl font-bold text-gray-900 dark:text-white">
+                  {{ formatNumber(stats.today_active_users) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.tokenActiveUsers') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 昨日活跃用户 -->
+          <div class="card p-4">
+            <div class="flex items-center gap-3">
+              <div class="rounded-lg bg-sky-100 p-2 dark:bg-sky-900/30">
+                <Icon name="calendar" size="md" class="text-sky-600 dark:text-sky-400" :stroke-width="2" />
+              </div>
+              <div class="min-w-0">
+                <p class="break-words text-xs font-medium leading-tight text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.yesterdayActiveUsers') }}
+                </p>
+                <p class="break-words text-xl font-bold text-gray-900 dark:text-white">
+                  {{ formatNumber(stats.yesterday_active_users) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.tokenActiveUsers') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 用户余额池 -->
+          <div class="card p-4">
+            <div class="flex items-center gap-3">
+              <div class="rounded-lg bg-lime-100 p-2 dark:bg-lime-900/30">
+                <Icon name="dollar" size="md" class="text-lime-600 dark:text-lime-400" :stroke-width="2" />
+              </div>
+              <div class="min-w-0">
+                <p class="break-words text-xs font-medium leading-tight text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.totalUserBalance') }}
+                </p>
+                <p class="break-words text-xl font-bold text-gray-900 dark:text-white">
+                  ${{ formatMoney(stats.total_user_balance) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.nonDeletedUsers') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 订阅剩余价值 -->
+          <div class="card p-4">
+            <div class="flex items-center gap-3">
+              <div class="rounded-lg bg-teal-100 p-2 dark:bg-teal-900/30">
+                <Icon name="creditCard" size="md" class="text-teal-600 dark:text-teal-400" :stroke-width="2" />
+              </div>
+              <div class="min-w-0">
+                <p class="break-words text-xs font-medium leading-tight text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.subscriptionRemainingValue') }}
+                </p>
+                <p class="break-words text-xl font-bold text-gray-900 dark:text-white">
+                  ${{ formatMoney(stats.subscription_remaining_value) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.activeSubscriptions') }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 第 3 行：Token 统计 -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
           <div class="card p-4">
@@ -546,6 +629,13 @@ const formatCost = (value: number): string => {
     return value.toFixed(3)
   }
   return value.toFixed(4)
+}
+
+const formatMoney = (value: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number.isFinite(value) ? value : 0)
 }
 
 const formatDuration = (ms: number): string => {

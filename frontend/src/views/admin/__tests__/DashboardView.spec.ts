@@ -53,6 +53,10 @@ const createDashboardStats = (): DashboardStats => ({
   total_users: 0,
   today_new_users: 0,
   active_users: 0,
+  today_active_users: 0,
+  yesterday_active_users: 0,
+  total_user_balance: 0,
+  subscription_remaining_value: 0,
   hourly_active_users: 0,
   stats_updated_at: '',
   stats_stale: false,
@@ -71,6 +75,7 @@ const createDashboardStats = (): DashboardStats => ({
   total_tokens: 0,
   total_cost: 0,
   total_actual_cost: 0,
+  total_account_cost: 0,
   today_requests: 0,
   today_input_tokens: 0,
   today_output_tokens: 0,
@@ -79,6 +84,7 @@ const createDashboardStats = (): DashboardStats => ({
   today_tokens: 0,
   today_cost: 0,
   today_actual_cost: 0,
+  today_account_cost: 0,
   average_duration_ms: 0,
   uptime: 0,
   rpm: 0,
@@ -139,5 +145,46 @@ describe('admin DashboardView', () => {
       end_date: formatLocalDate(now),
       granularity: 'hour'
     }))
+  })
+
+  it('renders operational metric cards', async () => {
+    getSnapshotV2.mockResolvedValue({
+      stats: {
+        ...createDashboardStats(),
+        today_active_users: 12,
+        yesterday_active_users: 9,
+        total_user_balance: 1234.5,
+        subscription_remaining_value: 678.9
+      },
+      trend: [],
+      models: []
+    })
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: true,
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: true,
+          Line: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('admin.dashboard.todayActiveUsers')
+    expect(text).toContain('admin.dashboard.yesterdayActiveUsers')
+    expect(text).toContain('admin.dashboard.totalUserBalance')
+    expect(text).toContain('admin.dashboard.subscriptionRemainingValue')
+    expect(text).toContain('12')
+    expect(text).toContain('9')
+    expect(text).toContain('$1,234.50')
+    expect(text).toContain('$678.90')
   })
 })
