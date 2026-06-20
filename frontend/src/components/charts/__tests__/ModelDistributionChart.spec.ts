@@ -12,6 +12,7 @@ const messages: Record<string, string> = {
   'admin.dashboard.spendingRankingRequests': 'Requests',
   'admin.dashboard.spendingRankingTokens': 'Tokens',
   'admin.dashboard.spendingRankingSpend': 'Spend',
+  'admin.dashboard.spendingRankingLastUsed': 'Last Used',
   'admin.dashboard.spendingRankingOther': 'Others',
   'admin.dashboard.model': 'Model',
   'admin.dashboard.requests': 'Requests',
@@ -38,6 +39,10 @@ vi.mock('vue-chartjs', () => ({
     props: ['data'],
     template: '<div class="chart-data">{{ JSON.stringify(data) }}</div>',
   },
+}))
+
+vi.mock('@/utils/format', () => ({
+  formatDateTime: (value: string | Date | null | undefined) => value ? `formatted:${value}` : '',
 }))
 
 describe('ModelDistributionChart', () => {
@@ -133,8 +138,8 @@ describe('ModelDistributionChart', () => {
         modelStats: [],
         enableRankingView: true,
         rankingItems: [
-          { user_id: 1, email: 'alpha@example.com', actual_cost: 12, requests: 10, tokens: 1000 },
-          { user_id: 2, email: 'beta@example.com', actual_cost: 8, requests: 6, tokens: 600 },
+          { user_id: 1, email: 'alpha@example.com', actual_cost: 12, requests: 10, tokens: 1000, last_used_at: '2026-06-19T08:30:00Z' },
+          { user_id: 2, email: 'beta@example.com', actual_cost: 8, requests: 6, tokens: 600, last_used_at: '2026-06-19T07:20:00Z' },
         ],
         rankingTotalActualCost: 30,
         rankingTotalRequests: 20,
@@ -168,6 +173,8 @@ describe('ModelDistributionChart', () => {
     expect(rows[2].text()).toContain('4')
     expect(rows[2].text()).toContain('400')
     expect(rows[2].text()).toContain('$10.00')
+    expect(rows[0].text()).toContain('formatted:2026-06-19T08:30:00Z')
+    expect(rows[2].text()).toContain('-')
   })
 
   it('does not render user id in the spending ranking fallback label', async () => {
@@ -176,7 +183,7 @@ describe('ModelDistributionChart', () => {
         modelStats: [],
         enableRankingView: true,
         rankingItems: [
-          { user_id: 42, email: '', actual_cost: 12, requests: 10, tokens: 1000 },
+          { user_id: 42, email: '', actual_cost: 12, requests: 10, tokens: 1000, last_used_at: '2026-06-19T08:30:00Z' },
         ],
         rankingTotalActualCost: 12,
         rankingTotalRequests: 10,

@@ -147,11 +147,12 @@ type UserUsageTrendPoint struct {
 
 // UserSpendingRankingItem represents a user spending ranking row.
 type UserSpendingRankingItem struct {
-	UserID     int64   `json:"user_id"`
-	Email      string  `json:"email"`
-	ActualCost float64 `json:"actual_cost"` // 实际扣除
-	Requests   int64   `json:"requests"`
-	Tokens     int64   `json:"tokens"`
+	UserID     int64     `json:"user_id"`
+	Email      string    `json:"email"`
+	ActualCost float64   `json:"actual_cost"` // 实际扣除
+	Requests   int64     `json:"requests"`
+	Tokens     int64     `json:"tokens"`
+	LastUsedAt time.Time `json:"last_used_at"` // 最近使用时间
 }
 
 // UserSpendingRankingResponse represents ranking rows plus total spend for the time range.

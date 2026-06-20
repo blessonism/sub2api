@@ -129,6 +129,45 @@ func TestGetUserBreakdown_DefaultEndpointType(t *testing.T) {
 	require.Equal(t, "inbound", repo.capturedDim.EndpointType)
 }
 
+func TestGetUserBreakdown_RequestTypeFilter(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=ws_v2&stream=bad", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, repo.capturedDim.RequestType)
+	require.Equal(t, int16(service.RequestTypeWSV2), *repo.capturedDim.RequestType)
+	require.Nil(t, repo.capturedDim.Stream)
+}
+
+func TestGetUserBreakdown_InvalidRequestType(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=bad", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetUserBreakdown_InvalidStream(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&stream=bad", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestGetUserBreakdown_CustomLimit(t *testing.T) {
 	repo := &userBreakdownRepoCapture{}
 	router := newUserBreakdownRouter(repo)
