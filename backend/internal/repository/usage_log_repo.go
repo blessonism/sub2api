@@ -2821,8 +2821,8 @@ func (r *usageLogRepository) getAdminTokenLeaderboardModelDetails(ctx context.Co
 		FROM usage_logs ul
 		LEFT JOIN users u ON u.id = ul.user_id
 		WHERE %s
-		GROUP BY model
-		ORDER BY tokens DESC, actual_cost DESC, requests DESC, model ASC
+		GROUP BY 1
+		ORDER BY tokens DESC, actual_cost DESC, requests DESC, 1 ASC
 	`, modelExpr, whereClause)
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
