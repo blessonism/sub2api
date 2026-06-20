@@ -94,9 +94,12 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 
 	response.Success(c, gin.H{
 		// 用户统计
-		"total_users":     stats.TotalUsers,
-		"today_new_users": stats.TodayNewUsers,
-		"active_users":    stats.ActiveUsers,
+		"total_users":            stats.TotalUsers,
+		"today_new_users":        stats.TodayNewUsers,
+		"active_users":           stats.ActiveUsers,
+		"today_active_users":     stats.TodayActiveUsers,
+		"yesterday_active_users": stats.YesterdayActiveUsers,
+		"total_user_balance":     stats.TotalUserBalance,
 
 		// API Key 统计
 		"total_api_keys":  stats.TotalAPIKeys,
@@ -136,6 +139,9 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		// 性能指标
 		"rpm": stats.Rpm,
 		"tpm": stats.Tpm,
+
+		// 运营资产统计
+		"subscription_remaining_value": stats.SubscriptionRemainingValue,
 
 		// 预聚合新鲜度
 		"hourly_active_users": stats.HourlyActiveUsers,

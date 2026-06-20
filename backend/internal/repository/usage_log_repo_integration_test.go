@@ -738,6 +738,7 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	s.Require().Equal(baseStats.TotalUsers+2, stats.TotalUsers, "TotalUsers mismatch")
 	s.Require().Equal(baseStats.TodayNewUsers+1, stats.TodayNewUsers, "TodayNewUsers mismatch")
 	s.Require().Equal(baseStats.ActiveUsers+1, stats.ActiveUsers, "ActiveUsers mismatch")
+	s.Require().Equal(stats.ActiveUsers, stats.TodayActiveUsers, "TodayActiveUsers should keep ActiveUsers compatibility")
 	s.Require().Equal(baseStats.TotalAPIKeys+2, stats.TotalAPIKeys, "TotalAPIKeys mismatch")
 	s.Require().Equal(baseStats.ActiveAPIKeys+1, stats.ActiveAPIKeys, "ActiveAPIKeys mismatch")
 	s.Require().Equal(baseStats.TotalAccounts+4, stats.TotalAccounts, "TotalAccounts mismatch")
@@ -763,6 +764,125 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	s.Require().NoError(err, "getPerformanceStats")
 	s.Require().Equal(wantRpm, stats.Rpm, "Rpm mismatch")
 	s.Require().Equal(wantTpm, stats.Tpm, "Tpm mismatch")
+}
+
+func (s *UsageLogRepoSuite) TestDashboardStats_OperationalMetrics() {
+	now := timezone.Now()
+	todayStart := timezone.StartOfDay(now)
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+
+	baseStats, err := s.repo.GetDashboardStats(s.ctx)
+	s.Require().NoError(err, "GetDashboardStats base")
+
+	balanceUser := mustCreateUser(s.T(), s.client, &service.User{
+		Email:   "ops-balance-1@test.com",
+		Balance: 12.50,
+	})
+	mustCreateUser(s.T(), s.client, &service.User{
+		Email:   "ops-balance-2@test.com",
+		Balance: 7.25,
+	})
+
+	groupOrder := mustCreateGroup(s.T(), s.client, &service.Group{Name: "ops-order-group"})
+	groupFallback := mustCreateGroup(s.T(), s.client, &service.Group{Name: "ops-fallback-group"})
+	orderUser := mustCreateUser(s.T(), s.client, &service.User{Email: "ops-sub-order@test.com"})
+	fallbackUser := mustCreateUser(s.T(), s.client, &service.User{Email: "ops-sub-fallback@test.com"})
+
+	mustCreateSubscription(s.T(), s.client, &service.UserSubscription{
+		UserID:    orderUser.ID,
+		GroupID:   groupOrder.ID,
+		StartsAt:  now.Add(-24 * time.Hour),
+		ExpiresAt: now.Add(24 * time.Hour),
+	})
+	mustCreateSubscription(s.T(), s.client, &service.UserSubscription{
+		UserID:    fallbackUser.ID,
+		GroupID:   groupFallback.ID,
+		StartsAt:  now.Add(-24 * time.Hour),
+		ExpiresAt: now.Add(24 * time.Hour),
+	})
+
+	_, err = s.client.SubscriptionPlan.Create().
+		SetGroupID(groupOrder.ID).
+		SetName("order fallback should not win").
+		SetDescription("").
+		SetPrice(999).
+		SetValidityDays(4).
+		SetValidityUnit("day").
+		SetFeatures("").
+		SetProductName("").
+		SetForSale(true).
+		SetSortOrder(1).
+		Save(s.ctx)
+	s.Require().NoError(err, "create order group plan")
+
+	_, err = s.client.SubscriptionPlan.Create().
+		SetGroupID(groupFallback.ID).
+		SetName("fallback plan").
+		SetDescription("").
+		SetPrice(90).
+		SetValidityDays(3).
+		SetValidityUnit("day").
+		SetFeatures("").
+		SetProductName("").
+		SetForSale(true).
+		SetSortOrder(1).
+		Save(s.ctx)
+	s.Require().NoError(err, "create fallback plan")
+
+	paidAt := now.Add(-24 * time.Hour)
+	_, err = s.client.PaymentOrder.Create().
+		SetUserID(orderUser.ID).
+		SetUserEmail(orderUser.Email).
+		SetUserName(orderUser.Username).
+		SetAmount(120).
+		SetPayAmount(12).
+		SetFeeRate(0).
+		SetRechargeCode("ops-order-code").
+		SetOutTradeNo("ops-order-" + fmt.Sprint(now.UnixNano())).
+		SetPaymentType("stripe").
+		SetPaymentTradeNo("ops-trade").
+		SetOrderType("subscription").
+		SetSubscriptionGroupID(groupOrder.ID).
+		SetSubscriptionDays(4).
+		SetStatus(service.OrderStatusCompleted).
+		SetExpiresAt(now.Add(15 * time.Minute)).
+		SetPaidAt(paidAt).
+		SetCompletedAt(paidAt).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("test.local").
+		Save(s.ctx)
+	s.Require().NoError(err, "create subscription payment order")
+
+	_, err = s.tx.ExecContext(s.ctx, `
+		INSERT INTO usage_dashboard_daily (
+			bucket_date,
+			total_requests,
+			input_tokens,
+			output_tokens,
+			cache_creation_tokens,
+			cache_read_tokens,
+			total_cost,
+			actual_cost,
+			account_cost,
+			total_duration_ms,
+			active_users,
+			computed_at
+		)
+		VALUES ($1::date, 0, 0, 0, 0, 0, 0, 0, 0, 0, $2, NOW())
+		ON CONFLICT (bucket_date)
+		DO UPDATE SET active_users = EXCLUDED.active_users, computed_at = EXCLUDED.computed_at
+	`, yesterdayStart, baseStats.YesterdayActiveUsers+7)
+	s.Require().NoError(err, "upsert yesterday active users")
+
+	stats, err := s.repo.GetDashboardStats(s.ctx)
+	s.Require().NoError(err, "GetDashboardStats")
+
+	s.Require().Equal(baseStats.YesterdayActiveUsers+7, stats.YesterdayActiveUsers)
+	s.Require().InDelta(baseStats.TotalUserBalance+balanceUser.Balance+7.25, stats.TotalUserBalance, 0.0001)
+
+	// 订单路径：amount=120 且 4 天有效期，剩余约 1 天 => 约 30；
+	// fallback 路径：plan=90 且 3 天有效期，剩余约 1 天 => 约 30。
+	s.Require().InDelta(baseStats.SubscriptionRemainingValue+60, stats.SubscriptionRemainingValue, 1.0)
 }
 
 func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
@@ -924,11 +1044,13 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u1@test.com"})
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u2@test.com"})
+	userZeroCost := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-zero-cost@test.com"})
 	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-agg-1", Name: "k1"})
 	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-agg-2", Name: "k2"})
+	apiKeyZeroCost := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userZeroCost.ID, Key: "sk-agg-zero", Name: "k-zero"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-agg"})
 
-	d1, d2, d3 := 100, 200, 150
+	d1, d2, d3, dZero := 100, 200, 150, 0
 	log1 := &service.UsageLog{
 		UserID:              user1.ID,
 		APIKeyID:            apiKey1.ID,
@@ -959,6 +1081,19 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 		CreatedAt:    hour1.Add(20 * time.Minute),
 	}
 	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
+
+	logZeroCost := &service.UsageLog{
+		UserID:     userZeroCost.ID,
+		APIKeyID:   apiKeyZeroCost.ID,
+		AccountID:  account.ID,
+		Model:      "claude-3",
+		TotalCost:  0,
+		ActualCost: 0,
+		DurationMs: &dZero,
+		CreatedAt:  hour1.Add(30 * time.Minute),
+	}
+	_, err = s.repo.Create(s.ctx, logZeroCost)
 	s.Require().NoError(err)
 
 	log3 := &service.UsageLog{
@@ -1008,7 +1143,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	}
 
 	hour1Row := fetchHourly(hour1)
-	s.Require().Equal(int64(2), hour1Row.totalRequests)
+	s.Require().Equal(int64(3), hour1Row.totalRequests)
 	s.Require().Equal(int64(15), hour1Row.inputTokens)
 	s.Require().Equal(int64(25), hour1Row.outputTokens)
 	s.Require().Equal(int64(2), hour1Row.cacheCreationTokens)
@@ -1016,6 +1151,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	s.Require().Equal(1.5, hour1Row.totalCost)
 	s.Require().Equal(1.4, hour1Row.actualCost)
 	s.Require().Equal(int64(300), hour1Row.totalDurationMs)
+	// 零扣费日志仍计入请求聚合，但不应计入 token 活跃用户。
 	s.Require().Equal(int64(1), hour1Row.activeUsers)
 
 	hour2Row := fetchHourly(hour2)
@@ -1050,7 +1186,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 		&daily.totalDurationMs, &daily.activeUsers,
 	)
 	s.Require().NoError(err)
-	s.Require().Equal(int64(3), daily.totalRequests)
+	s.Require().Equal(int64(4), daily.totalRequests)
 	s.Require().Equal(int64(22), daily.inputTokens)
 	s.Require().Equal(int64(33), daily.outputTokens)
 	s.Require().Equal(int64(2), daily.cacheCreationTokens)
