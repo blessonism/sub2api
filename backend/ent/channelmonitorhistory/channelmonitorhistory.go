@@ -21,6 +21,8 @@ const (
 	FieldModel = "model"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldOverrideStatus holds the string denoting the override_status field in the database.
+	FieldOverrideStatus = "override_status"
 	// FieldLatencyMs holds the string denoting the latency_ms field in the database.
 	FieldLatencyMs = "latency_ms"
 	// FieldPingLatencyMs holds the string denoting the ping_latency_ms field in the database.
@@ -48,6 +50,7 @@ var Columns = []string{
 	FieldMonitorID,
 	FieldModel,
 	FieldStatus,
+	FieldOverrideStatus,
 	FieldLatencyMs,
 	FieldPingLatencyMs,
 	FieldMessage,
@@ -100,6 +103,30 @@ func StatusValidator(s Status) error {
 	}
 }
 
+// OverrideStatus defines the type for the "override_status" enum field.
+type OverrideStatus string
+
+// OverrideStatus values.
+const (
+	OverrideStatusOperational OverrideStatus = "operational"
+	OverrideStatusDegraded    OverrideStatus = "degraded"
+	OverrideStatusFailed      OverrideStatus = "failed"
+)
+
+func (os OverrideStatus) String() string {
+	return string(os)
+}
+
+// OverrideStatusValidator is a validator for the "override_status" field enum values. It is called by the builders before save.
+func OverrideStatusValidator(os OverrideStatus) error {
+	switch os {
+	case OverrideStatusOperational, OverrideStatusDegraded, OverrideStatusFailed:
+		return nil
+	default:
+		return fmt.Errorf("channelmonitorhistory: invalid enum value for override_status field: %q", os)
+	}
+}
+
 // OrderOption defines the ordering options for the ChannelMonitorHistory queries.
 type OrderOption func(*sql.Selector)
 
@@ -121,6 +148,11 @@ func ByModel(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByOverrideStatus orders the results by the override_status field.
+func ByOverrideStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOverrideStatus, opts...).ToFunc()
 }
 
 // ByLatencyMs orders the results by the latency_ms field.

@@ -12004,6 +12004,7 @@ type ChannelMonitorHistoryMutation struct {
 	id                 *int64
 	model              *string
 	status             *channelmonitorhistory.Status
+	override_status    *channelmonitorhistory.OverrideStatus
 	latency_ms         *int
 	addlatency_ms      *int
 	ping_latency_ms    *int
@@ -12222,6 +12223,55 @@ func (m *ChannelMonitorHistoryMutation) OldStatus(ctx context.Context) (v channe
 // ResetStatus resets all changes to the "status" field.
 func (m *ChannelMonitorHistoryMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (m *ChannelMonitorHistoryMutation) SetOverrideStatus(cs channelmonitorhistory.OverrideStatus) {
+	m.override_status = &cs
+}
+
+// OverrideStatus returns the value of the "override_status" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) OverrideStatus() (r channelmonitorhistory.OverrideStatus, exists bool) {
+	v := m.override_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOverrideStatus returns the old "override_status" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldOverrideStatus(ctx context.Context) (v *channelmonitorhistory.OverrideStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOverrideStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOverrideStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOverrideStatus: %w", err)
+	}
+	return oldValue.OverrideStatus, nil
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (m *ChannelMonitorHistoryMutation) ClearOverrideStatus() {
+	m.override_status = nil
+	m.clearedFields[channelmonitorhistory.FieldOverrideStatus] = struct{}{}
+}
+
+// OverrideStatusCleared returns if the "override_status" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) OverrideStatusCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldOverrideStatus]
+	return ok
+}
+
+// ResetOverrideStatus resets all changes to the "override_status" field.
+func (m *ChannelMonitorHistoryMutation) ResetOverrideStatus() {
+	m.override_status = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldOverrideStatus)
 }
 
 // SetLatencyMs sets the "latency_ms" field.
@@ -12510,7 +12560,7 @@ func (m *ChannelMonitorHistoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorHistoryMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.monitor != nil {
 		fields = append(fields, channelmonitorhistory.FieldMonitorID)
 	}
@@ -12519,6 +12569,9 @@ func (m *ChannelMonitorHistoryMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, channelmonitorhistory.FieldStatus)
+	}
+	if m.override_status != nil {
+		fields = append(fields, channelmonitorhistory.FieldOverrideStatus)
 	}
 	if m.latency_ms != nil {
 		fields = append(fields, channelmonitorhistory.FieldLatencyMs)
@@ -12546,6 +12599,8 @@ func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 		return m.Model()
 	case channelmonitorhistory.FieldStatus:
 		return m.Status()
+	case channelmonitorhistory.FieldOverrideStatus:
+		return m.OverrideStatus()
 	case channelmonitorhistory.FieldLatencyMs:
 		return m.LatencyMs()
 	case channelmonitorhistory.FieldPingLatencyMs:
@@ -12569,6 +12624,8 @@ func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name strin
 		return m.OldModel(ctx)
 	case channelmonitorhistory.FieldStatus:
 		return m.OldStatus(ctx)
+	case channelmonitorhistory.FieldOverrideStatus:
+		return m.OldOverrideStatus(ctx)
 	case channelmonitorhistory.FieldLatencyMs:
 		return m.OldLatencyMs(ctx)
 	case channelmonitorhistory.FieldPingLatencyMs:
@@ -12606,6 +12663,13 @@ func (m *ChannelMonitorHistoryMutation) SetField(name string, value ent.Value) e
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case channelmonitorhistory.FieldOverrideStatus:
+		v, ok := value.(channelmonitorhistory.OverrideStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOverrideStatus(v)
 		return nil
 	case channelmonitorhistory.FieldLatencyMs:
 		v, ok := value.(int)
@@ -12692,6 +12756,9 @@ func (m *ChannelMonitorHistoryMutation) AddField(name string, value ent.Value) e
 // mutation.
 func (m *ChannelMonitorHistoryMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(channelmonitorhistory.FieldOverrideStatus) {
+		fields = append(fields, channelmonitorhistory.FieldOverrideStatus)
+	}
 	if m.FieldCleared(channelmonitorhistory.FieldLatencyMs) {
 		fields = append(fields, channelmonitorhistory.FieldLatencyMs)
 	}
@@ -12715,6 +12782,9 @@ func (m *ChannelMonitorHistoryMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 	switch name {
+	case channelmonitorhistory.FieldOverrideStatus:
+		m.ClearOverrideStatus()
+		return nil
 	case channelmonitorhistory.FieldLatencyMs:
 		m.ClearLatencyMs()
 		return nil
@@ -12740,6 +12810,9 @@ func (m *ChannelMonitorHistoryMutation) ResetField(name string) error {
 		return nil
 	case channelmonitorhistory.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case channelmonitorhistory.FieldOverrideStatus:
+		m.ResetOverrideStatus()
 		return nil
 	case channelmonitorhistory.FieldLatencyMs:
 		m.ResetLatencyMs()

@@ -30,6 +30,7 @@ type ChannelMonitorRepository interface {
 
 	// 历史记录
 	ListHistory(ctx context.Context, monitorID int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error)
+	SetHistoryOverrideStatus(ctx context.Context, monitorID int64, historyID int64, status *string) (*ChannelMonitorHistoryEntry, error)
 
 	// 用户视图聚合
 	ListLatestPerModel(ctx context.Context, monitorID int64) ([]*ChannelMonitorLatest, error)
@@ -251,6 +252,26 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 		return nil, fmt.Errorf("list history: %w", err)
 	}
 	return entries, nil
+}
+
+// SetHistoryOverrideStatus 设置或清除单条历史记录的人工覆盖状态。
+// status 为 nil 表示清除覆盖，恢复系统自动检测状态；非 nil 时必须是合法监控状态。
+func (s *ChannelMonitorService) SetHistoryOverrideStatus(ctx context.Context, monitorID int64, historyID int64, status *string) (*ChannelMonitorHistoryEntry, error) {
+	if _, err := s.repo.GetByID(ctx, monitorID); err != nil {
+		return nil, err
+	}
+	if status != nil {
+		normalized := strings.TrimSpace(*status)
+		if !isValidMonitorStatus(normalized) {
+			return nil, ErrChannelMonitorInvalidStatus
+		}
+		status = &normalized
+	}
+	entry, err := s.repo.SetHistoryOverrideStatus(ctx, monitorID, historyID, status)
+	if err != nil {
+		return nil, fmt.Errorf("set history override status: %w", err)
+	}
+	return entry, nil
 }
 
 // ---------- 业务 ----------

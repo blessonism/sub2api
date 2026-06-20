@@ -24,6 +24,8 @@ type ChannelMonitorHistory struct {
 	Model string `json:"model,omitempty"`
 	// Status holds the value of the "status" field.
 	Status channelmonitorhistory.Status `json:"status,omitempty"`
+	// OverrideStatus holds the value of the "override_status" field.
+	OverrideStatus *channelmonitorhistory.OverrideStatus `json:"override_status,omitempty"`
 	// LatencyMs holds the value of the "latency_ms" field.
 	LatencyMs *int `json:"latency_ms,omitempty"`
 	// PingLatencyMs holds the value of the "ping_latency_ms" field.
@@ -65,7 +67,7 @@ func (*ChannelMonitorHistory) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case channelmonitorhistory.FieldID, channelmonitorhistory.FieldMonitorID, channelmonitorhistory.FieldLatencyMs, channelmonitorhistory.FieldPingLatencyMs:
 			values[i] = new(sql.NullInt64)
-		case channelmonitorhistory.FieldModel, channelmonitorhistory.FieldStatus, channelmonitorhistory.FieldMessage:
+		case channelmonitorhistory.FieldModel, channelmonitorhistory.FieldStatus, channelmonitorhistory.FieldOverrideStatus, channelmonitorhistory.FieldMessage:
 			values[i] = new(sql.NullString)
 		case channelmonitorhistory.FieldCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -107,6 +109,13 @@ func (_m *ChannelMonitorHistory) assignValues(columns []string, values []any) er
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = channelmonitorhistory.Status(value.String)
+			}
+		case channelmonitorhistory.FieldOverrideStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field override_status", values[i])
+			} else if value.Valid {
+				_m.OverrideStatus = new(channelmonitorhistory.OverrideStatus)
+				*_m.OverrideStatus = channelmonitorhistory.OverrideStatus(value.String)
 			}
 		case channelmonitorhistory.FieldLatencyMs:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -183,6 +192,11 @@ func (_m *ChannelMonitorHistory) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	if v := _m.OverrideStatus; v != nil {
+		builder.WriteString("override_status=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.LatencyMs; v != nil {
 		builder.WriteString("latency_ms=")

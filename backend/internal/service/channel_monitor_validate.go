@@ -18,6 +18,15 @@ func validateProvider(p string) error {
 	return nil
 }
 
+func isValidMonitorStatus(status string) bool {
+	switch status {
+	case MonitorStatusOperational, MonitorStatusDegraded, MonitorStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // validateAPIMode 校验 provider 与 api_mode 的组合。
 // responses 只对 OpenAI 有意义；其它 provider 使用 chat_completions 作为默认占位。
 func validateAPIMode(provider, apiMode string) error {

@@ -7,7 +7,12 @@
  * `useChannelMonitorFormat`.
  */
 
-import type { APIMode, Provider, MonitorStatus } from '@/api/admin/channelMonitor'
+import type {
+  APIMode,
+  Provider,
+  MonitorStatus,
+  ManualOverrideStatus,
+} from '@/api/admin/channelMonitor'
 
 export const PROVIDER_OPENAI: Provider = 'openai'
 export const PROVIDER_ANTHROPIC: Provider = 'anthropic'
@@ -27,9 +32,9 @@ export const API_MODES: readonly APIMode[] = [
   API_MODE_RESPONSES,
 ]
 
-export const STATUS_OPERATIONAL: MonitorStatus = 'operational'
-export const STATUS_DEGRADED: MonitorStatus = 'degraded'
-export const STATUS_FAILED: MonitorStatus = 'failed'
+export const STATUS_OPERATIONAL: ManualOverrideStatus = 'operational'
+export const STATUS_DEGRADED: ManualOverrideStatus = 'degraded'
+export const STATUS_FAILED: ManualOverrideStatus = 'failed'
 export const STATUS_ERROR: MonitorStatus = 'error'
 
 export const MONITOR_STATUSES: readonly MonitorStatus[] = [
