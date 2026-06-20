@@ -3,11 +3,16 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 )
+
+type sqlTxStarter interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
 
 type userGroupRateRepository struct {
 	sql sqlExecutor
@@ -16,6 +21,27 @@ type userGroupRateRepository struct {
 // NewUserGroupRateRepository 创建用户专属分组倍率/RPM 仓储
 func NewUserGroupRateRepository(sqlDB *sql.DB) service.UserGroupRateRepository {
 	return &userGroupRateRepository{sql: sqlDB}
+}
+
+func (r *userGroupRateRepository) runInTx(ctx context.Context, fn func(exec sqlExecutor) error) error {
+	txStarter, ok := r.sql.(sqlTxStarter)
+	if !ok {
+		return fmt.Errorf("user group rate repository sql executor does not support transactions")
+	}
+
+	tx, err := txStarter.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin user group rate transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit user group rate transaction: %w", err)
+	}
+	return nil
 }
 
 // GetByUserID 获取用户所有专属分组 rate_multiplier（仅返回非 NULL 的条目）
@@ -244,6 +270,12 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 //   - 未出现在 entries 中的用户行：rate_multiplier 归 NULL；若 rpm_override 也为 NULL 则整行删除。
 //   - 出现的用户行：upsert rate_multiplier。
 func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []service.GroupRateMultiplierInput) error {
+	return r.runInTx(ctx, func(exec sqlExecutor) error {
+		return r.syncGroupRateMultipliersOnExec(ctx, exec, groupID, entries)
+	})
+}
+
+func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Context, exec sqlExecutor, groupID int64, entries []service.GroupRateMultiplierInput) error {
 	keepUserIDs := make([]int64, 0, len(entries))
 	for _, e := range entries {
 		keepUserIDs = append(keepUserIDs, e.UserID)
@@ -251,7 +283,7 @@ func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, 
 
 	// 未在 entries 列表中的行：清空 rate_multiplier。
 	if len(keepUserIDs) == 0 {
-		if _, err := r.sql.ExecContext(ctx, `
+		if _, err := exec.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
 			SET rate_multiplier = NULL, updated_at = NOW()
 			WHERE group_id = $1
@@ -259,7 +291,7 @@ func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, 
 			return err
 		}
 	} else {
-		if _, err := r.sql.ExecContext(ctx, `
+		if _, err := exec.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
 			SET rate_multiplier = NULL, updated_at = NOW()
 			WHERE group_id = $1 AND user_id <> ALL($2)
@@ -269,7 +301,7 @@ func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, 
 	}
 
 	// 清空后若整行 NULL 则删除。
-	if _, err := r.sql.ExecContext(ctx, `
+	if _, err := exec.ExecContext(ctx, `
 		DELETE FROM user_group_rate_multipliers
 		WHERE group_id = $1 AND rate_multiplier IS NULL AND rpm_override IS NULL
 	`, groupID); err != nil {
@@ -287,12 +319,13 @@ func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, 
 		rates[i] = e.RateMultiplier
 	}
 	now := time.Now()
-	_, err := r.sql.ExecContext(ctx, `
+	_, err := exec.ExecContext(ctx, `
 		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
 		SELECT data.user_id, $1::bigint, data.rate_multiplier, $2::timestamptz, $2::timestamptz
 		FROM unnest($3::bigint[], $4::double precision[]) AS data(user_id, rate_multiplier)
 		ON CONFLICT (user_id, group_id)
 		DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
+		WHERE user_group_rate_multipliers.rate_multiplier IS DISTINCT FROM EXCLUDED.rate_multiplier
 	`, groupID, now, pq.Array(userIDs), pq.Array(rates))
 	return err
 }

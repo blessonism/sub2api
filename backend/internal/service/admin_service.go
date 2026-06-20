@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -2303,12 +2304,75 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 	if s.userGroupRateRepo == nil {
 		return nil
 	}
+	seenUserIDs := make(map[int64]struct{}, len(entries))
+	needsCurrentRates := false
 	for _, e := range entries {
-		if e.RateMultiplier <= 0 {
-			return fmt.Errorf("rate_multiplier must be > 0 (user_id=%d)", e.UserID)
+		if e.UserID <= 0 {
+			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", "user_id must be > 0")
+		}
+		if _, ok := seenUserIDs[e.UserID]; ok {
+			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("duplicate user_id: %d", e.UserID))
+		}
+		seenUserIDs[e.UserID] = struct{}{}
+		if err := validateGroupRateMultiplierBasic(e.RateMultiplier, e.UserID); err != nil {
+			return err
+		}
+		if !hasAtMostTwoDecimalPlaces(e.RateMultiplier) {
+			needsCurrentRates = true
+		}
+	}
+	if needsCurrentRates {
+		currentRates, err := s.currentGroupRateMultiplierMap(ctx, groupID)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := validateGroupRateMultiplierDecimals(e.RateMultiplier, e.UserID, currentRates); err != nil {
+				return err
+			}
 		}
 	}
 	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
+}
+
+func (s *adminServiceImpl) currentGroupRateMultiplierMap(ctx context.Context, groupID int64) (map[int64]float64, error) {
+	currentEntries, err := s.userGroupRateRepo.GetByGroupID(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	currentRates := make(map[int64]float64, len(currentEntries))
+	for _, entry := range currentEntries {
+		if entry.RateMultiplier == nil {
+			continue
+		}
+		currentRates[entry.UserID] = *entry.RateMultiplier
+	}
+	return currentRates, nil
+}
+
+func validateGroupRateMultiplierBasic(rate float64, userID int64) error {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
+		return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("rate_multiplier must be > 0 (user_id=%d)", userID))
+	}
+	return nil
+}
+
+func validateGroupRateMultiplierDecimals(rate float64, userID int64, currentRates map[int64]float64) error {
+	if hasAtMostTwoDecimalPlaces(rate) {
+		return nil
+	}
+	if currentRate, ok := currentRates[userID]; ok && almostEqualFloat(rate, currentRate) {
+		return nil
+	}
+	return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("rate_multiplier supports at most 2 decimal places (user_id=%d)", userID))
+}
+
+func hasAtMostTwoDecimalPlaces(rate float64) bool {
+	return math.Abs(rate*100-math.Round(rate*100)) <= 1e-9
+}
+
+func almostEqualFloat(a, b float64) bool {
+	return math.Abs(a-b) <= 1e-9
 }
 
 func (s *adminServiceImpl) ClearGroupRPMOverrides(ctx context.Context, groupID int64) error {
