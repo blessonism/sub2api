@@ -505,6 +505,30 @@ func ProvideBillingCacheService(
 	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
 }
 
+func ProvideUsageService(
+	usageRepo UsageLogRepository,
+	userRepo UserRepository,
+	entClient *dbent.Client,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	calibrationRepo AdminUsageCalibrationRepository,
+) *UsageService {
+	svc := NewUsageService(usageRepo, userRepo, entClient, authCacheInvalidator)
+	svc.SetAdminUsageCalibrationRepository(calibrationRepo)
+	return svc
+}
+
+func ProvideDashboardService(
+	usageRepo UsageLogRepository,
+	aggRepo DashboardAggregationRepository,
+	cache DashboardStatsCache,
+	cfg *config.Config,
+	calibrationRepo AdminUsageCalibrationRepository,
+) *DashboardService {
+	svc := NewDashboardService(usageRepo, aggRepo, cache, cfg)
+	svc.SetAdminUsageCalibrationRepository(calibrationRepo)
+	return svc
+}
+
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
 func ProvideAPIKeyService(
 	apiKeyRepo APIKeyRepository,
@@ -533,8 +557,9 @@ var ProviderSet = wire.NewSet(
 	NewProxyService,
 	NewRedeemService,
 	NewPromoService,
-	NewUsageService,
-	NewDashboardService,
+	ProvideUsageService,
+	ProvideDashboardService,
+	NewAdminUsageCalibrationService,
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,

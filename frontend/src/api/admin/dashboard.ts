@@ -301,6 +301,7 @@ export interface AdminTokenLeaderboardModelUsage extends AdminTokenLeaderboardMe
 
 export interface AdminTokenLeaderboardUserDetailsResponse {
   user_id: number
+  calibration_tokens: number
   api_keys: AdminTokenLeaderboardAPIKeyUsage[]
   groups: AdminTokenLeaderboardGroupUsage[]
   models: AdminTokenLeaderboardModelUsage[]

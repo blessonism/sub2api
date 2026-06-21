@@ -61,6 +61,7 @@ describe('admin dashboard token leaderboard api', () => {
   it('calls the per-user detail endpoint', async () => {
     const response = {
       user_id: 7,
+      calibration_tokens: 0,
       api_keys: [],
       groups: [],
       models: [],

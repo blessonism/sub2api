@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,10 +22,12 @@ import (
 
 // UsageHandler handles admin usage-related requests
 type UsageHandler struct {
-	usageService   *service.UsageService
-	apiKeyService  *service.APIKeyService
-	adminService   service.AdminService
-	cleanupService *service.UsageCleanupService
+	usageService       *service.UsageService
+	apiKeyService      *service.APIKeyService
+	adminService       service.AdminService
+	cleanupService     *service.UsageCleanupService
+	calibrationService *service.AdminUsageCalibrationService
+	dashboardService   *service.DashboardService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -42,6 +45,11 @@ func NewUsageHandler(
 	}
 }
 
+func (h *UsageHandler) SetCalibrationService(calibrationService *service.AdminUsageCalibrationService, dashboardService *service.DashboardService) {
+	h.calibrationService = calibrationService
+	h.dashboardService = dashboardService
+}
+
 // CreateUsageCleanupTaskRequest represents cleanup task creation request
 type CreateUsageCleanupTaskRequest struct {
 	StartDate   string  `json:"start_date"`
@@ -55,6 +63,13 @@ type CreateUsageCleanupTaskRequest struct {
 	Stream      *bool   `json:"stream"`
 	BillingType *int8   `json:"billing_type"`
 	Timezone    string  `json:"timezone"`
+}
+
+type CreateAdminUsageCalibrationRequest struct {
+	TargetUserID int64                                      `json:"target_user_id"`
+	Reason       string                                     `json:"reason"`
+	Token        *service.AdminUsageTokenCalibrationInput   `json:"token,omitempty"`
+	Balance      *service.AdminUsageBalanceCalibrationInput `json:"balance,omitempty"`
 }
 
 type adminUsageListResponse struct {
@@ -393,6 +408,280 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
+// UserView handles listing one user's usage records in the same shape as the normal user page.
+// GET /api/v1/admin/usage/user-view
+func (h *UsageHandler) UserView(c *gin.Context) {
+	targetUserID, ok := parsePositiveInt64Query(c, "user_id", true)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+
+	filters, ok := h.parseUserViewUsageFilters(c, targetUserID)
+	if !ok {
+		return
+	}
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}
+
+	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.UsageLog, 0, len(records))
+	for i := range records {
+		out = append(out, *dto.UsageLogFromService(&records[i]))
+	}
+	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+// UserViewStats handles user-view usage statistics for admins.
+// GET /api/v1/admin/usage/user-view/stats
+func (h *UsageHandler) UserViewStats(c *gin.Context) {
+	targetUserID, ok := parsePositiveInt64Query(c, "user_id", true)
+	if !ok {
+		return
+	}
+	apiKeyID, ok := h.parseUserViewAPIKeyID(c, targetUserID)
+	if !ok {
+		return
+	}
+
+	startTime, endTime, ok := parseUsageStatsTimeRange(c)
+	if !ok {
+		return
+	}
+
+	var stats *service.UsageStats
+	var err error
+	if apiKeyID > 0 {
+		stats, err = h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
+	} else {
+		stats, err = h.usageService.GetStatsByUser(c.Request.Context(), targetUserID, startTime, endTime)
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, stats)
+}
+
+// CreateCalibration creates an admin-only hidden usage/balance calibration.
+// POST /api/v1/admin/usage/calibrations
+func (h *UsageHandler) CreateCalibration(c *gin.Context) {
+	if h.calibrationService == nil {
+		response.InternalError(c, "Usage calibration service unavailable")
+		return
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+
+	var req CreateAdminUsageCalibrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	input := service.AdminUsageCalibrationCreateInput{
+		TargetUserID: req.TargetUserID,
+		AdminUserID:  subject.UserID,
+		Reason:       req.Reason,
+		Token:        req.Token,
+		Balance:      req.Balance,
+	}
+	executeAdminIdempotentJSON(c, "admin.usage.calibrations.create", input, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		record, execErr := h.calibrationService.Create(ctx, input)
+		if execErr != nil {
+			return nil, execErr
+		}
+		clearAdminDashboardUsageSnapshotCaches()
+		clearAdminUsageStatsCache()
+		if h.dashboardService != nil {
+			h.dashboardService.InvalidateDashboardStatsCache()
+		}
+		return record, nil
+	})
+}
+
+// ListCalibrations returns admin-only calibration audit records.
+// GET /api/v1/admin/usage/calibrations
+func (h *UsageHandler) ListCalibrations(c *gin.Context) {
+	if h.calibrationService == nil {
+		response.InternalError(c, "Usage calibration service unavailable")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	var targetUserID int64
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		targetUserID = id
+	}
+	items, result, err := h.calibrationService.List(c.Request.Context(), service.AdminUsageCalibrationListFilters{TargetUserID: targetUserID}, pagination.PaginationParams{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, result.Total, page, pageSize)
+}
+
+func (h *UsageHandler) parseUserViewUsageFilters(c *gin.Context, targetUserID int64) (usagestats.UsageLogFilters, bool) {
+	apiKeyID, ok := h.parseUserViewAPIKeyID(c, targetUserID)
+	if !ok {
+		return usagestats.UsageLogFilters{}, false
+	}
+
+	model := c.Query("model")
+	var requestType *int16
+	var stream *bool
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return usagestats.UsageLogFilters{}, false
+		}
+		value := int16(parsed)
+		requestType = &value
+	} else if streamStr := c.Query("stream"); streamStr != "" {
+		val, err := strconv.ParseBool(streamStr)
+		if err != nil {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return usagestats.UsageLogFilters{}, false
+		}
+		stream = &val
+	}
+
+	var billingType *int8
+	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
+		val, err := strconv.ParseInt(billingTypeStr, 10, 8)
+		if err != nil {
+			response.BadRequest(c, "Invalid billing_type")
+			return usagestats.UsageLogFilters{}, false
+		}
+		bt := int8(val)
+		billingType = &bt
+	}
+
+	var startTime, endTime *time.Time
+	userTZ := c.Query("timezone")
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return usagestats.UsageLogFilters{}, false
+		}
+		startTime = &t
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return usagestats.UsageLogFilters{}, false
+		}
+		t = t.AddDate(0, 0, 1)
+		endTime = &t
+	}
+
+	return usagestats.UsageLogFilters{
+		UserID:      targetUserID,
+		APIKeyID:    apiKeyID,
+		Model:       model,
+		RequestType: requestType,
+		Stream:      stream,
+		BillingType: billingType,
+		StartTime:   startTime,
+		EndTime:     endTime,
+	}, true
+}
+
+func (h *UsageHandler) parseUserViewAPIKeyID(c *gin.Context, targetUserID int64) (int64, bool) {
+	raw := strings.TrimSpace(c.Query("api_key_id"))
+	if raw == "" {
+		return 0, true
+	}
+	apiKeyID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || apiKeyID <= 0 {
+		response.BadRequest(c, "Invalid api_key_id")
+		return 0, false
+	}
+	apiKey, err := h.apiKeyService.GetByID(c.Request.Context(), apiKeyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return 0, false
+	}
+	if apiKey.UserID != targetUserID {
+		response.Forbidden(c, "Not authorized to access this API key's usage records")
+		return 0, false
+	}
+	return apiKeyID, true
+}
+
+func parsePositiveInt64Query(c *gin.Context, name string, required bool) (int64, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		if required {
+			response.BadRequest(c, name+" is required")
+			return 0, false
+		}
+		return 0, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		response.BadRequest(c, "Invalid "+name)
+		return 0, false
+	}
+	return value, true
+}
+
+func parseUsageStatsTimeRange(c *gin.Context) (time.Time, time.Time, bool) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+	if startDateStr != "" && endDateStr != "" {
+		startTime, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return time.Time{}, time.Time{}, false
+		}
+		endTime, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return time.Time{}, time.Time{}, false
+		}
+		return startTime, endTime.AddDate(0, 0, 1), true
+	}
+	period := c.DefaultQuery("period", "today")
+	var startTime time.Time
+	switch period {
+	case "today":
+		startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+	case "week":
+		startTime = now.AddDate(0, 0, -7)
+	case "month":
+		startTime = now.AddDate(0, -1, 0)
+	default:
+		startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+	}
+	return startTime, now, true
+}
+
 // SearchUsers handles searching users by email keyword
 // GET /api/v1/admin/usage/search-users
 func (h *UsageHandler) SearchUsers(c *gin.Context) {
@@ -409,6 +698,17 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 		return
 	}
 
+	if id, ok := parsePositiveInt64(keyword); ok {
+		user, err := h.adminService.GetUserIncludeDeleted(c.Request.Context(), id)
+		if err != nil && !errors.Is(err, service.ErrUserNotFound) {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if user != nil {
+			users = append([]service.User{*user}, users...)
+		}
+	}
+
 	// Return simplified user list (only id, email and deleted flag)
 	type SimpleUser struct {
 		ID      int64  `json:"id"`
@@ -416,16 +716,41 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 		Deleted bool   `json:"deleted"`
 	}
 
-	result := make([]SimpleUser, len(users))
-	for i, u := range users {
-		result[i] = SimpleUser{
+	result := make([]SimpleUser, 0, 30)
+	seen := make(map[int64]struct{}, len(users))
+	for _, u := range users {
+		if _, ok := seen[u.ID]; ok {
+			continue
+		}
+		seen[u.ID] = struct{}{}
+		result = append(result, SimpleUser{
 			ID:      u.ID,
 			Email:   u.Email,
 			Deleted: u.DeletedAt != nil,
+		})
+		if len(result) >= 30 {
+			break
 		}
 	}
 
 	response.Success(c, result)
+}
+
+func parsePositiveInt64(raw string) (int64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, false
+	}
+	for _, ch := range trimmed {
+		if ch < '0' || ch > '9' {
+			return 0, false
+		}
+	}
+	value, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 // SearchAPIKeys handles searching API keys by user

@@ -4,14 +4,36 @@ import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { query, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
+const {
+  query,
+  getStatsByDateRange,
+  list,
+  adminGetUserView,
+  adminGetUserViewStats,
+  adminSearchApiKeys,
+  adminCreateCalibration,
+  adminListCalibrations,
+  adminUsersGetById,
+  showError,
+  showWarning,
+  showSuccess,
+  showInfo,
+  authState,
+} = vi.hoisted(() => ({
   query: vi.fn(),
   getStatsByDateRange: vi.fn(),
   list: vi.fn(),
+  adminGetUserView: vi.fn(),
+  adminGetUserViewStats: vi.fn(),
+  adminSearchApiKeys: vi.fn(),
+  adminCreateCalibration: vi.fn(),
+  adminListCalibrations: vi.fn(),
+  adminUsersGetById: vi.fn(),
   showError: vi.fn(),
   showWarning: vi.fn(),
   showSuccess: vi.fn(),
   showInfo: vi.fn(),
+  authState: { isAdmin: false },
 }))
 
 const messages: Record<string, string> = {
@@ -32,6 +54,9 @@ const messages: Record<string, string> = {
   'usage.billed': 'Billed',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
+  'usage.adminCalibration': 'Calibrate',
+  'usage.adminSelectUserFirst': 'Select a target user first',
+  'usage.adminDeletedUserCannotCalibrate': 'Deleted users cannot be calibrated',
   'usage.model': 'Model',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
@@ -73,8 +98,28 @@ vi.mock('@/api', () => ({
   },
 }))
 
+vi.mock('@/api/admin/usage', () => ({
+  adminUsageAPI: {
+    getUserView: adminGetUserView,
+    getUserViewStats: adminGetUserViewStats,
+    searchApiKeys: adminSearchApiKeys,
+    createCalibration: adminCreateCalibration,
+    listCalibrations: adminListCalibrations,
+  },
+}))
+
+vi.mock('@/api/admin/users', () => ({
+  usersAPI: {
+    getById: adminUsersGetById,
+  },
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showError, showWarning, showSuccess, showInfo }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState,
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -106,13 +151,46 @@ const DataTableStub = {
 
 describe('user UsageView tooltip', () => {
   beforeEach(() => {
+    authState.isAdmin = false
     query.mockReset()
     getStatsByDateRange.mockReset()
     list.mockReset()
+    adminGetUserView.mockReset()
+    adminGetUserViewStats.mockReset()
+    adminSearchApiKeys.mockReset()
+    adminCreateCalibration.mockReset()
+    adminListCalibrations.mockReset()
+    adminUsersGetById.mockReset()
     showError.mockReset()
     showWarning.mockReset()
     showSuccess.mockReset()
     showInfo.mockReset()
+
+    adminGetUserView.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    adminGetUserViewStats.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    adminSearchApiKeys.mockResolvedValue([])
+    adminListCalibrations.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    adminUsersGetById.mockResolvedValue({
+      id: 7,
+      email: 'user@example.com',
+      role: 'user',
+      balance: 0,
+      concurrency: 0,
+      status: 'active',
+      allowed_groups: null,
+      balance_notify_enabled: false,
+      balance_notify_threshold: null,
+      balance_notify_extra_emails: [],
+      created_at: '2026-06-01T00:00:00Z',
+      updated_at: '2026-06-01T00:00:00Z',
+      notes: '',
+    })
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -536,5 +614,114 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('Output size')
     expect(text).toContain('3840x2160')
     expect(text).toContain('4K x 2')
+  })
+
+  it('uses browser timezone when loading admin token calibration preview', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+    adminGetUserViewStats.mockResolvedValue({
+      total_requests: 1,
+      total_tokens: 1234,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    const dateTimeFormatSpy = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => ({
+      resolvedOptions: () => ({ timeZone: 'Asia/Tokyo' }),
+    }) as Intl.DateTimeFormat)
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 7
+    setupState.selectedAdminUser = { id: 7, email: 'user@example.com', deleted: false }
+    setupState.calibrationDialogVisible = true
+    setupState.calibrationForm.tokenEnabled = true
+    setupState.calibrationForm.tokenStartDate = '2026-06-01'
+    setupState.calibrationForm.tokenEndDate = '2026-06-07'
+
+    await setupState.loadCalibrationTokenCurrentTotal()
+
+    expect(adminGetUserViewStats).toHaveBeenLastCalledWith({
+      user_id: 7,
+      start_date: '2026-06-01',
+      end_date: '2026-06-07',
+      timezone: 'Asia/Tokyo',
+    })
+    dateTimeFormatSpy.mockRestore()
+  })
+
+  it('blocks admin calibration for deleted users', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 9
+    setupState.selectedAdminUser = { id: 9, email: 'deleted@example.com', deleted: true }
+    await nextTick()
+
+    const canCalibrate = setupState.canCalibrateSelectedAdminUser?.value ?? setupState.canCalibrateSelectedAdminUser
+    expect(canCalibrate).toBe(false)
+
+    await setupState.openCalibrationDialog()
+
+    expect(showWarning).toHaveBeenCalledWith('Deleted users cannot be calibrated')
+    expect(setupState.calibrationDialogVisible).toBe(false)
+    expect(adminUsersGetById).not.toHaveBeenCalled()
+    expect(adminListCalibrations).not.toHaveBeenCalled()
   })
 })

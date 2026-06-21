@@ -40,17 +40,18 @@ type dashboardStatsCacheEntry struct {
 
 // DashboardService 提供管理员仪表盘统计服务。
 type DashboardService struct {
-	usageRepo      UsageLogRepository
-	aggRepo        DashboardAggregationRepository
-	cache          DashboardStatsCache
-	cacheFreshTTL  time.Duration
-	cacheTTL       time.Duration
-	refreshTimeout time.Duration
-	refreshing     int32
-	aggEnabled     bool
-	aggInterval    time.Duration
-	aggLookback    time.Duration
-	aggUsageDays   int
+	usageRepo       UsageLogRepository
+	aggRepo         DashboardAggregationRepository
+	cache           DashboardStatsCache
+	cacheFreshTTL   time.Duration
+	cacheTTL        time.Duration
+	refreshTimeout  time.Duration
+	refreshing      int32
+	aggEnabled      bool
+	aggInterval     time.Duration
+	aggLookback     time.Duration
+	aggUsageDays    int
+	calibrationRepo AdminUsageCalibrationRepository
 }
 
 func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
@@ -100,6 +101,14 @@ func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregat
 		aggLookback:    aggLookback,
 		aggUsageDays:   aggUsageDays,
 	}
+}
+
+func (s *DashboardService) SetAdminUsageCalibrationRepository(repo AdminUsageCalibrationRepository) {
+	s.calibrationRepo = repo
+}
+
+func (s *DashboardService) InvalidateDashboardStatsCache() {
+	s.evictDashboardStatsCache(nil)
 }
 
 func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -237,14 +246,28 @@ func (s *DashboardService) refreshDashboardStatsAsync() {
 }
 
 func (s *DashboardService) fetchDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
+	var (
+		stats *usagestats.DashboardStats
+		err   error
+	)
 	if !s.aggEnabled {
 		if fetcher, ok := s.usageRepo.(dashboardStatsRangeFetcher); ok {
 			now := time.Now().UTC()
 			start := truncateToDayUTC(now.AddDate(0, 0, -s.aggUsageDays))
-			return fetcher.GetDashboardStatsWithRange(ctx, start, now)
+			stats, err = fetcher.GetDashboardStatsWithRange(ctx, start, now)
+		} else {
+			stats, err = s.usageRepo.GetDashboardStats(ctx)
 		}
+	} else {
+		stats, err = s.usageRepo.GetDashboardStats(ctx)
 	}
-	return s.usageRepo.GetDashboardStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.applyTokenCalibrationToDashboardStats(ctx, stats); err != nil {
+		return nil, err
+	}
+	return stats, nil
 }
 
 func (s *DashboardService) saveDashboardStatsCache(ctx context.Context, stats *usagestats.DashboardStats) {
@@ -416,4 +439,26 @@ func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyI
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 	}
 	return stats, nil
+}
+
+func (s *DashboardService) applyTokenCalibrationToDashboardStats(ctx context.Context, stats *usagestats.DashboardStats) error {
+	if stats == nil || s.calibrationRepo == nil {
+		return nil
+	}
+	totalDelta, err := s.calibrationRepo.SumAllTokenAllocations(ctx, "", "")
+	if err != nil {
+		return fmt.Errorf("sum dashboard token calibrations: %w", err)
+	}
+	stats.TotalCalibrationTokens += totalDelta
+	stats.TotalTokens += totalDelta
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayDelta, err := s.calibrationRepo.SumAllTokenAllocations(ctx, today.Format("2006-01-02"), today.AddDate(0, 0, 1).Format("2006-01-02"))
+	if err != nil {
+		return fmt.Errorf("sum dashboard today token calibrations: %w", err)
+	}
+	stats.TodayCalibrationTokens += todayDelta
+	stats.TodayTokens += todayDelta
+	return nil
 }

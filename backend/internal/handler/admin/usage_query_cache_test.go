@@ -26,3 +26,20 @@ func TestUsageStatsCacheKey_StableAndDistinct(t *testing.T) {
 	withUser.UserID = 7
 	require.NotEqual(t, k1, usageStatsCacheKey(withUser), "different user must change key")
 }
+
+func TestClearAdminUsageStatsCache(t *testing.T) {
+	original := usageStatsCache
+	t.Cleanup(func() {
+		usageStatsCache = original
+	})
+
+	usageStatsCache = newSnapshotCache(time.Minute)
+	usageStatsCache.Set("stats", &usagestats.UsageStats{TotalTokens: 100})
+	_, ok := usageStatsCache.Get("stats")
+	require.True(t, ok)
+
+	clearAdminUsageStatsCache()
+
+	_, ok = usageStatsCache.Get("stats")
+	require.False(t, ok)
+}

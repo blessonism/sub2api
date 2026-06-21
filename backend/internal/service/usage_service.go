@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -50,6 +51,7 @@ type UsageStats struct {
 	TotalCacheTokens         int64   `json:"total_cache_tokens"`
 	TotalCacheCreationTokens int64   `json:"total_cache_creation_tokens"`
 	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
+	CalibrationTokens        int64   `json:"calibration_tokens"`
 	TotalTokens              int64   `json:"total_tokens"`
 	TotalCost                float64 `json:"total_cost"`
 	TotalActualCost          float64 `json:"total_actual_cost"`
@@ -62,6 +64,7 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	calibrationRepo      AdminUsageCalibrationRepository
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -72,6 +75,10 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 	}
+}
+
+func (s *UsageService) SetAdminUsageCalibrationRepository(repo AdminUsageCalibrationRepository) {
+	s.calibrationRepo = repo
 }
 
 // Create 创建使用日志
@@ -193,18 +200,23 @@ func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTi
 		return nil, fmt.Errorf("get user stats: %w", err)
 	}
 
-	return &UsageStats{
+	out := &UsageStats{
 		TotalRequests:            stats.TotalRequests,
 		TotalInputTokens:         stats.TotalInputTokens,
 		TotalOutputTokens:        stats.TotalOutputTokens,
 		TotalCacheTokens:         stats.TotalCacheTokens,
 		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
 		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		CalibrationTokens:        stats.CalibrationTokens,
 		TotalTokens:              stats.TotalTokens,
 		TotalCost:                stats.TotalCost,
 		TotalActualCost:          stats.TotalActualCost,
 		AverageDurationMs:        stats.AverageDurationMs,
-	}, nil
+	}
+	if err := s.applyTokenCalibrationToUsageStats(ctx, userID, startTime, endTime, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetStatsByAPIKey 获取API Key的使用统计
@@ -297,6 +309,9 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("get user dashboard stats: %w", err)
 	}
+	if err := s.applyTokenCalibrationToUserDashboardStats(ctx, userID, stats); err != nil {
+		return nil, err
+	}
 	return stats, nil
 }
 
@@ -314,6 +329,9 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 	trend, err := s.usageRepo.GetUserUsageTrendByUserID(ctx, userID, startTime, endTime, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("get user usage trend: %w", err)
+	}
+	if err := s.applyTokenCalibrationToTrend(ctx, userID, startTime, endTime, granularity, &trend); err != nil {
+		return nil, err
 	}
 	return trend, nil
 }
@@ -454,5 +472,133 @@ func (s *UsageService) GetStatsWithFilters(ctx context.Context, filters usagesta
 	if err != nil {
 		return nil, fmt.Errorf("get usage stats with filters: %w", err)
 	}
+	if s.shouldApplyTokenCalibrationToFilters(filters) {
+		if err := s.applyTokenCalibrationToFilteredStats(ctx, filters, stats); err != nil {
+			return nil, err
+		}
+	}
 	return stats, nil
+}
+
+func (s *UsageService) applyTokenCalibrationToUsageStats(ctx context.Context, userID int64, startTime, endTime time.Time, stats *UsageStats) error {
+	if stats == nil || s.calibrationRepo == nil || userID <= 0 {
+		return nil
+	}
+	startDate, endDate, ok := tokenAllocationDateRange(startTime, endTime)
+	if !ok {
+		return nil
+	}
+	delta, err := s.calibrationRepo.SumTokenAllocations(ctx, userID, startDate, endDate)
+	if err != nil {
+		return fmt.Errorf("sum token calibrations: %w", err)
+	}
+	addTokenDeltaToUsageStats(stats, delta)
+	return nil
+}
+
+func (s *UsageService) applyTokenCalibrationToUserDashboardStats(ctx context.Context, userID int64, stats *usagestats.UserDashboardStats) error {
+	if stats == nil || s.calibrationRepo == nil || userID <= 0 {
+		return nil
+	}
+	totalDelta, err := s.calibrationRepo.SumTokenAllocations(ctx, userID, "", "")
+	if err != nil {
+		return fmt.Errorf("sum total token calibrations: %w", err)
+	}
+	stats.TotalCalibrationTokens += totalDelta
+	stats.TotalTokens += totalDelta
+
+	today := timezone.Today()
+	todayDelta, err := s.calibrationRepo.SumTokenAllocations(ctx, userID, today.Format("2006-01-02"), today.AddDate(0, 0, 1).Format("2006-01-02"))
+	if err != nil {
+		return fmt.Errorf("sum today token calibrations: %w", err)
+	}
+	stats.TodayCalibrationTokens += todayDelta
+	stats.TodayTokens += todayDelta
+	return nil
+}
+
+func (s *UsageService) applyTokenCalibrationToTrend(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string, trend *[]usagestats.TrendDataPoint) error {
+	if trend == nil || s.calibrationRepo == nil || userID <= 0 || granularity != "day" {
+		return nil
+	}
+	startDate, endDate, ok := tokenAllocationDateRange(startTime, endTime)
+	if !ok {
+		return nil
+	}
+	allocations, err := s.calibrationRepo.SumTokenAllocationsByDate(ctx, userID, startDate, endDate)
+	if err != nil {
+		return fmt.Errorf("sum token calibrations by date: %w", err)
+	}
+	if len(allocations) == 0 {
+		return nil
+	}
+	byDate := make(map[string]int, len(*trend))
+	for i := range *trend {
+		byDate[(*trend)[i].Date] = i
+	}
+	for date, delta := range allocations {
+		if idx, ok := byDate[date]; ok {
+			(*trend)[idx].CalibrationTokens += delta
+			(*trend)[idx].TotalTokens += delta
+			continue
+		}
+		*trend = append(*trend, usagestats.TrendDataPoint{
+			Date:              date,
+			CalibrationTokens: delta,
+			TotalTokens:       delta,
+		})
+	}
+	return nil
+}
+
+func (s *UsageService) shouldApplyTokenCalibrationToFilters(filters usagestats.UsageLogFilters) bool {
+	return filters.APIKeyID == 0 &&
+		filters.AccountID == 0 &&
+		filters.GroupID == 0 &&
+		filters.Model == "" &&
+		filters.RequestType == nil &&
+		filters.Stream == nil &&
+		filters.BillingType == nil &&
+		filters.BillingMode == ""
+}
+
+func (s *UsageService) applyTokenCalibrationToFilteredStats(ctx context.Context, filters usagestats.UsageLogFilters, stats *usagestats.UsageStats) error {
+	if stats == nil || s.calibrationRepo == nil {
+		return nil
+	}
+	start := time.Time{}
+	end := time.Time{}
+	if filters.StartTime != nil {
+		start = *filters.StartTime
+	}
+	if filters.EndTime != nil {
+		end = *filters.EndTime
+	}
+	startDate, endDate, ok := tokenAllocationDateRange(start, end)
+	if !ok {
+		return nil
+	}
+	var (
+		delta int64
+		err   error
+	)
+	if filters.UserID > 0 {
+		delta, err = s.calibrationRepo.SumTokenAllocations(ctx, filters.UserID, startDate, endDate)
+	} else {
+		delta, err = s.calibrationRepo.SumAllTokenAllocations(ctx, startDate, endDate)
+	}
+	if err != nil {
+		return fmt.Errorf("sum token calibrations for filtered stats: %w", err)
+	}
+	stats.CalibrationTokens += delta
+	stats.TotalTokens += delta
+	return nil
+}
+
+func addTokenDeltaToUsageStats(stats *UsageStats, delta int64) {
+	if stats == nil || delta == 0 {
+		return
+	}
+	stats.CalibrationTokens += delta
+	stats.TotalTokens += delta
 }

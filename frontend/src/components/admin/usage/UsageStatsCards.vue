@@ -19,6 +19,9 @@
           {{ t('usage.in') }}: {{ formatTokens(stats?.total_input_tokens || 0) }} /
           {{ t('usage.out') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}
         </p>
+        <p v-if="stats?.calibration_tokens" class="text-xs text-amber-600 dark:text-amber-400">
+          {{ t('usage.calibrationTokens') }}: {{ formatSignedTokens(stats.calibration_tokens) }}
+        </p>
       </div>
     </div>
     <div class="card p-4 flex items-center gap-3">
@@ -64,4 +67,6 @@ const formatTokens = (value: number) => {
   if (value >= 1e3) return (value / 1e3).toFixed(2) + 'K'
   return value.toLocaleString()
 }
+
+const formatSignedTokens = (value: number) => `${value > 0 ? '+' : value < 0 ? '-' : ''}${formatTokens(Math.abs(value))}`
 </script>

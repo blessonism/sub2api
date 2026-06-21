@@ -10,6 +10,10 @@ import (
 // 与 dashboard 查询缓存同款:30s TTL 进程内缓存,仅服务 /admin/usage/stats 读路径。
 var usageStatsCache = newSnapshotCache(30 * time.Second)
 
+func clearAdminUsageStatsCache() {
+	usageStatsCache.Clear()
+}
+
 type usageStatsCacheKeyData struct {
 	StartTime   string `json:"start_time"`
 	EndTime     string `json:"end_time"`
