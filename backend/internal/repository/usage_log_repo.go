@@ -2420,34 +2420,74 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 // GetUserUsageTrend returns usage trend data grouped by user and date
 func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []UserUsageTrendPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
+	calibrationStartDate, calibrationEndDateExclusive := calibrationAllocationDateRange(startTime, endTime)
 
 	query := fmt.Sprintf(`
-		WITH top_users AS (
-			SELECT user_id
+		WITH raw_totals AS (
+			SELECT
+				user_id,
+				COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS tokens
 			FROM usage_logs
 			WHERE created_at >= $1 AND created_at < $2
 			GROUP BY user_id
-			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
+		),
+		calibration_totals AS (
+			SELECT
+				target_user_id AS user_id,
+				COALESCE(SUM(token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations
+			WHERE allocation_date >= $4::date AND allocation_date < $5::date
+			GROUP BY target_user_id
+		),
+		top_users AS (
+			SELECT
+				COALESCE(r.user_id, c.user_id) AS user_id,
+				COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) AS tokens
+			FROM raw_totals r
+			FULL OUTER JOIN calibration_totals c ON c.user_id = r.user_id
+			WHERE COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
+			ORDER BY tokens DESC, user_id ASC
 			LIMIT $3
+		),
+		raw_daily AS (
+			SELECT
+				TO_CHAR(u.created_at, '%s') as date,
+				u.user_id,
+				COUNT(*) as requests,
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
+				COALESCE(SUM(u.total_cost), 0) as cost,
+				COALESCE(SUM(u.actual_cost), 0) as actual_cost
+			FROM usage_logs u
+			WHERE u.user_id IN (SELECT user_id FROM top_users)
+			  AND u.created_at >= $1 AND u.created_at < $2
+			GROUP BY date, u.user_id
+		),
+		calibration_daily AS (
+			SELECT
+				TO_CHAR(acu.allocation_date::timestamp, '%s') as date,
+				acu.target_user_id AS user_id,
+				COALESCE(SUM(acu.token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations acu
+			WHERE acu.target_user_id IN (SELECT user_id FROM top_users)
+			  AND acu.allocation_date >= $4::date AND acu.allocation_date < $5::date
+			GROUP BY date, acu.target_user_id
 		)
 		SELECT
-			TO_CHAR(u.created_at, '%s') as date,
-			u.user_id,
+			COALESCE(r.date, c.date) as date,
+			COALESCE(r.user_id, c.user_id) as user_id,
 			COALESCE(us.email, '') as email,
 			COALESCE(us.username, '') as username,
-			COUNT(*) as requests,
-			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(u.total_cost), 0) as cost,
-			COALESCE(SUM(u.actual_cost), 0) as actual_cost
-		FROM usage_logs u
-		LEFT JOIN users us ON u.user_id = us.id
-		WHERE u.user_id IN (SELECT user_id FROM top_users)
-		  AND u.created_at >= $4 AND u.created_at < $5
-		GROUP BY date, u.user_id, us.email, us.username
+			COALESCE(r.requests, 0) as requests,
+			COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) as tokens,
+			COALESCE(r.cost, 0) as cost,
+			COALESCE(r.actual_cost, 0) as actual_cost
+		FROM raw_daily r
+		FULL OUTER JOIN calibration_daily c ON c.user_id = r.user_id AND c.date = r.date
+		LEFT JOIN users us ON us.id = COALESCE(r.user_id, c.user_id)
 		ORDER BY date ASC, tokens DESC
-	`, dateFormat)
+	`, dateFormat, dateFormat)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, calibrationStartDate, calibrationEndDateExclusive)
 	if err != nil {
 		return nil, err
 	}
@@ -2480,20 +2520,40 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	if limit <= 0 {
 		limit = 12
 	}
+	calibrationStartDate, calibrationEndDateExclusive := calibrationAllocationDateRange(startTime, endTime)
 
 	query := fmt.Sprintf(`
-		WITH user_spend AS (
+		WITH raw_user_spend AS (
 			SELECT
 				u.user_id,
-				COALESCE(us.email, '') as email,
 				COALESCE(SUM(%s), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
 				MAX(u.created_at) as last_used_at
 			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email
+			GROUP BY u.user_id
+		),
+		calibration_usage AS (
+			SELECT
+				target_user_id AS user_id,
+				COALESCE(SUM(token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations
+			WHERE allocation_date >= $4::date AND allocation_date < $5::date
+			GROUP BY target_user_id
+		),
+		user_spend AS (
+			SELECT
+				COALESCE(r.user_id, c.user_id) AS user_id,
+				COALESCE(us.email, '') AS email,
+				COALESCE(r.actual_cost, 0) AS actual_cost,
+				COALESCE(r.requests, 0) AS requests,
+				COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) AS tokens,
+				COALESCE(r.last_used_at, to_timestamp(0)) AS last_used_at
+			FROM raw_user_spend r
+			FULL OUTER JOIN calibration_usage c ON c.user_id = r.user_id
+			LEFT JOIN users us ON us.id = COALESCE(r.user_id, c.user_id)
+			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
 		),
 		ranked AS (
 			SELECT
@@ -2524,7 +2584,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 	`, userSpendingRankingCostExpr)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, calibrationStartDate, calibrationEndDateExclusive)
 	if err != nil {
 		return nil, err
 	}
@@ -2565,11 +2625,64 @@ func (r *usageLogRepository) GetAdminTokenLeaderboard(ctx context.Context, start
 	}
 
 	whereClause, args := buildAdminTokenLeaderboardWhere(startTime, endTime, filters, 0)
+	calibrationStartDate, calibrationEndDateExclusive := calibrationAllocationDateRange(startTime, endTime)
 	args = append(args, filters.Limit)
 	limitPosition := len(args)
+	includeCalibration := filters.GroupID == 0 && strings.TrimSpace(filters.Model) == ""
+	calibrationCTE := ""
+	userUsageCTE := `
+		user_usage AS (
+			SELECT
+				user_id,
+				email,
+				username,
+				status,
+				registered_at,
+				last_used_at,
+				requests,
+				tokens,
+				cost,
+				actual_cost,
+				account_cost
+			FROM raw_user_usage
+		),`
+	if includeCalibration {
+		emailPosition, statusPosition := adminTokenLeaderboardCalibrationFilterPositions(filters, 0)
+		args = append(args, calibrationStartDate, calibrationEndDateExclusive)
+		calibrationWhere := buildAdminTokenLeaderboardCalibrationWhere(filters, emailPosition, statusPosition, len(args)-1, len(args))
+		calibrationCTE = fmt.Sprintf(`,
+		calibration_usage AS (
+			SELECT
+				acu.target_user_id AS user_id,
+				COALESCE(SUM(acu.token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations acu
+			LEFT JOIN users u ON u.id = acu.target_user_id
+			WHERE %s
+			GROUP BY acu.target_user_id
+		)`, calibrationWhere)
+		userUsageCTE = `
+		user_usage AS (
+			SELECT
+				COALESCE(r.user_id, c.user_id) AS user_id,
+				COALESCE(r.email, u.email, '') AS email,
+				COALESCE(r.username, u.username, '') AS username,
+				COALESCE(r.status, u.status, '') AS status,
+				COALESCE(r.registered_at, u.created_at, to_timestamp(0)) AS registered_at,
+				COALESCE(r.last_used_at, to_timestamp(0)) AS last_used_at,
+				COALESCE(r.requests, 0) AS requests,
+				COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) AS tokens,
+				COALESCE(r.cost, 0) AS cost,
+				COALESCE(r.actual_cost, 0) AS actual_cost,
+				COALESCE(r.account_cost, 0) AS account_cost
+			FROM raw_user_usage r
+			FULL OUTER JOIN calibration_usage c ON c.user_id = r.user_id
+			LEFT JOIN users u ON u.id = COALESCE(r.user_id, c.user_id)
+			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
+		),`
+	}
 
 	query := fmt.Sprintf(`
-		WITH user_usage AS (
+		WITH raw_user_usage AS (
 			SELECT
 				ul.user_id,
 				COALESCE(u.email, '') as email,
@@ -2586,7 +2699,8 @@ func (r *usageLogRepository) GetAdminTokenLeaderboard(ctx context.Context, start
 			LEFT JOIN users u ON u.id = ul.user_id
 			WHERE %s
 			GROUP BY ul.user_id, u.email, u.username, u.status, u.created_at
-		),
+		)%s,
+		%s
 		ranked AS (
 			SELECT
 				ROW_NUMBER() OVER (ORDER BY tokens DESC, actual_cost DESC, requests DESC, user_id ASC) as rank,
@@ -2629,7 +2743,7 @@ func (r *usageLogRepository) GetAdminTokenLeaderboard(ctx context.Context, start
 		FROM ranked
 		WHERE rank <= $%d
 		ORDER BY rank ASC
-	`, whereClause, limitPosition)
+	`, whereClause, calibrationCTE, userUsageCTE, limitPosition)
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -2692,6 +2806,12 @@ func (r *usageLogRepository) GetAdminTokenLeaderboardUserDetails(ctx context.Con
 	if out.Models, err = r.getAdminTokenLeaderboardModelDetails(ctx, startTime, endTime, userID, filters); err != nil {
 		return nil, err
 	}
+	if filters.GroupID == 0 && strings.TrimSpace(filters.Model) == "" {
+		startDate, endDateExclusive := calibrationAllocationDateRange(startTime, endTime)
+		if out.CalibrationTokens, err = sumTokenAllocationsByDateRange(ctx, r.sql, userID, startDate, endDateExclusive); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
@@ -2721,6 +2841,63 @@ func buildAdminTokenLeaderboardWhere(startTime, endTime time.Time, filters usage
 	}
 
 	return strings.Join(conditions, " AND "), args
+}
+
+func calibrationAllocationDateRange(startTime, endTime time.Time) (string, string) {
+	startDate := ""
+	if !startTime.IsZero() {
+		startDate = startTime.Format("2006-01-02")
+	}
+	endDateExclusive := ""
+	if !endTime.IsZero() {
+		endDateExclusive = calibrationExclusiveDateForTime(endTime)
+	}
+	return startDate, endDateExclusive
+}
+
+func calibrationExclusiveDateForTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
+		return t.Format("2006-01-02")
+	}
+	return t.AddDate(0, 0, 1).Format("2006-01-02")
+}
+
+func adminTokenLeaderboardCalibrationFilterPositions(filters usagestats.AdminTokenLeaderboardFilters, userID int64) (emailPosition, statusPosition int) {
+	argPosition := 3
+	if userID > 0 {
+		argPosition++
+	}
+	if email := strings.TrimSpace(filters.Email); email != "" {
+		emailPosition = argPosition
+		argPosition++
+	}
+	if filters.GroupID > 0 {
+		argPosition++
+	}
+	if model := strings.TrimSpace(filters.Model); model != "" {
+		argPosition++
+	}
+	if status := strings.TrimSpace(filters.UserStatus); status != "" {
+		statusPosition = argPosition
+	}
+	return emailPosition, statusPosition
+}
+
+func buildAdminTokenLeaderboardCalibrationWhere(filters usagestats.AdminTokenLeaderboardFilters, emailPosition, statusPosition, startDatePosition, endDatePosition int) string {
+	conditions := []string{
+		fmt.Sprintf("acu.allocation_date >= $%d::date", startDatePosition),
+		fmt.Sprintf("acu.allocation_date < $%d::date", endDatePosition),
+	}
+	if email := strings.TrimSpace(filters.Email); email != "" && emailPosition > 0 {
+		conditions = append(conditions, fmt.Sprintf("LOWER(COALESCE(u.email, '')) LIKE $%d", emailPosition))
+	}
+	if status := strings.TrimSpace(filters.UserStatus); status != "" && statusPosition > 0 {
+		conditions = append(conditions, fmt.Sprintf("u.status = $%d", statusPosition))
+	}
+	return strings.Join(conditions, " AND ")
 }
 
 func (r *usageLogRepository) getAdminTokenLeaderboardAPIKeyDetails(ctx context.Context, startTime, endTime time.Time, userID int64, filters usagestats.AdminTokenLeaderboardFilters) (result []usagestats.AdminTokenLeaderboardAPIKeyUsage, err error) {
@@ -2859,18 +3036,36 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 	if limit <= 0 {
 		limit = 10
 	}
+	calibrationStartDate, calibrationEndDateExclusive := calibrationAllocationDateRange(startTime, endTime)
 
 	query := `
-		WITH user_usage AS (
+		WITH raw_usage AS (
 			SELECT
 				ul.user_id,
-				COALESCE(u.email, '') as email,
 				COUNT(*) as requests,
 				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as tokens
 			FROM usage_logs ul
-			LEFT JOIN users u ON ul.user_id = u.id
 			WHERE ul.created_at >= $1 AND ul.created_at < $2
-			GROUP BY ul.user_id, u.email
+			GROUP BY ul.user_id
+		),
+		calibration_usage AS (
+			SELECT
+				target_user_id AS user_id,
+				COALESCE(SUM(token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations
+			WHERE allocation_date >= $5::date AND allocation_date < $6::date
+			GROUP BY target_user_id
+		),
+		user_usage AS (
+			SELECT
+				COALESCE(r.user_id, c.user_id) AS user_id,
+				COALESCE(u.email, '') AS email,
+				COALESCE(r.requests, 0) AS requests,
+				COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) AS tokens
+			FROM raw_usage r
+			FULL OUTER JOIN calibration_usage c ON c.user_id = r.user_id
+			LEFT JOIN users u ON u.id = COALESCE(r.user_id, c.user_id)
+			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
 		),
 		ranked AS (
 			SELECT
@@ -2898,7 +3093,7 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 		ORDER BY CASE WHEN row_type = 'top' THEN 0 ELSE 1 END, rank ASC
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, currentUserID)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, currentUserID, calibrationStartDate, calibrationEndDateExclusive)
 	if err != nil {
 		return nil, err
 	}

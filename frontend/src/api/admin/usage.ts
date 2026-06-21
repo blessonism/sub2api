@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType } from '@/types'
+import type { AdminUsageLog, UsageLog, UsageQueryParams, UsageStatsResponse, PaginatedResponse, UsageRequestType } from '@/types'
 import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
@@ -24,6 +24,7 @@ export interface AdminUsageStatsResponse {
   total_input_tokens: number
   total_output_tokens: number
   total_cache_tokens: number
+  calibration_tokens?: number
   total_tokens: number
   total_cost: number
   total_actual_cost: number
@@ -44,6 +45,60 @@ export interface SimpleApiKey {
   id: number
   name: string
   user_id: number
+}
+
+export type AdminUsageCalibrationMode = 'delta' | 'target'
+
+export interface AdminUsageTokenCalibrationInput {
+  mode: AdminUsageCalibrationMode
+  value: number
+  start_date: string
+  end_date: string
+  timezone?: string
+}
+
+export interface AdminUsageBalanceCalibrationInput {
+  mode: AdminUsageCalibrationMode
+  value: number
+}
+
+export interface CreateAdminUsageCalibrationRequest {
+  target_user_id: number
+  reason: string
+  token?: AdminUsageTokenCalibrationInput
+  balance?: AdminUsageBalanceCalibrationInput
+}
+
+export interface AdminUsageCalibrationDailyAllocation {
+  id: number
+  calibration_id: number
+  target_user_id: number
+  date: string
+  original_tokens: number
+  token_delta: number
+  created_at: string
+}
+
+export interface AdminUsageCalibration {
+  id: number
+  target_user_id: number
+  admin_user_id: number
+  reason: string
+  token_mode?: AdminUsageCalibrationMode
+  token_input_value?: number
+  token_before_value?: number
+  token_after_value?: number
+  token_delta?: number
+  token_calculation_start_date?: string
+  token_calculation_end_date?: string
+  token_calculation_timezone?: string
+  balance_mode?: AdminUsageCalibrationMode
+  balance_input_value?: number
+  balance_before_value?: number
+  balance_after_value?: number
+  balance_delta?: number
+  created_at: string
+  allocations?: AdminUsageCalibrationDailyAllocation[]
 }
 
 export interface UsageCleanupFilters {
@@ -97,6 +152,12 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   sort_order?: 'asc' | 'desc'
 }
 
+export interface AdminUserViewQueryParams extends UsageQueryParams {
+  user_id: number
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
+
 // ==================== API Functions ====================
 
 /**
@@ -135,6 +196,31 @@ export async function getStats(params: {
   nocache?: number
 }): Promise<AdminUsageStatsResponse> {
   const { data } = await apiClient.get<AdminUsageStatsResponse>('/admin/usage/stats', {
+    params
+  })
+  return data
+}
+
+export async function getUserView(
+  params: AdminUserViewQueryParams,
+  options?: { signal?: AbortSignal }
+): Promise<PaginatedResponse<UsageLog>> {
+  const { data } = await apiClient.get<PaginatedResponse<UsageLog>>('/admin/usage/user-view', {
+    params,
+    signal: options?.signal
+  })
+  return data
+}
+
+export async function getUserViewStats(params: {
+  user_id: number
+  api_key_id?: number
+  period?: string
+  start_date?: string
+  end_date?: string
+  timezone?: string
+}): Promise<UsageStatsResponse> {
+  const { data } = await apiClient.get<UsageStatsResponse>('/admin/usage/user-view/stats', {
     params
   })
   return data
@@ -209,14 +295,45 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+export async function createCalibration(
+  payload: CreateAdminUsageCalibrationRequest,
+  idempotencyKey: string
+): Promise<AdminUsageCalibration> {
+  const { data } = await apiClient.post<AdminUsageCalibration>(
+    '/admin/usage/calibrations',
+    payload,
+    {
+      headers: {
+        'Idempotency-Key': idempotencyKey
+      }
+    }
+  )
+  return data
+}
+
+export async function listCalibrations(params?: {
+  user_id?: number
+  page?: number
+  page_size?: number
+}): Promise<PaginatedResponse<AdminUsageCalibration>> {
+  const { data } = await apiClient.get<PaginatedResponse<AdminUsageCalibration>>('/admin/usage/calibrations', {
+    params
+  })
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
+  getUserView,
+  getUserViewStats,
   searchUsers,
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  createCalibration,
+  listCalibrations
 }
 
 export default adminUsageAPI

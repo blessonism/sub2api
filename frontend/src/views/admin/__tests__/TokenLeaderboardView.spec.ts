@@ -106,6 +106,7 @@ describe('TokenLeaderboardView', () => {
     })
     getAdminTokenLeaderboardUserDetails.mockResolvedValue({
       user_id: 7,
+      calibration_tokens: -120,
       api_keys: [{ api_key_id: 9, api_key_name: 'prod', requests: 2, tokens: 900, cost: 1, actual_cost: 0.8, account_cost: 0.5 }],
       groups: [],
       models: [],
@@ -176,6 +177,8 @@ describe('TokenLeaderboardView', () => {
       limit: 10
     }))
     expect(wrapper.text()).toContain('prod (#9)')
+    expect(wrapper.text()).toContain('admin.tokenLeaderboard.calibrationTokens')
+    expect(wrapper.text()).toContain('-120')
     expect(wrapper.text()).toContain('admin.tokenLeaderboard.requests')
     expect(wrapper.text()).toContain('2')
   })

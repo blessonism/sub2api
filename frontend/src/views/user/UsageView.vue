@@ -45,6 +45,9 @@
                 <span> · </span>
                 <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
               </p>
+              <p v-if="usageStats?.calibration_tokens" class="text-xs text-amber-600 dark:text-amber-400">
+                {{ t('usage.calibrationTokens') }}: {{ formatSignedTokens(usageStats.calibration_tokens) }}
+              </p>
               <p class="text-xs text-gray-400 dark:text-gray-500">
                 {{ t('usage.cacheHitRate') }}:
                 <template v-if="cacheStats.totalInput > 0">
@@ -105,6 +108,24 @@
         <div class="card">
           <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
+            <!-- 管理员代看用户筛选 -->
+            <div v-if="isAdmin" class="min-w-[240px]">
+              <label class="input-label">{{ t('usage.adminUserFilter') }}</label>
+              <Select
+                v-model="adminSelectedUserValue"
+                :options="adminUserOptions"
+                :placeholder="t('usage.adminSelectUserPlaceholder')"
+                searchable
+                creatable
+                clearable
+                :creatable-prefix="t('usage.adminSearchUserPrefix')"
+                :search-placeholder="t('usage.adminSearchUserPlaceholder')"
+                :empty-text="t('usage.adminNoUsersFound')"
+                @change="handleAdminUserChange"
+              />
+              <p v-if="loadingAdminUsers" class="input-hint">{{ t('usage.adminSearchingUsers') }}</p>
+            </div>
+
             <!-- API Key Filter -->
             <div class="min-w-[180px]">
               <label class="input-label">{{ t('usage.apiKeyFilter') }}</label>
@@ -128,6 +149,15 @@
 
             <!-- Actions -->
             <div class="ml-auto flex items-center gap-3">
+              <button
+                v-if="isAdmin"
+                @click="openCalibrationDialog"
+                :disabled="!canCalibrateSelectedAdminUser"
+                class="btn btn-secondary"
+                :title="calibrationButtonTitle"
+              >
+                {{ t('usage.adminCalibration') }}
+              </button>
               <button @click="applyFilters" :disabled="loading" class="btn btn-secondary">
                 {{ t('common.refresh') }}
               </button>
@@ -400,6 +430,175 @@
     </TablePageLayout>
   </AppLayout>
 
+  <BaseDialog
+    v-if="isAdmin"
+    :show="calibrationDialogVisible"
+    :title="t('usage.adminCalibrationTitle')"
+    width="wide"
+    @close="closeCalibrationDialog"
+  >
+    <div class="space-y-5">
+      <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <div class="font-medium">{{ selectedAdminUserLabel }}</div>
+        <div class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+          {{ t('usage.adminCalibrationAdminOnlyHint') }}
+        </div>
+      </div>
+
+      <div>
+        <label class="input-label">{{ t('usage.adminCalibrationReason') }}</label>
+        <textarea
+          v-model="calibrationForm.reason"
+          class="input min-h-[88px] w-full resize-y"
+          :placeholder="t('usage.adminCalibrationReasonPlaceholder')"
+        ></textarea>
+      </div>
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <label class="flex items-center gap-2">
+            <input v-model="calibrationForm.tokenEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('usage.adminTokenCalibration') }}</span>
+          </label>
+
+          <div class="mt-4 space-y-4" :class="{ 'opacity-50': !calibrationForm.tokenEnabled }">
+            <div>
+              <label class="input-label">{{ t('usage.adminCalibrationMode') }}</label>
+              <Select
+                v-model="calibrationForm.tokenMode"
+                :options="calibrationModeOptions"
+                :disabled="!calibrationForm.tokenEnabled"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ tokenValueLabel }}</label>
+              <input
+                v-model="calibrationForm.tokenValue"
+                type="number"
+                step="1"
+                class="input w-full"
+                :disabled="!calibrationForm.tokenEnabled"
+                :placeholder="t('usage.adminTokenValuePlaceholder')"
+              />
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('usage.adminTokenRangeStart') }}</label>
+                <input
+                  v-model="calibrationForm.tokenStartDate"
+                  type="date"
+                  class="input w-full"
+                  :disabled="!calibrationForm.tokenEnabled"
+                />
+              </div>
+              <div>
+                <label class="input-label">{{ t('usage.adminTokenRangeEnd') }}</label>
+                <input
+                  v-model="calibrationForm.tokenEndDate"
+                  type="date"
+                  class="input w-full"
+                  :disabled="!calibrationForm.tokenEnabled"
+                />
+              </div>
+            </div>
+            <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+              <div class="flex justify-between gap-4">
+                <span>{{ t('usage.adminCurrentRangeTokens') }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ formatTokens(calibrationTokenCurrentTotal) }}</span>
+              </div>
+              <div class="mt-1 flex justify-between gap-4">
+                <span>{{ t('usage.adminPreviewDelta') }}</span>
+                <span class="font-medium" :class="calibrationTokenDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                  {{ formatSignedInteger(calibrationTokenDelta) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <label class="flex items-center gap-2">
+            <input v-model="calibrationForm.balanceEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('usage.adminBalanceCalibration') }}</span>
+          </label>
+
+          <div class="mt-4 space-y-4" :class="{ 'opacity-50': !calibrationForm.balanceEnabled }">
+            <div>
+              <label class="input-label">{{ t('usage.adminCalibrationMode') }}</label>
+              <Select
+                v-model="calibrationForm.balanceMode"
+                :options="calibrationModeOptions"
+                :disabled="!calibrationForm.balanceEnabled"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ balanceValueLabel }}</label>
+              <input
+                v-model="calibrationForm.balanceValue"
+                type="number"
+                step="0.000001"
+                class="input w-full"
+                :disabled="!calibrationForm.balanceEnabled"
+                :placeholder="t('usage.adminBalanceValuePlaceholder')"
+              />
+            </div>
+            <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+              <div class="flex justify-between gap-4">
+                <span>{{ t('usage.adminCurrentBalance') }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">${{ calibrationCurrentBalance.toFixed(6) }}</span>
+              </div>
+              <div class="mt-1 flex justify-between gap-4">
+                <span>{{ t('usage.adminPreviewDelta') }}</span>
+                <span class="font-medium" :class="calibrationBalanceDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                  {{ formatSignedMoney(calibrationBalanceDelta) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('usage.adminCalibrationHistory') }}</h4>
+          <button type="button" class="btn btn-secondary btn-sm" :disabled="loadingCalibrations" @click="loadCalibrationHistory">
+            {{ t('common.refresh') }}
+          </button>
+        </div>
+        <div v-if="loadingCalibrations" class="text-sm text-gray-500 dark:text-dark-300">
+          {{ t('common.loading') }}
+        </div>
+        <div v-else-if="calibrationHistory.length === 0" class="text-sm text-gray-500 dark:text-dark-300">
+          {{ t('usage.adminNoCalibrationHistory') }}
+        </div>
+        <div v-else class="space-y-2">
+          <div
+            v-for="item in calibrationHistory"
+            :key="item.id"
+            class="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700 dark:bg-dark-800 dark:text-dark-200"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="font-medium">{{ formatCalibrationSummary(item) }}</span>
+              <span class="text-gray-500 dark:text-dark-400">{{ formatDateTime(item.created_at) }}</span>
+            </div>
+            <div class="mt-1 text-gray-500 dark:text-dark-400">{{ item.reason }}</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <template #footer>
+      <div class="flex justify-end gap-3">
+        <button type="button" class="btn btn-secondary" @click="closeCalibrationDialog">
+          {{ t('common.cancel') }}
+        </button>
+        <button type="button" class="btn btn-primary" :disabled="submittingCalibration" @click="submitCalibration">
+          {{ submittingCalibration ? t('usage.adminCalibrationSubmitting') : t('usage.adminCalibrationSubmit') }}
+        </button>
+      </div>
+    </template>
+  </BaseDialog>
+
   <!-- Token Tooltip Portal -->
   <Teleport to="body">
     <div
@@ -607,10 +806,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { usageAPI, keysAPI } from '@/api'
+import { adminUsageAPI } from '@/api/admin/usage'
+import type {
+  AdminUsageCalibration,
+  AdminUsageCalibrationMode,
+  CreateAdminUsageCalibrationRequest,
+  SimpleApiKey,
+  SimpleUser
+} from '@/api/admin/usage'
+import { usersAPI } from '@/api/admin/users'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -618,9 +827,10 @@ import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
-import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, UserErrorRequest } from '@/types'
+import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, UserErrorRequest, AdminUser } from '@/types'
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -649,6 +859,8 @@ import {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
 
 let abortController: AbortController | null = null
 
@@ -664,6 +876,67 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
+
+type CalibrationFormState = {
+  reason: string
+  tokenEnabled: boolean
+  tokenMode: AdminUsageCalibrationMode
+  tokenValue: string
+  tokenStartDate: string
+  tokenEndDate: string
+  balanceEnabled: boolean
+  balanceMode: AdminUsageCalibrationMode
+  balanceValue: string
+}
+
+const adminUsers = ref<SimpleUser[]>([])
+const adminSelectedUserValue = ref<string | number | null>(null)
+const selectedAdminUser = ref<SimpleUser | null>(null)
+const selectedAdminUserDetail = ref<AdminUser | null>(null)
+const loadingAdminUsers = ref(false)
+
+const calibrationDialogVisible = ref(false)
+const submittingCalibration = ref(false)
+const loadingCalibrations = ref(false)
+const calibrationHistory = ref<AdminUsageCalibration[]>([])
+const calibrationTokenCurrentTotal = ref(0)
+const calibrationForm = reactive<CalibrationFormState>({
+  reason: '',
+  tokenEnabled: true,
+  tokenMode: 'delta',
+  tokenValue: '',
+  tokenStartDate: '',
+  tokenEndDate: '',
+  balanceEnabled: false,
+  balanceMode: 'delta',
+  balanceValue: ''
+})
+
+const selectedAdminUserID = computed(() => {
+  return typeof adminSelectedUserValue.value === 'number' ? adminSelectedUserValue.value : null
+})
+
+const isAdminUserViewActive = computed(() => isAdmin.value && !!selectedAdminUserID.value)
+
+const adminUserIsDeleted = (user: SimpleUser | AdminUser | null): boolean => {
+  if (!user) return false
+  if ('deleted' in user && user.deleted) return true
+  return 'deleted_at' in user && !!user.deleted_at
+}
+
+const selectedAdminUserDeleted = computed(() => {
+  return adminUserIsDeleted(selectedAdminUserDetail.value) || adminUserIsDeleted(selectedAdminUser.value)
+})
+
+const canCalibrateSelectedAdminUser = computed(() => {
+  return !!selectedAdminUserID.value && !selectedAdminUserDeleted.value
+})
+
+const calibrationButtonTitle = computed(() => {
+  if (!selectedAdminUserID.value) return t('usage.adminSelectUserFirst')
+  if (selectedAdminUserDeleted.value) return t('usage.adminDeletedUserCannotCalibrate')
+  return t('usage.adminCalibration')
+})
 
 // 缓存命中率 = cache_read / (input + cache_read)
 // 分母为 0（无任何输入）时显示 '-'
@@ -706,6 +979,48 @@ const apiKeyOptions = computed(() => {
       label: key.name
     }))
   ]
+})
+
+const calibrationModeOptions = computed(() => [
+  { value: 'delta', label: t('usage.adminCalibrationModeDelta') },
+  { value: 'target', label: t('usage.adminCalibrationModeTarget') }
+])
+
+const formatAdminUserOption = (user: SimpleUser | AdminUser): string => {
+  const email = user.email || `#${user.id}`
+  const deleted = 'deleted' in user && user.deleted
+  return deleted ? `${email} (${t('usage.adminDeletedUser')})` : email
+}
+
+const adminUserOptions = computed(() => {
+  const byID = new Map<number, SimpleUser | AdminUser>()
+  if (selectedAdminUser.value) {
+    byID.set(selectedAdminUser.value.id, selectedAdminUser.value)
+  }
+  if (selectedAdminUserDetail.value) {
+    byID.set(selectedAdminUserDetail.value.id, selectedAdminUserDetail.value)
+  }
+  for (const user of adminUsers.value) {
+    byID.set(user.id, user)
+  }
+  return [
+    { value: null, label: t('usage.adminSelectUserPlaceholder') },
+    ...Array.from(byID.values()).map((user) => ({
+      value: user.id,
+      label: formatAdminUserOption(user),
+      description: `#${user.id}`
+    }))
+  ]
+})
+
+const selectedAdminUserLabel = computed(() => {
+  if (selectedAdminUserDetail.value) {
+    return formatAdminUserOption(selectedAdminUserDetail.value)
+  }
+  if (selectedAdminUser.value) {
+    return formatAdminUserOption(selectedAdminUser.value)
+  }
+  return t('usage.adminSelectUserPlaceholder')
 })
 
 // Helper function to format date in local timezone
@@ -815,17 +1130,104 @@ const formatTokens = (value: number): string => {
   return value.toLocaleString()
 }
 
+const formatSignedTokens = (value: number): string => {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatTokens(Math.abs(value))}`
+}
+
+const parseIntegerInput = (value: string): number | null => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return null
+  return Math.trunc(parsed)
+}
+
+const parseNumberInput = (value: string): number | null => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const formatSignedInteger = (value: number): string => {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${Math.trunc(value).toLocaleString()}`
+}
+
+const formatSignedMoney = (value: number): string => {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}$${value.toFixed(6)}`
+}
+
+const browserTimezone = (): string => {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+}
+
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }
 
-const buildUsageQueryParams = (page: number, pageSize: number): UsageTableQueryParams => ({
-  page,
-  page_size: pageSize,
-  ...filters.value,
-  sort_by: sortState.sort_by,
-  sort_order: sortState.sort_order
+const buildUsageQueryParams = (page: number, pageSize: number): UsageTableQueryParams => {
+  const params: UsageTableQueryParams = {
+    page,
+    page_size: pageSize,
+    ...filters.value,
+    sort_by: sortState.sort_by,
+    sort_order: sortState.sort_order
+  }
+  if (params.api_key_id == null) {
+    delete params.api_key_id
+  }
+  return params
+}
+
+const fetchUsageLogsPage = async (
+  page: number,
+  pageSize: number,
+  options: { signal?: AbortSignal } = {}
+) => {
+  const params = buildUsageQueryParams(page, pageSize)
+  if (isAdminUserViewActive.value && selectedAdminUserID.value) {
+    return adminUsageAPI.getUserView(
+      {
+        ...params,
+        user_id: selectedAdminUserID.value
+      },
+      options
+    )
+  }
+  return usageAPI.query(params, options)
+}
+
+const toApiKeyLike = (key: SimpleApiKey): ApiKey => ({
+  id: key.id,
+  user_id: key.user_id,
+  key: '',
+  name: key.name,
+  group_id: null,
+  status: 'active',
+  ip_whitelist: [],
+  ip_blacklist: [],
+  last_used_at: null,
+  quota: 0,
+  quota_used: 0,
+  expires_at: null,
+  created_at: '',
+  updated_at: '',
+  rate_limit_5h: 0,
+  rate_limit_1d: 0,
+  rate_limit_7d: 0,
+  usage_5h: 0,
+  usage_1d: 0,
+  usage_7d: 0,
+  window_5h_start: null,
+  window_1d_start: null,
+  window_7d_start: null,
+  reset_5h_at: null,
+  reset_1d_at: null,
+  reset_7d_at: null
 })
 
 const loadUsageLogs = async () => {
@@ -837,10 +1239,7 @@ const loadUsageLogs = async () => {
   const { signal } = currentAbortController
   loading.value = true
   try {
-    const response = await usageAPI.query(
-      buildUsageQueryParams(pagination.page, pagination.page_size),
-      { signal }
-    )
+    const response = await fetchUsageLogsPage(pagination.page, pagination.page_size, { signal })
     if (signal.aborted) {
       return
     }
@@ -865,8 +1264,13 @@ const loadUsageLogs = async () => {
 
 const loadApiKeys = async () => {
   try {
-    const response = await keysAPI.list(1, 100)
-    apiKeys.value = response.items
+    if (isAdminUserViewActive.value && selectedAdminUserID.value) {
+      const keys = await adminUsageAPI.searchApiKeys(selectedAdminUserID.value)
+      apiKeys.value = keys.map(toApiKeyLike)
+    } else {
+      const response = await keysAPI.list(1, 100)
+      apiKeys.value = response.items
+    }
   } catch (error) {
     console.error('Failed to load API keys:', error)
   }
@@ -875,16 +1279,330 @@ const loadApiKeys = async () => {
 const loadUsageStats = async () => {
   try {
     const apiKeyId = filters.value.api_key_id ? Number(filters.value.api_key_id) : undefined
-    const stats = await usageAPI.getStatsByDateRange(
-      filters.value.start_date || startDate.value,
-      filters.value.end_date || endDate.value,
-      apiKeyId
-    )
+    const rangeStart = filters.value.start_date || startDate.value
+    const rangeEnd = filters.value.end_date || endDate.value
+    const stats = isAdminUserViewActive.value && selectedAdminUserID.value
+      ? await adminUsageAPI.getUserViewStats({
+          user_id: selectedAdminUserID.value,
+          start_date: rangeStart,
+          end_date: rangeEnd,
+          api_key_id: apiKeyId
+        })
+      : await usageAPI.getStatsByDateRange(rangeStart, rangeEnd, apiKeyId)
     usageStats.value = stats
   } catch (error) {
     console.error('Failed to load usage stats:', error)
   }
 }
+
+const searchAdminUsers = async (keyword: string) => {
+  const trimmed = keyword.trim()
+  if (!trimmed) {
+    adminUsers.value = []
+    return
+  }
+  loadingAdminUsers.value = true
+  try {
+    adminUsers.value = await adminUsageAPI.searchUsers(trimmed)
+    if (adminUsers.value.length === 0) {
+      appStore.showWarning(t('usage.adminNoUsersFound'))
+    }
+  } catch (error) {
+    console.error('Failed to search users:', error)
+    appStore.showError(t('usage.adminSearchUsersFailed'))
+  } finally {
+    loadingAdminUsers.value = false
+  }
+}
+
+const loadSelectedAdminUserDetail = async (userID: number) => {
+  try {
+    selectedAdminUserDetail.value = await usersAPI.getById(userID, true)
+  } catch (error) {
+    console.error('Failed to load selected user:', error)
+    selectedAdminUserDetail.value = null
+    appStore.showError(t('usage.adminLoadUserFailed'))
+  }
+}
+
+const handleAdminUserChange = async (value: string | number | boolean | null) => {
+  if (!isAdmin.value) {
+    return
+  }
+  if (typeof value === 'string') {
+    await searchAdminUsers(value)
+    adminSelectedUserValue.value = selectedAdminUser.value?.id ?? null
+    return
+  }
+  if (typeof value !== 'number') {
+    selectedAdminUser.value = null
+    selectedAdminUserDetail.value = null
+    calibrationHistory.value = []
+    filters.value.api_key_id = undefined
+    pagination.page = 1
+    activeTab.value = 'usage'
+    await loadApiKeys()
+    applyFilters()
+    return
+  }
+
+  const found = adminUsers.value.find((user) => user.id === value)
+  selectedAdminUser.value = found ?? { id: value, email: `#${value}`, deleted: false }
+  filters.value.api_key_id = undefined
+  pagination.page = 1
+  activeTab.value = 'usage'
+  await loadSelectedAdminUserDetail(value)
+  await loadApiKeys()
+  calibrationHistory.value = []
+  applyFilters()
+}
+
+const tokenValueLabel = computed(() => {
+  return calibrationForm.tokenMode === 'target'
+    ? t('usage.adminTokenTargetValue')
+    : t('usage.adminTokenDeltaValue')
+})
+
+const balanceValueLabel = computed(() => {
+  return calibrationForm.balanceMode === 'target'
+    ? t('usage.adminBalanceTargetValue')
+    : t('usage.adminBalanceDeltaValue')
+})
+
+const calibrationCurrentBalance = computed(() => selectedAdminUserDetail.value?.balance ?? 0)
+
+const calibrationTokenDelta = computed(() => {
+  if (!calibrationForm.tokenEnabled) return 0
+  const value = parseIntegerInput(calibrationForm.tokenValue)
+  if (value == null) return 0
+  if (calibrationForm.tokenMode === 'target') {
+    return value - calibrationTokenCurrentTotal.value
+  }
+  return value
+})
+
+const calibrationBalanceDelta = computed(() => {
+  if (!calibrationForm.balanceEnabled) return 0
+  const value = parseNumberInput(calibrationForm.balanceValue)
+  if (value == null) return 0
+  if (calibrationForm.balanceMode === 'target') {
+    return value - calibrationCurrentBalance.value
+  }
+  return value
+})
+
+let calibrationStatsRequestSeq = 0
+const loadCalibrationTokenCurrentTotal = async () => {
+  if (
+    !calibrationDialogVisible.value ||
+    !calibrationForm.tokenEnabled ||
+    !selectedAdminUserID.value ||
+    !calibrationForm.tokenStartDate ||
+    !calibrationForm.tokenEndDate
+  ) {
+    calibrationTokenCurrentTotal.value = 0
+    return
+  }
+  const seq = ++calibrationStatsRequestSeq
+  try {
+    const stats = await adminUsageAPI.getUserViewStats({
+      user_id: selectedAdminUserID.value,
+      start_date: calibrationForm.tokenStartDate,
+      end_date: calibrationForm.tokenEndDate,
+      timezone: browserTimezone()
+    })
+    if (seq === calibrationStatsRequestSeq) {
+      calibrationTokenCurrentTotal.value = stats.total_tokens || 0
+    }
+  } catch (error) {
+    if (seq === calibrationStatsRequestSeq) {
+      calibrationTokenCurrentTotal.value = 0
+    }
+    console.error('Failed to load calibration token preview:', error)
+  }
+}
+
+const loadCalibrationHistory = async () => {
+  if (!selectedAdminUserID.value) {
+    calibrationHistory.value = []
+    return
+  }
+  loadingCalibrations.value = true
+  try {
+    const response = await adminUsageAPI.listCalibrations({
+      user_id: selectedAdminUserID.value,
+      page: 1,
+      page_size: 5
+    })
+    calibrationHistory.value = response.items
+  } catch (error) {
+    console.error('Failed to load calibration history:', error)
+    appStore.showError(t('usage.adminLoadCalibrationHistoryFailed'))
+  } finally {
+    loadingCalibrations.value = false
+  }
+}
+
+const resetCalibrationForm = () => {
+  calibrationForm.reason = ''
+  calibrationForm.tokenEnabled = true
+  calibrationForm.tokenMode = 'delta'
+  calibrationForm.tokenValue = ''
+  calibrationForm.tokenStartDate = filters.value.start_date || startDate.value
+  calibrationForm.tokenEndDate = filters.value.end_date || endDate.value
+  calibrationForm.balanceEnabled = false
+  calibrationForm.balanceMode = 'delta'
+  calibrationForm.balanceValue = ''
+  calibrationTokenCurrentTotal.value = usageStats.value?.total_tokens || 0
+}
+
+const openCalibrationDialog = async () => {
+  if (!selectedAdminUserID.value) {
+    appStore.showWarning(t('usage.adminSelectUserFirst'))
+    return
+  }
+  if (selectedAdminUserDeleted.value) {
+    appStore.showWarning(t('usage.adminDeletedUserCannotCalibrate'))
+    return
+  }
+  resetCalibrationForm()
+  calibrationDialogVisible.value = true
+  await Promise.all([
+    loadSelectedAdminUserDetail(selectedAdminUserID.value),
+    loadCalibrationHistory(),
+    loadCalibrationTokenCurrentTotal()
+  ])
+}
+
+const closeCalibrationDialog = () => {
+  if (submittingCalibration.value) {
+    return
+  }
+  calibrationDialogVisible.value = false
+}
+
+const validateCalibrationForm = (): CreateAdminUsageCalibrationRequest | null => {
+  const targetUserID = selectedAdminUserID.value
+  if (!targetUserID) {
+    appStore.showWarning(t('usage.adminSelectUserFirst'))
+    return null
+  }
+  if (selectedAdminUserDeleted.value) {
+    appStore.showWarning(t('usage.adminDeletedUserCannotCalibrate'))
+    return null
+  }
+  const reason = calibrationForm.reason.trim()
+  if (!reason) {
+    appStore.showWarning(t('usage.adminCalibrationReasonRequired'))
+    return null
+  }
+  if (!calibrationForm.tokenEnabled && !calibrationForm.balanceEnabled) {
+    appStore.showWarning(t('usage.adminCalibrationSelectAtLeastOne'))
+    return null
+  }
+
+  const payload: CreateAdminUsageCalibrationRequest = {
+    target_user_id: targetUserID,
+    reason
+  }
+
+  if (calibrationForm.tokenEnabled) {
+    const tokenValue = parseIntegerInput(calibrationForm.tokenValue)
+    if (tokenValue == null) {
+      appStore.showWarning(t('usage.adminTokenValueRequired'))
+      return null
+    }
+    if (!calibrationForm.tokenStartDate || !calibrationForm.tokenEndDate) {
+      appStore.showWarning(t('usage.adminTokenRangeRequired'))
+      return null
+    }
+    if (calibrationForm.tokenStartDate > calibrationForm.tokenEndDate) {
+      appStore.showWarning(t('usage.adminTokenRangeInvalid'))
+      return null
+    }
+    if (calibrationForm.tokenMode === 'target' && tokenValue < 0) {
+      appStore.showWarning(t('usage.adminTokenTargetInvalid'))
+      return null
+    }
+    payload.token = {
+      mode: calibrationForm.tokenMode,
+      value: tokenValue,
+      start_date: calibrationForm.tokenStartDate,
+      end_date: calibrationForm.tokenEndDate,
+      timezone: browserTimezone()
+    }
+  }
+
+  if (calibrationForm.balanceEnabled) {
+    const balanceValue = parseNumberInput(calibrationForm.balanceValue)
+    if (balanceValue == null) {
+      appStore.showWarning(t('usage.adminBalanceValueRequired'))
+      return null
+    }
+    if (calibrationForm.balanceMode === 'target' && balanceValue < 0) {
+      appStore.showWarning(t('usage.adminBalanceTargetInvalid'))
+      return null
+    }
+    if (calibrationCurrentBalance.value + calibrationBalanceDelta.value < 0) {
+      appStore.showWarning(t('usage.adminBalanceNegativeInvalid'))
+      return null
+    }
+    payload.balance = {
+      mode: calibrationForm.balanceMode,
+      value: balanceValue
+    }
+  }
+
+  return payload
+}
+
+const submitCalibration = async () => {
+  const payload = validateCalibrationForm()
+  if (!payload) {
+    return
+  }
+  submittingCalibration.value = true
+  try {
+    const idempotencyKey = `admin-usage-calibration-${payload.target_user_id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    await adminUsageAPI.createCalibration(payload, idempotencyKey)
+    appStore.showSuccess(t('usage.adminCalibrationSuccess'))
+    calibrationDialogVisible.value = false
+    await Promise.all([
+      loadUsageStats(),
+      loadSelectedAdminUserDetail(payload.target_user_id),
+      loadCalibrationHistory()
+    ])
+  } catch (error) {
+    console.error('Failed to submit calibration:', error)
+    appStore.showError(t('usage.adminCalibrationFailed'))
+  } finally {
+    submittingCalibration.value = false
+  }
+}
+
+const formatCalibrationSummary = (item: AdminUsageCalibration): string => {
+  const parts: string[] = []
+  if (typeof item.token_delta === 'number') {
+    parts.push(`${t('usage.adminTokenCalibration')}: ${formatSignedInteger(item.token_delta)}`)
+  }
+  if (typeof item.balance_delta === 'number') {
+    parts.push(`${t('usage.adminBalanceCalibration')}: ${formatSignedMoney(item.balance_delta)}`)
+  }
+  return parts.join(' · ') || t('usage.adminCalibration')
+}
+
+watch(
+  () => [
+    calibrationDialogVisible.value,
+    calibrationForm.tokenEnabled,
+    calibrationForm.tokenStartDate,
+    calibrationForm.tokenEndDate,
+    selectedAdminUserID.value
+  ],
+  () => {
+    loadCalibrationTokenCurrentTotal()
+  }
+)
 
 const applyFilters = () => {
   pagination.page = 1
@@ -966,7 +1684,7 @@ const exportToCSV = async () => {
     const totalRequests = Math.ceil(pagination.total / pageSize)
 
     for (let page = 1; page <= totalRequests; page++) {
-      const response = await usageAPI.query(buildUsageQueryParams(page, pageSize))
+      const response = await fetchUsageLogsPage(page, pageSize)
       allLogs.push(...response.items)
     }
 
@@ -1071,7 +1789,9 @@ const hideTokenTooltip = () => {
 
 // ── Error Requests Tab ──────────────────────────────────────────────────────
 const activeTab = ref<'usage' | 'errors'>('usage')
-const errorViewEnabled = computed(() => appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
+const errorViewEnabled = computed(() => {
+  return !isAdminUserViewActive.value && (appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
+})
 
 const errorRows = ref<UserErrorRequest[]>([])
 const errorLoading = ref(false)

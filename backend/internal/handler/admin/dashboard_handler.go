@@ -118,6 +118,7 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		"total_output_tokens":         stats.TotalOutputTokens,
 		"total_cache_creation_tokens": stats.TotalCacheCreationTokens,
 		"total_cache_read_tokens":     stats.TotalCacheReadTokens,
+		"total_calibration_tokens":    stats.TotalCalibrationTokens,
 		"total_tokens":                stats.TotalTokens,
 		"total_cost":                  stats.TotalCost,       // 标准计费
 		"total_actual_cost":           stats.TotalActualCost, // 实际扣除
@@ -128,6 +129,7 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		"today_output_tokens":         stats.TodayOutputTokens,
 		"today_cache_creation_tokens": stats.TodayCacheCreationTokens,
 		"today_cache_read_tokens":     stats.TodayCacheReadTokens,
+		"today_calibration_tokens":    stats.TodayCalibrationTokens,
 		"today_tokens":                stats.TodayTokens,
 		"today_cost":                  stats.TodayCost,       // 今日标准计费
 		"today_actual_cost":           stats.TodayActualCost, // 今日实际扣除
@@ -545,6 +547,17 @@ var dashboardUsersRankingCache = newSnapshotCache(5 * time.Minute)
 var dashboardBatchUsersUsageCache = newSnapshotCache(30 * time.Second)
 var dashboardBatchAPIKeysUsageCache = newSnapshotCache(30 * time.Second)
 
+func clearAdminDashboardUsageSnapshotCaches() {
+	dashboardUsersRankingCache.Clear()
+	dashboardBatchUsersUsageCache.Clear()
+	dashboardBatchAPIKeysUsageCache.Clear()
+	dashboardTrendCache.Clear()
+	dashboardAPIKeysTrendCache.Clear()
+	dashboardUsersTrendCache.Clear()
+	dashboardModelStatsCache.Clear()
+	dashboardGroupStatsCache.Clear()
+}
+
 func parseRankingLimit(raw string) int {
 	limit, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || limit <= 0 {
@@ -866,12 +879,13 @@ func (h *DashboardHandler) GetAdminTokenLeaderboardUserDetails(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"api_keys":   details.APIKeys,
-		"groups":     details.Groups,
-		"models":     details.Models,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-		"user_id":    userID,
+		"api_keys":           details.APIKeys,
+		"calibration_tokens": details.CalibrationTokens,
+		"groups":             details.Groups,
+		"models":             details.Models,
+		"start_date":         startTime.Format("2006-01-02"),
+		"end_date":           endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"user_id":            userID,
 	})
 }
 

@@ -565,8 +565,8 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), alphaLastUsed, 40.0, int64(30), int64(2600)).
 		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), gammaLastUsed, 40.0, int64(30), int64(2600))
 
-	mock.ExpectQuery("WITH user_spend AS \\(").
-		WithArgs(start, end, 12).
+	mock.ExpectQuery("WITH raw_user_spend AS \\(").
+		WithArgs(start, end, 12, "2025-01-01", "2025-01-02").
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 12)
@@ -604,7 +604,7 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 		int64(6), int64(2000), 3.4, 2.8, 1.7,
 	)
 
-	mock.ExpectQuery("WITH user_usage AS").
+	mock.ExpectQuery("WITH raw_user_usage AS").
 		WithArgs(start, end, "%alice%", int64(3), "claude-opus", "active", 20).
 		WillReturnRows(rows)
 
@@ -655,7 +655,7 @@ func TestUsageLogRepositoryGetUserSpendingRankingBackfillsSubscriptionQuotaCost(
 		AddRow(int64(8), "sub@example.com", 6.0, int64(3), int64(1200), lastUsed, 6.0, int64(3), int64(1200))
 
 	mock.ExpectQuery(fmt.Sprintf("CASE WHEN \\(u\\.subscription_id IS NOT NULL OR u\\.billing_type = %d\\) AND COALESCE\\(u\\.actual_cost, 0\\) <= 0", service.BillingTypeSubscription)).
-		WithArgs(start, end, 5).
+		WithArgs(start, end, 5, "2025-01-02", "2025-01-03").
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 5)
@@ -694,10 +694,14 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "tokens", "cost", "actual_cost", "account_cost",
 		}).AddRow("claude-opus", int64(4), int64(1200), 1.6, 1.4, 0.9))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
+		WithArgs(userID, "2025-01-01", "2025-01-02").
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
 
 	got, err := repo.GetAdminTokenLeaderboardUserDetails(context.Background(), start, end, userID, usagestats.AdminTokenLeaderboardFilters{})
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.AdminTokenLeaderboardUserDetails{
+		CalibrationTokens: -150,
 		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
 			{APIKeyID: 11, APIKeyName: "prod-key", Requests: 3, Tokens: 900, Cost: 1.2, ActualCost: 1.1, AccountCost: 0.7},
 		},
@@ -724,8 +728,8 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900)).
 		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120))
 
-	mock.ExpectQuery("WITH user_usage AS \\(").
-		WithArgs(start, end, 2, currentUserID).
+	mock.ExpectQuery("WITH raw_usage AS \\(").
+		WithArgs(start, end, 2, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 2, currentUserID)
@@ -754,8 +758,8 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardDefaultsLimitToTop10(t *testin
 	currentUserID := int64(9)
 
 	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens"})
-	mock.ExpectQuery("WITH user_usage AS \\(").
-		WithArgs(start, end, 10, currentUserID).
+	mock.ExpectQuery("WITH raw_usage AS \\(").
+		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 0, currentUserID)

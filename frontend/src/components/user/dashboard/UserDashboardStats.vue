@@ -79,6 +79,9 @@
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayTokens') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats?.today_tokens || 0) }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatTokens(stats?.today_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.today_output_tokens || 0) }}</p>
+          <p v-if="stats?.today_calibration_tokens" class="text-xs text-amber-600 dark:text-amber-400">
+            {{ t('dashboard.calibrationTokens') }}: {{ formatSignedTokens(stats.today_calibration_tokens) }}
+          </p>
         </div>
       </div>
     </div>
@@ -93,6 +96,9 @@
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.totalTokens') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats?.total_tokens || 0) }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatTokens(stats?.total_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}</p>
+          <p v-if="stats?.total_calibration_tokens" class="text-xs text-amber-600 dark:text-amber-400">
+            {{ t('dashboard.calibrationTokens') }}: {{ formatSignedTokens(stats.total_calibration_tokens) }}
+          </p>
         </div>
       </div>
     </div>
@@ -387,5 +393,6 @@ const formatTokens = (t: number) => {
   if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
   return t.toString()
 }
+const formatSignedTokens = (value: number) => `${value > 0 ? '+' : value < 0 ? '-' : ''}${formatTokens(Math.abs(value))}`
 const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms.toFixed(0)}ms`
 </script>

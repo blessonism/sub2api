@@ -191,33 +191,44 @@
                     <div v-if="detailLoading[row.user_id]" class="flex h-24 items-center justify-center">
                       <LoadingSpinner />
                     </div>
-                    <div v-else-if="detailsCache[row.user_id]" class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                      <section>
-                        <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.apiKeyDetails') }}</h3>
-                        <DetailTable
-                          :rows="detailsCache[row.user_id]?.api_keys || []"
-                          name-key="api_key_name"
-                          id-key="api_key_id"
-                          :empty-name="t('admin.tokenLeaderboard.noName')"
-                        />
-                      </section>
-                      <section>
-                        <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.groupDetails') }}</h3>
-                        <DetailTable
-                          :rows="detailsCache[row.user_id]?.groups || []"
-                          name-key="group_name"
-                          id-key="group_id"
-                          :empty-name="t('admin.tokenLeaderboard.noGroup')"
-                        />
-                      </section>
-                      <section>
-                        <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.modelDetails') }}</h3>
-                        <DetailTable
-                          :rows="detailsCache[row.user_id]?.models || []"
-                          name-key="model"
-                          :empty-name="t('admin.tokenLeaderboard.noModel')"
-                        />
-                      </section>
+                    <div v-else-if="detailsCache[row.user_id]" class="space-y-4">
+                      <div
+                        v-if="detailsCache[row.user_id]?.calibration_tokens"
+                        class="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900/60 dark:bg-amber-950/30"
+                      >
+                        <span class="font-medium text-amber-800 dark:text-amber-200">{{ t('admin.tokenLeaderboard.calibrationTokens') }}</span>
+                        <span class="font-semibold tabular-nums" :class="calibrationClass(detailsCache[row.user_id]?.calibration_tokens || 0)">
+                          {{ formatSignedTokens(detailsCache[row.user_id]?.calibration_tokens || 0) }}
+                        </span>
+                      </div>
+                      <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                        <section>
+                          <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.apiKeyDetails') }}</h3>
+                          <DetailTable
+                            :rows="detailsCache[row.user_id]?.api_keys || []"
+                            name-key="api_key_name"
+                            id-key="api_key_id"
+                            :empty-name="t('admin.tokenLeaderboard.noName')"
+                          />
+                        </section>
+                        <section>
+                          <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.groupDetails') }}</h3>
+                          <DetailTable
+                            :rows="detailsCache[row.user_id]?.groups || []"
+                            name-key="group_name"
+                            id-key="group_id"
+                            :empty-name="t('admin.tokenLeaderboard.noGroup')"
+                          />
+                        </section>
+                        <section>
+                          <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.modelDetails') }}</h3>
+                          <DetailTable
+                            :rows="detailsCache[row.user_id]?.models || []"
+                            name-key="model"
+                            :empty-name="t('admin.tokenLeaderboard.noModel')"
+                          />
+                        </section>
+                      </div>
                     </div>
                     <div v-else class="text-sm text-red-600 dark:text-red-300">
                       {{ t('admin.tokenLeaderboard.failedToLoadDetails') }}
@@ -419,6 +430,17 @@ const summaryMetrics = computed(() => [
 
 function formatCost(value: number): string {
   return formatCostFixed(value, value > 0 && value < 0.01 ? 6 : 4)
+}
+
+function formatSignedTokens(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatNumber(Math.abs(value))}`
+}
+
+function calibrationClass(value: number): string {
+  if (value > 0) return 'text-emerald-700 dark:text-emerald-300'
+  if (value < 0) return 'text-rose-700 dark:text-rose-300'
+  return 'text-gray-700 dark:text-gray-300'
 }
 
 function formatLastUsedAt(value: string): string {
