@@ -186,9 +186,11 @@ type TokenUsageAutoPolicyRepository interface {
 	AggregatePolicyUsage(ctx context.Context, policy TokenUsageAutoPolicy, since time.Time) ([]TokenUsageAutoPolicyUsageRow, error)
 	ListPolicyStates(ctx context.Context, policyID, targetGroupID int64, userIDs []int64) (map[int64]TokenUsageAutoPolicyState, error)
 	ApplyPolicyChanges(ctx context.Context, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, nextRunAt *time.Time) error
+	ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, nextRunAt *time.Time) error
 	BeginPolicyRun(ctx context.Context, policyID int64, runType string) (*TokenUsageAutoPolicyRun, error)
-	FinishPolicyRun(ctx context.Context, runID int64, status string, stats TokenUsageAutoPolicyRunStats, errMessage string) error
+	FinishPolicyRun(ctx context.Context, runID int64, status string, stats TokenUsageAutoPolicyRunStats, changes []TokenUsageAutoPolicyChange, errMessage string) error
 	ListPolicyRuns(ctx context.Context, policyID int64, params pagination.PaginationParams) ([]TokenUsageAutoPolicyRun, *pagination.PaginationResult, error)
+	ListPolicyRunChanges(ctx context.Context, policyID, runID int64, params pagination.PaginationParams) ([]TokenUsageAutoPolicyChange, *pagination.PaginationResult, error)
 }
 
 type TokenUsageAutoPolicyService struct {
@@ -304,6 +306,19 @@ func (s *TokenUsageAutoPolicyService) ListRuns(ctx context.Context, policyID int
 	return s.repo.ListPolicyRuns(ctx, policyID, pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: "created_at", SortOrder: "desc"})
 }
 
+func (s *TokenUsageAutoPolicyService) ListRunChanges(ctx context.Context, policyID, runID int64, page, pageSize int) ([]TokenUsageAutoPolicyChange, *pagination.PaginationResult, error) {
+	if policyID <= 0 {
+		return nil, nil, infraerrors.BadRequest("INVALID_POLICY_ID", "invalid policy id")
+	}
+	if runID <= 0 {
+		return nil, nil, infraerrors.BadRequest("INVALID_POLICY_RUN_ID", "invalid policy run id")
+	}
+	if _, err := s.repo.GetPolicyByID(ctx, policyID); err != nil {
+		return nil, nil, err
+	}
+	return s.repo.ListPolicyRunChanges(ctx, policyID, runID, pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: "id", SortOrder: "asc"})
+}
+
 func (s *TokenUsageAutoPolicyService) previewPolicy(ctx context.Context, policy TokenUsageAutoPolicy) (*TokenUsageAutoPolicyPreview, error) {
 	changes, stats, err := s.buildPolicyChanges(ctx, policy)
 	if err != nil {
@@ -332,7 +347,7 @@ func (s *TokenUsageAutoPolicyService) runPolicy(ctx context.Context, policy Toke
 
 	changes, stats, buildErr := s.buildPolicyChanges(ctx, policy)
 	if buildErr != nil {
-		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, buildErr.Error())
+		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, nil, buildErr.Error())
 		return nil, buildErr
 	}
 
@@ -340,14 +355,11 @@ func (s *TokenUsageAutoPolicyService) runPolicy(ctx context.Context, policy Toke
 	if !policy.Enabled {
 		nextRun = nil
 	}
-	if err := s.repo.ApplyPolicyChanges(ctx, policy, changes, nextRun); err != nil {
-		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, err.Error())
+	if err := s.repo.ApplyPolicyChangesAndFinishRun(ctx, run.ID, policy, changes, stats, nextRun); err != nil {
+		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, nil, err.Error())
 		return nil, err
 	}
 	s.invalidateAuthCacheForPolicyChanges(ctx, policy, changes)
-	if err := s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusSuccess, stats, ""); err != nil {
-		return nil, err
-	}
 
 	finished, _, err := s.repo.ListPolicyRuns(ctx, policy.ID, pagination.PaginationParams{Page: 1, PageSize: 1, SortBy: "created_at", SortOrder: "desc"})
 	if err == nil && len(finished) > 0 {

@@ -157,6 +157,18 @@ export async function listRuns(
   return data
 }
 
+export async function listRunChanges(
+  id: number,
+  runId: number,
+  params?: { page?: number; page_size?: number }
+): Promise<PaginatedResponse<TokenUsagePolicyChange>> {
+  const { data } = await apiClient.get<PaginatedResponse<TokenUsagePolicyChange>>(
+    `/admin/token-usage-policies/${id}/runs/${runId}/changes`,
+    { params }
+  )
+  return data
+}
+
 export const tokenUsagePoliciesAPI = {
   list,
   get,
@@ -165,7 +177,8 @@ export const tokenUsagePoliciesAPI = {
   delete: remove,
   preview,
   run,
-  listRuns
+  listRuns,
+  listRunChanges
 }
 
 export default tokenUsagePoliciesAPI

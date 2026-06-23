@@ -132,8 +132,8 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 
 #### 2. Signatures
 - Route prefix: `/api/v1/admin/token-usage-policies`.
-- Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `GET /:id/runs`.
-- DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`.
+- Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `GET /:id/runs`, `GET /:id/runs/:run_id/changes`.
+- DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`, `token_usage_auto_run_changes`.
 - Rate write target: `user_group_rate_multipliers(user_id, group_id).rate_multiplier`; do not update `rpm_override`.
 - Group grant target: `user_allowed_groups(user_id, group_id)`; only write columns that exist in the schema (`user_id`, `group_id`, `created_at`).
 
@@ -145,6 +145,9 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 - `manual_priority` must not overwrite an existing manual `rate_multiplier`, including the first time a user is seen before any auto assignment exists.
 - `grant_group_and_rate` may add the target group but must not remove any existing groups. Clearing may remove only the group grant that the same policy created.
 - Clearing an auto rate must set `rate_multiplier` back to the captured `previous_rate_multiplier` when present, otherwise set it to `NULL`; preserve `rpm_override`.
+- `GET /:id/runs` must return run summary rows only; user-level change details must be loaded from paginated `GET /:id/runs/:run_id/changes`.
+- Successful real runs must apply rate/group changes, persist `token_usage_auto_run_changes`, and update the run summary in one transaction so audit failure cannot leave applied configuration without matching history.
+- `token_usage_auto_run_changes.target_group_id` is an audit snapshot, not a live `groups` relationship; do not add a cascading `groups` foreign key that can delete history when a group is removed.
 
 #### 4. Validation & Error Matrix
 - Invalid policy id -> `400 INVALID_POLICY_ID`.
@@ -158,13 +161,15 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 
 #### 5. Good/Base/Bad Cases
 - Good: a user with 30-day usage above the highest threshold receives only the target group-specific rate multiplier, and preview shows the same change without writing any rows.
+- Good: run history renders summary counts first and fetches paginated user-level changes only when the admin expands one run.
 - Base: a user below the lowest tier and managed by the policy is cleared; `rpm_override` and unrelated groups remain untouched.
 - Bad: a first-time policy run overwrites an existing manual group rate under `manual_priority`.
 - Bad: inserting into `user_allowed_groups(updated_at)` when the join table does not define that column.
+- Bad: returning every run's `changes` from `GET /:id/runs` or linking run-change `target_group_id` to `groups(id) ON DELETE CASCADE`.
 
 #### 6. Tests Required
 - Service unit tests: defaults/validation, tier selection, downgrade, clear, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
-- Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, and grant/clear preserves unrelated group and RPM state.
+- Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, run summaries omit change details, run changes are paginated and scoped to the requested policy/run, successful runs persist apply/audit/summary atomically, and grant/clear preserves unrelated group and RPM state.
 - Handler/routes tests: all admin endpoints are registered under the prefix and use admin middleware.
 - Frontend checks: API types match backend JSON names, page defaults match product defaults, preview groups create/update/downgrade/clear/skip results, and `pnpm typecheck` passes.
 

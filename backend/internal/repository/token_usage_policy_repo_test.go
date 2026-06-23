@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -186,6 +188,219 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesDoesNotMarkConflictedGroupG
 	err = repo.ApplyPolicyChanges(context.Background(), policy, []service.TokenUsageAutoPolicyChange{change}, nil)
 
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	tierID := int64(3)
+	minTokens := int64(1000)
+	oldRate := 1.0
+	newRate := 0.7
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, UpdateCount: 1}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:        service.TokenUsagePolicyChangeUpdate,
+		UserID:            7,
+		UserName:          "u7",
+		UserEmail:         "u7@example.com",
+		TokenUsage:        1500,
+		TargetGroupID:     8,
+		TierID:            &tierID,
+		TierMinTokens:     &minTokens,
+		OldRateMultiplier: &oldRate,
+		NewRateMultiplier: &newRate,
+		Reason:            "tier matched",
+		GroupGranted:      true,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_id FROM token_usage_auto_runs").
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"policy_id"}).AddRow(int64(9)))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_runs").
+		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.FinishPolicyRun(context.Background(), 12, service.TokenUsagePolicyRunStatusSuccess, stats, []service.TokenUsageAutoPolicyChange{change}, "")
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChangesFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, UpdateCount: 1}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:    service.TokenUsagePolicyChangeUpdate,
+		UserID:        7,
+		TokenUsage:    1500,
+		TargetGroupID: 8,
+	}
+	insertErr := errors.New("insert audit failed")
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_id FROM token_usage_auto_runs").
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"policy_id"}).AddRow(int64(9)))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WillReturnError(insertErr)
+	mock.ExpectRollback()
+
+	err = repo.FinishPolicyRun(context.Background(), 12, service.TokenUsagePolicyRunStatusSuccess, stats, []service.TokenUsageAutoPolicyChange{change}, "")
+
+	require.ErrorIs(t, err, insertErr)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAuditFailure(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	tierID := int64(3)
+	oldRate := 1.0
+	newRate := 0.7
+	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, UpdateCount: 1}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:        service.TokenUsagePolicyChangeUpdate,
+		UserID:            7,
+		TokenUsage:        1500,
+		TargetGroupID:     8,
+		TierID:            &tierID,
+		OldRateMultiplier: &oldRate,
+		NewRateMultiplier: &newRate,
+	}
+	insertErr := errors.New("insert audit failed")
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO user_group_rate_multipliers").
+		WithArgs(int64(7), int64(8), newRate).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT previous_rate_multiplier FROM token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier"}).AddRow(nil))
+	mock.ExpectExec("INSERT INTO token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), newRate, false, oldRate, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_policies").
+		WithArgs(int64(9), sqlmock.AnyArg(), nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WillReturnError(insertErr)
+	mock.ExpectRollback()
+
+	err = repo.ApplyPolicyChangesAndFinishRun(context.Background(), 12, policy, []service.TokenUsageAutoPolicyChange{change}, stats, nil)
+
+	require.ErrorIs(t, err, insertErr)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryListPolicyRunsDoesNotAttachChanges(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+	now := time.Now().UTC()
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM token_usage_auto_runs").
+		WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery("SELECT id, policy_id, run_type, status").
+		WithArgs(int64(9), 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "policy_id", "run_type", "status", "total_users",
+			"create_count", "update_count", "downgrade_count", "clear_count", "skip_count",
+			"error_message", "started_at", "finished_at", "created_at",
+		}).AddRow(
+			int64(12), int64(9), service.TokenUsagePolicyRunTypeManual, service.TokenUsagePolicyRunStatusSuccess, 1,
+			1, 0, 0, 0, 0,
+			"", now, now, now,
+		))
+
+	runs, pageResult, err := repo.ListPolicyRuns(context.Background(), 9, pagination.PaginationParams{Page: 1, PageSize: 20})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), pageResult.Total)
+	require.Len(t, runs, 1)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryListPolicyRunChangesScopesRunToPolicy(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(12), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	changes, pageResult, err := repo.ListPolicyRunChanges(context.Background(), 9, 12, pagination.PaginationParams{Page: 1, PageSize: 20})
+
+	require.Error(t, err)
+	require.Nil(t, changes)
+	require.Nil(t, pageResult)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_POLICY_RUN_ID", infraerrors.Reason(err))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryListPolicyRunChangesReturnsScopedChanges(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	tierID := int64(3)
+	minTokens := int64(1000)
+	oldRate := 1.0
+	newRate := 0.7
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(12), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\)").
+		WithArgs(int64(9), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery("SELECT run_id, change_type").
+		WithArgs(int64(9), int64(12), 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"run_id", "change_type", "user_id", "user_name", "user_email",
+			"token_usage", "target_group_id", "tier_id", "tier_min_tokens",
+			"old_rate_multiplier", "new_rate_multiplier", "reason",
+			"group_granted", "manual_takeover",
+		}).AddRow(
+			int64(12), service.TokenUsagePolicyChangeUpdate, int64(7), "u7", "u7@example.com",
+			int64(1500), int64(8), tierID, minTokens,
+			oldRate, newRate, "tier matched",
+			true, false,
+		))
+
+	changes, pageResult, err := repo.ListPolicyRunChanges(context.Background(), 9, 12, pagination.PaginationParams{Page: 1, PageSize: 20})
+
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	require.Equal(t, int64(1), pageResult.Total)
+	require.Equal(t, 1, pageResult.Page)
+	require.Equal(t, 20, pageResult.PageSize)
+	require.Equal(t, service.TokenUsagePolicyChangeUpdate, changes[0].ChangeType)
+	require.Equal(t, int64(7), changes[0].UserID)
+	require.InDelta(t, newRate, *changes[0].NewRateMultiplier, 0.00001)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

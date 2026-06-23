@@ -120,6 +120,7 @@ func registerTokenUsagePolicyRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		policies.POST("/:id/preview", h.Admin.TokenUsagePolicy.Preview)
 		policies.POST("/:id/run", h.Admin.TokenUsagePolicy.Run)
 		policies.GET("/:id/runs", h.Admin.TokenUsagePolicy.ListRuns)
+		policies.GET("/:id/runs/:run_id/changes", h.Admin.TokenUsagePolicy.ListRunChanges)
 	}
 }
 

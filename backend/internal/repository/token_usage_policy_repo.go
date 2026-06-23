@@ -373,6 +373,32 @@ func (r *tokenUsagePolicyRepository) ApplyPolicyChanges(ctx context.Context, pol
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *tokenUsagePolicyRepository) ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, stats service.TokenUsageAutoPolicyRunStats, nextRunAt *time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt); err != nil {
+		return err
+	}
+	if err := insertTokenUsageRunChanges(ctx, tx, runID, policy.ID, changes); err != nil {
+		return err
+	}
+	if err := r.finishPolicyRunSummary(ctx, tx, runID, service.TokenUsagePolicyRunStatusSuccess, stats, ""); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, nextRunAt *time.Time) error {
 	now := time.Now().UTC()
 	for _, change := range changes {
 		switch change.ChangeType {
@@ -467,7 +493,7 @@ func (r *tokenUsagePolicyRepository) ApplyPolicyChanges(ctx context.Context, pol
 	`, policy.ID, now, nextRunAt); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, change service.TokenUsageAutoPolicyChange) error {
@@ -550,8 +576,29 @@ func (r *tokenUsagePolicyRepository) BeginPolicyRun(ctx context.Context, policyI
 	return run, nil
 }
 
-func (r *tokenUsagePolicyRepository) FinishPolicyRun(ctx context.Context, runID int64, status string, stats service.TokenUsageAutoPolicyRunStats, errMessage string) error {
-	_, err := r.db.ExecContext(ctx, `
+func (r *tokenUsagePolicyRepository) FinishPolicyRun(ctx context.Context, runID int64, status string, stats service.TokenUsageAutoPolicyRunStats, changes []service.TokenUsageAutoPolicyChange, errMessage string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var policyID int64
+	if err := scanSingleRow(ctx, tx, `SELECT policy_id FROM token_usage_auto_runs WHERE id = $1`, []any{runID}, &policyID); err != nil {
+		return err
+	}
+
+	if err := insertTokenUsageRunChanges(ctx, tx, runID, policyID, changes); err != nil {
+		return err
+	}
+	if err := r.finishPolicyRunSummary(ctx, tx, runID, status, stats, errMessage); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *tokenUsagePolicyRepository) finishPolicyRunSummary(ctx context.Context, exec sqlExecutor, runID int64, status string, stats service.TokenUsageAutoPolicyRunStats, errMessage string) error {
+	_, err := exec.ExecContext(ctx, `
 		UPDATE token_usage_auto_runs
 		SET status=$2, total_users=$3, create_count=$4, update_count=$5, downgrade_count=$6,
 		    clear_count=$7, skip_count=$8, error_message=NULLIF($9, ''), finished_at=NOW()
@@ -595,6 +642,85 @@ func (r *tokenUsagePolicyRepository) ListPolicyRuns(ctx context.Context, policyI
 		pages = 1
 	}
 	return runs, &pagination.PaginationResult{Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
+}
+
+func (r *tokenUsagePolicyRepository) ListPolicyRunChanges(ctx context.Context, policyID, runID int64, params pagination.PaginationParams) ([]service.TokenUsageAutoPolicyChange, *pagination.PaginationResult, error) {
+	page, pageSize := normalizePolicyPagination(params)
+	var exists bool
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT EXISTS (
+			SELECT 1 FROM token_usage_auto_runs
+			WHERE id = $1 AND policy_id = $2
+		)
+	`, []any{runID, policyID}, &exists); err != nil {
+		return nil, nil, err
+	}
+	if !exists {
+		return nil, nil, infraerrors.BadRequest("INVALID_POLICY_RUN_ID", "invalid policy run id")
+	}
+
+	var total int64
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT COUNT(*)
+		FROM token_usage_auto_run_changes
+		WHERE policy_id = $1 AND run_id = $2
+	`, []any{policyID, runID}, &total); err != nil {
+		return nil, nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT run_id, change_type, user_id, COALESCE(user_name, ''), COALESCE(user_email, ''),
+		       token_usage, target_group_id, tier_id, tier_min_tokens,
+		       old_rate_multiplier, new_rate_multiplier, COALESCE(reason, ''),
+		       group_granted, manual_takeover
+		FROM token_usage_auto_run_changes
+		WHERE policy_id = $1 AND run_id = $2
+		ORDER BY id
+		LIMIT $3 OFFSET $4
+	`, policyID, runID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	changes := []service.TokenUsageAutoPolicyChange{}
+	for rows.Next() {
+		var rowRunID int64
+		change, err := scanTokenUsageRunChange(rows, &rowRunID)
+		if err != nil {
+			return nil, nil, err
+		}
+		changes = append(changes, change)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if pages < 1 {
+		pages = 1
+	}
+	return changes, &pagination.PaginationResult{Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
+}
+
+func insertTokenUsageRunChanges(ctx context.Context, exec sqlExecutor, runID, policyID int64, changes []service.TokenUsageAutoPolicyChange) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	for _, change := range changes {
+		if _, err := exec.ExecContext(ctx, `
+			INSERT INTO token_usage_auto_run_changes (
+				run_id, policy_id, change_type, user_id, user_name, user_email, token_usage, target_group_id,
+				tier_id, tier_min_tokens, old_rate_multiplier, new_rate_multiplier, reason,
+				group_granted, manual_takeover, created_at
+			)
+			VALUES ($1,$2,$3,$4,NULLIF($5, ''),NULLIF($6, ''),$7,$8,$9,$10,$11,$12,NULLIF($13, ''),$14,$15,NOW())
+		`, runID, policyID, change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID,
+			change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason,
+			change.GroupGranted, change.ManualTakeover); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertTokenUsagePolicyTiers(ctx context.Context, tx *sql.Tx, policyID int64, tiers []service.TokenUsageAutoPolicyTier) error {
@@ -753,6 +879,38 @@ func scanTokenUsageRunDest(run *service.TokenUsageAutoPolicyRun) []any {
 		&run.TotalUsers, &run.CreateCount, &run.UpdateCount, &run.DowngradeCount, &run.ClearCount, &run.SkipCount,
 		&run.ErrorMessage, &run.StartedAt, &run.FinishedAt, &run.CreatedAt,
 	}
+}
+
+func scanTokenUsageRunChange(rows *sql.Rows, runID *int64) (service.TokenUsageAutoPolicyChange, error) {
+	var change service.TokenUsageAutoPolicyChange
+	var tierID sql.NullInt64
+	var tierMin sql.NullInt64
+	var oldRate sql.NullFloat64
+	var newRate sql.NullFloat64
+	if err := rows.Scan(
+		runID, &change.ChangeType, &change.UserID, &change.UserName, &change.UserEmail,
+		&change.TokenUsage, &change.TargetGroupID, &tierID, &tierMin,
+		&oldRate, &newRate, &change.Reason, &change.GroupGranted, &change.ManualTakeover,
+	); err != nil {
+		return change, err
+	}
+	if tierID.Valid {
+		v := tierID.Int64
+		change.TierID = &v
+	}
+	if tierMin.Valid {
+		v := tierMin.Int64
+		change.TierMinTokens = &v
+	}
+	if oldRate.Valid {
+		v := oldRate.Float64
+		change.OldRateMultiplier = &v
+	}
+	if newRate.Valid {
+		v := newRate.Float64
+		change.NewRateMultiplier = &v
+	}
+	return change, nil
 }
 
 func normalizePolicyPagination(params pagination.PaginationParams) (int, int) {
