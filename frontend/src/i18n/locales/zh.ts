@@ -906,6 +906,8 @@ export default {
     adminSearchUserPrefix: '搜索用户',
     adminSearchUserPlaceholder: '输入邮箱或用户 ID 搜索',
     adminSearchingUsers: '正在搜索用户...',
+    adminUserSearchResults: '搜索结果',
+    adminClearSelectedUser: '退出代看',
     adminNoUsersFound: '未找到匹配用户',
     adminDeletedUser: '已删除',
     adminDeletedUserCannotCalibrate: '已删除用户不可校准',

@@ -902,6 +902,8 @@ export default {
     adminSearchUserPrefix: 'Search user',
     adminSearchUserPlaceholder: 'Search by email or user ID',
     adminSearchingUsers: 'Searching users...',
+    adminUserSearchResults: 'Search results',
+    adminClearSelectedUser: 'Exit view',
     adminNoUsersFound: 'No matching users found',
     adminDeletedUser: 'deleted',
     adminDeletedUserCannotCalibrate: 'Deleted users cannot be calibrated',

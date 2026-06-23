@@ -11,6 +11,7 @@ const {
   adminGetUserView,
   adminGetUserViewStats,
   adminSearchApiKeys,
+  adminSearchUsers,
   adminCreateCalibration,
   adminListCalibrations,
   adminUsersGetById,
@@ -26,6 +27,7 @@ const {
   adminGetUserView: vi.fn(),
   adminGetUserViewStats: vi.fn(),
   adminSearchApiKeys: vi.fn(),
+  adminSearchUsers: vi.fn(),
   adminCreateCalibration: vi.fn(),
   adminListCalibrations: vi.fn(),
   adminUsersGetById: vi.fn(),
@@ -55,6 +57,13 @@ const messages: Record<string, string> = {
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.adminCalibration': 'Calibrate',
+  'usage.adminUserFilter': 'User',
+  'usage.adminSearchUserPlaceholder': 'Search by email or user ID',
+  'usage.adminSearchingUsers': 'Searching users...',
+  'usage.adminUserSearchResults': 'Search results',
+  'usage.adminClearSelectedUser': 'Exit view',
+  'usage.adminDeletedUser': 'deleted',
+  'usage.adminNoUsersFound': 'No matching users found',
   'usage.adminSelectUserFirst': 'Select a target user first',
   'usage.adminDeletedUserCannotCalibrate': 'Deleted users cannot be calibrated',
   'usage.model': 'Model',
@@ -103,6 +112,7 @@ vi.mock('@/api/admin/usage', () => ({
     getUserView: adminGetUserView,
     getUserViewStats: adminGetUserViewStats,
     searchApiKeys: adminSearchApiKeys,
+    searchUsers: adminSearchUsers,
     createCalibration: adminCreateCalibration,
     listCalibrations: adminListCalibrations,
   },
@@ -158,6 +168,7 @@ describe('user UsageView tooltip', () => {
     adminGetUserView.mockReset()
     adminGetUserViewStats.mockReset()
     adminSearchApiKeys.mockReset()
+    adminSearchUsers.mockReset()
     adminCreateCalibration.mockReset()
     adminListCalibrations.mockReset()
     adminUsersGetById.mockReset()
@@ -175,6 +186,7 @@ describe('user UsageView tooltip', () => {
       average_duration_ms: 0,
     })
     adminSearchApiKeys.mockResolvedValue([])
+    adminSearchUsers.mockResolvedValue([])
     adminListCalibrations.mockResolvedValue({ items: [], total: 0, pages: 0 })
     adminUsersGetById.mockResolvedValue({
       id: 7,
@@ -675,6 +687,149 @@ describe('user UsageView tooltip', () => {
       timezone: 'Asia/Tokyo',
     })
     dateTimeFormatSpy.mockRestore()
+  })
+
+  it('searches admin users only after clicking search and selects from real results', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+    adminSearchUsers.mockResolvedValue([
+      { id: 42, email: 'target@example.com', deleted: false },
+    ])
+    adminUsersGetById.mockResolvedValue({
+      id: 42,
+      email: 'target@example.com',
+      role: 'user',
+      balance: 1,
+      concurrency: 0,
+      status: 'active',
+      allowed_groups: null,
+      balance_notify_enabled: false,
+      balance_notify_threshold: null,
+      balance_notify_extra_emails: [],
+      created_at: '2026-06-01T00:00:00Z',
+      updated_at: '2026-06-01T00:00:00Z',
+      notes: '',
+    })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const input = wrapper.get('[data-testid="admin-user-search-input"]')
+    await input.setValue('42')
+    await nextTick()
+
+    expect(adminSearchUsers).not.toHaveBeenCalled()
+    expect(adminUsersGetById).not.toHaveBeenCalled()
+    expect(adminGetUserView).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="admin-user-search-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(adminSearchUsers).toHaveBeenCalledWith('42')
+    expect(adminUsersGetById).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('target@example.com')
+
+    await wrapper.get('[data-testid="admin-user-result-42"]').trigger('click')
+    await flushPromises()
+
+    expect(adminUsersGetById).toHaveBeenCalledWith(42, true)
+    expect(adminSearchApiKeys).toHaveBeenCalledWith(42)
+    expect(adminGetUserView).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 42 }),
+      expect.any(Object),
+    )
+    expect(wrapper.text()).toContain('target@example.com')
+    expect(wrapper.text()).toContain('#42')
+  })
+
+  it('keeps admin calibration dialog open while typing into form fields', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 7
+    setupState.selectedAdminUser = { id: 7, email: 'user@example.com', deleted: false }
+    setupState.calibrationDialogVisible = true
+    await nextTick()
+
+    const reason = document.body.querySelector<HTMLTextAreaElement>(
+      'textarea[placeholder="usage.adminCalibrationReasonPlaceholder"]',
+    )
+    const numberInputs = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="number"]'))
+    expect(reason).not.toBeNull()
+    expect(numberInputs.length).toBeGreaterThanOrEqual(2)
+
+    reason!.value = 'manual audit'
+    reason!.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(setupState.calibrationDialogVisible).toBe(true)
+
+    numberInputs[0].value = '1000'
+    numberInputs[0].dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(setupState.calibrationDialogVisible).toBe(true)
+
+    setupState.calibrationForm.balanceEnabled = true
+    await nextTick()
+    numberInputs[1].value = '1.5'
+    numberInputs[1].dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(setupState.calibrationDialogVisible).toBe(true)
+
+    wrapper.unmount()
   })
 
   it('blocks admin calibration for deleted users', async () => {
