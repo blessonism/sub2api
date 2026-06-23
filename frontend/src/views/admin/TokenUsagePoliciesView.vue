@@ -162,8 +162,8 @@
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterBillingType') }}</span>
             <Select v-model="form.filters.billing_type" :options="billingTypeOptions" clearable />
           </label>
-        </div>
-      </section>
+                    </div>
+                  </section>
 
       <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
         <div class="flex items-center justify-between gap-3">
@@ -225,11 +225,12 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ group.changes.length }}</span>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[960px] text-sm">
+            <table class="w-full min-w-[1080px] text-sm">
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
@@ -242,6 +243,7 @@
                     <div class="text-xs text-gray-500 dark:text-gray-400">ID {{ change.user_id }} · {{ change.user_email || '-' }}</div>
                   </td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
@@ -259,7 +261,7 @@
       <LoadingSpinner />
     </div>
     <div v-else class="overflow-x-auto">
-      <table class="w-full min-w-[860px] text-sm">
+      <table class="w-full min-w-[960px] text-sm">
         <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
           <tr>
             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.runType') }}</th>
@@ -271,18 +273,91 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-          <tr v-for="run in runs" :key="run.id">
-            <td class="px-4 py-3">{{ runTypeLabel(run.run_type) }}</td>
-            <td class="px-4 py-3">
-              <span :class="runStatusClass(run.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                {{ runStatusLabel(run.status) }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-right">{{ run.total_users }}</td>
-            <td class="px-4 py-3 text-right">{{ run.create_count + run.update_count + run.downgrade_count + run.clear_count }}</td>
-            <td class="px-4 py-3">{{ formatDateTime(run.started_at) }}</td>
-            <td class="px-4 py-3 text-red-600 dark:text-red-300">{{ run.error_message || '-' }}</td>
-          </tr>
+          <template v-for="run in runs" :key="run.id">
+            <tr>
+              <td class="px-4 py-3">{{ runTypeLabel(run.run_type) }}</td>
+              <td class="px-4 py-3">
+                <span :class="runStatusClass(run.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                  {{ runStatusLabel(run.status) }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-right">{{ run.total_users }}</td>
+              <td class="px-4 py-3 text-right">
+                <button
+                  v-if="hasRunChanges(run)"
+                  class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  type="button"
+                  @click="toggleRunDetails(run.id)"
+                >
+                  {{ runChangeCount(run) }}
+                  · {{ isRunExpanded(run.id) ? t('admin.tokenUsagePolicies.hideDetails') : t('admin.tokenUsagePolicies.viewDetails') }}
+                </button>
+                <span v-else>{{ runChangeCount(run) }}</span>
+              </td>
+              <td class="px-4 py-3">{{ formatDateTime(run.started_at) }}</td>
+              <td class="px-4 py-3 text-red-600 dark:text-red-300">{{ run.error_message || '-' }}</td>
+            </tr>
+            <tr v-if="isRunExpanded(run.id)">
+              <td colspan="6" class="bg-gray-50 px-4 py-4 dark:bg-dark-800/60">
+                <div v-if="isRunDetailsLoading(run.id)" class="flex min-h-32 items-center justify-center">
+                  <LoadingSpinner />
+                </div>
+                <div v-else-if="isRunDetailsFailed(run.id)" class="flex min-h-32 flex-col items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                  <span>{{ t('admin.tokenUsagePolicies.historyDetailsFailed') }}</span>
+                  <button class="btn btn-secondary px-3 py-1.5 text-sm" type="button" @click="loadRunChanges(run.id)">
+                    {{ t('admin.tokenUsagePolicies.retryDetails') }}
+                  </button>
+                </div>
+                <div v-else-if="!loadedRunChanges(run.id).length" class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.tokenUsagePolicies.historyDetailsEmpty') }}
+                </div>
+                <div v-else class="space-y-4">
+                  <section v-for="group in changeGroups(loadedRunChanges(run.id))" :key="group.type" class="rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+                    <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ group.label }}</h3>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">{{ group.changes.length }}</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full min-w-[1080px] text-sm">
+                        <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+                          <tr>
+                            <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
+                            <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                          <tr v-for="change in group.changes" :key="`${run.id}-${change.change_type}-${change.user_id}`">
+                            <td class="px-4 py-3">
+                              <div class="font-medium text-gray-900 dark:text-white">{{ change.user_name || change.user_email || change.user_id }}</div>
+                              <div class="text-xs text-gray-500 dark:text-gray-400">ID {{ change.user_id }} · {{ change.user_email || '-' }}</div>
+                            </td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
+                            <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+	                  </section>
+                  <Pagination
+                    v-if="runChangePagination(run.id).total > runChangePagination(run.id).page_size"
+                    :page="runChangePagination(run.id).page"
+                    :page-size="runChangePagination(run.id).page_size"
+                    :total="runChangePagination(run.id).total"
+                    :page-size-options="[20, 50, 100]"
+                    @update:page="(page) => onRunChangePageChange(run.id, page)"
+                    @update:pageSize="(pageSize) => onRunChangePageSizeChange(run.id, pageSize)"
+                  />
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -304,6 +379,7 @@ import { groupsAPI } from '@/api/admin/groups'
 import tokenUsagePoliciesAPI, {
   type TokenUsagePolicy,
   type TokenUsagePolicyActionMode,
+  type TokenUsagePolicyChange,
   type TokenUsagePolicyChangeType,
   type TokenUsagePolicyConflictMode,
   type TokenUsagePolicyFilters,
@@ -315,7 +391,7 @@ import tokenUsagePoliciesAPI, {
   type TokenUsagePolicyScheduleFrequency,
   type TokenUsagePolicyTier
 } from '@/api/admin/tokenUsagePolicies'
-import type { AdminGroup } from '@/types'
+import type { AdminGroup, PaginatedResponse } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -334,7 +410,13 @@ const previewResult = ref<TokenUsagePolicyPreview | null>(null)
 const runsDialogOpen = ref(false)
 const runsLoading = ref(false)
 const runs = ref<TokenUsagePolicyRun[]>([])
+const selectedRunsPolicyId = ref<number | null>(null)
+const expandedRunIds = ref<Set<number>>(new Set())
+const runChangePagesById = ref<Record<number, PaginatedResponse<TokenUsagePolicyChange>>>({})
+const loadingRunChangeIds = ref<Set<number>>(new Set())
+const failedRunChangeIds = ref<Set<number>>(new Set())
 const runningPolicyId = ref<number | null>(null)
+const defaultRunChangePageSize = 20
 
 type PolicyForm = {
   name: string
@@ -397,6 +479,10 @@ const previewMetrics = computed(() => {
 })
 const previewGroups = computed(() => {
   const changes = previewResult.value?.changes ?? []
+  return changeGroups(changes)
+})
+
+function changeGroups(changes: TokenUsagePolicyChange[]) {
   const order: TokenUsagePolicyChangeType[] = ['create', 'update', 'downgrade', 'clear', 'skip_manual']
   return order
     .map((type) => ({
@@ -405,7 +491,7 @@ const previewGroups = computed(() => {
       changes: changes.filter((change) => change.change_type === type)
     }))
     .filter((group) => group.changes.length > 0)
-})
+}
 
 onMounted(async () => {
   await Promise.all([loadGroups(), loadPolicies()])
@@ -576,6 +662,11 @@ async function openRuns(policy: TokenUsagePolicy) {
   runsDialogOpen.value = true
   runsLoading.value = true
   runs.value = []
+  selectedRunsPolicyId.value = policy.id
+  expandedRunIds.value = new Set()
+  runChangePagesById.value = {}
+  loadingRunChangeIds.value = new Set()
+  failedRunChangeIds.value = new Set()
   try {
     const result = await tokenUsagePoliciesAPI.listRuns(policy.id, { page: 1, page_size: 30 })
     runs.value = result.items || []
@@ -584,6 +675,80 @@ async function openRuns(policy: TokenUsagePolicy) {
   } finally {
     runsLoading.value = false
   }
+}
+
+function hasRunChanges(run: TokenUsagePolicyRun) {
+  return runChangeCount(run) > 0
+}
+
+function runChangeCount(run: TokenUsagePolicyRun) {
+  return run.create_count + run.update_count + run.downgrade_count + run.clear_count + run.skip_count
+}
+
+function isRunExpanded(runId: number) {
+  return expandedRunIds.value.has(runId)
+}
+
+function loadedRunChanges(runId: number) {
+  return runChangePagesById.value[runId]?.items ?? []
+}
+
+function runChangePagination(runId: number) {
+  return runChangePagesById.value[runId] ?? {
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: defaultRunChangePageSize,
+    pages: 1
+  }
+}
+
+function isRunDetailsLoading(runId: number) {
+  return loadingRunChangeIds.value.has(runId)
+}
+
+function isRunDetailsFailed(runId: number) {
+  return failedRunChangeIds.value.has(runId)
+}
+
+async function toggleRunDetails(runId: number) {
+  const next = new Set(expandedRunIds.value)
+  if (next.has(runId)) {
+    next.delete(runId)
+    expandedRunIds.value = next
+  } else {
+    next.add(runId)
+    expandedRunIds.value = next
+    await loadRunChanges(runId, 1)
+  }
+}
+
+async function loadRunChanges(runId: number, page = runChangePagination(runId).page, pageSize = runChangePagination(runId).page_size) {
+  const policyId = selectedRunsPolicyId.value
+  if (!policyId || loadingRunChangeIds.value.has(runId)) return
+  const failedNext = new Set(failedRunChangeIds.value)
+  failedNext.delete(runId)
+  failedRunChangeIds.value = failedNext
+  loadingRunChangeIds.value = new Set([...loadingRunChangeIds.value, runId])
+  try {
+    const pageResult = await tokenUsagePoliciesAPI.listRunChanges(policyId, runId, { page, page_size: pageSize })
+    runChangePagesById.value = { ...runChangePagesById.value, [runId]: pageResult }
+  } catch (error) {
+    appStore.showError(error instanceof Error ? error.message : t('admin.tokenUsagePolicies.historyDetailsFailed'))
+    failedRunChangeIds.value = new Set([...failedRunChangeIds.value, runId])
+  } finally {
+    const next = new Set(loadingRunChangeIds.value)
+    next.delete(runId)
+    loadingRunChangeIds.value = next
+  }
+}
+
+async function onRunChangePageChange(runId: number, page: number) {
+  await loadRunChanges(runId, page, runChangePagination(runId).page_size)
+}
+
+async function onRunChangePageSizeChange(runId: number, pageSize: number) {
+  await loadRunChanges(runId, 1, pageSize)
 }
 
 async function deletePolicy(policy: TokenUsagePolicy) {

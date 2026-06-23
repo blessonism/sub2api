@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -169,6 +170,25 @@ func TestTokenUsagePolicyRunWritesHistoryAndChanges(t *testing.T) {
 	require.True(t, repo.runStarted)
 	require.Len(t, repo.appliedChanges, 1)
 	require.Equal(t, TokenUsagePolicyChangeCreate, repo.appliedChanges[0].ChangeType)
+	require.Len(t, repo.savedRunChanges, 1)
+	require.Equal(t, TokenUsagePolicyChangeCreate, repo.savedRunChanges[0].ChangeType)
+}
+
+func TestTokenUsagePolicyRunApplyFailureDoesNotSaveChanges(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.policy = baseTokenUsagePolicy()
+	repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 1, TokenUsage: 1500}}
+	repo.states = map[int64]TokenUsageAutoPolicyState{1: {UserID: 1}}
+	repo.applyErr = errors.New("apply failed")
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	run, err := svc.RunPolicy(context.Background(), repo.policy.ID, TokenUsagePolicyRunTypeManual)
+
+	require.Error(t, err)
+	require.Nil(t, run)
+	require.True(t, repo.applyCalled)
+	require.Equal(t, TokenUsagePolicyRunStatusFailed, repo.lastRun.Status)
+	require.Empty(t, repo.savedRunChanges)
 }
 
 func TestTokenUsagePolicyRunInvalidatesAuthCacheForGrantGroupChanges(t *testing.T) {
@@ -276,6 +296,7 @@ func (i *tokenUsagePolicyAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ con
 type tokenUsagePolicyFakeRepo struct {
 	policy          TokenUsageAutoPolicy
 	getErr          error
+	applyErr        error
 	usageRows       []TokenUsageAutoPolicyUsageRow
 	states          map[int64]TokenUsageAutoPolicyState
 	assignmentCount int64
@@ -284,6 +305,7 @@ type tokenUsagePolicyFakeRepo struct {
 	applyCalled     bool
 	runStarted      bool
 	appliedChanges  []TokenUsageAutoPolicyChange
+	savedRunChanges []TokenUsageAutoPolicyChange
 	lastRun         TokenUsageAutoPolicyRun
 }
 
@@ -345,6 +367,26 @@ func (r *tokenUsagePolicyFakeRepo) ListPolicyStates(context.Context, int64, int6
 func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChanges(_ context.Context, _ TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, _ *time.Time) error {
 	r.applyCalled = true
 	r.appliedChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
+	if r.applyErr != nil {
+		return r.applyErr
+	}
+	return nil
+}
+
+func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChangesAndFinishRun(_ context.Context, _ int64, _ TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, _ *time.Time) error {
+	r.applyCalled = true
+	r.appliedChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
+	if r.applyErr != nil {
+		return r.applyErr
+	}
+	r.lastRun.Status = TokenUsagePolicyRunStatusSuccess
+	r.lastRun.TotalUsers = stats.TotalUsers
+	r.lastRun.CreateCount = stats.CreateCount
+	r.lastRun.UpdateCount = stats.UpdateCount
+	r.lastRun.DowngradeCount = stats.DowngradeCount
+	r.lastRun.ClearCount = stats.ClearCount
+	r.lastRun.SkipCount = stats.SkipCount
+	r.savedRunChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
 	return nil
 }
 
@@ -354,7 +396,7 @@ func (r *tokenUsagePolicyFakeRepo) BeginPolicyRun(context.Context, int64, string
 	return &r.lastRun, nil
 }
 
-func (r *tokenUsagePolicyFakeRepo) FinishPolicyRun(_ context.Context, _ int64, status string, stats TokenUsageAutoPolicyRunStats, _ string) error {
+func (r *tokenUsagePolicyFakeRepo) FinishPolicyRun(_ context.Context, _ int64, status string, stats TokenUsageAutoPolicyRunStats, changes []TokenUsageAutoPolicyChange, _ string) error {
 	r.lastRun.Status = status
 	r.lastRun.TotalUsers = stats.TotalUsers
 	r.lastRun.CreateCount = stats.CreateCount
@@ -362,9 +404,14 @@ func (r *tokenUsagePolicyFakeRepo) FinishPolicyRun(_ context.Context, _ int64, s
 	r.lastRun.DowngradeCount = stats.DowngradeCount
 	r.lastRun.ClearCount = stats.ClearCount
 	r.lastRun.SkipCount = stats.SkipCount
+	r.savedRunChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
 	return nil
 }
 
 func (r *tokenUsagePolicyFakeRepo) ListPolicyRuns(context.Context, int64, pagination.PaginationParams) ([]TokenUsageAutoPolicyRun, *pagination.PaginationResult, error) {
 	return []TokenUsageAutoPolicyRun{r.lastRun}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 1, Pages: 1}, nil
+}
+
+func (r *tokenUsagePolicyFakeRepo) ListPolicyRunChanges(context.Context, int64, int64, pagination.PaginationParams) ([]TokenUsageAutoPolicyChange, *pagination.PaginationResult, error) {
+	return r.savedRunChanges, &pagination.PaginationResult{Total: int64(len(r.savedRunChanges)), Page: 1, PageSize: 20, Pages: 1}, nil
 }

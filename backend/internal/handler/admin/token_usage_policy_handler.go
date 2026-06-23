@@ -140,10 +140,37 @@ func (h *TokenUsagePolicyHandler) ListRuns(c *gin.Context) {
 	response.Paginated(c, runs, pageResult.Total, pageResult.Page, pageResult.PageSize)
 }
 
+func (h *TokenUsagePolicyHandler) ListRunChanges(c *gin.Context) {
+	id, ok := parseTokenUsagePolicyID(c)
+	if !ok {
+		return
+	}
+	runID, ok := parseTokenUsagePolicyRunID(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	changes, pageResult, err := h.svc.ListRunChanges(c.Request.Context(), id, runID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, changes, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
 func parseTokenUsagePolicyID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
 		response.BadRequest(c, "invalid policy id")
+		return 0, false
+	}
+	return id, true
+}
+
+func parseTokenUsagePolicyRunID(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("run_id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid policy run id")
 		return 0, false
 	}
 	return id, true
