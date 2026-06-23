@@ -109,21 +109,23 @@
           <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
             <!-- 管理员代看用户筛选 -->
-            <div v-if="isAdmin" class="min-w-[240px]">
+            <div v-if="isAdmin" class="min-w-[300px]">
               <label class="input-label">{{ t('usage.adminUserFilter') }}</label>
-              <Select
-                v-model="adminSelectedUserValue"
-                :options="adminUserOptions"
-                :placeholder="t('usage.adminSelectUserPlaceholder')"
-                searchable
-                creatable
-                clearable
-                :creatable-prefix="t('usage.adminSearchUserPrefix')"
-                :search-placeholder="t('usage.adminSearchUserPlaceholder')"
-                :empty-text="t('usage.adminNoUsersFound')"
-                @change="handleAdminUserChange"
+              <AdminUserSearchPicker
+                :users="adminUsers"
+                :selected-user="selectedAdminSearchUser"
+                :loading="loadingAdminUsers"
+                :placeholder="t('usage.adminSearchUserPlaceholder')"
+                :search-label="t('common.search')"
+                :loading-label="t('usage.adminSearchingUsers')"
+                :results-label="t('usage.adminUserSearchResults')"
+                :empty-label="t('usage.adminNoUsersFound')"
+                :deleted-label="t('usage.adminDeletedUser')"
+                :clear-label="t('usage.adminClearSelectedUser')"
+                @search="searchAdminUsers"
+                @select="handleAdminUserSelect"
+                @clear="clearAdminUserSelection"
               />
-              <p v-if="loadingAdminUsers" class="input-hint">{{ t('usage.adminSearchingUsers') }}</p>
             </div>
 
             <!-- API Key Filter -->
@@ -829,6 +831,7 @@ import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AdminUserSearchPicker from '@/components/admin/usage/AdminUserSearchPicker.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, UserErrorRequest, AdminUser } from '@/types'
 import type { Column } from '@/components/common/types'
@@ -890,7 +893,7 @@ type CalibrationFormState = {
 }
 
 const adminUsers = ref<SimpleUser[]>([])
-const adminSelectedUserValue = ref<string | number | null>(null)
+const adminSelectedUserValue = ref<number | null>(null)
 const selectedAdminUser = ref<SimpleUser | null>(null)
 const selectedAdminUserDetail = ref<AdminUser | null>(null)
 const loadingAdminUsers = ref(false)
@@ -986,32 +989,26 @@ const calibrationModeOptions = computed(() => [
   { value: 'target', label: t('usage.adminCalibrationModeTarget') }
 ])
 
-const formatAdminUserOption = (user: SimpleUser | AdminUser): string => {
-  const email = user.email || `#${user.id}`
-  const deleted = 'deleted' in user && user.deleted
-  return deleted ? `${email} (${t('usage.adminDeletedUser')})` : email
+const toSimpleAdminUser = (user: SimpleUser | AdminUser | null): SimpleUser | null => {
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email || `#${user.id}`,
+    deleted: adminUserIsDeleted(user)
+  }
 }
 
-const adminUserOptions = computed(() => {
-  const byID = new Map<number, SimpleUser | AdminUser>()
-  if (selectedAdminUser.value) {
-    byID.set(selectedAdminUser.value.id, selectedAdminUser.value)
+const selectedAdminSearchUser = computed(() => {
+  if (selectedAdminUserDetail.value?.id === adminSelectedUserValue.value) {
+    return toSimpleAdminUser(selectedAdminUserDetail.value)
   }
-  if (selectedAdminUserDetail.value) {
-    byID.set(selectedAdminUserDetail.value.id, selectedAdminUserDetail.value)
-  }
-  for (const user of adminUsers.value) {
-    byID.set(user.id, user)
-  }
-  return [
-    { value: null, label: t('usage.adminSelectUserPlaceholder') },
-    ...Array.from(byID.values()).map((user) => ({
-      value: user.id,
-      label: formatAdminUserOption(user),
-      description: `#${user.id}`
-    }))
-  ]
+  return selectedAdminUser.value
 })
+
+const formatAdminUserOption = (user: SimpleUser | AdminUser): string => {
+  const email = user.email || `#${user.id}`
+  return adminUserIsDeleted(user) ? `${email} (${t('usage.adminDeletedUser')})` : email
+}
 
 const selectedAdminUserLabel = computed(() => {
   if (selectedAdminUserDetail.value) {
@@ -1135,16 +1132,16 @@ const formatSignedTokens = (value: number): string => {
   return `${sign}${formatTokens(Math.abs(value))}`
 }
 
-const parseIntegerInput = (value: string): number | null => {
-  const trimmed = value.trim()
+const parseIntegerInput = (value: string | number | null | undefined): number | null => {
+  const trimmed = String(value ?? '').trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed)) return null
   return Math.trunc(parsed)
 }
 
-const parseNumberInput = (value: string): number | null => {
-  const trimmed = value.trim()
+const parseNumberInput = (value: string | number | null | undefined): number | null => {
+  const trimmed = String(value ?? '').trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) ? parsed : null
@@ -1302,17 +1299,28 @@ const searchAdminUsers = async (keyword: string) => {
     return
   }
   loadingAdminUsers.value = true
+  adminUsers.value = []
   try {
     adminUsers.value = await adminUsageAPI.searchUsers(trimmed)
-    if (adminUsers.value.length === 0) {
-      appStore.showWarning(t('usage.adminNoUsersFound'))
-    }
   } catch (error) {
     console.error('Failed to search users:', error)
     appStore.showError(t('usage.adminSearchUsersFailed'))
   } finally {
     loadingAdminUsers.value = false
   }
+}
+
+const selectAdminUserByID = async (value: number) => {
+  const found = adminUsers.value.find((user) => user.id === value)
+  selectedAdminUser.value = found ?? { id: value, email: `#${value}`, deleted: false }
+  adminSelectedUserValue.value = value
+  filters.value.api_key_id = undefined
+  pagination.page = 1
+  activeTab.value = 'usage'
+  await loadSelectedAdminUserDetail(value)
+  await loadApiKeys()
+  calibrationHistory.value = []
+  applyFilters()
 }
 
 const loadSelectedAdminUserDetail = async (userID: number) => {
@@ -1325,36 +1333,27 @@ const loadSelectedAdminUserDetail = async (userID: number) => {
   }
 }
 
-const handleAdminUserChange = async (value: string | number | boolean | null) => {
+const clearAdminUserSelection = async () => {
   if (!isAdmin.value) {
     return
   }
-  if (typeof value === 'string') {
-    await searchAdminUsers(value)
-    adminSelectedUserValue.value = selectedAdminUser.value?.id ?? null
-    return
-  }
-  if (typeof value !== 'number') {
-    selectedAdminUser.value = null
-    selectedAdminUserDetail.value = null
-    calibrationHistory.value = []
-    filters.value.api_key_id = undefined
-    pagination.page = 1
-    activeTab.value = 'usage'
-    await loadApiKeys()
-    applyFilters()
-    return
-  }
-
-  const found = adminUsers.value.find((user) => user.id === value)
-  selectedAdminUser.value = found ?? { id: value, email: `#${value}`, deleted: false }
+  adminSelectedUserValue.value = null
+  selectedAdminUser.value = null
+  selectedAdminUserDetail.value = null
+  adminUsers.value = []
+  calibrationHistory.value = []
   filters.value.api_key_id = undefined
   pagination.page = 1
   activeTab.value = 'usage'
-  await loadSelectedAdminUserDetail(value)
   await loadApiKeys()
-  calibrationHistory.value = []
   applyFilters()
+}
+
+const handleAdminUserSelect = async (user: SimpleUser) => {
+  if (!isAdmin.value) {
+    return
+  }
+  await selectAdminUserByID(user.id)
 }
 
 const tokenValueLabel = computed(() => {
