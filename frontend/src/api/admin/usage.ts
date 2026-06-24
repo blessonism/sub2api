@@ -14,6 +14,9 @@ export interface SharedIPUsersSummary {
   user_count: number
   record_count: number
   users?: SharedIPUserSummaryItem[]
+  users_limit: number
+  users_truncated: boolean
+  hidden_user_count: number
 }
 
 export interface SharedIPUserSummaryItem {

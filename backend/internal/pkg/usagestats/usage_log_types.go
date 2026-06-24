@@ -403,10 +403,13 @@ type UsageLogFilters struct {
 
 // SharedIPUsersSummary 汇总管理员同 IP 多用户筛选结果。
 type SharedIPUsersSummary struct {
-	IPCount     int64                     `json:"ip_count"`
-	UserCount   int64                     `json:"user_count"`
-	RecordCount int64                     `json:"record_count"`
-	Users       []SharedIPUserSummaryItem `json:"users,omitempty"`
+	IPCount         int64                     `json:"ip_count"`
+	UserCount       int64                     `json:"user_count"`
+	RecordCount     int64                     `json:"record_count"`
+	Users           []SharedIPUserSummaryItem `json:"users,omitempty"`
+	UsersLimit      int                       `json:"users_limit"`
+	UsersTruncated  bool                      `json:"users_truncated"`
+	HiddenUserCount int64                     `json:"hidden_user_count"`
 }
 
 // SharedIPUserSummaryItem 表示同 IP 多用户命中的用户级聚合结果。
