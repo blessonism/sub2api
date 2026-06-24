@@ -38,6 +38,7 @@ const messages: Record<string, string> = {
   'admin.usage.sharedIPUsers.ipAddresses': 'Matched IPs',
   'admin.usage.sharedIPUsers.showRecords': 'Show record details',
   'admin.usage.sharedIPUsers.hideRecords': 'Hide record details',
+  'admin.usage.sharedIPUsers.usersTruncated': 'Showing the first {shown} of {total} matched users. {hidden} more users are hidden by the summary limit.',
   'admin.usage.sharedIPUsers.moreIPs': 'and {count} more',
   'usage.tokens': 'Tokens',
   'usage.cost': 'Cost',
@@ -156,8 +157,11 @@ describe('admin UsageView shared IP users summary', () => {
         pages: 1,
         shared_ip_users_summary: {
           ip_count: 2,
-          user_count: 3,
+          user_count: 55,
           record_count: 6,
+          users_limit: 50,
+          users_truncated: true,
+          hidden_user_count: 54,
           users: [
             {
               user_id: 7,
@@ -227,6 +231,7 @@ describe('admin UsageView shared IP users summary', () => {
     }), expect.anything())
     expect(wrapper.text()).toContain('risk@example.com')
     expect(wrapper.text()).toContain('and 1 more')
+    expect(wrapper.text()).toContain('Showing the first 1 of 55 matched users. 54 more users are hidden by the summary limit.')
     expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(false)
 
     await wrapper.findAll('button').find((button) => button.text() === 'Show record details')?.trigger('click')

@@ -9,6 +9,7 @@ PROJECT_NAME="${COMPOSE_PROJECT_NAME:-deploy}"
 APP_CONTAINER="${SUB2API_APP_CONTAINER:-sub2api-dev}"
 POSTGRES_CONTAINER="${SUB2API_POSTGRES_CONTAINER:-sub2api-postgres-dev}"
 REDIS_CONTAINER="${SUB2API_REDIS_CONTAINER:-sub2api-redis-dev}"
+START_COMPOSE_SKIPPED=false
 
 usage() {
   cat <<EOF
@@ -104,6 +105,7 @@ start_with_compose() {
   local env_file="${SCRIPT_DIR}/.env"
   local temp_env_file=""
   local env_args=()
+  START_COMPOSE_SKIPPED=false
 
   if [ -f "${env_file}" ]; then
     env_args=(--env-file "${env_file}")
@@ -111,9 +113,13 @@ start_with_compose() {
     log "未找到 deploy/.env，使用当前 shell 环境变量启动。"
   else
     if [ "${rebuild}" != "true" ]; then
+      START_COMPOSE_SKIPPED=true
       return 1
     fi
-    temp_env_file="$(create_temp_env_from_existing_containers)" || return 1
+    temp_env_file="$(create_temp_env_from_existing_containers)" || {
+      START_COMPOSE_SKIPPED=true
+      return 1
+    }
     env_file="${temp_env_file}"
     env_args=(--env-file "${env_file}")
     log "未找到 deploy/.env，已从旧容器提取必要环境变量用于本次重建。"
@@ -203,6 +209,9 @@ main() {
   esac
 
   if ! start_with_compose "${rebuild}"; then
+    if [ "${START_COMPOSE_SKIPPED}" != "true" ]; then
+      die "docker compose 启动失败，已停止以避免误启动旧容器。请修复上方 compose 错误后重试。"
+    fi
     if [ "${rebuild}" = "true" ]; then
       die "无法重建：没有 deploy/.env，也无法从旧容器提取 POSTGRES_PASSWORD。"
     fi

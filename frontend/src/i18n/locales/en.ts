@@ -5004,6 +5004,7 @@ export default {
         showRecords: 'Show record details',
         hideRecords: 'Hide record details',
         noMatchedUsers: 'No matched users under current filters',
+        usersTruncated: 'Showing the first {shown} of {total} matched users. {hidden} more users are hidden by the summary limit.',
         moreIPs: 'and {count} more'
       },
       clickToViewBalance: 'Click to view balance history',

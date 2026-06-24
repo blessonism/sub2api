@@ -140,6 +140,9 @@
             <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
               {{ t('admin.usage.sharedIPUsers.matchedUsersTitle') }}
             </div>
+            <div v-if="sharedIPUsersTruncatedHint" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
+              {{ sharedIPUsersTruncatedHint }}
+            </div>
             <div v-if="sharedIPUserRows.length" class="overflow-x-auto">
               <table class="min-w-full divide-y divide-amber-200 text-left text-xs dark:divide-amber-800">
                 <thead>
@@ -301,6 +304,16 @@ const modelNameOptions = computed(() =>
   Array.from(new Set(requestedModelStats.value.map((m) => m.model).filter(Boolean))).sort()
 )
 const sharedIPUserRows = computed(() => sharedIPUsersSummary.value?.users || [])
+const sharedIPUsersTruncatedHint = computed(() => {
+  const summary = sharedIPUsersSummary.value
+  if (!summary?.users_truncated) return ''
+  return t('admin.usage.sharedIPUsers.usersTruncated', {
+    shown: summary.users?.length ?? 0,
+    total: summary.user_count,
+    hidden: summary.hidden_user_count,
+    limit: summary.users_limit
+  })
+})
 
 const formatSharedIPAddresses = (user: SharedIPUserSummaryItem, truncate = true): string => {
   const ips = user.ip_addresses || []

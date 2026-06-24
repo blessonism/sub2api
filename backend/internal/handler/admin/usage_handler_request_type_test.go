@@ -41,9 +41,12 @@ func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters
 func (s *adminUsageRepoCapture) GetSharedIPUsersSummary(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
 	s.summaryFilters = filters
 	return &usagestats.SharedIPUsersSummary{
-		IPCount:     2,
-		UserCount:   5,
-		RecordCount: 8,
+		IPCount:         2,
+		UserCount:       5,
+		RecordCount:     8,
+		UsersLimit:      50,
+		UsersTruncated:  true,
+		HiddenUserCount: 4,
 		Users: []usagestats.SharedIPUserSummaryItem{
 			{UserID: 7, Email: "risk@example.com", IPCount: 2, RecordCount: 4},
 		},
@@ -140,6 +143,9 @@ func TestAdminUsageListSharedIPUsersTrue(t *testing.T) {
 	require.Equal(t, int64(2), body.Data.SharedIPUsersSummary.IPCount)
 	require.Equal(t, int64(5), body.Data.SharedIPUsersSummary.UserCount)
 	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.RecordCount)
+	require.Equal(t, 50, body.Data.SharedIPUsersSummary.UsersLimit)
+	require.True(t, body.Data.SharedIPUsersSummary.UsersTruncated)
+	require.Equal(t, int64(4), body.Data.SharedIPUsersSummary.HiddenUserCount)
 	require.Len(t, body.Data.SharedIPUsersSummary.Users, 1)
 	require.Equal(t, int64(7), body.Data.SharedIPUsersSummary.Users[0].UserID)
 }

@@ -5157,6 +5157,7 @@ export default {
         showRecords: '展开记录明细',
         hideRecords: '收起记录明细',
         noMatchedUsers: '当前筛选条件下没有命中用户',
+        usersTruncated: '当前仅展示前 {shown} / {total} 个命中用户，还有 {hidden} 个受摘要上限限制未展示。',
         moreIPs: '等 {count} 个'
       },
       clickToViewBalance: '点击查看充值记录',

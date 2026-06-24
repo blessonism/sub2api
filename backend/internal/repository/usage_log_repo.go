@@ -3562,16 +3562,23 @@ func (r *usageLogRepository) GetSharedIPUsersSummary(ctx context.Context, filter
 	if err := scanSingleRow(ctx, r.sql, query, args, &summary.IPCount, &summary.UserCount, &summary.RecordCount); err != nil {
 		return nil, err
 	}
-	users, err := r.listSharedIPUserSummaryItems(ctx, whereClause, args)
+	users, truncated, err := r.listSharedIPUserSummaryItems(ctx, whereClause, args)
 	if err != nil {
 		return nil, err
 	}
 	summary.Users = users
+	summary.UsersLimit = sharedIPUserSummaryLimit
+	summary.UsersTruncated = truncated || summary.UserCount > int64(len(users))
+	if summary.UserCount > int64(len(users)) {
+		summary.HiddenUserCount = summary.UserCount - int64(len(users))
+	}
 	return summary, nil
 }
 
-func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, whereClause string, args []any) ([]usagestats.SharedIPUserSummaryItem, error) {
-	query := `
+const sharedIPUserSummaryLimit = 50
+
+func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, whereClause string, args []any) ([]usagestats.SharedIPUserSummaryItem, bool, error) {
+	query := fmt.Sprintf(`
 		WITH matched_logs AS (
 			SELECT
 				user_id,
@@ -3583,7 +3590,7 @@ func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, w
 				cache_read_tokens,
 				actual_cost
 			FROM usage_logs
-			` + whereClause + `
+			`+whereClause+`
 		)
 		SELECT
 			ml.user_id,
@@ -3599,11 +3606,11 @@ func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, w
 		LEFT JOIN users u ON u.id = ml.user_id
 		GROUP BY ml.user_id, u.email, u.deleted_at
 		ORDER BY record_count DESC, last_used_at DESC, ml.user_id ASC
-		LIMIT 50`
+		LIMIT %d`, sharedIPUserSummaryLimit+1)
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
@@ -3622,15 +3629,19 @@ func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, w
 			&item.TotalTokens,
 			&item.ActualCost,
 		); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		item.IPAddresses = ips
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return items, nil
+	truncated := len(items) > sharedIPUserSummaryLimit
+	if truncated {
+		items = items[:sharedIPUserSummaryLimit]
+	}
+	return items, truncated, nil
 }
 
 func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
