@@ -353,10 +353,6 @@ const PolicyIcon = createOutlineIcon(
   'M12 3.75l7.5 3v5.25c0 4.142-3.164 7.615-7.5 8.25-4.336-.635-7.5-4.108-7.5-8.25V6.75l7.5-3z'
 )
 
-const TrophyIcon = createOutlineIcon(
-  'M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.504-1.125-1.125-1.125h-.872m-5.006 0h5.006m-5.006 0h-.872A1.125 1.125 0 007.5 15.375v3.375m7.003-4.5a7.454 7.454 0 001.768-4.522M9.497 14.25A7.454 7.454 0 017.73 9.728m8.54 0A7.5 7.5 0 017.73 9.728m8.54 0c1.514-1.238 2.48-3.12 2.48-5.228V2.721A49.892 49.892 0 0012 2.25c-2.291 0-4.545.16-6.75.47V4.5c0 2.108.966 3.99 2.48 5.228'
-)
-
 const GiftIcon = {
   render: () =>
     h(
@@ -776,7 +772,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: UsageIcon, hideInSimpleMode: true },
-    { path: '/leaderboard', label: t('nav.leaderboard'), icon: TrophyIcon },
+    { path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: AvailableChannelsIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: StatusPulseIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: SubscriptionIcon, hideInSimpleMode: true },
