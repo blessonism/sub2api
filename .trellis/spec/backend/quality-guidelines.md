@@ -199,6 +199,57 @@ INSERT INTO user_allowed_groups (user_id, group_id, created_at) VALUES (...)
 
 ---
 
+### Scenario: Admin delayed-apply suggestions
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing an admin feature that generates persisted suggestions in one action and applies them later after explicit confirmation.
+- These flows cross migrations, repository transactions, service cache invalidation, handlers, and frontend API types. They need code-spec depth because task configuration can change between generation and apply.
+
+#### 2. Signatures
+- DB run/audit table must snapshot the write scope used by the run, such as `target_group_id`.
+- Suggestion rows must persist both previous and proposed values, such as `old_priority` and `new_priority`.
+- Service apply method should return the applied run/audit DTO including the snapshot scope used for cache invalidation.
+
+#### 3. Contracts
+- Preview/run generation must not mutate the target configuration.
+- Apply must use the run snapshot scope, not the current mutable task/policy scope.
+- Apply must update only rows represented by pending suggestions from the requested run.
+- Apply must be atomic: target write, suggestion audit, and run audit are committed together.
+- Apply must verify the current target value still equals the suggestion's captured old value before overwriting.
+
+#### 4. Validation & Error Matrix
+- Non-success run -> `400`.
+- Already applied run -> `409`.
+- No pending suggestions -> `400`.
+- Suggested target row missing from the run snapshot scope -> `400`.
+- Current target value changed after the run -> `409`.
+
+#### 5. Good/Base/Bad Cases
+- Good: run created for group 7 still applies only group 7 even if the task is later edited to group 8.
+- Good: if an admin manually changes priority after a run, applying that stale run returns conflict instead of overwriting the manual change.
+- Base: a run with no changes remains viewable but cannot be applied.
+- Bad: applying a run by joining the mutable task table and reading its current `target_group_id`.
+
+#### 6. Tests Required
+- Repository test: apply uses run snapshot scope and updates only suggestion accounts.
+- Repository test: stale current value returns conflict and rolls back.
+- Service test: cache invalidation uses the run snapshot scope returned by apply.
+- Cross-layer check: frontend API type includes the snapshot scope field returned by backend JSON.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+SELECT t.target_group_id FROM tasks t JOIN runs r ON r.task_id = t.id
+```
+
+Correct:
+```sql
+SELECT r.target_group_id FROM runs r WHERE r.id = $1
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

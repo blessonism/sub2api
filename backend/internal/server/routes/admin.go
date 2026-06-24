@@ -80,6 +80,9 @@ func RegisterAdminRoutes(
 		// Token 用量自动分组倍率策略
 		registerTokenUsagePolicyRoutes(admin, h)
 
+		// 上游渠道真实成本校准
+		registerUpstreamCostCalibrationRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -121,6 +124,21 @@ func registerTokenUsagePolicyRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		policies.POST("/:id/run", h.Admin.TokenUsagePolicy.Run)
 		policies.GET("/:id/runs", h.Admin.TokenUsagePolicy.ListRuns)
 		policies.GET("/:id/runs/:run_id/changes", h.Admin.TokenUsagePolicy.ListRunChanges)
+	}
+}
+
+func registerUpstreamCostCalibrationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	calibrations := admin.Group("/upstream-cost-calibrations")
+	{
+		calibrations.GET("", h.Admin.UpstreamCostCalibration.List)
+		calibrations.POST("", h.Admin.UpstreamCostCalibration.Create)
+		calibrations.GET("/:id", h.Admin.UpstreamCostCalibration.Get)
+		calibrations.PUT("/:id", h.Admin.UpstreamCostCalibration.Update)
+		calibrations.DELETE("/:id", h.Admin.UpstreamCostCalibration.Delete)
+		calibrations.POST("/:id/run", h.Admin.UpstreamCostCalibration.Run)
+		calibrations.GET("/:id/runs", h.Admin.UpstreamCostCalibration.ListRuns)
+		calibrations.GET("/:id/runs/:run_id", h.Admin.UpstreamCostCalibration.GetRun)
+		calibrations.POST("/:id/runs/:run_id/apply", h.Admin.UpstreamCostCalibration.ApplyRun)
 	}
 }
 

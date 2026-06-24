@@ -631,6 +631,7 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestRunnerService,
 	ProvideTokenUsageAutoPolicyService,
 	ProvideTokenUsageAutoPolicyRunner,
+	ProvideUpstreamCostCalibrationService,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
