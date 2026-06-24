@@ -403,23 +403,23 @@ type UsageLogFilters struct {
 
 // SharedIPUsersSummary 汇总管理员同 IP 多用户筛选结果。
 type SharedIPUsersSummary struct {
-	IPCount     int64 `json:"ip_count"`
-	UserCount   int64 `json:"user_count"`
-	RecordCount int64 `json:"record_count"`
+	IPCount     int64                     `json:"ip_count"`
+	UserCount   int64                     `json:"user_count"`
+	RecordCount int64                     `json:"record_count"`
 	Users       []SharedIPUserSummaryItem `json:"users,omitempty"`
 }
 
 // SharedIPUserSummaryItem 表示同 IP 多用户命中的用户级聚合结果。
 type SharedIPUserSummaryItem struct {
-	UserID       int64      `json:"user_id"`
-	Email        string     `json:"email"`
-	Deleted      bool       `json:"deleted"`
-	IPCount      int64      `json:"ip_count"`
-	RecordCount  int64      `json:"record_count"`
-	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
-	IPAddresses  []string   `json:"ip_addresses,omitempty"`
-	TotalTokens  int64      `json:"total_tokens"`
-	ActualCost   float64    `json:"actual_cost"`
+	UserID      int64      `json:"user_id"`
+	Email       string     `json:"email"`
+	Deleted     bool       `json:"deleted"`
+	IPCount     int64      `json:"ip_count"`
+	RecordCount int64      `json:"record_count"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	IPAddresses []string   `json:"ip_addresses,omitempty"`
+	TotalTokens int64      `json:"total_tokens"`
+	ActualCost  float64    `json:"actual_cost"`
 }
 
 // UsageStats represents usage statistics
