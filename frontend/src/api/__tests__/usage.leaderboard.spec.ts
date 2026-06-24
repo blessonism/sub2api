@@ -70,4 +70,27 @@ describe('usage leaderboard api', () => {
     expect(get).toHaveBeenCalledWith('/usage/dashboard/leaderboard', { params: { period: 'week' } })
     expect(result).toEqual(response)
   })
+
+  it('passes the requested last 7 days leaderboard period', async () => {
+    const response: UserTokenLeaderboardResponse = {
+      ranking: [],
+      my_rank: {
+        rank: 0,
+        masked_email: 'm***e@example.com',
+        requests: 0,
+        tokens: 0,
+        is_current_user: true,
+      },
+      start_date: '2026-06-14',
+      end_date: '2026-06-20',
+      limit: 10,
+      period: 'last7d',
+    }
+    get.mockResolvedValue({ data: response })
+
+    const result = await getDashboardLeaderboard({ period: 'last7d' })
+
+    expect(get).toHaveBeenCalledWith('/usage/dashboard/leaderboard', { params: { period: 'last7d' } })
+    expect(result).toEqual(response)
+  })
 })
