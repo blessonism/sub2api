@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API 生产迁移"
+  short_description: "安全迁移 Sub2API 生产数据和域名"
+  default_prompt: "Use $sub2api-production-migration to migrate a Sub2API production instance safely between servers."
