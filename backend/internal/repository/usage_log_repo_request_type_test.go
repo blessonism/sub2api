@@ -370,18 +370,36 @@ func TestUsageLogRepositoryGetSharedIPUsersSummary(t *testing.T) {
 	repo := &usageLogRepository{sql: db}
 
 	start := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	lastUsed := start.Add(2 * time.Hour)
 	filters := usagestats.UsageLogFilters{StartTime: &start}
 
 	mock.ExpectQuery("SELECT COUNT\\(DISTINCT ip_address\\), COUNT\\(DISTINCT user_id\\), COUNT\\(\\*\\) FROM usage_logs WHERE created_at >= \\$1 AND ip_address IN").
 		WithArgs(start).
 		WillReturnRows(sqlmock.NewRows([]string{"ip_count", "user_count", "record_count"}).
 			AddRow(int64(2), int64(5), int64(8)))
+	mock.ExpectQuery("WITH matched_logs AS").
+		WithArgs(start).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "email", "deleted", "ip_count", "record_count", "last_used_at", "ip_addresses", "total_tokens", "actual_cost"}).
+			AddRow(int64(7), "alpha@example.com", false, int64(2), int64(3), lastUsed, "{192.0.2.10,192.0.2.11}", int64(1234), 0.25))
 
 	summary, err := repo.GetSharedIPUsersSummary(context.Background(), filters)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), summary.IPCount)
 	require.Equal(t, int64(5), summary.UserCount)
 	require.Equal(t, int64(8), summary.RecordCount)
+	require.Equal(t, []usagestats.SharedIPUserSummaryItem{
+		{
+			UserID:      7,
+			Email:       "alpha@example.com",
+			Deleted:     false,
+			IPCount:     2,
+			RecordCount: 3,
+			LastUsedAt:  &lastUsed,
+			IPAddresses: []string{"192.0.2.10", "192.0.2.11"},
+			TotalTokens: 1234,
+			ActualCost:  0.25,
+		},
+	}, summary.Users)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
