@@ -44,6 +44,9 @@ func (s *adminUsageRepoCapture) GetSharedIPUsersSummary(ctx context.Context, fil
 		IPCount:     2,
 		UserCount:   5,
 		RecordCount: 8,
+		Users: []usagestats.SharedIPUserSummaryItem{
+			{UserID: 7, Email: "risk@example.com", IPCount: 2, RecordCount: 4},
+		},
 	}, nil
 }
 
@@ -137,6 +140,8 @@ func TestAdminUsageListSharedIPUsersTrue(t *testing.T) {
 	require.Equal(t, int64(2), body.Data.SharedIPUsersSummary.IPCount)
 	require.Equal(t, int64(5), body.Data.SharedIPUsersSummary.UserCount)
 	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.RecordCount)
+	require.Len(t, body.Data.SharedIPUsersSummary.Users, 1)
+	require.Equal(t, int64(7), body.Data.SharedIPUsersSummary.Users[0].UserID)
 }
 
 func TestAdminUsageListInvalidSharedIPUsers(t *testing.T) {
