@@ -33,6 +33,7 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import tokenUsagePoliciesAPI from './tokenUsagePolicies'
+import upstreamCostCalibrationsAPI from './upstreamCostCalibrations'
 
 /**
  * Unified admin API object for convenient access
@@ -67,7 +68,8 @@ export const adminAPI = {
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
-  tokenUsagePolicies: tokenUsagePoliciesAPI
+  tokenUsagePolicies: tokenUsagePoliciesAPI,
+  upstreamCostCalibrations: upstreamCostCalibrationsAPI
 }
 
 export {
@@ -100,7 +102,8 @@ export {
   affiliatesAPI,
   riskControlAPI,
   adminComplianceAPI,
-  tokenUsagePoliciesAPI
+  tokenUsagePoliciesAPI,
+  upstreamCostCalibrationsAPI
 }
 
 export default adminAPI
@@ -119,3 +122,10 @@ export type {
   TokenUsagePolicyTier,
   TokenUsagePolicyChange
 } from './tokenUsagePolicies'
+export type {
+  UpstreamCostCalibrationTask,
+  UpstreamCostCalibrationTaskInput,
+  UpstreamCostCalibrationRun,
+  UpstreamCostCalibrationResult,
+  UpstreamCostCalibrationSuggestion
+} from './upstreamCostCalibrations'

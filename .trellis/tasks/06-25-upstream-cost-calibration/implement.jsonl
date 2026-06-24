@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "功能跨数据库、服务、API 与前端，需要明确跨层契约"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有 admin 策略与监控模式，避免重复实现"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端服务、仓库、API 与测试质量要求"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型与页面字段保持一致"}
