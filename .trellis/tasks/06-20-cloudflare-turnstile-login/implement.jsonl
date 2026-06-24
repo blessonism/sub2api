@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与生产配置边界"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端 auth/Turnstile 校验相关规范入口"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端登录/注册页类型与组件规范入口"}

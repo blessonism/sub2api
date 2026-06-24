@@ -29,6 +29,26 @@ This directory contains files for deploying Sub2API on Linux servers.
 
 ## Docker Deployment (Recommended)
 
+### Local Development One-Click Startup
+
+当前仓库内的本地 Docker 开发环境可以用脚本统一启动：
+
+```bash
+cd /path/to/sub2api
+make dev-up
+```
+
+这个入口会优先使用 `deploy/docker-compose.dev.yml`；如果本机没有 `deploy/.env` 但已经存在旧的 `sub2api-dev`、`sub2api-postgres-dev`、`sub2api-redis-dev` 容器，则会直接恢复旧容器。需要让 Docker 镜像包含当前代码改动时，使用 `./deploy/start-local.sh --rebuild`。
+
+常用命令：
+
+```bash
+make dev-status
+make dev-down
+./deploy/start-local.sh --no-logs
+./deploy/start-local.sh --rebuild
+```
+
 ### Method 1: One-Click Deployment (Recommended)
 
 Use the automated preparation script for the easiest setup:

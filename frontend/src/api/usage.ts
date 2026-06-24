@@ -72,7 +72,7 @@ export interface UserTokenLeaderboardResponse {
   period: UserTokenLeaderboardPeriod
 }
 
-export type UserTokenLeaderboardPeriod = 'day' | 'week'
+export type UserTokenLeaderboardPeriod = 'day' | 'week' | 'last7d'
 
 export interface UserTokenLeaderboardParams {
   period?: UserTokenLeaderboardPeriod
