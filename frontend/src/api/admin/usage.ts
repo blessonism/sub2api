@@ -13,6 +13,19 @@ export interface SharedIPUsersSummary {
   ip_count: number
   user_count: number
   record_count: number
+  users?: SharedIPUserSummaryItem[]
+}
+
+export interface SharedIPUserSummaryItem {
+  user_id: number
+  email: string
+  deleted: boolean
+  ip_count: number
+  record_count: number
+  last_used_at?: string | null
+  ip_addresses?: string[]
+  total_tokens: number
+  actual_cost: number
 }
 
 export interface AdminUsageListResponse extends PaginatedResponse<AdminUsageLog> {

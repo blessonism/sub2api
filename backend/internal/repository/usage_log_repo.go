@@ -3562,7 +3562,75 @@ func (r *usageLogRepository) GetSharedIPUsersSummary(ctx context.Context, filter
 	if err := scanSingleRow(ctx, r.sql, query, args, &summary.IPCount, &summary.UserCount, &summary.RecordCount); err != nil {
 		return nil, err
 	}
+	users, err := r.listSharedIPUserSummaryItems(ctx, whereClause, args)
+	if err != nil {
+		return nil, err
+	}
+	summary.Users = users
 	return summary, nil
+}
+
+func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, whereClause string, args []any) ([]usagestats.SharedIPUserSummaryItem, error) {
+	query := `
+		WITH matched_logs AS (
+			SELECT
+				user_id,
+				ip_address,
+				created_at,
+				input_tokens,
+				output_tokens,
+				cache_creation_tokens,
+				cache_read_tokens,
+				actual_cost
+			FROM usage_logs
+			` + whereClause + `
+		)
+		SELECT
+			ml.user_id,
+			COALESCE(u.email, '') AS email,
+			u.deleted_at IS NOT NULL AS deleted,
+			COUNT(DISTINCT ml.ip_address) AS ip_count,
+			COUNT(*) AS record_count,
+			MAX(ml.created_at) AS last_used_at,
+			COALESCE(array_agg(DISTINCT ml.ip_address ORDER BY ml.ip_address) FILTER (WHERE ml.ip_address IS NOT NULL AND ml.ip_address <> ''), '{}') AS ip_addresses,
+			COALESCE(SUM(ml.input_tokens + ml.output_tokens + ml.cache_creation_tokens + ml.cache_read_tokens), 0) AS total_tokens,
+			COALESCE(SUM(ml.actual_cost), 0) AS actual_cost
+		FROM matched_logs ml
+		LEFT JOIN users u ON u.id = ml.user_id
+		GROUP BY ml.user_id, u.email, u.deleted_at
+		ORDER BY record_count DESC, last_used_at DESC, ml.user_id ASC
+		LIMIT 50`
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]usagestats.SharedIPUserSummaryItem, 0)
+	for rows.Next() {
+		var item usagestats.SharedIPUserSummaryItem
+		var ips []string
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Email,
+			&item.Deleted,
+			&item.IPCount,
+			&item.RecordCount,
+			&item.LastUsedAt,
+			pq.Array(&ips),
+			&item.TotalTokens,
+			&item.ActualCost,
+		); err != nil {
+			return nil, err
+		}
+		item.IPAddresses = ips
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
