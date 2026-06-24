@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan
+.PHONY: dev-up dev-down dev-status build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -7,6 +7,16 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/PaymentResultView.spec.ts \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts
+
+# 一键启动本地 Docker 开发环境
+dev-up:
+	@./deploy/start-local.sh
+
+dev-down:
+	@./deploy/start-local.sh --stop
+
+dev-status:
+	@./deploy/start-local.sh --status
 
 # 一键编译前后端
 build: build-backend build-frontend
