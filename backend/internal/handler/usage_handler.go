@@ -449,9 +449,18 @@ func userTodayUsageRange(userTZ string) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+func userCurrentWeekUsageRange(userTZ string) (time.Time, time.Time) {
+	now := timezone.NowInUserLocation(userTZ)
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	startTime := timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -daysSinceMonday), userTZ)
+	endTime := startTime.AddDate(0, 0, 7)
+	return startTime, endTime
+}
+
 const (
-	userTokenLeaderboardPeriodDay  = "day"
-	userTokenLeaderboardPeriodWeek = "week"
+	userTokenLeaderboardPeriodDay    = "day"
+	userTokenLeaderboardPeriodWeek   = "week"
+	userTokenLeaderboardPeriodLast7D = "last7d"
 )
 
 func userTokenLeaderboardRange(period, userTZ string) (time.Time, time.Time, string, bool) {
@@ -460,8 +469,11 @@ func userTokenLeaderboardRange(period, userTZ string) (time.Time, time.Time, str
 		startTime, endTime := userTodayUsageRange(userTZ)
 		return startTime, endTime, userTokenLeaderboardPeriodDay, true
 	case userTokenLeaderboardPeriodWeek:
-		startTime, endTime := apiKeyDailyUsageRange(7, userTZ)
+		startTime, endTime := userCurrentWeekUsageRange(userTZ)
 		return startTime, endTime, userTokenLeaderboardPeriodWeek, true
+	case userTokenLeaderboardPeriodLast7D:
+		startTime, endTime := apiKeyDailyUsageRange(7, userTZ)
+		return startTime, endTime, userTokenLeaderboardPeriodLast7D, true
 	default:
 		return time.Time{}, time.Time{}, "", false
 	}
@@ -535,7 +547,7 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	})
 }
 
-// DashboardLeaderboard 获取用户侧 Token 排行榜，支持日榜和自然日近 7 天周榜。
+// DashboardLeaderboard 获取用户侧 Token 排行榜，支持日榜、本周和近 7 天。
 // GET /api/v1/usage/dashboard/leaderboard
 func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
@@ -546,7 +558,7 @@ func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
 
 	startTime, endTime, period, ok := userTokenLeaderboardRange(c.Query("period"), c.Query("timezone"))
 	if !ok {
-		response.BadRequest(c, "Invalid period, use day or week")
+		response.BadRequest(c, "Invalid period, use day/week/last7d")
 		return
 	}
 

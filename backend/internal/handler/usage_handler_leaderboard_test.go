@@ -102,6 +102,8 @@ func TestDashboardLeaderboardSupportsWeekPeriod(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.True(t, usageRepo.called)
 	require.Equal(t, 7, int(usageRepo.endTime.Sub(usageRepo.startTime).Hours()/24))
+	require.Equal(t, time.Monday, usageRepo.startTime.Weekday())
+	require.Equal(t, time.Monday, usageRepo.endTime.Weekday())
 	require.Equal(t, 0, usageRepo.startTime.Hour())
 	require.Equal(t, 0, usageRepo.endTime.Hour())
 
@@ -111,6 +113,29 @@ func TestDashboardLeaderboardSupportsWeekPeriod(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, "week", got.Data.Period)
+}
+
+func TestDashboardLeaderboardSupportsLast7DaysPeriod(t *testing.T) {
+	currentUserID := int64(9)
+	usageRepo := &leaderboardUsageRepoStub{rows: &usagestats.UserTokenLeaderboardRows{}}
+	router := newLeaderboardTestRouter(usageRepo, currentUserID)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/leaderboard?timezone=UTC&period=last7d", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, usageRepo.called)
+	require.Equal(t, 7, int(usageRepo.endTime.Sub(usageRepo.startTime).Hours()/24))
+	require.Equal(t, 0, usageRepo.startTime.Hour())
+	require.Equal(t, 0, usageRepo.endTime.Hour())
+
+	var got struct {
+		Code int                                     `json:"code"`
+		Data usagestats.UserTokenLeaderboardResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "last7d", got.Data.Period)
 }
 
 func TestDashboardLeaderboardRejectsInvalidPeriod(t *testing.T) {
@@ -123,4 +148,5 @@ func TestDashboardLeaderboardRejectsInvalidPeriod(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.False(t, usageRepo.called)
+	require.Contains(t, rec.Body.String(), "day/week/last7d")
 }

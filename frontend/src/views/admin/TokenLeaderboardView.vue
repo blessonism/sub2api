@@ -28,11 +28,20 @@
       </div>
 
       <div class="card p-4">
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,1.2fr)_repeat(5,minmax(140px,1fr))_auto]">
-          <label class="space-y-1">
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,1.3fr)_repeat(5,minmax(140px,1fr))_auto]">
+          <div class="space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.timeRange') }}</span>
-            <DateRangePicker v-model:start-date="startDate" v-model:end-date="endDate" @change="onDateRangeChange" />
-          </label>
+            <div class="flex items-center gap-2">
+              <DateRangePicker v-model:start-date="startDate" v-model:end-date="endDate" @change="onDateRangeChange" />
+              <button
+                class="btn btn-secondary shrink-0 px-3 py-2 text-sm"
+                type="button"
+                @click="applyCurrentWeekRange"
+              >
+                {{ t('admin.tokenLeaderboard.weekShortcut') }}
+              </button>
+            </div>
+          </div>
           <label class="space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenLeaderboard.emailSearch') }}</span>
             <input
@@ -364,10 +373,28 @@ const appStore = useAppStore()
 
 const todayString = () => {
   const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
+  return formatDateToString(now)
+}
+
+const formatDateToString = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const currentWeekRange = (): { start: string; end: string } => {
+  const now = new Date()
+  const start = new Date(now)
+  const daysSinceMonday = (now.getDay() + 6) % 7
+  start.setDate(now.getDate() - daysSinceMonday)
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  return {
+    start: formatDateToString(start),
+    end: formatDateToString(end)
+  }
 }
 
 const startDate = ref(todayString())
@@ -567,6 +594,13 @@ function resetFilters(): void {
   userStatus.value = ''
   limit.value = 10
   clearSelectedUsers()
+  void loadLeaderboard()
+}
+
+function applyCurrentWeekRange(): void {
+  const range = currentWeekRange()
+  startDate.value = range.start
+  endDate.value = range.end
   void loadLeaderboard()
 }
 

@@ -187,21 +187,32 @@ const displayRangeText = computed(() => {
       end: leaderboard.value?.end_date || displayDate.value,
     })
   }
+  if (leaderboardPeriod.value === 'last7d') {
+    return t('leaderboard.last7dRange', {
+      start: leaderboard.value?.start_date || displayDate.value,
+      end: leaderboard.value?.end_date || displayDate.value,
+    })
+  }
   return t('leaderboard.todayRange', { date: displayDate.value })
 })
 const periodOptions = computed(() => [
   { value: 'day' as const, label: t('leaderboard.periodDay') },
   { value: 'week' as const, label: t('leaderboard.periodWeek') },
+  { value: 'last7d' as const, label: t('leaderboard.periodLast7d') },
 ])
 const currentPeriodLabel = computed(() => (
-  leaderboardPeriod.value === 'week' ? t('leaderboard.periodWeek') : t('leaderboard.periodDay')
+  periodOptions.value.find((option) => option.value === leaderboardPeriod.value)?.label || t('leaderboard.periodDay')
 ))
-const emptyStateTitle = computed(() => (
-  leaderboardPeriod.value === 'week' ? t('leaderboard.noDataWeek') : t('leaderboard.noData')
-))
-const emptyStateDescription = computed(() => (
-  leaderboardPeriod.value === 'week' ? t('leaderboard.noDataWeekDescription') : t('leaderboard.noDataDescription')
-))
+const emptyStateTitle = computed(() => {
+  if (leaderboardPeriod.value === 'week') return t('leaderboard.noDataWeek')
+  if (leaderboardPeriod.value === 'last7d') return t('leaderboard.noDataLast7d')
+  return t('leaderboard.noData')
+})
+const emptyStateDescription = computed(() => {
+  if (leaderboardPeriod.value === 'week') return t('leaderboard.noDataWeekDescription')
+  if (leaderboardPeriod.value === 'last7d') return t('leaderboard.noDataLast7dDescription')
+  return t('leaderboard.noDataDescription')
+})
 const topTokenTotal = computed(() => ranking.value.reduce((sum, item) => sum + item.tokens, 0))
 
 function formatFullNumber(value: number): string {

@@ -25,6 +25,23 @@ const messages: Record<string, string> = {
   'admin.dashboard.day': 'Day',
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
+  'admin.usage.sharedIPUsers.button': 'Shared IP Users',
+  'admin.usage.sharedIPUsers.summaryTitle': 'Matched shared-IP users',
+  'admin.usage.sharedIPUsers.ipCount': 'Matched IPs: {count}',
+  'admin.usage.sharedIPUsers.userCount': 'Users involved: {count}',
+  'admin.usage.sharedIPUsers.recordCount': 'Matched records: {count}',
+  'admin.usage.sharedIPUsers.matchedUsersTitle': 'Matched users',
+  'admin.usage.sharedIPUsers.user': 'User',
+  'admin.usage.sharedIPUsers.ipCountColumn': 'IPs',
+  'admin.usage.sharedIPUsers.recordCountColumn': 'Records',
+  'admin.usage.sharedIPUsers.lastUsed': 'Last used',
+  'admin.usage.sharedIPUsers.ipAddresses': 'Matched IPs',
+  'admin.usage.sharedIPUsers.showRecords': 'Show record details',
+  'admin.usage.sharedIPUsers.hideRecords': 'Hide record details',
+  'admin.usage.sharedIPUsers.usersTruncated': 'Showing the first {shown} of {total} matched users. {hidden} more users are hidden by the summary limit.',
+  'admin.usage.sharedIPUsers.moreIPs': 'and {count} more',
+  'usage.tokens': 'Tokens',
+  'usage.cost': 'Cost',
 }
 
 const formatLocalDate = (date: Date): string => {
@@ -71,6 +88,7 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/utils/format', () => ({
   formatReasoningEffort: (value: string | null | undefined) => value ?? '-',
+  formatDateTime: (value: string) => `formatted:${value}`,
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -78,7 +96,13 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => messages[key] ?? key,
+      t: (key: string, params?: Record<string, unknown>) => {
+        let text = messages[key] ?? key
+        for (const [name, value] of Object.entries(params ?? {})) {
+          text = text.replace(`{${name}}`, String(value))
+        }
+        return text
+      },
     }),
   }
 })
@@ -115,6 +139,106 @@ const GroupDistributionChartStub = {
     </div>
   `,
 }
+
+describe('admin UsageView shared IP users summary', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    list.mockReset()
+    getStats.mockReset()
+    getSnapshotV2.mockReset()
+    getById.mockReset()
+    getModelStats.mockReset()
+
+    list
+      .mockResolvedValueOnce({ items: [], total: 0, pages: 0 })
+      .mockResolvedValueOnce({
+        items: [{ id: 1, user_id: 7, ip_address: '203.0.113.9' }],
+        total: 6,
+        pages: 1,
+        shared_ip_users_summary: {
+          ip_count: 2,
+          user_count: 55,
+          record_count: 6,
+          users_limit: 50,
+          users_truncated: true,
+          hidden_user_count: 54,
+          users: [
+            {
+              user_id: 7,
+              email: 'risk@example.com',
+              deleted: false,
+              ip_count: 2,
+              record_count: 4,
+              last_used_at: '2026-06-20T02:00:00Z',
+              ip_addresses: ['203.0.113.9', '203.0.113.10', '203.0.113.11', '203.0.113.12'],
+              total_tokens: 1234,
+              actual_cost: 0.25,
+            },
+          ],
+        },
+      })
+    getStats.mockResolvedValue({
+      total_requests: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_tokens: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] })
+    getModelStats.mockResolvedValue({ models: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows matched users first and keeps raw records collapsed by default', async () => {
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+          OpsErrorLogTable: true,
+          OpsErrorDetailModal: true,
+        },
+      },
+    })
+
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    await wrapper.find('button[title="admin.usage.sharedIPUsers.tooltip"]').trigger('click')
+    await flushPromises()
+
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      shared_ip_users: true,
+    }), expect.anything())
+    expect(wrapper.text()).toContain('risk@example.com')
+    expect(wrapper.text()).toContain('and 1 more')
+    expect(wrapper.text()).toContain('Showing the first 1 of 55 matched users. 54 more users are hidden by the summary limit.')
+    expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(false)
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Show record details')?.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(true)
+  })
+})
 
 describe('admin UsageView distribution metric toggles', () => {
   beforeEach(() => {

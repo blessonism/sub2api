@@ -17,9 +17,11 @@ const messages: Record<string, string> = {
   'common.refresh': 'Refresh',
   'leaderboard.title': 'Leaderboard',
   'leaderboard.todayRange': 'Today: {date}',
-  'leaderboard.weekRange': 'Last 7 days: {start} - {end}',
+  'leaderboard.weekRange': 'This week: {start} - {end}',
+  'leaderboard.last7dRange': 'Last 7 days: {start} - {end}',
   'leaderboard.periodDay': 'Daily',
   'leaderboard.periodWeek': 'Weekly',
+  'leaderboard.periodLast7d': 'Last 7 days',
   'leaderboard.myRank': 'My Rank',
   'leaderboard.tokens': 'Tokens',
   'leaderboard.requests': 'Requests',
@@ -34,8 +36,10 @@ const messages: Record<string, string> = {
   'leaderboard.retry': 'Retry',
   'leaderboard.noData': 'No usage today',
   'leaderboard.noDataDescription': 'No token usage has been recorded today.',
-  'leaderboard.noDataWeek': 'No usage in the last 7 days',
-  'leaderboard.noDataWeekDescription': 'No token usage has been recorded in the last 7 natural days.',
+  'leaderboard.noDataWeek': 'No usage this week',
+  'leaderboard.noDataWeekDescription': 'No token usage has been recorded this week.',
+  'leaderboard.noDataLast7d': 'No usage in the last 7 days',
+  'leaderboard.noDataLast7dDescription': 'No token usage has been recorded in the last 7 natural days.',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -198,8 +202,8 @@ describe('LeaderboardView', () => {
           tokens: 0,
           is_current_user: true,
         },
-        start_date: '2026-06-14',
-        end_date: '2026-06-20',
+        start_date: '2026-06-15',
+        end_date: '2026-06-21',
         limit: 10,
         period: 'week',
       })
@@ -211,6 +215,48 @@ describe('LeaderboardView', () => {
     await flushPromises()
 
     expect(getDashboardLeaderboard).toHaveBeenLastCalledWith({ period: 'week' })
+    expect(wrapper.text()).toContain('This week: 2026-06-15 - 2026-06-21')
+    expect(wrapper.get('[data-testid="empty"]').text()).toContain('No usage this week')
+  })
+
+  it('switches to last 7 days leaderboard independently from weekly leaderboard', async () => {
+    getDashboardLeaderboard
+      .mockResolvedValueOnce({
+        ranking: [],
+        my_rank: {
+          rank: 0,
+          masked_email: 'm***e@example.com',
+          requests: 0,
+          tokens: 0,
+          is_current_user: true,
+        },
+        start_date: '2026-06-20',
+        end_date: '2026-06-20',
+        limit: 10,
+        period: 'day',
+      })
+      .mockResolvedValueOnce({
+        ranking: [],
+        my_rank: {
+          rank: 0,
+          masked_email: 'm***e@example.com',
+          requests: 0,
+          tokens: 0,
+          is_current_user: true,
+        },
+        start_date: '2026-06-14',
+        end_date: '2026-06-20',
+        limit: 10,
+        period: 'last7d',
+      })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Last 7 days')!.trigger('click')
+    await flushPromises()
+
+    expect(getDashboardLeaderboard).toHaveBeenLastCalledWith({ period: 'last7d' })
     expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
     expect(wrapper.get('[data-testid="empty"]').text()).toContain('No usage in the last 7 days')
   })
@@ -245,14 +291,14 @@ describe('LeaderboardView', () => {
         tokens: 7_000_000,
         is_current_user: true,
       },
-      start_date: '2026-06-14',
-      end_date: '2026-06-20',
+      start_date: '2026-06-15',
+      end_date: '2026-06-21',
       limit: 10,
       period: 'week',
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
+    expect(wrapper.text()).toContain('This week: 2026-06-15 - 2026-06-21')
     expect(wrapper.text()).toContain('w***k@example.com')
 
     dailyRequest.resolve({
@@ -279,7 +325,7 @@ describe('LeaderboardView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Last 7 days: 2026-06-14 - 2026-06-20')
+    expect(wrapper.text()).toContain('This week: 2026-06-15 - 2026-06-21')
     expect(wrapper.text()).toContain('w***k@example.com')
     expect(wrapper.text()).not.toContain('d***y@example.com')
   })

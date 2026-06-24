@@ -148,6 +148,22 @@ describe('TokenLeaderboardView', () => {
     expect(wrapper.text()).not.toContain('admin.tokenLeaderboard.accountCost')
   })
 
+  it('switches the admin token leaderboard to the current week range', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const weekButton = wrapper.findAll('button').find((button) => button.text() === 'admin.tokenLeaderboard.weekShortcut')
+    expect(weekButton).toBeTruthy()
+    await weekButton!.trigger('click')
+    await flushPromises()
+
+    expect(getAdminTokenLeaderboard).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: '2026-06-15',
+      end_date: '2026-06-21',
+      limit: 10
+    }))
+  })
+
   it('hides user ids by default and toggles them on demand', async () => {
     const wrapper = mountView()
     await flushPromises()
