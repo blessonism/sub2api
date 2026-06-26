@@ -1,8 +1,8 @@
 {
   "id": "06-25-user-leaderboard-multiplier-display",
   "name": "06-25-user-leaderboard-multiplier-display",
-  "title": "用户排行榜展示阶梯优惠倍率",
-  "description": "用户侧 Token 排行榜新增优惠倍率列；自动策略命中用户展示自动阶梯倍率，未命中用户展示管理员配置的全局通用分组倍率。",
+  "title": "用户排行榜展示阶梯倍率",
+  "description": "用户侧 Token 排行榜新增阶梯倍率列；自动策略命中用户展示自动阶梯倍率，未命中用户展示管理员配置的全局通用分组倍率，并在表头展示管理员可配置的阶梯倍率说明。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

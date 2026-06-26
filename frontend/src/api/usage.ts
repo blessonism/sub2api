@@ -71,6 +71,7 @@ export interface UserTokenLeaderboardResponse {
   end_date: string
   limit: number
   period: UserTokenLeaderboardPeriod
+  tier_tooltip?: string
 }
 
 export type UserTokenLeaderboardPeriod = 'day' | 'week' | 'last7d'

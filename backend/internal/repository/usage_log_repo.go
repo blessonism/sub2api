@@ -3088,7 +3088,7 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 		),
 		ranked AS (
 			SELECT
-				ROW_NUMBER() OVER (ORDER BY tokens DESC, requests DESC, user_id ASC) as rank,
+				ROW_NUMBER() OVER (ORDER BY uu.tokens DESC, uu.requests DESC, uu.user_id ASC) as rank,
 				uu.user_id,
 				uu.email,
 				uu.requests,

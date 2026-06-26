@@ -7879,6 +7879,7 @@ const form = reactive<SettingsForm>({
   // Token Leaderboard user visibility switch
   token_leaderboard_user_visible: true,
   token_leaderboard_common_group_id: 0,
+  token_leaderboard_tier_tooltip: "",
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
   // Allow user view error requests
@@ -9050,6 +9051,8 @@ async function saveSettings() {
       token_leaderboard_user_visible: form.token_leaderboard_user_visible,
       token_leaderboard_common_group_id:
         Number(form.token_leaderboard_common_group_id) || 0,
+      token_leaderboard_tier_tooltip:
+        form.token_leaderboard_tier_tooltip?.trim() || "",
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,

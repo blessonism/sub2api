@@ -127,7 +127,16 @@
               <tr>
                 <th class="w-24 px-5 py-3 text-left">{{ t('leaderboard.rank') }}</th>
                 <th class="px-5 py-3 text-left">{{ t('leaderboard.user') }}</th>
-                <th class="px-5 py-3 text-right">{{ t('leaderboard.discountRate') }}</th>
+                <th class="px-5 py-3 text-right">
+                  <span class="inline-flex items-center justify-end">
+                    {{ t('leaderboard.discountRate') }}
+                    <HelpTooltip
+                      v-if="tierTooltip"
+                      :content="tierTooltip"
+                      width-class="w-72 whitespace-pre-line text-left normal-case"
+                    />
+                  </span>
+                </th>
                 <th class="px-5 py-3 text-right">{{ t('leaderboard.tokens') }}</th>
                 <th class="px-5 py-3 text-right">{{ t('leaderboard.requests') }}</th>
               </tr>
@@ -169,6 +178,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { formatMultiplier as formatAdaptiveMultiplier } from '@/utils/formatters'
 import { TOKENS_PER_MILLION } from '@/utils/usagePricing'
@@ -193,6 +203,7 @@ let leaderboardRequestSeq = 0
 
 const ranking = computed(() => leaderboard.value?.ranking ?? [])
 const myRank = computed(() => leaderboard.value?.my_rank ?? emptyMyRank)
+const tierTooltip = computed(() => leaderboard.value?.tier_tooltip?.trim() ?? '')
 const displayDate = computed(() => leaderboard.value?.start_date || new Date().toISOString().slice(0, 10))
 const displayRangeText = computed(() => {
   if (leaderboardPeriod.value === 'week') {

@@ -3,11 +3,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -35,10 +37,67 @@ func (s *leaderboardUsageRepoStub) GetUserTokenLeaderboard(ctx context.Context, 
 	return s.rows, nil
 }
 
+type leaderboardSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *leaderboardSettingRepoStub) Get(ctx context.Context, key string) (*service.Setting, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return nil, errors.New("setting not found")
+	}
+	return &service.Setting{Key: key, Value: value}, nil
+}
+
+func (s *leaderboardSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return "", errors.New("setting not found")
+	}
+	return value, nil
+}
+
+func (s *leaderboardSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	s.values[key] = value
+	return nil
+}
+
+func (s *leaderboardSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		result[key] = s.values[key]
+	}
+	return result, nil
+}
+
+func (s *leaderboardSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	for key, value := range settings {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *leaderboardSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	result := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (s *leaderboardSettingRepoStub) Delete(ctx context.Context, key string) error {
+	delete(s.values, key)
+	return nil
+}
+
 func newLeaderboardTestRouter(usageRepo *leaderboardUsageRepoStub, userID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(usageRepo, nil, nil, nil)
-	handler := NewUsageHandler(usageSvc, nil, nil, nil)
+	settingSvc := service.NewSettingService(&leaderboardSettingRepoStub{values: map[string]string{
+		service.SettingKeyTokenLeaderboardUserVisible: "true",
+		service.SettingKeyTokenLeaderboardTierTooltip: "按最近 Token 用量匹配阶梯倍率",
+	}}, &config.Config{})
+	handler := NewUsageHandler(usageSvc, nil, nil, settingSvc)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: userID})
@@ -91,6 +150,7 @@ func TestDashboardLeaderboardReturnsMaskedEmailsOnly(t *testing.T) {
 	require.Equal(t, 0.7, got.Data.MyRank.DiscountRateMultiplier)
 	require.Equal(t, int64(12), got.Data.MyRank.Rank)
 	require.True(t, got.Data.MyRank.IsCurrentUser)
+	require.Equal(t, "按最近 Token 用量匹配阶梯倍率", got.Data.TierTooltip)
 }
 
 func TestDashboardLeaderboardSupportsWeekPeriod(t *testing.T) {

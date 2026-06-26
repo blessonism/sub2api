@@ -372,6 +372,10 @@ const (
 	// whose default multiplier is shown when a user has no automatic tier multiplier.
 	SettingKeyTokenLeaderboardCommonGroupID = "token_leaderboard_common_group_id"
 
+	// SettingKeyTokenLeaderboardTierTooltip stores the admin-authored explanation
+	// shown beside the user-facing tier multiplier column.
+	SettingKeyTokenLeaderboardTierTooltip = "token_leaderboard_tier_tooltip"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

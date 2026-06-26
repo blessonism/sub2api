@@ -23,7 +23,7 @@ const messages: Record<string, string> = {
   'leaderboard.periodWeek': 'Weekly',
   'leaderboard.periodLast7d': 'Last 7 days',
   'leaderboard.myRank': 'My Rank',
-  'leaderboard.discountRate': 'Discount Rate',
+  'leaderboard.discountRate': 'Tier Multiplier',
   'leaderboard.tokens': 'Tokens',
   'leaderboard.requests': 'Requests',
   'leaderboard.topUsers': 'Top {limit}',
@@ -65,6 +65,10 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         LoadingSpinner: { template: '<div data-testid="loading" />' },
+        HelpTooltip: {
+          props: ['content'],
+          template: '<span data-testid="help-tooltip">{{ content }}</span>',
+        },
         EmptyState: {
           props: ['title', 'description'],
           template: '<div data-testid="empty">{{ title }} {{ description }}</div>',
@@ -129,6 +133,7 @@ describe('LeaderboardView', () => {
       end_date: '2026-06-18',
       limit: 10,
       period: 'day',
+      tier_tooltip: '管理员配置的阶梯倍率规则',
     })
 
     const wrapper = mountView()
@@ -144,6 +149,7 @@ describe('LeaderboardView', () => {
     expect(text).toContain('0.70x')
     expect(text).toContain('0.18M')
     expect(text).toContain('1.25M')
+    expect(wrapper.get('[data-testid="help-tooltip"]').text()).toContain('管理员配置的阶梯倍率规则')
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('0.60x')
     expect(rows[0].text()).toContain('1.20M')

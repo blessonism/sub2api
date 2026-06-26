@@ -250,6 +250,9 @@ type SystemSettings struct {
 	// Token Leaderboard fallback display multiplier group
 	TokenLeaderboardCommonGroupID int64 `json:"token_leaderboard_common_group_id"`
 
+	// Token Leaderboard tier multiplier tooltip copy
+	TokenLeaderboardTierTooltip string `json:"token_leaderboard_tier_tooltip"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

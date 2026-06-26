@@ -763,7 +763,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900), 0.8).
 		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120), 0.9)
 
-	mock.ExpectQuery("WITH raw_usage AS \\(").
+	mock.ExpectQuery("ROW_NUMBER\\(\\) OVER \\(ORDER BY uu\\.tokens DESC, uu\\.requests DESC, uu\\.user_id ASC\\)").
 		WithArgs(start, end, 2, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 
@@ -794,7 +794,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardDefaultsLimitToTop10(t *testin
 	currentUserID := int64(9)
 
 	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"})
-	mock.ExpectQuery("WITH raw_usage AS \\(").
+	mock.ExpectQuery("ROW_NUMBER\\(\\) OVER \\(ORDER BY uu\\.tokens DESC, uu\\.requests DESC, uu\\.user_id ASC\\)").
 		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 
