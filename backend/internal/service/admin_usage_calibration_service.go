@@ -83,6 +83,8 @@ type AdminUsageCalibrationRepository interface {
 	SumTokenAllocations(ctx context.Context, userID int64, startDate, endDateExclusive string) (int64, error)
 	SumAllTokenAllocations(ctx context.Context, startDate, endDateExclusive string) (int64, error)
 	SumTokenAllocationsByDate(ctx context.Context, userID int64, startDate, endDateExclusive string) (map[string]int64, error)
+	SumBalanceSpent(ctx context.Context, userID int64, startTime, endTime time.Time) (float64, error)
+	SumBalanceSpentByUsers(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]float64, error)
 }
 
 type AdminUsageCalibrationService struct {
@@ -155,10 +157,7 @@ func validateAdminUsageCalibrationInput(input *AdminUsageCalibrationCreateInput)
 	if input.AdminUserID <= 0 {
 		return ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "admin_user_id"})
 	}
-	input.Reason = strings.TrimSpace(input.Reason)
-	if input.Reason == "" {
-		return ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "reason"})
-	}
+	input.Reason = ""
 	if input.Token == nil && input.Balance == nil {
 		return ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "calibration"})
 	}
