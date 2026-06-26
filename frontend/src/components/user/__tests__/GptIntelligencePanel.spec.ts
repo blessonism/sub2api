@@ -26,6 +26,11 @@ const messages: Record<string, string> = {
   'channelStatus.modelIq.cost': 'Cost',
   'channelStatus.modelIq.recentTrend': 'IQ Index Trend',
   'channelStatus.modelIq.trendSubtitle': 'Latest 12 available samples',
+  'channelStatus.modelIq.overviewTrend': 'IQ Index Overview',
+  'channelStatus.modelIq.overviewSubtitle': 'Recent samples aligned by model and reasoning effort',
+  'channelStatus.modelIq.reasoningTrends': 'Reasoning Effort Trends',
+  'channelStatus.modelIq.reasoningTrendsSubtitle': 'Each model/reasoning effort uses the same chart lens as the current xhigh series',
+  'channelStatus.modelIq.currentSeries': 'Current primary probe',
   'channelStatus.modelIq.emptyTrend': 'No recent trend data',
   'channelStatus.modelIq.reasoning': 'Reasoning: {effort}',
   'channelStatus.modelIq.reasoningEmpty': 'Reasoning: -',
@@ -137,6 +142,38 @@ const snapshot: GptIntelligenceSnapshot = {
         reasoning_effort: 'high',
         cost_usd: null,
       },
+      recent_days: [
+        {
+          date: '2026-06-23',
+          score: 87.5,
+          status: 'yellow',
+          passed: 7,
+          tasks: 12,
+          invalid: 0,
+          total_tokens: null,
+          output_tokens: null,
+          wall_seconds: null,
+          wall_time_human: '',
+          model: 'gpt-5.5',
+          reasoning_effort: 'high',
+          cost_usd: null,
+        },
+        {
+          date: '2026-06-24-am',
+          score: 100,
+          status: 'green',
+          passed: 8,
+          tasks: 12,
+          invalid: 0,
+          total_tokens: null,
+          output_tokens: null,
+          wall_seconds: null,
+          wall_time_human: '',
+          model: 'gpt-5.5',
+          reasoning_effort: 'high',
+          cost_usd: null,
+        },
+      ],
     },
   ],
   quota_radar: {
@@ -174,9 +211,24 @@ describe('GptIntelligencePanel', () => {
     expect(wrapper.text()).toContain('Output')
     expect(wrapper.text()).toContain('$40.38')
     expect(wrapper.text()).toContain('5h window · rate 2.85')
+    expect(wrapper.text()).toContain('GPT-5.5-xhigh')
+    expect(wrapper.text()).toContain('GPT-5.5-high')
+    expect(wrapper.text()).toContain('IQ Index Overview')
+    expect(wrapper.text()).toContain('Reasoning Effort Trends')
 
-    const chartData = JSON.parse(wrapper.find('.line-chart').text())
-    expect(chartData.datasets[0].data).toEqual([100, 112.5, 125])
+    const charts = wrapper.findAll('.line-chart')
+    expect(charts).toHaveLength(3)
+
+    const overviewChartData = JSON.parse(charts[0].text())
+    expect(overviewChartData.datasets.map((dataset: { label: string }) => dataset.label)).toEqual([
+      '5.5-xhigh',
+      '5.5-high',
+    ])
+    expect(overviewChartData.datasets[0].data).toEqual([100, 112.5, 125])
+    expect(overviewChartData.datasets[1].data).toEqual([87.5, 100, 87.5])
+
+    const highChartData = JSON.parse(charts[2].text())
+    expect(highChartData.datasets[0].data).toEqual([87.5, 100, 87.5])
   })
 
   it('shows an inline error when there is no cached snapshot', () => {

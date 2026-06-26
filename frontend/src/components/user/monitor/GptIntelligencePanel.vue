@@ -70,77 +70,53 @@
     </div>
 
     <div v-else class="p-5">
-      <div class="grid gap-4 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.6fr)]">
+      <div v-if="comparisonSeries.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div
-          class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-5 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+          v-for="series in comparisonSeries"
+          :key="series.key"
+          class="min-w-0 rounded-xl border p-4"
+          :class="series.palette.cardClass"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-emerald-700/80 dark:text-emerald-300/80">
-                {{ t('channelStatus.modelIq.score') }}
-              </div>
-              <div class="mt-3 font-mono text-5xl font-bold leading-none text-emerald-950 tabular-nums dark:text-emerald-50 sm:text-6xl">
-                {{ scoreLabel }}
-              </div>
-            </div>
-            <span
-              class="inline-flex flex-shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold uppercase"
-              :class="statusClass"
-            >
-              <span class="mr-1.5 h-1.5 w-1.5 rounded-full" :class="statusDotClass"></span>
-              {{ statusLabel }}
-            </span>
+          <div class="truncate text-sm font-semibold text-gray-600 dark:text-gray-300" :title="series.title">
+            {{ series.title }}
           </div>
+          <div
+            class="mt-3 font-mono text-4xl font-bold leading-none tabular-nums sm:text-5xl"
+            :class="series.palette.scoreClass"
+          >
+            {{ series.scoreLabel }}
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            <span class="truncate" :title="series.passLabel">{{ series.passLabel }}</span>
+            <span class="truncate" :title="series.sampledAtLabel">{{ series.sampledAtLabel }}</span>
+          </div>
+        </div>
+      </div>
 
-          <div class="mt-6 grid grid-cols-2 gap-3">
-            <div class="rounded-lg border border-white/70 bg-white/70 p-3 dark:border-emerald-400/10 dark:bg-dark-900/30">
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('channelStatus.modelIq.passed') }}
-              </div>
-              <div class="mt-1 truncate font-mono text-base font-semibold text-gray-900 dark:text-gray-100" :title="passLabel">
-                {{ passLabel }}
-              </div>
+      <div class="mt-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700/50 dark:bg-dark-900/40">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {{ t('channelStatus.modelIq.overviewTrend') }}
             </div>
-            <div class="rounded-lg border border-white/70 bg-white/70 p-3 dark:border-emerald-400/10 dark:bg-dark-900/30">
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('channelStatus.modelIq.baseline') }}
-              </div>
-              <div class="mt-1 truncate font-mono text-base font-semibold text-gray-900 dark:text-gray-100" :title="baselineLabel">
-                {{ baselineLabel }}
-              </div>
+            <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('channelStatus.modelIq.overviewSubtitle') }}
             </div>
           </div>
-
-          <div class="mt-5 rounded-lg border border-emerald-100/80 bg-white/60 px-3 py-2 text-xs text-gray-600 dark:border-emerald-400/10 dark:bg-dark-900/30 dark:text-gray-300">
-            {{ sampledAtLabel }}
+          <div v-if="error" class="text-xs text-amber-600 dark:text-amber-300">
+            {{ t('channelStatus.modelIq.staleNotice') }}
           </div>
         </div>
 
-        <div class="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700/50 dark:bg-dark-900/40">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {{ t('channelStatus.modelIq.recentTrend') }}
-              </div>
-              <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('channelStatus.modelIq.trendSubtitle') }}
-              </div>
-            </div>
-            <div v-if="error" class="text-xs text-amber-600 dark:text-amber-300">
-              {{ t('channelStatus.modelIq.staleNotice') }}
-            </div>
-          </div>
+        <div v-if="overviewChartData" class="mt-4 h-72 sm:h-80">
+          <Line :data="overviewChartData" :options="overviewChartOptions" />
+        </div>
 
-          <div v-if="trendChartData" class="mt-4 h-52 sm:h-56">
-            <Line :data="trendChartData" :options="trendChartOptions" />
-          </div>
-
-          <div
-            v-else
-            class="mt-4 flex h-52 items-center justify-center rounded-lg border border-dashed border-gray-200 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400 sm:h-56"
-          >
-            {{ t('channelStatus.modelIq.emptyTrend') }}
-          </div>
+        <div
+          v-else
+          class="mt-4 flex h-72 items-center justify-center rounded-lg border border-dashed border-gray-200 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400 sm:h-80"
+        >
+          {{ t('channelStatus.modelIq.emptyTrend') }}
         </div>
       </div>
 
@@ -166,6 +142,55 @@
               {{ chip.subValue }}
             </span>
           </span>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {{ t('channelStatus.modelIq.reasoningTrends') }}
+            </div>
+            <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('channelStatus.modelIq.reasoningTrendsSubtitle') }}
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 grid gap-4 xl:grid-cols-2">
+          <div
+            v-for="series in comparisonSeries"
+            :key="`${series.key}-trend`"
+            class="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700/50 dark:bg-dark-900/40"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ backgroundColor: series.palette.line }"></span>
+                  <div class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100" :title="series.title">
+                    {{ series.legendLabel }}
+                  </div>
+                </div>
+                <div class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" :title="series.passLabel">
+                  {{ series.passLabel }}
+                </div>
+              </div>
+              <div class="font-mono text-lg font-bold leading-none tabular-nums" :class="series.palette.scoreClass">
+                {{ series.scoreLabel }}
+              </div>
+            </div>
+
+            <div v-if="series.chartData" class="mt-4 h-48 sm:h-52">
+              <Line :data="series.chartData" :options="seriesChartOptions" />
+            </div>
+
+            <div
+              v-else
+              class="mt-4 flex h-48 items-center justify-center rounded-lg border border-dashed border-gray-200 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400 sm:h-52"
+            >
+              {{ t('channelStatus.modelIq.emptyTrend') }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -206,6 +231,68 @@ interface InfoChip {
   icon: ChipIcon
 }
 
+interface SeriesPalette {
+  line: string
+  fill: string
+  point: string
+  cardClass: string
+  scoreClass: string
+}
+
+interface SeriesSource {
+  key: string
+  title: string
+  legendLabel: string
+  latest: GptIntelligenceRun | null
+  runs: GptIntelligenceRun[]
+}
+
+interface PreparedSeries extends SeriesSource {
+  scoreLabel: string
+  passLabel: string
+  sampledAtLabel: string
+  palette: SeriesPalette
+  chartData: ChartData<'line', (number | null)[], string> | null
+}
+
+const SERIES_PALETTES: SeriesPalette[] = [
+  {
+    line: '#16a34a',
+    fill: '#16a34a18',
+    point: '#16a34a',
+    cardClass: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/25 dark:bg-emerald-500/10',
+    scoreClass: 'text-emerald-600 dark:text-emerald-300',
+  },
+  {
+    line: '#2563eb',
+    fill: '#2563eb18',
+    point: '#2563eb',
+    cardClass: 'border-blue-200 bg-blue-50/70 dark:border-blue-500/25 dark:bg-blue-500/10',
+    scoreClass: 'text-blue-600 dark:text-blue-300',
+  },
+  {
+    line: '#ea580c',
+    fill: '#ea580c18',
+    point: '#ea580c',
+    cardClass: 'border-orange-200 bg-orange-50/70 dark:border-orange-500/25 dark:bg-orange-500/10',
+    scoreClass: 'text-orange-600 dark:text-orange-300',
+  },
+  {
+    line: '#7c3aed',
+    fill: '#7c3aed18',
+    point: '#7c3aed',
+    cardClass: 'border-violet-200 bg-violet-50/70 dark:border-violet-500/25 dark:bg-violet-500/10',
+    scoreClass: 'text-violet-600 dark:text-violet-300',
+  },
+  {
+    line: '#0891b2',
+    fill: '#0891b218',
+    point: '#0891b2',
+    cardClass: 'border-cyan-200 bg-cyan-50/70 dark:border-cyan-500/25 dark:bg-cyan-500/10',
+    scoreClass: 'text-cyan-600 dark:text-cyan-300',
+  },
+]
+
 const props = defineProps<{
   snapshot: GptIntelligenceSnapshot | null
   loading: boolean
@@ -216,16 +303,57 @@ const { t } = useI18n()
 
 const latest = computed(() => props.snapshot?.latest ?? null)
 
-const trendRuns = computed<GptIntelligenceRun[]>(() => {
-  const byDate = new Map<string, GptIntelligenceRun>()
-  for (const run of props.snapshot?.recent_days ?? []) {
-    if (run.date) byDate.set(run.date, run)
+const comparisonSeries = computed<PreparedSeries[]>(() => {
+  const sources: SeriesSource[] = []
+  const primaryRuns = mergeRuns(props.snapshot?.recent_days ?? [], latest.value)
+  const primaryLatest = latest.value ?? findLatestRun(primaryRuns)
+  if (primaryLatest || primaryRuns.length) {
+    const title = buildSeriesTitle(
+      primaryLatest?.model ?? '',
+      primaryLatest?.reasoning_effort ?? '',
+      t('channelStatus.modelIq.currentSeries'),
+    )
+    sources.push({
+      key: 'current',
+      title,
+      legendLabel: buildLegendLabel(title),
+      latest: primaryLatest,
+      runs: primaryRuns,
+    })
   }
-  const current = latest.value
-  if (current?.date) byDate.set(current.date, current)
-  return Array.from(byDate.values())
-    .filter((run) => run.score !== null)
-    .slice(-12)
+
+  for (const comparison of props.snapshot?.comparisons ?? []) {
+    const runs = mergeRuns(comparison.recent_days, comparison.latest)
+    const comparisonLatest = comparison.latest ?? findLatestRun(runs)
+    if (!comparisonLatest && !runs.length) continue
+
+    const title = buildSeriesTitle(
+      comparison.model || comparisonLatest?.model || '',
+      comparison.reasoning_effort || comparisonLatest?.reasoning_effort || '',
+      comparison.label,
+    )
+    sources.push({
+      key: comparison.key,
+      title,
+      legendLabel: buildLegendLabel(title),
+      latest: comparisonLatest,
+      runs,
+    })
+  }
+
+  return sources.map((series, index) => {
+    const palette = SERIES_PALETTES[index % SERIES_PALETTES.length]
+    const latestRun = series.latest
+    const sampledAt = latestRun?.date || findLatestRun(series.runs)?.date || t('monitorCommon.latencyEmpty')
+    return {
+      ...series,
+      scoreLabel: formatScore(latestRun?.score ?? null),
+      passLabel: formatPass(latestRun?.passed ?? null, latestRun?.tasks ?? null),
+      sampledAtLabel: t('channelStatus.modelIq.sampledAt', { date: sampledAt }),
+      palette,
+      chartData: buildSingleSeriesChartData(series, palette),
+    }
+  })
 })
 
 const statusLabel = computed(() => {
@@ -269,8 +397,6 @@ const updatedLabel = computed(() => {
   })
 })
 
-const scoreLabel = computed(() => formatScore(latest.value?.score ?? null))
-const passLabel = computed(() => formatPass(latest.value?.passed ?? null, latest.value?.tasks ?? null))
 const modelLabel = computed(() => latest.value?.model || t('monitorCommon.latencyEmpty'))
 const reasoningLabel = computed(() => latest.value?.reasoning_effort
   ? t('channelStatus.modelIq.reasoning', { effort: latest.value.reasoning_effort })
@@ -287,11 +413,6 @@ const probeLabel = computed(() => {
   const tasks = latest.value?.tasks
   if (tasks === null || tasks === undefined) return t('channelStatus.modelIq.testBadgeFallback')
   return t('channelStatus.modelIq.testBadge', { tasks })
-})
-const baselineLabel = computed(() => {
-  const tasks = latest.value?.tasks
-  if (tasks === null || tasks === undefined) return t('channelStatus.modelIq.baselineEmpty')
-  return t('channelStatus.modelIq.baselineValue', { tasks })
 })
 const quotaLabel = computed(() => {
   const radar = props.snapshot?.quota_radar
@@ -339,38 +460,48 @@ const isDarkMode = computed(() => {
 })
 
 const chartColors = computed(() => ({
-  line: '#10b981',
-  lineFill: '#10b98122',
-  point: '#059669',
   grid: isDarkMode.value ? '#374151' : '#e5e7eb',
   text: isDarkMode.value ? '#9ca3af' : '#6b7280',
 }))
 
-const trendChartData = computed<ChartData<'line', number[], string> | null>(() => {
-  if (!trendRuns.value.length) return null
-  const colors = chartColors.value
+const overviewLabels = computed(() => {
+  const dates = new Set<string>()
+  for (const series of comparisonSeries.value) {
+    for (const run of series.runs) {
+      if (run.date && run.score !== null) dates.add(run.date)
+    }
+  }
+  return Array.from(dates).sort(compareSampleDate).slice(-12)
+})
+
+const overviewChartData = computed<ChartData<'line', (number | null)[], string> | null>(() => {
+  const labels = overviewLabels.value
+  if (!labels.length || !comparisonSeries.value.length) return null
+
   return {
-    labels: trendRuns.value.map((run) => shortDate(run.date)),
-    datasets: [
-      {
-        label: t('channelStatus.modelIq.score'),
-        data: trendRuns.value.map((run) => run.score ?? 0),
-        borderColor: colors.line,
-        backgroundColor: colors.lineFill,
-        pointBackgroundColor: colors.point,
+    labels: labels.map(shortDate),
+    datasets: comparisonSeries.value.map((series) => {
+      const byDate = new Map(series.runs.map((run) => [run.date, run.score]))
+      return {
+        label: series.legendLabel,
+        data: labels.map((date) => byDate.get(date) ?? null),
+        borderColor: series.palette.line,
+        backgroundColor: series.palette.fill,
+        pointBackgroundColor: series.palette.point,
         pointBorderColor: '#ffffff',
         pointBorderWidth: 2,
-        pointRadius: 3,
-        pointHoverRadius: 5,
+        pointRadius: 4,
+        pointHoverRadius: 6,
         pointHitRadius: 10,
-        fill: true,
+        fill: false,
         tension: 0.35,
-      },
-    ],
+        spanGaps: true,
+      }
+    }),
   }
 })
 
-const trendChartOptions = computed<ChartOptions<'line'>>(() => {
+const overviewChartOptions = computed<ChartOptions<'line'>>(() => {
   const colors = chartColors.value
   return {
     responsive: true,
@@ -381,15 +512,23 @@ const trendChartOptions = computed<ChartOptions<'line'>>(() => {
     },
     plugins: {
       legend: {
-        display: false,
+        display: true,
+        position: 'bottom',
+        labels: {
+          color: colors.text,
+          usePointStyle: true,
+          boxWidth: 8,
+          boxHeight: 8,
+          padding: 18,
+        },
       },
       tooltip: {
         callbacks: {
           title: (items) => {
             const index = items[0]?.dataIndex ?? 0
-            return trendRuns.value[index]?.date ?? ''
+            return overviewLabels.value[index] ?? ''
           },
-          label: (item) => `${t('channelStatus.modelIq.score')}: ${formatScore(Number(item.raw))}`,
+          label: (item) => `${item.dataset.label}: ${formatScore(readTooltipNumber(item.raw))}`,
         },
       },
     },
@@ -424,6 +563,113 @@ const trendChartOptions = computed<ChartOptions<'line'>>(() => {
   }
 })
 
+const seriesChartOptions = computed<ChartOptions<'line'>>(() => {
+  const colors = chartColors.value
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      intersect: false,
+      mode: 'index',
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          label: (item) => `${t('channelStatus.modelIq.score')}: ${formatScore(readTooltipNumber(item.raw))}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: colors.text,
+          maxRotation: 0,
+          autoSkip: true,
+          font: {
+            size: 10,
+          },
+        },
+      },
+      y: {
+        suggestedMin: 0,
+        suggestedMax: 150,
+        grid: {
+          color: colors.grid,
+        },
+        ticks: {
+          color: colors.text,
+          font: {
+            size: 10,
+          },
+        },
+      },
+    },
+  }
+})
+
+function buildSingleSeriesChartData(
+  series: SeriesSource,
+  palette: SeriesPalette,
+): ChartData<'line', (number | null)[], string> | null {
+  const runs = series.runs.filter((run) => run.score !== null).slice(-12)
+  if (!runs.length) return null
+  return {
+    labels: runs.map((run) => shortDate(run.date)),
+    datasets: [
+      {
+        label: series.legendLabel,
+        data: runs.map((run) => run.score),
+        borderColor: palette.line,
+        backgroundColor: palette.fill,
+        pointBackgroundColor: palette.point,
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointHitRadius: 10,
+        fill: true,
+        tension: 0.35,
+      },
+    ],
+  }
+}
+
+function mergeRuns(runs: GptIntelligenceRun[], latestRun: GptIntelligenceRun | null): GptIntelligenceRun[] {
+  const byDate = new Map<string, GptIntelligenceRun>()
+  for (const run of runs) {
+    if (run.date) byDate.set(run.date, run)
+  }
+  if (latestRun?.date) byDate.set(latestRun.date, latestRun)
+  return Array.from(byDate.values())
+    .filter((run) => run.score !== null)
+    .slice(-12)
+}
+
+function findLatestRun(runs: GptIntelligenceRun[]): GptIntelligenceRun | null {
+  return runs.length ? runs[runs.length - 1] : null
+}
+
+function buildSeriesTitle(model: string, effort: string, fallback: string): string {
+  const modelLabel = formatModelName(model)
+  if (modelLabel && effort) return `${modelLabel}-${effort}`
+  if (modelLabel) return modelLabel
+  return fallback
+}
+
+function buildLegendLabel(title: string): string {
+  return title.replace(/^GPT-/i, '')
+}
+
+function formatModelName(model: string): string {
+  return model.replace(/^gpt-/i, 'GPT-')
+}
+
 function formatScore(value: number | null): string {
   if (value === null || Number.isNaN(value)) return t('monitorCommon.latencyEmpty')
   return value.toFixed(1)
@@ -449,10 +695,26 @@ function formatDuration(value: number | null): string {
   return t('channelStatus.modelIq.seconds', { seconds: value })
 }
 
+function readTooltipNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function compareSampleDate(a: string, b: string): number {
+  return sampleDateOrder(a) - sampleDateOrder(b)
+}
+
+function sampleDateOrder(value: string): number {
+  const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:-(am|pm))?$/)
+  if (!matched) return Number.MAX_SAFE_INTEGER
+  const [, year, month, day, half] = matched
+  const halfOrder = half === 'pm' ? 1 : 0
+  return Number(year) * 10000 + Number(month) * 100 + Number(day) + halfOrder / 10
+}
+
 function shortDate(value: string): string {
   const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:-(am|pm))?$/)
   if (!matched) return value
   const [, , month, day, half] = matched
-  return `${month}/${day}${half ? half.charAt(0) : ''}`
+  return `${Number(month)}.${Number(day)}${half ? `_${half}` : ''}`
 }
 </script>
