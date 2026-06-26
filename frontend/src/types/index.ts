@@ -106,6 +106,8 @@ export interface AdminUser extends User {
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 用户专属可见分组倍率配置 (group_id -> visible_rate_multiplier)
+  visible_group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -505,6 +507,7 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  visible_rate_multiplier?: number | null
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
   status: 'active' | 'inactive'
@@ -626,6 +629,7 @@ export interface CreateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  visible_rate_multiplier?: number | null
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -660,6 +664,7 @@ export interface UpdateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  visible_rate_multiplier?: number | null
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
@@ -1237,6 +1242,7 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
+  visible_rate_multiplier?: number | null
   billing_type: number
 
   request_type?: UsageRequestType
@@ -1552,6 +1558,9 @@ export interface UpdateUserRequest {
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
+  // 用户专属可见分组倍率配置 (group_id -> visible_rate_multiplier | null)
+  // null 表示删除该分组的专属可见倍率
+  visible_group_rates?: Record<number, number | null>
 }
 
 export interface ChangePasswordRequest {

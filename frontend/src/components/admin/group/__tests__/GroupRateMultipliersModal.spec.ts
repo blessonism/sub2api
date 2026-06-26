@@ -111,9 +111,9 @@ describe('GroupRateMultipliersModal', () => {
     await flushPromises()
 
     expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
-      { user_id: 1, rate_multiplier: 1.25 },
-      { user_id: 2, rate_multiplier: 1.25 },
-      { user_id: 3, rate_multiplier: 3 }
+      { user_id: 1, rate_multiplier: 1.25, visible_rate_multiplier: null },
+      { user_id: 2, rate_multiplier: 1.25, visible_rate_multiplier: null },
+      { user_id: 3, rate_multiplier: 3, visible_rate_multiplier: null }
     ])
   })
 
@@ -156,10 +156,10 @@ describe('GroupRateMultipliersModal', () => {
     await flushPromises()
 
     expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
-      { user_id: 1, rate_multiplier: 1.25 },
-      { user_id: 2, rate_multiplier: 1.25 },
-      { user_id: 3, rate_multiplier: 1.234 },
-      { user_id: 4, rate_multiplier: 2.3456 }
+      { user_id: 1, rate_multiplier: 1.25, visible_rate_multiplier: null },
+      { user_id: 2, rate_multiplier: 1.25, visible_rate_multiplier: null },
+      { user_id: 3, rate_multiplier: 1.234, visible_rate_multiplier: null },
+      { user_id: 4, rate_multiplier: 2.3456, visible_rate_multiplier: null }
     ])
   })
 })

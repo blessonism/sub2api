@@ -287,7 +287,7 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		out = append(out, *dto.GroupFromService(&groups[i]))
+		out = append(out, *dto.GroupFromServiceUserVisible(&groups[i]))
 	}
 	response.Success(c, out)
 }

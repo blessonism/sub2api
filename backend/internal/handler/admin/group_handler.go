@@ -27,6 +27,11 @@ type optionalLimitField struct {
 	value *float64
 }
 
+type optionalNullableFloatField struct {
+	set   bool
+	value *float64
+}
+
 func (f *optionalLimitField) UnmarshalJSON(data []byte) error {
 	f.set = true
 
@@ -71,6 +76,31 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 	return &zero
 }
 
+func (f *optionalNullableFloatField) UnmarshalJSON(data []byte) error {
+	f.set = true
+
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.value = nil
+		return nil
+	}
+
+	var number float64
+	if err := json.Unmarshal(trimmed, &number); err != nil {
+		return err
+	}
+	f.value = &number
+	return nil
+}
+
+func (f optionalNullableFloatField) IsSet() bool {
+	return f.set
+}
+
+func (f optionalNullableFloatField) Value() *float64 {
+	return f.value
+}
+
 // NewGroupHandler creates a new admin group handler
 func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
@@ -82,15 +112,16 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
-	Name             string             `json:"name" binding:"required"`
-	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
-	RateMultiplier   float64            `json:"rate_multiplier"`
-	IsExclusive      bool               `json:"is_exclusive"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
-	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	Name                  string             `json:"name" binding:"required"`
+	Description           string             `json:"description"`
+	Platform              string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	RateMultiplier        float64            `json:"rate_multiplier"`
+	VisibleRateMultiplier *float64           `json:"visible_rate_multiplier"`
+	IsExclusive           bool               `json:"is_exclusive"`
+	SubscriptionType      string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	DailyLimitUSD         optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD        optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD       optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -122,16 +153,17 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
-	Name             string             `json:"name"`
-	Description      *string            `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
-	RateMultiplier   *float64           `json:"rate_multiplier"`
-	IsExclusive      *bool              `json:"is_exclusive"`
-	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
-	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	Name                  string                     `json:"name"`
+	Description           *string                    `json:"description"`
+	Platform              string                     `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	RateMultiplier        *float64                   `json:"rate_multiplier"`
+	VisibleRateMultiplier optionalNullableFloatField `json:"visible_rate_multiplier"`
+	IsExclusive           *bool                      `json:"is_exclusive"`
+	Status                string                     `json:"status" binding:"omitempty,oneof=active inactive"`
+	SubscriptionType      string                     `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	DailyLimitUSD         optionalLimitField         `json:"daily_limit_usd"`
+	WeeklyLimitUSD        optionalLimitField         `json:"weekly_limit_usd"`
+	MonthlyLimitUSD       optionalLimitField         `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -282,6 +314,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
+		VisibleRateMultiplier:           req.VisibleRateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
@@ -337,6 +370,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
+		VisibleRateMultiplier:           req.VisibleRateMultiplier.Value(),
+		VisibleRateMultiplierSet:        req.VisibleRateMultiplier.IsSet(),
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
@@ -501,7 +536,23 @@ func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {
 
 // BatchSetGroupRateMultipliersRequest represents batch set rate multipliers request
 type BatchSetGroupRateMultipliersRequest struct {
-	Entries []service.GroupRateMultiplierInput `json:"entries" binding:"required"`
+	Entries []groupRateMultiplierInputField `json:"entries" binding:"required"`
+}
+
+type groupRateMultiplierInputField struct {
+	UserID                int64                      `json:"user_id"`
+	RateMultiplier        optionalNullableFloatField `json:"rate_multiplier"`
+	VisibleRateMultiplier optionalNullableFloatField `json:"visible_rate_multiplier"`
+}
+
+func (e groupRateMultiplierInputField) ToServiceInput() service.GroupRateMultiplierInput {
+	return service.GroupRateMultiplierInput{
+		UserID:                   e.UserID,
+		RateMultiplier:           e.RateMultiplier.Value(),
+		VisibleRateMultiplier:    e.VisibleRateMultiplier.Value(),
+		RateMultiplierSet:        e.RateMultiplier.IsSet(),
+		VisibleRateMultiplierSet: e.VisibleRateMultiplier.IsSet(),
+	}
 }
 
 // BatchSetGroupRateMultipliers handles batch setting rate multipliers for a group
@@ -519,7 +570,12 @@ func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
 		return
 	}
 
-	if err := h.adminService.BatchSetGroupRateMultipliers(c.Request.Context(), groupID, req.Entries); err != nil {
+	entries := make([]service.GroupRateMultiplierInput, 0, len(req.Entries))
+	for _, entry := range req.Entries {
+		entries = append(entries, entry.ToServiceInput())
+	}
+
+	if err := h.adminService.BatchSetGroupRateMultipliers(c.Request.Context(), groupID, entries); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

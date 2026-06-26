@@ -117,6 +117,33 @@ func (_u *GroupUpdate) AddRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_u *GroupUpdate) SetVisibleRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetVisibleRateMultiplier()
+	_u.mutation.SetVisibleRateMultiplier(v)
+	return _u
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableVisibleRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetVisibleRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddVisibleRateMultiplier adds value to the "visible_rate_multiplier" field.
+func (_u *GroupUpdate) AddVisibleRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddVisibleRateMultiplier(v)
+	return _u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (_u *GroupUpdate) ClearVisibleRateMultiplier() *GroupUpdate {
+	_u.mutation.ClearVisibleRateMultiplier()
+	return _u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_u *GroupUpdate) SetIsExclusive(v bool) *GroupUpdate {
 	_u.mutation.SetIsExclusive(v)
@@ -980,6 +1007,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedVisibleRateMultiplier(); ok {
+		_spec.AddField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.VisibleRateMultiplierCleared() {
+		_spec.ClearField(group.FieldVisibleRateMultiplier, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 	}
@@ -1527,6 +1563,33 @@ func (_u *GroupUpdateOne) SetNillableRateMultiplier(v *float64) *GroupUpdateOne 
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *GroupUpdateOne) AddRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetVisibleRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetVisibleRateMultiplier()
+	_u.mutation.SetVisibleRateMultiplier(v)
+	return _u
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableVisibleRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetVisibleRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddVisibleRateMultiplier adds value to the "visible_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddVisibleRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddVisibleRateMultiplier(v)
+	return _u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (_u *GroupUpdateOne) ClearVisibleRateMultiplier() *GroupUpdateOne {
+	_u.mutation.ClearVisibleRateMultiplier()
 	return _u
 }
 
@@ -2422,6 +2485,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedVisibleRateMultiplier(); ok {
+		_spec.AddField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.VisibleRateMultiplierCleared() {
+		_spec.ClearField(group.FieldVisibleRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)

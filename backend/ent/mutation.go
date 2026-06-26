@@ -15129,6 +15129,8 @@ type GroupMutation struct {
 	description                             *string
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
+	visible_rate_multiplier                 *float64
+	addvisible_rate_multiplier              *float64
 	is_exclusive                            *bool
 	status                                  *string
 	platform                                *string
@@ -15553,6 +15555,76 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (m *GroupMutation) SetVisibleRateMultiplier(f float64) {
+	m.visible_rate_multiplier = &f
+	m.addvisible_rate_multiplier = nil
+}
+
+// VisibleRateMultiplier returns the value of the "visible_rate_multiplier" field in the mutation.
+func (m *GroupMutation) VisibleRateMultiplier() (r float64, exists bool) {
+	v := m.visible_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVisibleRateMultiplier returns the old "visible_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVisibleRateMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVisibleRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVisibleRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVisibleRateMultiplier: %w", err)
+	}
+	return oldValue.VisibleRateMultiplier, nil
+}
+
+// AddVisibleRateMultiplier adds f to the "visible_rate_multiplier" field.
+func (m *GroupMutation) AddVisibleRateMultiplier(f float64) {
+	if m.addvisible_rate_multiplier != nil {
+		*m.addvisible_rate_multiplier += f
+	} else {
+		m.addvisible_rate_multiplier = &f
+	}
+}
+
+// AddedVisibleRateMultiplier returns the value that was added to the "visible_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedVisibleRateMultiplier() (r float64, exists bool) {
+	v := m.addvisible_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (m *GroupMutation) ClearVisibleRateMultiplier() {
+	m.visible_rate_multiplier = nil
+	m.addvisible_rate_multiplier = nil
+	m.clearedFields[group.FieldVisibleRateMultiplier] = struct{}{}
+}
+
+// VisibleRateMultiplierCleared returns if the "visible_rate_multiplier" field was cleared in this mutation.
+func (m *GroupMutation) VisibleRateMultiplierCleared() bool {
+	_, ok := m.clearedFields[group.FieldVisibleRateMultiplier]
+	return ok
+}
+
+// ResetVisibleRateMultiplier resets all changes to the "visible_rate_multiplier" field.
+func (m *GroupMutation) ResetVisibleRateMultiplier() {
+	m.visible_rate_multiplier = nil
+	m.addvisible_rate_multiplier = nil
+	delete(m.clearedFields, group.FieldVisibleRateMultiplier)
 }
 
 // SetIsExclusive sets the "is_exclusive" field.
@@ -17337,7 +17409,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17355,6 +17427,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
+	}
+	if m.visible_rate_multiplier != nil {
+		fields = append(fields, group.FieldVisibleRateMultiplier)
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
@@ -17463,6 +17538,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case group.FieldVisibleRateMultiplier:
+		return m.VisibleRateMultiplier()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
 	case group.FieldStatus:
@@ -17542,6 +17619,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case group.FieldVisibleRateMultiplier:
+		return m.OldVisibleRateMultiplier(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
 	case group.FieldStatus:
@@ -17650,6 +17729,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case group.FieldVisibleRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVisibleRateMultiplier(v)
 		return nil
 	case group.FieldIsExclusive:
 		v, ok := value.(bool)
@@ -17865,6 +17951,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
 	}
+	if m.addvisible_rate_multiplier != nil {
+		fields = append(fields, group.FieldVisibleRateMultiplier)
+	}
 	if m.adddaily_limit_usd != nil {
 		fields = append(fields, group.FieldDailyLimitUsd)
 	}
@@ -17911,6 +18000,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case group.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case group.FieldVisibleRateMultiplier:
+		return m.AddedVisibleRateMultiplier()
 	case group.FieldDailyLimitUsd:
 		return m.AddedDailyLimitUsd()
 	case group.FieldWeeklyLimitUsd:
@@ -17950,6 +18041,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case group.FieldVisibleRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVisibleRateMultiplier(v)
 		return nil
 	case group.FieldDailyLimitUsd:
 		v, ok := value.(float64)
@@ -18049,6 +18147,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldDescription) {
 		fields = append(fields, group.FieldDescription)
 	}
+	if m.FieldCleared(group.FieldVisibleRateMultiplier) {
+		fields = append(fields, group.FieldVisibleRateMultiplier)
+	}
 	if m.FieldCleared(group.FieldDailyLimitUsd) {
 		fields = append(fields, group.FieldDailyLimitUsd)
 	}
@@ -18095,6 +18196,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case group.FieldVisibleRateMultiplier:
+		m.ClearVisibleRateMultiplier()
 		return nil
 	case group.FieldDailyLimitUsd:
 		m.ClearDailyLimitUsd()
@@ -18148,6 +18252,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case group.FieldVisibleRateMultiplier:
+		m.ResetVisibleRateMultiplier()
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()
@@ -35083,6 +35190,8 @@ type UsageLogMutation struct {
 	addactual_cost              *float64
 	rate_multiplier             *float64
 	addrate_multiplier          *float64
+	visible_rate_multiplier     *float64
+	addvisible_rate_multiplier  *float64
 	account_rate_multiplier     *float64
 	addaccount_rate_multiplier  *float64
 	billing_type                *int8
@@ -36538,6 +36647,76 @@ func (m *UsageLogMutation) ResetRateMultiplier() {
 	m.addrate_multiplier = nil
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (m *UsageLogMutation) SetVisibleRateMultiplier(f float64) {
+	m.visible_rate_multiplier = &f
+	m.addvisible_rate_multiplier = nil
+}
+
+// VisibleRateMultiplier returns the value of the "visible_rate_multiplier" field in the mutation.
+func (m *UsageLogMutation) VisibleRateMultiplier() (r float64, exists bool) {
+	v := m.visible_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVisibleRateMultiplier returns the old "visible_rate_multiplier" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldVisibleRateMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVisibleRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVisibleRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVisibleRateMultiplier: %w", err)
+	}
+	return oldValue.VisibleRateMultiplier, nil
+}
+
+// AddVisibleRateMultiplier adds f to the "visible_rate_multiplier" field.
+func (m *UsageLogMutation) AddVisibleRateMultiplier(f float64) {
+	if m.addvisible_rate_multiplier != nil {
+		*m.addvisible_rate_multiplier += f
+	} else {
+		m.addvisible_rate_multiplier = &f
+	}
+}
+
+// AddedVisibleRateMultiplier returns the value that was added to the "visible_rate_multiplier" field in this mutation.
+func (m *UsageLogMutation) AddedVisibleRateMultiplier() (r float64, exists bool) {
+	v := m.addvisible_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (m *UsageLogMutation) ClearVisibleRateMultiplier() {
+	m.visible_rate_multiplier = nil
+	m.addvisible_rate_multiplier = nil
+	m.clearedFields[usagelog.FieldVisibleRateMultiplier] = struct{}{}
+}
+
+// VisibleRateMultiplierCleared returns if the "visible_rate_multiplier" field was cleared in this mutation.
+func (m *UsageLogMutation) VisibleRateMultiplierCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldVisibleRateMultiplier]
+	return ok
+}
+
+// ResetVisibleRateMultiplier resets all changes to the "visible_rate_multiplier" field.
+func (m *UsageLogMutation) ResetVisibleRateMultiplier() {
+	m.visible_rate_multiplier = nil
+	m.addvisible_rate_multiplier = nil
+	delete(m.clearedFields, usagelog.FieldVisibleRateMultiplier)
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (m *UsageLogMutation) SetAccountRateMultiplier(f float64) {
 	m.account_rate_multiplier = &f
@@ -37480,7 +37659,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 42)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -37558,6 +37737,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
+	}
+	if m.visible_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldVisibleRateMultiplier)
 	}
 	if m.account_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
@@ -37664,6 +37846,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ActualCost()
 	case usagelog.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case usagelog.FieldVisibleRateMultiplier:
+		return m.VisibleRateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AccountRateMultiplier()
 	case usagelog.FieldBillingType:
@@ -37755,6 +37939,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldActualCost(ctx)
 	case usagelog.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case usagelog.FieldVisibleRateMultiplier:
+		return m.OldVisibleRateMultiplier(ctx)
 	case usagelog.FieldAccountRateMultiplier:
 		return m.OldAccountRateMultiplier(ctx)
 	case usagelog.FieldBillingType:
@@ -37976,6 +38162,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRateMultiplier(v)
 		return nil
+	case usagelog.FieldVisibleRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVisibleRateMultiplier(v)
+		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -38131,6 +38324,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
 	}
+	if m.addvisible_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldVisibleRateMultiplier)
+	}
 	if m.addaccount_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -38182,6 +38378,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedActualCost()
 	case usagelog.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case usagelog.FieldVisibleRateMultiplier:
+		return m.AddedVisibleRateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AddedAccountRateMultiplier()
 	case usagelog.FieldBillingType:
@@ -38299,6 +38497,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRateMultiplier(v)
 		return nil
+	case usagelog.FieldVisibleRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVisibleRateMultiplier(v)
+		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -38365,6 +38570,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
+	}
+	if m.FieldCleared(usagelog.FieldVisibleRateMultiplier) {
+		fields = append(fields, usagelog.FieldVisibleRateMultiplier)
 	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
@@ -38433,6 +38641,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldVisibleRateMultiplier:
+		m.ClearVisibleRateMultiplier()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -38549,6 +38760,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case usagelog.FieldVisibleRateMultiplier:
+		m.ResetVisibleRateMultiplier()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ResetAccountRateMultiplier()

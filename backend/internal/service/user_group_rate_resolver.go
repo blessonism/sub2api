@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +51,7 @@ func (r *userGroupRateResolver) Invalidate(userID, groupID int64) {
 		return
 	}
 	r.cache.Delete(userGroupRateCacheKey(userID, groupID))
+	r.cache.Delete(userGroupVisibleRateCacheKey(userID, groupID))
 }
 
 func invalidateUserGroupRateCache(userID, groupID int64) {
@@ -57,9 +59,46 @@ func invalidateUserGroupRateCache(userID, groupID int64) {
 		return
 	}
 	key := userGroupRateCacheKey(userID, groupID)
+	visibleKey := userGroupVisibleRateCacheKey(userID, groupID)
 	userGroupRateResolverCaches.Range(func(cache, _ any) bool {
 		if c, ok := cache.(*gocache.Cache); ok && c != nil {
 			c.Delete(key)
+			c.Delete(visibleKey)
+		}
+		return true
+	})
+}
+
+func invalidateUserGroupRateCacheByGroupID(groupID int64) {
+	if groupID <= 0 {
+		return
+	}
+	suffix := fmt.Sprintf(":%d", groupID)
+	userGroupRateResolverCaches.Range(func(cache, _ any) bool {
+		if c, ok := cache.(*gocache.Cache); ok && c != nil {
+			for key := range c.Items() {
+				if strings.HasSuffix(key, suffix) {
+					c.Delete(key)
+				}
+			}
+		}
+		return true
+	})
+}
+
+func invalidateUserGroupRateCacheByUserID(userID int64) {
+	if userID <= 0 {
+		return
+	}
+	prefixActual := fmt.Sprintf("actual:%d:", userID)
+	prefixVisible := fmt.Sprintf("visible:%d:", userID)
+	userGroupRateResolverCaches.Range(func(cache, _ any) bool {
+		if c, ok := cache.(*gocache.Cache); ok && c != nil {
+			for key := range c.Items() {
+				if strings.HasPrefix(key, prefixActual) || strings.HasPrefix(key, prefixVisible) {
+					c.Delete(key)
+				}
+			}
 		}
 		return true
 	})
@@ -126,6 +165,75 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 	return multiplier
 }
 
+func (r *userGroupRateResolver) ResolveVisible(ctx context.Context, userID, groupID int64, groupVisibleMultiplier *float64, effectiveRateMultiplier float64) float64 {
+	defaultVisible := effectiveRateMultiplier
+	if groupVisibleMultiplier != nil {
+		defaultVisible = *groupVisibleMultiplier
+	}
+	if r == nil || userID <= 0 || groupID <= 0 {
+		return defaultVisible
+	}
+
+	key := userGroupVisibleRateCacheKey(userID, groupID)
+	if r.cache != nil {
+		if cached, ok := r.cache.Get(key); ok {
+			if multiplier, castOK := cached.(float64); castOK {
+				userGroupRateCacheHitTotal.Add(1)
+				return multiplier
+			}
+		}
+	}
+	if r.repo == nil {
+		return defaultVisible
+	}
+	userGroupRateCacheMissTotal.Add(1)
+
+	value, err, shared := r.sf.Do(key, func() (any, error) {
+		if r.cache != nil {
+			if cached, ok := r.cache.Get(key); ok {
+				if multiplier, castOK := cached.(float64); castOK {
+					userGroupRateCacheHitTotal.Add(1)
+					return multiplier, nil
+				}
+			}
+		}
+
+		userGroupRateCacheLoadTotal.Add(1)
+		userVisibleRate, repoErr := r.repo.GetVisibleByUserAndGroup(ctx, userID, groupID)
+		if repoErr != nil {
+			return nil, repoErr
+		}
+
+		multiplier := defaultVisible
+		if userVisibleRate != nil {
+			multiplier = *userVisibleRate
+		}
+		if r.cache != nil {
+			r.cache.Set(key, multiplier, r.cacheTTL)
+		}
+		return multiplier, nil
+	})
+	if shared {
+		userGroupRateCacheSFSharedTotal.Add(1)
+	}
+	if err != nil {
+		userGroupRateCacheFallbackTotal.Add(1)
+		logger.LegacyPrintf(r.logComponent, "get user group visible rate failed, fallback to visible default: user=%d group=%d err=%v", userID, groupID, err)
+		return defaultVisible
+	}
+
+	multiplier, ok := value.(float64)
+	if !ok {
+		userGroupRateCacheFallbackTotal.Add(1)
+		return defaultVisible
+	}
+	return multiplier
+}
+
 func userGroupRateCacheKey(userID, groupID int64) string {
-	return fmt.Sprintf("%d:%d", userID, groupID)
+	return fmt.Sprintf("actual:%d:%d", userID, groupID)
+}
+
+func userGroupVisibleRateCacheKey(userID, groupID int64) string {
+	return fmt.Sprintf("visible:%d:%d", userID, groupID)
 }

@@ -436,6 +436,9 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
+	if err := s.applyVisibleGroupRatesToAPIKeys(ctx, userID, keys); err != nil {
+		return nil, nil, err
+	}
 	return keys, pagination, nil
 }
 
@@ -457,8 +460,48 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
+	if err := s.applyVisibleGroupRatesToAPIKeyPtrs(ctx, apiKey.UserID, apiKey); err != nil {
+		return nil, err
+	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
+}
+
+func (s *APIKeyService) applyVisibleGroupRatesToAPIKeys(ctx context.Context, userID int64, keys []APIKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	keyPtrs := make([]*APIKey, 0, len(keys))
+	for i := range keys {
+		keyPtrs = append(keyPtrs, &keys[i])
+	}
+	return s.applyVisibleGroupRatesToAPIKeyPtrs(ctx, userID, keyPtrs...)
+}
+
+func (s *APIKeyService) applyVisibleGroupRatesToAPIKeyPtrs(ctx context.Context, userID int64, keys ...*APIKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	userVisibleRates := map[int64]float64{}
+	var err error
+	if s.userGroupRateRepo != nil && userID > 0 {
+		userVisibleRates, err = s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get user visible group rates: %w", err)
+		}
+	}
+	for i := range keys {
+		if keys[i] == nil || keys[i].Group == nil {
+			continue
+		}
+		if rate, ok := userVisibleRates[keys[i].Group.ID]; ok {
+			keys[i].Group.RateMultiplier = rate
+		} else {
+			keys[i].Group.RateMultiplier = keys[i].Group.VisibleEffectiveRateMultiplier()
+		}
+		keys[i].Group.VisibleRateMultiplier = nil
+	}
+	return nil
 }
 
 // GetByKey 根据Key字符串获取API Key（用于认证）
@@ -772,6 +815,8 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
+			group.RateMultiplier = group.VisibleEffectiveRateMultiplier()
+			group.VisibleRateMultiplier = nil
 			availableGroups = append(availableGroups, group)
 		}
 	}
@@ -797,15 +842,28 @@ func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword
 	return keys, nil
 }
 
-// GetUserGroupRates 获取用户的专属分组倍率配置
-// 返回 map[groupID]rateMultiplier
+// GetUserGroupRates 获取用户各分组的最终可见倍率。
+// 普通用户接口不得暴露真实专属倍率；这里沿用历史响应结构，只返回展示口径。
 func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (map[int64]float64, error) {
-	if s.userGroupRateRepo == nil {
-		return nil, nil
-	}
-	rates, err := s.userGroupRateRepo.GetByUserID(ctx, userID)
+	groups, err := s.groupRepo.ListActive(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("get user group rates: %w", err)
+		return nil, fmt.Errorf("list active groups: %w", err)
+	}
+	userVisibleRates := map[int64]float64{}
+	if s.userGroupRateRepo != nil {
+		userVisibleRates, err = s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("get user visible group rates: %w", err)
+		}
+	}
+	rates := make(map[int64]float64, len(groups))
+	for i := range groups {
+		group := groups[i]
+		if rate, ok := userVisibleRates[group.ID]; ok {
+			rates[group.ID] = rate
+			continue
+		}
+		rates[group.ID] = group.VisibleEffectiveRateMultiplier()
 	}
 	return rates, nil
 }

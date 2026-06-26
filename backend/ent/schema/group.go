@@ -45,6 +45,11 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		field.Float("visible_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Comment("用户可见倍率；NULL 表示跟随实际分组倍率"),
 		field.Bool("is_exclusive").
 			Default(false),
 		field.String("status").

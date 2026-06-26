@@ -542,6 +542,33 @@ func (_u *UsageLogUpdate) AddRateMultiplier(v float64) *UsageLogUpdate {
 	return _u
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdate) SetVisibleRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.ResetVisibleRateMultiplier()
+	_u.mutation.SetVisibleRateMultiplier(v)
+	return _u
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableVisibleRateMultiplier(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetVisibleRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddVisibleRateMultiplier adds value to the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdate) AddVisibleRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.AddVisibleRateMultiplier(v)
+	return _u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdate) ClearVisibleRateMultiplier() *UsageLogUpdate {
+	_u.mutation.ClearVisibleRateMultiplier()
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdate) SetAccountRateMultiplier(v float64) *UsageLogUpdate {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -1125,6 +1152,15 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedVisibleRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.VisibleRateMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
@@ -1888,6 +1924,33 @@ func (_u *UsageLogUpdateOne) AddRateMultiplier(v float64) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) SetVisibleRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetVisibleRateMultiplier()
+	_u.mutation.SetVisibleRateMultiplier(v)
+	return _u
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableVisibleRateMultiplier(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetVisibleRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddVisibleRateMultiplier adds value to the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) AddVisibleRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddVisibleRateMultiplier(v)
+	return _u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) ClearVisibleRateMultiplier() *UsageLogUpdateOne {
+	_u.mutation.ClearVisibleRateMultiplier()
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdateOne) SetAccountRateMultiplier(v float64) *UsageLogUpdateOne {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -2501,6 +2564,15 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedVisibleRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.VisibleRateMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)

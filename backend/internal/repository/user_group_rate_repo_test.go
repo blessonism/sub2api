@@ -23,14 +23,55 @@ func TestUserGroupRateRepositorySyncGroupRateMultipliersRollsBackWhenUpsertFails
 		WithArgs(int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO user_group_rate_multipliers").
-		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnError(upsertErr)
 	mock.ExpectRollback()
 
 	err := repo.SyncGroupRateMultipliers(context.Background(), 10, []service.GroupRateMultiplierInput{
-		{UserID: 1, RateMultiplier: 1.25},
-		{UserID: 2, RateMultiplier: 1.50},
+		{
+			UserID:                   1,
+			RateMultiplier:           ptrFloat64ForUserGroupRateRepoTest(1.25),
+			VisibleRateMultiplier:    ptrFloat64ForUserGroupRateRepoTest(0.95),
+			RateMultiplierSet:        true,
+			VisibleRateMultiplierSet: true,
+		},
+		{
+			UserID:            2,
+			RateMultiplier:    ptrFloat64ForUserGroupRateRepoTest(1.50),
+			RateMultiplierSet: true,
+		},
 	})
 	require.ErrorIs(t, err, upsertErr)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUserGroupRateRepositorySyncGroupRateMultipliersSupportsExplicitNull(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUserGroupRateRepository(db)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE user_group_rate_multipliers").
+		WithArgs(int64(10), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("DELETE FROM user_group_rate_multipliers").
+		WithArgs(int64(10)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO user_group_rate_multipliers").
+		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err := repo.SyncGroupRateMultipliers(context.Background(), 10, []service.GroupRateMultiplierInput{
+		{
+			UserID:                   1,
+			VisibleRateMultiplier:    nil,
+			VisibleRateMultiplierSet: true,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func ptrFloat64ForUserGroupRateRepoTest(v float64) *float64 {
+	return &v
 }

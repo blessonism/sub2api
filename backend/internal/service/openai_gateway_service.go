@@ -5932,10 +5932,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		resolver := s.userGroupRateResolver
-		if resolver == nil {
-			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
-		}
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+	}
+	visibleMultiplier := multiplier
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		resolver := s.userGroupRateResolver
+		visibleMultiplier = resolver.ResolveVisible(ctx, user.ID, *apiKey.GroupID, apiKey.Group.VisibleRateMultiplier, multiplier)
 	}
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
 
@@ -6041,6 +6043,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	} else {
 		usageLog.RateMultiplier = multiplier
 	}
+	usageLog.VisibleRateMultiplier = &visibleMultiplier
 	usageLog.AccountRateMultiplier = &accountRateMultiplier
 	usageLog.BillingType = billingType
 	usageLog.Stream = result.Stream

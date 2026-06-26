@@ -2514,6 +2514,7 @@ export default {
       publicGroups: '公开分组（默认可用）',
       defaultRate: '默认倍率',
       customRate: '专属倍率',
+      visibleRate: '用户可见倍率',
       useDefaultRate: '使用默认',
       customRatePlaceholder: '留空使用默认',
       groupConfigUpdated: '分组配置更新成功',
@@ -2714,6 +2715,7 @@ export default {
         description: '描述',
         platform: '平台',
         rateMultiplier: '费率倍数',
+        visibleRateMultiplier: '用户可见倍率',
         status: '状态',
         exclusive: '专属分组',
         nameLabel: '分组名称',
@@ -2750,6 +2752,9 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      visibleRateMultiplier: '用户可见倍率',
+      visibleRateMultiplierHint: '留空表示继承分组实际倍率；仅影响用户侧倍率展示，不影响真实扣费。',
+      inheritedRate: '继承',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

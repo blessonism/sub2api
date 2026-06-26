@@ -3,21 +3,25 @@ package service
 import "context"
 
 // UserGroupRateEntry 分组下用户专属倍率/RPM 条目。
-// RateMultiplier 与 RPMOverride 均为指针以支持"未设置"语义（NULL）。
+// RateMultiplier、VisibleRateMultiplier 与 RPMOverride 均为指针以支持"未设置"语义（NULL）。
 type UserGroupRateEntry struct {
-	UserID         int64    `json:"user_id"`
-	UserName       string   `json:"user_name"`
-	UserEmail      string   `json:"user_email"`
-	UserNotes      string   `json:"user_notes"`
-	UserStatus     string   `json:"user_status"`
-	RateMultiplier *float64 `json:"rate_multiplier,omitempty"`
-	RPMOverride    *int     `json:"rpm_override,omitempty"`
+	UserID                int64    `json:"user_id"`
+	UserName              string   `json:"user_name"`
+	UserEmail             string   `json:"user_email"`
+	UserNotes             string   `json:"user_notes"`
+	UserStatus            string   `json:"user_status"`
+	RateMultiplier        *float64 `json:"rate_multiplier,omitempty"`
+	VisibleRateMultiplier *float64 `json:"visible_rate_multiplier,omitempty"`
+	RPMOverride           *int     `json:"rpm_override,omitempty"`
 }
 
 // GroupRateMultiplierInput 批量设置分组倍率的输入条目
 type GroupRateMultiplierInput struct {
-	UserID         int64   `json:"user_id"`
-	RateMultiplier float64 `json:"rate_multiplier"`
+	UserID                   int64    `json:"user_id"`
+	RateMultiplier           *float64 `json:"rate_multiplier"`
+	VisibleRateMultiplier    *float64 `json:"visible_rate_multiplier"`
+	RateMultiplierSet        bool     `json:"-"`
+	VisibleRateMultiplierSet bool     `json:"-"`
 }
 
 // GroupRPMOverrideInput 批量设置分组 RPM override 的输入条目。
@@ -33,8 +37,17 @@ type UserGroupRateRepository interface {
 	// GetByUserID 获取用户所有专属分组 rate_multiplier（仅返回非 NULL 的条目）
 	GetByUserID(ctx context.Context, userID int64) (map[int64]float64, error)
 
+	// GetVisibleByUserID 获取用户所有专属可见分组倍率（仅返回非 NULL 的条目）
+	GetVisibleByUserID(ctx context.Context, userID int64) (map[int64]float64, error)
+
+	// GetVisibleByUserIDs 批量获取多个用户的专属可见分组倍率（仅返回非 NULL 的条目）
+	GetVisibleByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error)
+
 	// GetByUserAndGroup 获取用户在特定分组的专属 rate_multiplier（NULL 返回 nil）
 	GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
+
+	// GetVisibleByUserAndGroup 获取用户在特定分组的专属 visible_rate_multiplier（NULL 返回 nil）
+	GetVisibleByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
 
 	// GetRPMOverrideByUserAndGroup 获取用户在特定分组的 rpm_override（NULL 返回 nil）
 	GetRPMOverrideByUserAndGroup(ctx context.Context, userID, groupID int64) (*int, error)
@@ -45,6 +58,9 @@ type UserGroupRateRepository interface {
 	// SyncUserGroupRates 同步用户的分组专属倍率；nil 表示清空该分组的 rate_multiplier
 	SyncUserGroupRates(ctx context.Context, userID int64, rates map[int64]*float64) error
 
+	// SyncUserGroupVisibleRates 同步用户的分组专属可见倍率；nil 表示清空该分组的 visible_rate_multiplier
+	SyncUserGroupVisibleRates(ctx context.Context, userID int64, rates map[int64]*float64) error
+
 	// SyncGroupRateMultipliers 批量同步分组的用户专属倍率（替换整组 rate 部分）
 	SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error
 
@@ -54,6 +70,9 @@ type UserGroupRateRepository interface {
 
 	// ClearGroupRPMOverrides 清空指定分组的所有 rpm_override（整组 rpm 部分归 NULL）
 	ClearGroupRPMOverrides(ctx context.Context, groupID int64) error
+
+	// ClearGroupRateMultipliers 清空指定分组的真实/可见倍率（保留 rpm_override）
+	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
 
 	// DeleteByGroupID 删除指定分组的所有用户专属条目（分组删除时调用）
 	DeleteByGroupID(ctx context.Context, groupID int64) error

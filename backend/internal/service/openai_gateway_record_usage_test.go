@@ -183,9 +183,12 @@ func (s *openAIRecordUsageAPIKeyQuotaStub) UpdateRateLimitUsage(ctx context.Cont
 type openAIUserGroupRateRepoStub struct {
 	UserGroupRateRepository
 
-	rate  *float64
-	err   error
-	calls int
+	rate         *float64
+	visibleRate  *float64
+	err          error
+	visibleErr   error
+	calls        int
+	visibleCalls int
 }
 
 func (s *openAIUserGroupRateRepoStub) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
@@ -194,6 +197,14 @@ func (s *openAIUserGroupRateRepoStub) GetByUserAndGroup(ctx context.Context, use
 		return nil, s.err
 	}
 	return s.rate, nil
+}
+
+func (s *openAIUserGroupRateRepoStub) GetVisibleByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
+	s.visibleCalls++
+	if s.visibleErr != nil {
+		return nil, s.visibleErr
+	}
+	return s.visibleRate, nil
 }
 
 func i64p(v int64) *int64 {
@@ -366,13 +377,15 @@ func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4
+	groupVisibleRate := 1.2
 	userRate := 1.8
+	userVisibleRate := 0.9
 	usage := OpenAIUsage{InputTokens: 15, OutputTokens: 4, CacheReadInputTokens: 3}
 
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
-	rateRepo := &openAIUserGroupRateRepoStub{rate: &userRate}
+	rateRepo := &openAIUserGroupRateRepoStub{rate: &userRate, visibleRate: &userVisibleRate}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
@@ -386,8 +399,9 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 			ID:      1001,
 			GroupID: i64p(groupID),
 			Group: &Group{
-				ID:             groupID,
-				RateMultiplier: groupRate,
+				ID:                    groupID,
+				RateMultiplier:        groupRate,
+				VisibleRateMultiplier: &groupVisibleRate,
 			},
 		},
 		User:    &User{ID: 2001},
@@ -396,8 +410,11 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, rateRepo.calls)
+	require.Equal(t, 1, rateRepo.visibleCalls)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, userRate, usageRepo.lastLog.RateMultiplier)
+	require.NotNil(t, usageRepo.lastLog.VisibleRateMultiplier)
+	require.Equal(t, userVisibleRate, *usageRepo.lastLog.VisibleRateMultiplier)
 	require.Equal(t, 12, usageRepo.lastLog.InputTokens)
 	require.Equal(t, 3, usageRepo.lastLog.CacheReadTokens)
 

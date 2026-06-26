@@ -100,6 +100,11 @@ func (UsageLog) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			Default(1).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+		field.Float("visible_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Comment("用户可见倍率快照；NULL 表示历史数据回退真实倍率"),
 
 		// account_rate_multiplier: 账号计费倍率快照（NULL 表示按 1.0 处理）
 		field.Float("account_rate_multiplier").

@@ -42,6 +42,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
+		SetNillableVisibleRateMultiplier(groupIn.VisibleRateMultiplier).
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
@@ -121,6 +122,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
+		SetNillableVisibleRateMultiplier(groupIn.VisibleRateMultiplier).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
@@ -175,6 +177,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImagePrice4k(*groupIn.ImagePrice4K)
 	} else {
 		builder = builder.ClearImagePrice4k()
+	}
+	if groupIn.VisibleRateMultiplier != nil {
+		builder = builder.SetVisibleRateMultiplier(*groupIn.VisibleRateMultiplier)
+	} else {
+		builder = builder.ClearVisibleRateMultiplier()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

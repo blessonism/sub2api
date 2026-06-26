@@ -8714,6 +8714,26 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+func (s *GatewayService) getUserGroupVisibleRateMultiplier(ctx context.Context, userID, groupID int64, groupVisibleMultiplier *float64, effectiveRateMultiplier float64) float64 {
+	if s == nil {
+		if groupVisibleMultiplier != nil {
+			return *groupVisibleMultiplier
+		}
+		return effectiveRateMultiplier
+	}
+	resolver := s.userGroupRateResolver
+	if resolver == nil {
+		resolver = newUserGroupRateResolver(
+			s.userGroupRateRepo,
+			s.userGroupRateCache,
+			resolveUserGroupRateCacheTTL(s.cfg),
+			&s.userGroupRateSF,
+			"service.gateway",
+		)
+	}
+	return resolver.ResolveVisible(ctx, userID, groupID, groupVisibleMultiplier, effectiveRateMultiplier)
+}
+
 // RecordUsageInput 记录使用量的输入参数。
 // 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {
@@ -9320,6 +9340,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
+	visibleMultiplier := multiplier
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		visibleMultiplier = s.getUserGroupVisibleRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.VisibleRateMultiplier, multiplier)
+	}
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
 
 	// 确定计费模型
@@ -9350,7 +9374,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
-		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+		requestedModel, multiplier, visibleMultiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -9548,6 +9572,7 @@ func (s *GatewayService) buildRecordUsageLog(
 	subscription *UserSubscription,
 	requestedModel string,
 	multiplier float64,
+	visibleMultiplier float64,
 	imageMultiplier float64,
 	accountRateMultiplier float64,
 	billingType int8,
@@ -9576,6 +9601,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		RateMultiplier:        multiplier,
+		VisibleRateMultiplier: &visibleMultiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
 		BillingMode:           resolveBillingMode(result, cost),

@@ -68,6 +68,67 @@ func (r *userGroupRateRepository) GetByUserID(ctx context.Context, userID int64)
 	return result, nil
 }
 
+// GetVisibleByUserID 获取用户所有专属可见分组倍率（仅返回非 NULL 的条目）
+func (r *userGroupRateRepository) GetVisibleByUserID(ctx context.Context, userID int64) (map[int64]float64, error) {
+	query := `SELECT group_id, visible_rate_multiplier FROM user_group_rate_multipliers WHERE user_id = $1 AND visible_rate_multiplier IS NOT NULL`
+	rows, err := r.sql.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[int64]float64)
+	for rows.Next() {
+		var groupID int64
+		var rate float64
+		if err := rows.Scan(&groupID, &rate); err != nil {
+			return nil, err
+		}
+		result[groupID] = rate
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetVisibleByUserIDs 批量获取多个用户的专属可见分组倍率（仅返回非 NULL 的条目）
+func (r *userGroupRateRepository) GetVisibleByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error) {
+	result := make(map[int64]map[int64]float64, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT user_id, group_id, visible_rate_multiplier
+		FROM user_group_rate_multipliers
+		WHERE user_id = ANY($1)
+		  AND visible_rate_multiplier IS NOT NULL
+	`
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var userID int64
+		var groupID int64
+		var rate float64
+		if err := rows.Scan(&userID, &groupID, &rate); err != nil {
+			return nil, err
+		}
+		if _, ok := result[userID]; !ok {
+			result[userID] = make(map[int64]float64)
+		}
+		result[userID][groupID] = rate
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetByUserIDs 批量获取多个用户的专属分组 rate_multiplier（仅返回非 NULL 的条目）
 func (r *userGroupRateRepository) GetByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error) {
 	result := make(map[int64]map[int64]float64, len(userIDs))
@@ -123,10 +184,11 @@ func (r *userGroupRateRepository) GetByUserIDs(ctx context.Context, userIDs []in
 // GetByGroupID 获取指定分组下所有用户的专属配置（rate 与 rpm_override 任一非 NULL 即返回）
 func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int64) ([]service.UserGroupRateEntry, error) {
 	query := `
-		SELECT ugr.user_id, u.username, u.email, COALESCE(u.notes, ''), u.status, ugr.rate_multiplier, ugr.rpm_override
+		SELECT ugr.user_id, u.username, u.email, COALESCE(u.notes, ''), u.status, ugr.rate_multiplier, ugr.visible_rate_multiplier, ugr.rpm_override
 		FROM user_group_rate_multipliers ugr
 		JOIN users u ON u.id = ugr.user_id AND u.deleted_at IS NULL
 		WHERE ugr.group_id = $1
+		  AND (ugr.rate_multiplier IS NOT NULL OR ugr.visible_rate_multiplier IS NOT NULL OR ugr.rpm_override IS NOT NULL)
 		ORDER BY ugr.user_id
 	`
 	rows, err := r.sql.QueryContext(ctx, query, groupID)
@@ -139,13 +201,18 @@ func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int6
 	for rows.Next() {
 		var entry service.UserGroupRateEntry
 		var rate sql.NullFloat64
+		var visibleRate sql.NullFloat64
 		var rpm sql.NullInt32
-		if err := rows.Scan(&entry.UserID, &entry.UserName, &entry.UserEmail, &entry.UserNotes, &entry.UserStatus, &rate, &rpm); err != nil {
+		if err := rows.Scan(&entry.UserID, &entry.UserName, &entry.UserEmail, &entry.UserNotes, &entry.UserStatus, &rate, &visibleRate, &rpm); err != nil {
 			return nil, err
 		}
 		if rate.Valid {
 			v := rate.Float64
 			entry.RateMultiplier = &v
+		}
+		if visibleRate.Valid {
+			v := visibleRate.Float64
+			entry.VisibleRateMultiplier = &v
 		}
 		if rpm.Valid {
 			v := int(rpm.Int32)
@@ -162,6 +229,24 @@ func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int6
 // GetByUserAndGroup 获取用户在特定分组的专属 rate_multiplier（NULL 返回 nil）
 func (r *userGroupRateRepository) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
 	query := `SELECT rate_multiplier FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`
+	var rate sql.NullFloat64
+	err := scanSingleRow(ctx, r.sql, query, []any{userID, groupID}, &rate)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !rate.Valid {
+		return nil, nil
+	}
+	v := rate.Float64
+	return &v, nil
+}
+
+// GetVisibleByUserAndGroup 获取用户在特定分组的专属 visible_rate_multiplier（NULL 返回 nil）
+func (r *userGroupRateRepository) GetVisibleByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
+	query := `SELECT visible_rate_multiplier FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`
 	var rate sql.NullFloat64
 	err := scanSingleRow(ctx, r.sql, query, []any{userID, groupID}, &rate)
 	if err == sql.ErrNoRows {
@@ -200,16 +285,31 @@ func (r *userGroupRateRepository) GetRPMOverrideByUserAndGroup(ctx context.Conte
 //   - 值为 nil：清空对应行的 rate_multiplier（保留 rpm_override）。
 //   - 值非 nil：upsert rate_multiplier（保留已有 rpm_override）。
 func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID int64, rates map[int64]*float64) error {
+	return r.syncUserGroupRateColumn(ctx, userID, "rate_multiplier", rates)
+}
+
+// SyncUserGroupVisibleRates 同步用户的分组专属 visible_rate_multiplier。
+//   - 传入空 map：清空该用户所有行的 visible_rate_multiplier；若其它配置也为 NULL 则整行删除。
+//   - 值为 nil：清空对应行的 visible_rate_multiplier（保留 rate_multiplier/rpm_override）。
+//   - 值非 nil：upsert visible_rate_multiplier（保留已有 rate_multiplier/rpm_override）。
+func (r *userGroupRateRepository) SyncUserGroupVisibleRates(ctx context.Context, userID int64, rates map[int64]*float64) error {
+	return r.syncUserGroupRateColumn(ctx, userID, "visible_rate_multiplier", rates)
+}
+
+func (r *userGroupRateRepository) syncUserGroupRateColumn(ctx context.Context, userID int64, column string, rates map[int64]*float64) error {
+	if column != "rate_multiplier" && column != "visible_rate_multiplier" {
+		return fmt.Errorf("unsupported user group rate column: %s", column)
+	}
 	if len(rates) == 0 {
 		if _, err := r.sql.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
-			SET rate_multiplier = NULL, updated_at = NOW()
+			SET `+column+` = NULL, updated_at = NOW()
 			WHERE user_id = $1
 		`, userID); err != nil {
 			return err
 		}
 		_, err := r.sql.ExecContext(ctx,
-			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND rate_multiplier IS NULL AND rpm_override IS NULL`,
+			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL`,
 			userID)
 		return err
 	}
@@ -229,13 +329,13 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 	if len(clearGroupIDs) > 0 {
 		if _, err := r.sql.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
-			SET rate_multiplier = NULL, updated_at = NOW()
+			SET `+column+` = NULL, updated_at = NOW()
 			WHERE user_id = $1 AND group_id = ANY($2)
 		`, userID, pq.Array(clearGroupIDs)); err != nil {
 			return err
 		}
 		if _, err := r.sql.ExecContext(ctx,
-			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = ANY($2) AND rate_multiplier IS NULL AND rpm_override IS NULL`,
+			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = ANY($2) AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL`,
 			userID, pq.Array(clearGroupIDs)); err != nil {
 			return err
 		}
@@ -244,7 +344,7 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 	if len(upsertGroupIDs) > 0 {
 		now := time.Now()
 		_, err := r.sql.ExecContext(ctx, `
-			INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+			INSERT INTO user_group_rate_multipliers (user_id, group_id, `+column+`, created_at, updated_at)
 			SELECT
 				$1::bigint,
 				data.group_id,
@@ -254,7 +354,7 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 			FROM unnest($3::bigint[], $4::double precision[]) AS data(group_id, rate_multiplier)
 			ON CONFLICT (user_id, group_id)
 			DO UPDATE SET
-				rate_multiplier = EXCLUDED.rate_multiplier,
+				`+column+` = EXCLUDED.`+column+`,
 				updated_at = EXCLUDED.updated_at
 		`, userID, now, pq.Array(upsertGroupIDs), pq.Array(upsertRates))
 		if err != nil {
@@ -265,10 +365,10 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 	return nil
 }
 
-// SyncGroupRateMultipliers 同步分组的 rate_multiplier 部分（不触动 rpm_override）。
+// SyncGroupRateMultipliers 同步分组的真实/可见倍率部分（不触动 rpm_override）。
 // 语义：
-//   - 未出现在 entries 中的用户行：rate_multiplier 归 NULL；若 rpm_override 也为 NULL 则整行删除。
-//   - 出现的用户行：upsert rate_multiplier。
+//   - 未出现在 entries 中的用户行：rate_multiplier 与 visible_rate_multiplier 归 NULL；若 rpm_override 也为 NULL 则整行删除。
+//   - 出现的用户行：upsert rate_multiplier，并按条目设置 visible_rate_multiplier（nil 表示继承）。
 func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []service.GroupRateMultiplierInput) error {
 	return r.runInTx(ctx, func(exec sqlExecutor) error {
 		return r.syncGroupRateMultipliersOnExec(ctx, exec, groupID, entries)
@@ -281,11 +381,11 @@ func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Con
 		keepUserIDs = append(keepUserIDs, e.UserID)
 	}
 
-	// 未在 entries 列表中的行：清空 rate_multiplier。
+	// 未在 entries 列表中的行：清空真实/可见倍率。
 	if len(keepUserIDs) == 0 {
 		if _, err := exec.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
-			SET rate_multiplier = NULL, updated_at = NOW()
+			SET rate_multiplier = NULL, visible_rate_multiplier = NULL, updated_at = NOW()
 			WHERE group_id = $1
 		`, groupID); err != nil {
 			return err
@@ -293,7 +393,7 @@ func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Con
 	} else {
 		if _, err := exec.ExecContext(ctx, `
 			UPDATE user_group_rate_multipliers
-			SET rate_multiplier = NULL, updated_at = NOW()
+			SET rate_multiplier = NULL, visible_rate_multiplier = NULL, updated_at = NOW()
 			WHERE group_id = $1 AND user_id <> ALL($2)
 		`, groupID, pq.Array(keepUserIDs)); err != nil {
 			return err
@@ -303,7 +403,7 @@ func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Con
 	// 清空后若整行 NULL 则删除。
 	if _, err := exec.ExecContext(ctx, `
 		DELETE FROM user_group_rate_multipliers
-		WHERE group_id = $1 AND rate_multiplier IS NULL AND rpm_override IS NULL
+		WHERE group_id = $1 AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL
 	`, groupID); err != nil {
 		return err
 	}
@@ -314,19 +414,47 @@ func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Con
 
 	userIDs := make([]int64, len(entries))
 	rates := make([]float64, len(entries))
+	rateSet := make([]bool, len(entries))
+	rateHasValue := make([]bool, len(entries))
+	visibleRates := make([]float64, len(entries))
+	visibleRateSet := make([]bool, len(entries))
+	visibleRateHasValue := make([]bool, len(entries))
 	for i, e := range entries {
 		userIDs[i] = e.UserID
-		rates[i] = e.RateMultiplier
+		if e.RateMultiplier != nil {
+			rates[i] = *e.RateMultiplier
+			rateHasValue[i] = true
+		}
+		if e.RateMultiplierSet {
+			rateSet[i] = true
+		}
+		if e.VisibleRateMultiplier != nil {
+			visibleRates[i] = *e.VisibleRateMultiplier
+			visibleRateHasValue[i] = true
+		}
+		if e.VisibleRateMultiplierSet {
+			visibleRateSet[i] = true
+		}
 	}
 	now := time.Now()
 	_, err := exec.ExecContext(ctx, `
-		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-		SELECT data.user_id, $1::bigint, data.rate_multiplier, $2::timestamptz, $2::timestamptz
-		FROM unnest($3::bigint[], $4::double precision[]) AS data(user_id, rate_multiplier)
+		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, visible_rate_multiplier, created_at, updated_at)
+		SELECT
+			data.user_id,
+			$1::bigint,
+			CASE WHEN data.rate_set AND data.rate_has_value THEN data.rate_multiplier ELSE NULL END,
+			CASE WHEN data.visible_rate_set AND data.visible_rate_has_value THEN data.visible_rate_multiplier ELSE NULL END,
+			$2::timestamptz,
+			$2::timestamptz
+		FROM unnest($3::bigint[], $4::double precision[], $5::boolean[], $6::boolean[], $7::double precision[], $8::boolean[], $9::boolean[]) AS data(user_id, rate_multiplier, rate_set, rate_has_value, visible_rate_multiplier, visible_rate_set, visible_rate_has_value)
 		ON CONFLICT (user_id, group_id)
-		DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
-		WHERE user_group_rate_multipliers.rate_multiplier IS DISTINCT FROM EXCLUDED.rate_multiplier
-	`, groupID, now, pq.Array(userIDs), pq.Array(rates))
+			DO UPDATE SET
+				rate_multiplier = CASE WHEN data.rate_set THEN EXCLUDED.rate_multiplier ELSE user_group_rate_multipliers.rate_multiplier END,
+				visible_rate_multiplier = CASE WHEN data.visible_rate_set THEN EXCLUDED.visible_rate_multiplier ELSE user_group_rate_multipliers.visible_rate_multiplier END,
+				updated_at = EXCLUDED.updated_at
+			WHERE (data.rate_set AND user_group_rate_multipliers.rate_multiplier IS DISTINCT FROM EXCLUDED.rate_multiplier)
+			   OR (data.visible_rate_set AND user_group_rate_multipliers.visible_rate_multiplier IS DISTINCT FROM EXCLUDED.visible_rate_multiplier)
+		`, groupID, now, pq.Array(userIDs), pq.Array(rates), pq.Array(rateSet), pq.Array(rateHasValue), pq.Array(visibleRates), pq.Array(visibleRateSet), pq.Array(visibleRateHasValue))
 	return err
 }
 
@@ -382,7 +510,7 @@ func (r *userGroupRateRepository) SyncGroupRPMOverrides(ctx context.Context, gro
 	// 清空后若整行 NULL 则删除。
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM user_group_rate_multipliers
-		WHERE group_id = $1 AND rate_multiplier IS NULL AND rpm_override IS NULL
+		WHERE group_id = $1 AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL
 	`, groupID); err != nil {
 		return err
 	}
@@ -415,7 +543,23 @@ func (r *userGroupRateRepository) ClearGroupRPMOverrides(ctx context.Context, gr
 	}
 	_, err := r.sql.ExecContext(ctx, `
 		DELETE FROM user_group_rate_multipliers
-		WHERE group_id = $1 AND rate_multiplier IS NULL AND rpm_override IS NULL
+		WHERE group_id = $1 AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL
+	`, groupID)
+	return err
+}
+
+// ClearGroupRateMultipliers 清空指定分组所有真实/可见专属倍率，保留 rpm_override。
+func (r *userGroupRateRepository) ClearGroupRateMultipliers(ctx context.Context, groupID int64) error {
+	if _, err := r.sql.ExecContext(ctx, `
+		UPDATE user_group_rate_multipliers
+		SET rate_multiplier = NULL, visible_rate_multiplier = NULL, updated_at = NOW()
+		WHERE group_id = $1
+	`, groupID); err != nil {
+		return err
+	}
+	_, err := r.sql.ExecContext(ctx, `
+		DELETE FROM user_group_rate_multipliers
+		WHERE group_id = $1 AND rate_multiplier IS NULL AND visible_rate_multiplier IS NULL AND rpm_override IS NULL
 	`, groupID)
 	return err
 }

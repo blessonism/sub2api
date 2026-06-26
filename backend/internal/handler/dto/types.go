@@ -45,7 +45,8 @@ type AdminUser struct {
 	LastUsedAt *time.Time `json:"last_used_at"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
-	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+	GroupRates        map[int64]float64 `json:"group_rates,omitempty"`
+	VisibleGroupRates map[int64]float64 `json:"visible_group_rates,omitempty"`
 }
 
 type APIKey struct {
@@ -83,13 +84,14 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID                    int64    `json:"id"`
+	Name                  string   `json:"name"`
+	Description           string   `json:"description"`
+	Platform              string   `json:"platform"`
+	RateMultiplier        float64  `json:"rate_multiplier"`
+	VisibleRateMultiplier *float64 `json:"visible_rate_multiplier,omitempty"`
+	IsExclusive           bool     `json:"is_exclusive"`
+	Status                string   `json:"status"`
 
 	SubscriptionType string   `json:"subscription_type"`
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
@@ -512,6 +514,8 @@ type AdminUsageLog struct {
 
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
+	// VisibleRateMultiplier 用户可见倍率快照（nil 表示历史数据回退真实倍率）
+	VisibleRateMultiplier *float64 `json:"visible_rate_multiplier,omitempty"`
 	// AccountStatsCost 自定义定价规则计算的账号统计费用（nil 表示使用默认公式）
 	AccountStatsCost *float64 `json:"account_stats_cost,omitempty"`
 
