@@ -132,7 +132,7 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 
 #### 2. Signatures
 - Route prefix: `/api/v1/admin/token-usage-policies`.
-- Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `GET /:id/runs`, `GET /:id/runs/:run_id/changes`.
+- Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `POST /:id/clear`, `GET /:id/runs`, `GET /:id/runs/:run_id/changes`.
 - DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`, `token_usage_auto_run_changes`.
 - Rate write target: `user_group_rate_multipliers(user_id, group_id).rate_multiplier`; do not update `rpm_override`.
 - Group grant target: `user_allowed_groups(user_id, group_id)`; only write columns that exist in the schema (`user_id`, `group_id`, `created_at`).
@@ -148,6 +148,8 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 - `GET /:id/runs` must return run summary rows only; user-level change details must be loaded from paginated `GET /:id/runs/:run_id/changes`.
 - Successful real runs must apply rate/group changes, persist `token_usage_auto_run_changes`, and update the run summary in one transaction so audit failure cannot leave applied configuration without matching history.
 - `token_usage_auto_run_changes.target_group_id` is an audit snapshot, not a live `groups` relationship; do not add a cascading `groups` foreign key that can delete history when a group is removed.
+- Explicit policy clearing must create a `run_type='clear'` run, persist `clear` run changes, and remove only this policy's assignment footprint. For manual takeover rows, clearing may remove the assignment record and this policy's own group grant, but must not overwrite the current manual `rate_multiplier`.
+- Explicit policy clearing must disable the policy and clear `next_run_at` in the same transaction as apply/audit/summary, so the scheduler cannot automatically re-apply the policy after an admin clears it.
 
 #### 4. Validation & Error Matrix
 - Invalid policy id -> `400 INVALID_POLICY_ID`.
@@ -158,18 +160,20 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 - Duplicate enabled policy for a target group -> repository must surface the database unique constraint as an error/409-style conflict where applicable.
 - Policy already running -> `409 POLICY_ALREADY_RUNNING`.
 - Deleting a policy with real automatic assignments -> `400 POLICY_HAS_ASSIGNMENTS`; pure manual-skip takeover records should not block deletion.
+- `POST /:id/clear` while another run is active -> `409 POLICY_ALREADY_RUNNING`.
 
 #### 5. Good/Base/Bad Cases
 - Good: a user with 30-day usage above the highest threshold receives only the target group-specific rate multiplier, and preview shows the same change without writing any rows.
 - Good: run history renders summary counts first and fetches paginated user-level changes only when the admin expands one run.
 - Base: a user below the lowest tier and managed by the policy is cleared; `rpm_override` and unrelated groups remain untouched.
+- Base: an admin clears a policy that contains manual takeover records; the policy assignment is removed so deletion can proceed, while the manually edited multiplier remains unchanged.
 - Bad: a first-time policy run overwrites an existing manual group rate under `manual_priority`.
 - Bad: inserting into `user_allowed_groups(updated_at)` when the join table does not define that column.
 - Bad: returning every run's `changes` from `GET /:id/runs` or linking run-change `target_group_id` to `groups(id) ON DELETE CASCADE`.
 
 #### 6. Tests Required
-- Service unit tests: defaults/validation, tier selection, downgrade, clear, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
-- Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, run summaries omit change details, run changes are paginated and scoped to the requested policy/run, successful runs persist apply/audit/summary atomically, and grant/clear preserves unrelated group and RPM state.
+- Service unit tests: defaults/validation, tier selection, downgrade, clear, explicit policy clearing, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
+- Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, deletion blocking ignores pure manual takeover rows, run summaries omit change details, run changes are paginated and scoped to the requested policy/run, successful runs persist apply/audit/summary atomically, and grant/clear preserves unrelated group and RPM state.
 - Handler/routes tests: all admin endpoints are registered under the prefix and use admin middleware.
 - Frontend checks: API types match backend JSON names, page defaults match product defaults, preview groups create/update/downgrade/clear/skip results, and `pnpm typecheck` passes.
 

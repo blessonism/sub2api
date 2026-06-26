@@ -914,9 +914,6 @@ export default {
     adminCalibration: 'Calibrate',
     adminCalibrationTitle: 'Usage and Balance Calibration',
     adminCalibrationAdminOnlyHint: 'This calibration is visible only to admins. Regular users only see calibrated aggregate totals.',
-    adminCalibrationReason: 'Reason',
-    adminCalibrationReasonPlaceholder: 'Enter the reason for admin audit',
-    adminCalibrationReasonRequired: 'Enter a calibration reason',
     adminCalibrationMode: 'Mode',
     adminCalibrationModeDelta: 'Delta',
     adminCalibrationModeTarget: 'Target',
@@ -1713,7 +1710,10 @@ export default {
       history: 'History',
       runNow: 'Run Now',
       running: 'Running',
+      clear: 'Clear',
+      clearing: 'Clearing',
       runConfirm: 'Run policy "{name}" now?',
+      clearConfirm: 'Clear rate and group changes produced by policy "{name}"? Manually taken-over rates will be preserved, and this policy will be disabled to prevent scheduled re-apply.',
       deleteConfirm: 'Delete policy "{name}"? The backend rejects deletion when automatic assignments exist.',
       emptyTitle: 'No auto policies',
       emptyDescription: 'Create a policy to automatically write group-specific user rate multipliers from token usage.',
@@ -1746,10 +1746,12 @@ export default {
       updated: 'Policy updated',
       deleted: 'Policy deleted',
       runQueued: 'Policy run completed',
+      cleared: 'Policy cleared and disabled',
       loadFailed: 'Failed to load policies',
       saveFailed: 'Failed to save policy',
       previewFailed: 'Preview failed',
       runFailed: 'Run failed',
+      clearFailed: 'Clear failed',
       historyFailed: 'Failed to load run history',
       deleteFailed: 'Failed to delete policy',
       nameRequired: 'Enter a policy name',
@@ -1787,7 +1789,8 @@ export default {
       runTypes: {
         preview: 'Preview',
         manual: 'Manual',
-        scheduled: 'Scheduled'
+        scheduled: 'Scheduled',
+        clear: 'Clear'
       },
       runStatuses: {
         running: 'Running',

@@ -4,7 +4,7 @@ import type { PaginatedResponse } from '@/types'
 export type TokenUsagePolicyActionMode = 'rate_only' | 'grant_group_and_rate'
 export type TokenUsagePolicyConflictMode = 'manual_priority' | 'auto_priority'
 export type TokenUsagePolicyScheduleFrequency = 'every_6h' | 'daily' | 'weekly'
-export type TokenUsagePolicyRunType = 'preview' | 'manual' | 'scheduled'
+export type TokenUsagePolicyRunType = 'preview' | 'manual' | 'scheduled' | 'clear'
 export type TokenUsagePolicyRunStatus = 'running' | 'success' | 'failed'
 export type TokenUsagePolicyChangeType = 'create' | 'update' | 'downgrade' | 'clear' | 'skip_manual'
 
@@ -146,6 +146,11 @@ export async function run(id: number): Promise<TokenUsagePolicyRun> {
   return data
 }
 
+export async function clear(id: number): Promise<TokenUsagePolicyRun> {
+  const { data } = await apiClient.post<TokenUsagePolicyRun>(`/admin/token-usage-policies/${id}/clear`)
+  return data
+}
+
 export async function listRuns(
   id: number,
   params?: { page?: number; page_size?: number }
@@ -177,6 +182,7 @@ export const tokenUsagePoliciesAPI = {
   delete: remove,
   preview,
   run,
+  clear,
   listRuns,
   listRunChanges
 }
