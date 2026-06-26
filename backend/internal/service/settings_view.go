@@ -182,6 +182,9 @@ type SystemSettings struct {
 	// Token Leaderboard user visibility
 	TokenLeaderboardUserVisible bool `json:"token_leaderboard_user_visible"`
 
+	// Token Leaderboard fallback display multiplier group
+	TokenLeaderboardCommonGroupID int64 `json:"token_leaderboard_common_group_id"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string

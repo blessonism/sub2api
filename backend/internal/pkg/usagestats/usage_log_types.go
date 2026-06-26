@@ -251,11 +251,12 @@ type AdminTokenLeaderboardUserDetails struct {
 
 // UserTokenLeaderboardRow 是仓储返回的内部排行榜行，包含完整邮箱，禁止直接作为普通用户响应返回。
 type UserTokenLeaderboardRow struct {
-	Rank     int64  `json:"-"`
-	UserID   int64  `json:"-"`
-	Email    string `json:"-"`
-	Requests int64  `json:"-"`
-	Tokens   int64  `json:"-"`
+	Rank                   int64   `json:"-"`
+	UserID                 int64   `json:"-"`
+	Email                  string  `json:"-"`
+	Requests               int64   `json:"-"`
+	Tokens                 int64   `json:"-"`
+	DiscountRateMultiplier float64 `json:"-"`
 }
 
 // UserTokenLeaderboardRows 保存 Top 榜单和当前用户排名的内部查询结果。
@@ -266,11 +267,12 @@ type UserTokenLeaderboardRows struct {
 
 // UserTokenLeaderboardItem 是普通用户可见的排行榜条目，只包含脱敏邮箱。
 type UserTokenLeaderboardItem struct {
-	Rank          int64  `json:"rank"`
-	MaskedEmail   string `json:"masked_email"`
-	Requests      int64  `json:"requests"`
-	Tokens        int64  `json:"tokens"`
-	IsCurrentUser bool   `json:"is_current_user"`
+	Rank                   int64   `json:"rank"`
+	MaskedEmail            string  `json:"masked_email"`
+	Requests               int64   `json:"requests"`
+	Tokens                 int64   `json:"tokens"`
+	DiscountRateMultiplier float64 `json:"discount_rate_multiplier"`
+	IsCurrentUser          bool    `json:"is_current_user"`
 }
 
 // UserTokenLeaderboardResponse 是用户侧 Token 排行榜响应。

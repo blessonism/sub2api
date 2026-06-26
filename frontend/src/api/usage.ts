@@ -60,6 +60,7 @@ export interface UserTokenLeaderboardItem {
   masked_email: string
   requests: number
   tokens: number
+  discount_rate_multiplier: number
   is_current_user: boolean
 }
 

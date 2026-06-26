@@ -53,14 +53,15 @@ func TestDashboardLeaderboardReturnsMaskedEmailsOnly(t *testing.T) {
 	usageRepo := &leaderboardUsageRepoStub{
 		rows: &usagestats.UserTokenLeaderboardRows{
 			Ranking: []usagestats.UserTokenLeaderboardRow{
-				{Rank: 1, UserID: 1, Email: "alpha@example.com", Requests: 10, Tokens: 1000},
+				{Rank: 1, UserID: 1, Email: "alpha@example.com", Requests: 10, Tokens: 1000, DiscountRateMultiplier: 0.8},
 			},
 			MyRank: &usagestats.UserTokenLeaderboardRow{
-				Rank:     12,
-				UserID:   currentUserID,
-				Email:    "current@example.com",
-				Requests: 2,
-				Tokens:   80,
+				Rank:                   12,
+				UserID:                 currentUserID,
+				Email:                  "current@example.com",
+				Requests:               2,
+				Tokens:                 80,
+				DiscountRateMultiplier: 0.7,
 			},
 		},
 	}
@@ -85,7 +86,9 @@ func TestDashboardLeaderboardReturnsMaskedEmailsOnly(t *testing.T) {
 	require.Equal(t, 10, got.Data.Limit)
 	require.Equal(t, "day", got.Data.Period)
 	require.Equal(t, "a***a@example.com", got.Data.Ranking[0].MaskedEmail)
+	require.Equal(t, 0.8, got.Data.Ranking[0].DiscountRateMultiplier)
 	require.Equal(t, "c***t@example.com", got.Data.MyRank.MaskedEmail)
+	require.Equal(t, 0.7, got.Data.MyRank.DiscountRateMultiplier)
 	require.Equal(t, int64(12), got.Data.MyRank.Rank)
 	require.True(t, got.Data.MyRank.IsCurrentUser)
 }
