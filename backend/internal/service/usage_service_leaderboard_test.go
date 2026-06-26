@@ -100,15 +100,16 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	repo := &usageLeaderboardRepoStub{
 		rows: &usagestats.UserTokenLeaderboardRows{
 			Ranking: []usagestats.UserTokenLeaderboardRow{
-				{Rank: 1, UserID: 1, Email: "alpha@example.com", Requests: 10, Tokens: 1000},
-				{Rank: 2, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900},
+				{Rank: 1, UserID: 1, Email: "alpha@example.com", Requests: 10, Tokens: 1000, DiscountRateMultiplier: 0.6},
+				{Rank: 2, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900, DiscountRateMultiplier: 0},
 			},
 			MyRank: &usagestats.UserTokenLeaderboardRow{
-				Rank:     11,
-				UserID:   currentUserID,
-				Email:    "current@example.com",
-				Requests: 3,
-				Tokens:   120,
+				Rank:                   11,
+				UserID:                 currentUserID,
+				Email:                  "current@example.com",
+				Requests:               3,
+				Tokens:                 120,
+				DiscountRateMultiplier: 0.7,
 			},
 		},
 	}
@@ -124,9 +125,12 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	require.Equal(t, start, repo.startTime)
 	require.Equal(t, end, repo.endTime)
 	require.Equal(t, "a***a@example.com", got.Ranking[0].MaskedEmail)
+	require.Equal(t, 0.6, got.Ranking[0].DiscountRateMultiplier)
 	require.False(t, got.Ranking[0].IsCurrentUser)
+	require.Equal(t, 1.0, got.Ranking[1].DiscountRateMultiplier)
 	require.Equal(t, int64(11), got.MyRank.Rank)
 	require.Equal(t, "c***t@example.com", got.MyRank.MaskedEmail)
+	require.Equal(t, 0.7, got.MyRank.DiscountRateMultiplier)
 	require.True(t, got.MyRank.IsCurrentUser)
 
 	payload, err := json.Marshal(got)
@@ -196,6 +200,7 @@ func TestUsageServiceGetUserTokenLeaderboardReturnsZeroRankWhenCurrentUserHasNoU
 	require.Equal(t, int64(0), got.MyRank.Rank)
 	require.Equal(t, int64(0), got.MyRank.Requests)
 	require.Equal(t, int64(0), got.MyRank.Tokens)
+	require.Equal(t, 1.0, got.MyRank.DiscountRateMultiplier)
 	require.Equal(t, "n***e@example.com", got.MyRank.MaskedEmail)
 	require.True(t, got.MyRank.IsCurrentUser)
 }

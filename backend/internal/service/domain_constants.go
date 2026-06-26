@@ -368,6 +368,10 @@ const (
 	// always protected by admin auth and is not affected by this switch.
 	SettingKeyTokenLeaderboardUserVisible = "token_leaderboard_user_visible"
 
+	// SettingKeyTokenLeaderboardCommonGroupID stores the standard non-exclusive group
+	// whose default multiplier is shown when a user has no automatic tier multiplier.
+	SettingKeyTokenLeaderboardCommonGroupID = "token_leaderboard_common_group_id"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

@@ -617,6 +617,7 @@ export interface SystemSettings {
 
   // Token Leaderboard user visibility switch
   token_leaderboard_user_visible: boolean;
+  token_leaderboard_common_group_id: number;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
@@ -861,6 +862,7 @@ export interface UpdateSettingsRequest {
 
   // Token Leaderboard user visibility switch
   token_leaderboard_user_visible?: boolean;
+  token_leaderboard_common_group_id?: number;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

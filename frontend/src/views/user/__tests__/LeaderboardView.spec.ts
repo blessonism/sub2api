@@ -23,6 +23,7 @@ const messages: Record<string, string> = {
   'leaderboard.periodWeek': 'Weekly',
   'leaderboard.periodLast7d': 'Last 7 days',
   'leaderboard.myRank': 'My Rank',
+  'leaderboard.discountRate': 'Discount Rate',
   'leaderboard.tokens': 'Tokens',
   'leaderboard.requests': 'Requests',
   'leaderboard.topUsers': 'Top {limit}',
@@ -104,6 +105,7 @@ describe('LeaderboardView', () => {
           masked_email: 'a***a@example.com',
           requests: 10,
           tokens: 1_200_000,
+          discount_rate_multiplier: 0.6,
           is_current_user: false,
         },
         {
@@ -111,6 +113,7 @@ describe('LeaderboardView', () => {
           masked_email: 'b***b@example.com',
           requests: 8,
           tokens: 50_000,
+          discount_rate_multiplier: 0.8,
           is_current_user: false,
         },
       ],
@@ -119,6 +122,7 @@ describe('LeaderboardView', () => {
         masked_email: 'm***e@example.com',
         requests: 2,
         tokens: 180_000,
+        discount_rate_multiplier: 0.7,
         is_current_user: true,
       },
       start_date: '2026-06-18',
@@ -137,10 +141,13 @@ describe('LeaderboardView', () => {
     expect(text).toContain('Today: 2026-06-18')
     expect(getDashboardLeaderboard).toHaveBeenCalledWith({ period: 'day' })
     expect(text).toContain('#11')
+    expect(text).toContain('0.70x')
     expect(text).toContain('0.18M')
     expect(text).toContain('1.25M')
     const rows = wrapper.findAll('tbody tr')
+    expect(rows[0].text()).toContain('0.60x')
     expect(rows[0].text()).toContain('1.20M')
+    expect(rows[1].text()).toContain('0.80x')
     expect(rows[1].text()).toContain('0.05M')
     expect(text).not.toContain('alpha@example.com')
     expect(text).not.toContain('mine@example.com')
@@ -154,6 +161,7 @@ describe('LeaderboardView', () => {
         masked_email: 'm***e@example.com',
         requests: 0,
         tokens: 0,
+        discount_rate_multiplier: 1,
         is_current_user: true,
       },
       start_date: '2026-06-18',
@@ -178,6 +186,7 @@ describe('LeaderboardView', () => {
             masked_email: 'a***a@example.com',
             requests: 10,
             tokens: 1_200_000,
+            discount_rate_multiplier: 0.8,
             is_current_user: false,
           },
         ],
@@ -186,6 +195,7 @@ describe('LeaderboardView', () => {
           masked_email: 'm***e@example.com',
           requests: 2,
           tokens: 180_000,
+          discount_rate_multiplier: 0.7,
           is_current_user: true,
         },
         start_date: '2026-06-20',
@@ -200,6 +210,7 @@ describe('LeaderboardView', () => {
           masked_email: 'm***e@example.com',
           requests: 0,
           tokens: 0,
+          discount_rate_multiplier: 1,
           is_current_user: true,
         },
         start_date: '2026-06-15',
@@ -281,6 +292,7 @@ describe('LeaderboardView', () => {
           masked_email: 'w***k@example.com',
           requests: 70,
           tokens: 7_000_000,
+          discount_rate_multiplier: 0.5,
           is_current_user: true,
         },
       ],
@@ -289,6 +301,7 @@ describe('LeaderboardView', () => {
         masked_email: 'w***k@example.com',
         requests: 70,
         tokens: 7_000_000,
+        discount_rate_multiplier: 0.5,
         is_current_user: true,
       },
       start_date: '2026-06-15',
@@ -308,6 +321,7 @@ describe('LeaderboardView', () => {
           masked_email: 'd***y@example.com',
           requests: 10,
           tokens: 1_000_000,
+          discount_rate_multiplier: 0.8,
           is_current_user: true,
         },
       ],
@@ -316,6 +330,7 @@ describe('LeaderboardView', () => {
         masked_email: 'd***y@example.com',
         requests: 10,
         tokens: 1_000_000,
+        discount_rate_multiplier: 0.8,
         is_current_user: true,
       },
       start_date: '2026-06-20',

@@ -3067,28 +3067,49 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			LEFT JOIN users u ON u.id = COALESCE(r.user_id, c.user_id)
 			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
 		),
+		auto_multipliers AS (
+			SELECT
+				user_id,
+				MIN(last_rate_multiplier) AS rate_multiplier
+			FROM token_usage_auto_assignments
+			WHERE last_rate_multiplier IS NOT NULL
+			  AND manual_takeover = FALSE
+			GROUP BY user_id
+		),
+		common_multiplier AS (
+			SELECT g.rate_multiplier
+			FROM settings s
+			JOIN groups g ON g.id = CASE WHEN s.value ~ '^[0-9]+$' THEN s.value::bigint ELSE 0 END
+			WHERE s.key = '` + service.SettingKeyTokenLeaderboardCommonGroupID + `'
+			  AND g.status = '` + service.StatusActive + `'
+			  AND g.subscription_type = '` + service.SubscriptionTypeStandard + `'
+			  AND g.is_exclusive = FALSE
+			LIMIT 1
+		),
 		ranked AS (
 			SELECT
 				ROW_NUMBER() OVER (ORDER BY tokens DESC, requests DESC, user_id ASC) as rank,
-				user_id,
-				email,
-				requests,
-				tokens
-			FROM user_usage
+				uu.user_id,
+				uu.email,
+				uu.requests,
+				uu.tokens,
+				COALESCE(am.rate_multiplier, (SELECT rate_multiplier FROM common_multiplier), 1.0) AS discount_rate_multiplier
+			FROM user_usage uu
+			LEFT JOIN auto_multipliers am ON am.user_id = uu.user_id
 		),
 		selected AS (
-			SELECT 'top' as row_type, rank, user_id, email, requests, tokens
+			SELECT 'top' as row_type, rank, user_id, email, requests, tokens, discount_rate_multiplier
 			FROM ranked
 			WHERE rank <= $3
 			UNION ALL
-			SELECT 'current' as row_type, rank, user_id, email, requests, tokens
+			SELECT 'current' as row_type, rank, user_id, email, requests, tokens, discount_rate_multiplier
 			FROM ranked
 			WHERE user_id = $4
 			  AND NOT EXISTS (
 				SELECT 1 FROM ranked WHERE user_id = $4 AND rank <= $3
 			  )
 		)
-		SELECT row_type, rank, user_id, email, requests, tokens
+		SELECT row_type, rank, user_id, email, requests, tokens, discount_rate_multiplier
 		FROM selected
 		ORDER BY CASE WHEN row_type = 'top' THEN 0 ELSE 1 END, rank ASC
 	`
@@ -3110,7 +3131,7 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 	for rows.Next() {
 		var rowType string
 		var row usagestats.UserTokenLeaderboardRow
-		if err = rows.Scan(&rowType, &row.Rank, &row.UserID, &row.Email, &row.Requests, &row.Tokens); err != nil {
+		if err = rows.Scan(&rowType, &row.Rank, &row.UserID, &row.Email, &row.Requests, &row.Tokens, &row.DiscountRateMultiplier); err != nil {
 			return nil, err
 		}
 		if row.UserID == currentUserID {
