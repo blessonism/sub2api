@@ -185,6 +185,9 @@ type SystemSettings struct {
 	// Token Leaderboard fallback display multiplier group
 	TokenLeaderboardCommonGroupID int64 `json:"token_leaderboard_common_group_id"`
 
+	// Token Leaderboard tier multiplier tooltip copy
+	TokenLeaderboardTierTooltip string `json:"token_leaderboard_tier_tooltip"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string

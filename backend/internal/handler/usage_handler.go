@@ -562,10 +562,23 @@ func (h *UsageHandler) DashboardLeaderboard(c *gin.Context) {
 		return
 	}
 
+	var runtime service.TokenLeaderboardRuntime
+	if h.settingService != nil {
+		runtime = h.settingService.GetTokenLeaderboardRuntime(c.Request.Context())
+		if !runtime.UserVisible {
+			response.NotFound(c, "Token leaderboard is not available")
+			return
+		}
+	}
+
 	leaderboard, err := h.usageService.GetUserTokenLeaderboard(c.Request.Context(), subject.UserID, startTime, endTime, period)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	if h.settingService != nil {
+		leaderboard.TierTooltip = runtime.TierTooltip
 	}
 
 	response.Success(c, leaderboard)

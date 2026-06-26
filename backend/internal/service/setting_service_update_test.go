@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -242,7 +243,7 @@ func TestSettingService_UpdateSettings_TokenLeaderboardCommonGroupRejectsNonComm
 		},
 		{
 			name:  "inactive group",
-			group: &Group{ID: 21, Status: StatusInactive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: false},
+			group: &Group{ID: 21, Status: StatusDisabled, SubscriptionType: SubscriptionTypeStandard, IsExclusive: false},
 		},
 	}
 
@@ -262,6 +263,31 @@ func TestSettingService_UpdateSettings_TokenLeaderboardCommonGroupRejectsNonComm
 			require.Nil(t, repo.updates)
 		})
 	}
+}
+
+func TestSettingService_UpdateSettings_TokenLeaderboardTierTooltip(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		TokenLeaderboardTierTooltip: "  按最近 Token 用量匹配阶梯倍率  ",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "按最近 Token 用量匹配阶梯倍率", repo.updates[SettingKeyTokenLeaderboardTierTooltip])
+}
+
+func TestSettingService_UpdateSettings_TokenLeaderboardTierTooltipRejectsTooLong(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		TokenLeaderboardTierTooltip: strings.Repeat("阶", TokenLeaderboardTierTooltipMaxLength+1),
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_TOKEN_LEADERBOARD_TIER_TOOLTIP", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
 }
 
 func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normalized(t *testing.T) {

@@ -128,10 +128,12 @@ describe('TokenLeaderboardView', () => {
       { id: 5, name: 'Exclusive', rate_multiplier: 0.8, status: 'active', subscription_type: 'standard', is_exclusive: true },
     ])
     getSettings.mockResolvedValue({
-      token_leaderboard_common_group_id: 0
+      token_leaderboard_common_group_id: 0,
+      token_leaderboard_tier_tooltip: ''
     })
     updateSettings.mockResolvedValue({
-      token_leaderboard_common_group_id: 4
+      token_leaderboard_common_group_id: 4,
+      token_leaderboard_tier_tooltip: '按最近用量匹配阶梯'
     })
     getAdminTokenLeaderboard.mockResolvedValue({
       ranking: [
@@ -322,7 +324,39 @@ describe('TokenLeaderboardView', () => {
     await saveButton.trigger('click')
     await flushPromises()
 
-    expect(updateSettings).toHaveBeenCalledWith({ token_leaderboard_common_group_id: 3 })
+    expect(updateSettings).toHaveBeenCalledWith({
+      token_leaderboard_common_group_id: 3,
+      token_leaderboard_tier_tooltip: ''
+    })
+    expect(showSuccess).toHaveBeenCalled()
+  })
+
+  it('saves the tier multiplier tooltip copy', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const editButton = wrapper.get('[data-testid="token-leaderboard-tier-tooltip-edit"]')
+    await editButton.trigger('click')
+    await flushPromises()
+
+    const tooltipInput = wrapper.get('[data-testid="token-leaderboard-tier-tooltip-input"]')
+    await tooltipInput.setValue(' 按最近用量匹配阶梯倍率 ')
+    await flushPromises()
+
+    const confirmButton = wrapper.get('[data-testid="token-leaderboard-tier-tooltip-confirm"]')
+    await confirmButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="token-leaderboard-tier-tooltip-status"]').text()).toContain('admin.tokenLeaderboard.tierTooltipConfigured')
+
+    const saveButton = wrapper.get('[data-testid="token-leaderboard-common-group-save"]')
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      token_leaderboard_common_group_id: 0,
+      token_leaderboard_tier_tooltip: '按最近用量匹配阶梯倍率'
+    })
     expect(showSuccess).toHaveBeenCalled()
   })
 })

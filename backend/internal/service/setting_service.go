@@ -182,6 +182,8 @@ const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
+const TokenLeaderboardTierTooltipMaxLength = 500
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -1042,20 +1044,25 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 }
 
-// TokenLeaderboardRuntime is the lightweight view of the user-facing Token leaderboard visibility.
+// TokenLeaderboardRuntime is the lightweight view of the user-facing Token leaderboard runtime settings.
 type TokenLeaderboardRuntime struct {
 	UserVisible bool
+	TierTooltip string
 }
 
-// GetTokenLeaderboardRuntime reads the user-facing Token leaderboard visibility switch.
+// GetTokenLeaderboardRuntime reads the user-facing Token leaderboard runtime settings.
 // Fail-open to keep the existing user leaderboard visible unless an admin explicitly disables it.
 func (s *SettingService) GetTokenLeaderboardRuntime(ctx context.Context) TokenLeaderboardRuntime {
-	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyTokenLeaderboardUserVisible})
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyTokenLeaderboardUserVisible,
+		SettingKeyTokenLeaderboardTierTooltip,
+	})
 	if err != nil {
 		return TokenLeaderboardRuntime{UserVisible: true}
 	}
 	return TokenLeaderboardRuntime{
 		UserVisible: !isFalseSettingValue(vals[SettingKeyTokenLeaderboardUserVisible]),
+		TierTooltip: strings.TrimSpace(vals[SettingKeyTokenLeaderboardTierTooltip]),
 	}
 }
 
@@ -1725,6 +1732,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.validateTokenLeaderboardCommonGroup(ctx, settings.TokenLeaderboardCommonGroupID); err != nil {
 		return nil, err
 	}
+	settings.TokenLeaderboardTierTooltip = strings.TrimSpace(settings.TokenLeaderboardTierTooltip)
+	if len([]rune(settings.TokenLeaderboardTierTooltip)) > TokenLeaderboardTierTooltipMaxLength {
+		return nil, infraerrors.BadRequest(
+			"INVALID_TOKEN_LEADERBOARD_TIER_TOOLTIP",
+			fmt.Sprintf("token leaderboard tier tooltip must be at most %d characters", TokenLeaderboardTierTooltipMaxLength),
+		)
+	}
 	normalizedWhitelist, err := NormalizeRegistrationEmailSuffixWhitelist(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", err.Error())
@@ -2003,6 +2017,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Token leaderboard user visibility switch
 	updates[SettingKeyTokenLeaderboardUserVisible] = strconv.FormatBool(settings.TokenLeaderboardUserVisible)
 	updates[SettingKeyTokenLeaderboardCommonGroupID] = strconv.FormatInt(settings.TokenLeaderboardCommonGroupID, 10)
+	updates[SettingKeyTokenLeaderboardTierTooltip] = settings.TokenLeaderboardTierTooltip
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -2999,6 +3014,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Token leaderboard user visibility (default visible; opt-out)
 		SettingKeyTokenLeaderboardUserVisible:   "true",
 		SettingKeyTokenLeaderboardCommonGroupID: "0",
+		SettingKeyTokenLeaderboardTierTooltip:   "",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
@@ -3516,6 +3532,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Token leaderboard user visibility (default: visible; explicit false hides user side)
 	result.TokenLeaderboardUserVisible = !isFalseSettingValue(settings[SettingKeyTokenLeaderboardUserVisible])
 	result.TokenLeaderboardCommonGroupID = parseSettingInt64(settings[SettingKeyTokenLeaderboardCommonGroupID])
+	result.TokenLeaderboardTierTooltip = strings.TrimSpace(settings[SettingKeyTokenLeaderboardTierTooltip])
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

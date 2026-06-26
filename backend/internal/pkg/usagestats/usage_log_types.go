@@ -277,12 +277,13 @@ type UserTokenLeaderboardItem struct {
 
 // UserTokenLeaderboardResponse 是用户侧 Token 排行榜响应。
 type UserTokenLeaderboardResponse struct {
-	Ranking   []UserTokenLeaderboardItem `json:"ranking"`
-	MyRank    UserTokenLeaderboardItem   `json:"my_rank"`
-	StartDate string                     `json:"start_date"`
-	EndDate   string                     `json:"end_date"`
-	Limit     int                        `json:"limit"`
-	Period    string                     `json:"period"`
+	Ranking     []UserTokenLeaderboardItem `json:"ranking"`
+	MyRank      UserTokenLeaderboardItem   `json:"my_rank"`
+	StartDate   string                     `json:"start_date"`
+	EndDate     string                     `json:"end_date"`
+	Limit       int                        `json:"limit"`
+	Period      string                     `json:"period"`
+	TierTooltip string                     `json:"tier_tooltip,omitempty"`
 }
 
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).

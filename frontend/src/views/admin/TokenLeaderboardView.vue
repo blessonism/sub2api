@@ -86,7 +86,7 @@
       </div>
 
       <div class="card p-4">
-        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(220px,0.8fr)_auto] lg:items-end">
           <label class="space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenLeaderboard.commonGroup') }}</span>
             <Select
@@ -99,20 +99,35 @@
               data-testid="token-leaderboard-common-group-select"
             />
           </label>
+          <div class="space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenLeaderboard.tierTooltip') }}</span>
+            <button
+              class="btn btn-secondary inline-flex w-full items-center justify-center gap-2"
+              type="button"
+              :disabled="settingsLoading || settingsSaving"
+              @click="openTierTooltipDialog"
+              data-testid="token-leaderboard-tier-tooltip-edit"
+            >
+              <Icon name="edit" size="sm" />
+              {{ t('admin.tokenLeaderboard.editTierTooltip') }}
+            </button>
+          </div>
           <button
             class="btn btn-primary inline-flex items-center justify-center gap-2"
             type="button"
-            :disabled="!canSaveCommonGroup"
-            @click="saveCommonGroup"
+            :disabled="!canSaveSettings"
+            @click="saveSettings"
             data-testid="token-leaderboard-common-group-save"
           >
             <Icon name="save" size="sm" />
-            {{ settingsSaving ? t('admin.tokenLeaderboard.savingCommonGroup') : t('admin.tokenLeaderboard.saveCommonGroup') }}
+            {{ settingsSaving ? t('admin.tokenLeaderboard.savingSettings') : t('admin.tokenLeaderboard.saveSettings') }}
           </button>
         </div>
-        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {{ commonGroupHint }}
-        </p>
+        <div class="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-500 dark:text-gray-400 lg:grid-cols-[minmax(260px,1fr)_minmax(220px,0.8fr)_auto]">
+          <p>{{ commonGroupHint }}</p>
+          <p data-testid="token-leaderboard-tier-tooltip-status">{{ tierTooltipStatus }}</p>
+          <span aria-hidden="true"></span>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -280,6 +295,48 @@
         </div>
       </div>
 
+      <BaseDialog :show="tierTooltipDialogOpen" :title="t('admin.tokenLeaderboard.tierTooltipDialogTitle')" width="normal" @close="closeTierTooltipDialog">
+        <div class="space-y-3">
+          <label class="space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenLeaderboard.tierTooltip') }}</span>
+            <textarea
+              v-model="tierTooltipDraft"
+              class="input min-h-[160px] w-full resize-y"
+              :placeholder="t('admin.tokenLeaderboard.tierTooltipPlaceholder')"
+              :disabled="settingsLoading || settingsSaving"
+              :maxlength="tierTooltipMaxLength"
+              rows="6"
+              data-testid="token-leaderboard-tier-tooltip-input"
+            />
+          </label>
+          <div class="flex items-start justify-between gap-3 text-xs">
+            <p class="text-gray-500 dark:text-gray-400">
+              {{ t('admin.tokenLeaderboard.tierTooltipDialogHint') }}
+            </p>
+            <span class="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">
+              {{ tierTooltipDraftLength }}/{{ tierTooltipMaxLength }}
+            </span>
+          </div>
+        </div>
+        <template #footer>
+          <div class="flex justify-end gap-3">
+            <button class="btn btn-secondary" type="button" @click="closeTierTooltipDialog">
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="btn btn-primary inline-flex items-center gap-2"
+              type="button"
+              :disabled="tierTooltipDraftLength > tierTooltipMaxLength"
+              @click="confirmTierTooltipDialog"
+              data-testid="token-leaderboard-tier-tooltip-confirm"
+            >
+              <Icon name="check" size="sm" />
+              {{ t('common.confirm') }}
+            </button>
+          </div>
+        </template>
+      </BaseDialog>
+
       <BaseDialog :show="grantDialogOpen" :title="t('admin.tokenLeaderboard.confirmGrantTitle')" width="narrow" @close="grantDialogOpen = false">
         <div class="space-y-4">
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800">
@@ -441,6 +498,10 @@ const settingsLoading = ref(false)
 const settingsSaving = ref(false)
 const commonGroupId = ref<number | null>(null)
 const savedCommonGroupId = ref<number | null>(null)
+const tierTooltip = ref('')
+const savedTierTooltip = ref('')
+const tierTooltipDialogOpen = ref(false)
+const tierTooltipDraft = ref('')
 const leaderboard = ref<AdminTokenLeaderboardResponse | null>(null)
 const loading = ref(false)
 const expandedUserId = ref<number | null>(null)
@@ -488,7 +549,26 @@ const commonGroupOptions = computed<SelectOption[]>(() => [
   }))
 ])
 const selectedCommonGroup = computed(() => commonGroups.value.find((group) => group.id === commonGroupId.value) || null)
-const canSaveCommonGroup = computed(() => !settingsLoading.value && !settingsSaving.value && commonGroupId.value !== savedCommonGroupId.value)
+const tierTooltipMaxLength = 500
+const normalizedTierTooltip = computed(() => tierTooltip.value.trim())
+const tierTooltipLength = computed(() => Array.from(normalizedTierTooltip.value).length)
+const normalizedTierTooltipDraft = computed(() => tierTooltipDraft.value.trim())
+const tierTooltipDraftLength = computed(() => Array.from(normalizedTierTooltipDraft.value).length)
+const tierTooltipStatus = computed(() => (
+  normalizedTierTooltip.value
+    ? t('admin.tokenLeaderboard.tierTooltipConfigured', { count: tierTooltipLength.value, max: tierTooltipMaxLength })
+    : t('admin.tokenLeaderboard.tierTooltipEmpty', { max: tierTooltipMaxLength })
+))
+const settingsChanged = computed(() => (
+  commonGroupId.value !== savedCommonGroupId.value
+  || normalizedTierTooltip.value !== savedTierTooltip.value
+))
+const canSaveSettings = computed(() => (
+  !settingsLoading.value
+  && !settingsSaving.value
+  && settingsChanged.value
+  && tierTooltipLength.value <= tierTooltipMaxLength
+))
 const commonGroupHint = computed(() => {
   if (selectedCommonGroup.value) {
     return t('admin.tokenLeaderboard.commonGroupSelectedHint', {
@@ -581,6 +661,22 @@ function clearSelectedUsers(): void {
   selectedUserIds.value = []
 }
 
+function openTierTooltipDialog(): void {
+  tierTooltipDraft.value = tierTooltip.value
+  tierTooltipDialogOpen.value = true
+}
+
+function closeTierTooltipDialog(): void {
+  tierTooltipDialogOpen.value = false
+  tierTooltipDraft.value = ''
+}
+
+function confirmTierTooltipDialog(): void {
+  if (tierTooltipDraftLength.value > tierTooltipMaxLength) return
+  tierTooltip.value = normalizedTierTooltipDraft.value
+  closeTierTooltipDialog()
+}
+
 function clearDetailsCache(): void {
   detailsCacheVersion.value += 1
   Object.keys(detailsCache).forEach((key) => {
@@ -632,31 +728,38 @@ async function loadSettings(): Promise<void> {
     const groupId = settings.token_leaderboard_common_group_id > 0 ? settings.token_leaderboard_common_group_id : null
     commonGroupId.value = groupId
     savedCommonGroupId.value = groupId
+    tierTooltip.value = settings.token_leaderboard_tier_tooltip?.trim() ?? ''
+    savedTierTooltip.value = tierTooltip.value
   } catch (error) {
     console.error('Failed to load token leaderboard settings:', error)
     commonGroupId.value = null
     savedCommonGroupId.value = null
+    tierTooltip.value = ''
+    savedTierTooltip.value = ''
   } finally {
     settingsLoading.value = false
   }
 }
 
-async function saveCommonGroup(): Promise<void> {
-  if (!canSaveCommonGroup.value) return
+async function saveSettings(): Promise<void> {
+  if (!canSaveSettings.value) return
   settingsSaving.value = true
   try {
     const groupId = commonGroupId.value ?? 0
     const settings = await adminAPI.settings.updateSettings({
-      token_leaderboard_common_group_id: groupId
+      token_leaderboard_common_group_id: groupId,
+      token_leaderboard_tier_tooltip: normalizedTierTooltip.value
     })
     const savedGroupId = settings.token_leaderboard_common_group_id > 0 ? settings.token_leaderboard_common_group_id : null
     commonGroupId.value = savedGroupId
     savedCommonGroupId.value = savedGroupId
-    appStore.showSuccess(t('admin.tokenLeaderboard.commonGroupSaved'))
+    tierTooltip.value = settings.token_leaderboard_tier_tooltip?.trim() ?? ''
+    savedTierTooltip.value = tierTooltip.value
+    appStore.showSuccess(t('admin.tokenLeaderboard.settingsSaved'))
     await loadLeaderboard()
   } catch (error: any) {
     console.error('Failed to save token leaderboard common group:', error)
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.tokenLeaderboard.commonGroupSaveFailed'))
+    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.tokenLeaderboard.settingsSaveFailed'))
   } finally {
     settingsSaving.value = false
   }
