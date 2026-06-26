@@ -84,6 +84,9 @@
                     <button class="btn btn-primary px-2 py-1" type="button" :disabled="runningPolicyId === policy.id" @click="runPolicy(policy)">
                       {{ runningPolicyId === policy.id ? t('admin.tokenUsagePolicies.running') : t('admin.tokenUsagePolicies.runNow') }}
                     </button>
+                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="clearingPolicyId === policy.id" @click="clearPolicy(policy)">
+                      {{ clearingPolicyId === policy.id ? t('admin.tokenUsagePolicies.clearing') : t('admin.tokenUsagePolicies.clear') }}
+                    </button>
                     <button class="btn btn-secondary px-2 py-1" type="button" @click="openEditDialog(policy)">
                       {{ t('common.edit') }}
                     </button>
@@ -416,6 +419,7 @@ const runChangePagesById = ref<Record<number, PaginatedResponse<TokenUsagePolicy
 const loadingRunChangeIds = ref<Set<number>>(new Set())
 const failedRunChangeIds = ref<Set<number>>(new Set())
 const runningPolicyId = ref<number | null>(null)
+const clearingPolicyId = ref<number | null>(null)
 const defaultRunChangePageSize = 20
 
 type PolicyForm = {
@@ -655,6 +659,20 @@ async function runPolicy(policy: TokenUsagePolicy) {
     appStore.showError(error instanceof Error ? error.message : t('admin.tokenUsagePolicies.runFailed'))
   } finally {
     runningPolicyId.value = null
+  }
+}
+
+async function clearPolicy(policy: TokenUsagePolicy) {
+  if (!window.confirm(t('admin.tokenUsagePolicies.clearConfirm', { name: policy.name }))) return
+  clearingPolicyId.value = policy.id
+  try {
+    await tokenUsagePoliciesAPI.clear(policy.id)
+    appStore.showSuccess(t('admin.tokenUsagePolicies.cleared'))
+    await loadPolicies()
+  } catch (error) {
+    appStore.showError(error instanceof Error ? error.message : t('admin.tokenUsagePolicies.clearFailed'))
+  } finally {
+    clearingPolicyId.value = null
   }
 }
 
