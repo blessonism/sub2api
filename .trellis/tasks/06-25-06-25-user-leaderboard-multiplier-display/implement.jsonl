@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "用户侧排行榜与自动倍率策略后端约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "用户 dashboard API 页面前端类型约束"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨后端接口与前端展示的数据流约束"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "配置与展示逻辑复用约束"}

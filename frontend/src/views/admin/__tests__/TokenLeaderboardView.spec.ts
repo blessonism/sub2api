@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import TokenLeaderboardView from '../TokenLeaderboardView.vue'
@@ -7,6 +8,8 @@ const {
   getAdminTokenLeaderboard,
   getAdminTokenLeaderboardUserDetails,
   grantAdminTokenLeaderboardBalance,
+  getSettings,
+  updateSettings,
   getAllIncludingInactive,
   showSuccess,
   showError
@@ -14,6 +17,8 @@ const {
   getAdminTokenLeaderboard: vi.fn(),
   getAdminTokenLeaderboardUserDetails: vi.fn(),
   grantAdminTokenLeaderboardBalance: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
   getAllIncludingInactive: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn()
@@ -25,6 +30,10 @@ vi.mock('@/api/admin', () => ({
       getAdminTokenLeaderboard,
       getAdminTokenLeaderboardUserDetails,
       grantAdminTokenLeaderboardBalance
+    },
+    settings: {
+      getSettings,
+      updateSettings
     },
     groups: {
       getAllIncludingInactive
@@ -59,10 +68,44 @@ const mountView = () =>
         Icon: { template: '<span />' },
         LoadingSpinner: { template: '<div data-testid="loading"></div>' },
         BaseDialog: { template: '<div v-if="show" data-testid="dialog"><slot /><slot name="footer" /></div>', props: ['show', 'title'] },
-        Select: {
-          props: ['modelValue', 'options'],
-          template: '<select :value="modelValue"></select>'
-        }
+        Select: defineComponent({
+          props: {
+            modelValue: {
+              type: [String, Number, Boolean, null],
+              default: ''
+            },
+            options: {
+              type: Array,
+              default: () => []
+            }
+          },
+          emits: ['update:modelValue', 'change'],
+          setup(props, { emit }) {
+            const onChange = (event: Event) => {
+              const target = event.target as HTMLSelectElement
+              const option = (props.options as Array<Record<string, unknown>>).find((item) => String(item.value ?? '') === target.value) ?? null
+              const value = option ? option.value : target.value
+              emit('update:modelValue', value)
+              emit('change', value, option)
+            }
+
+            return () => h(
+              'select',
+              {
+                value: props.modelValue ?? '',
+                onChange
+              },
+              (props.options as Array<Record<string, unknown>>).map((option) => h(
+                'option',
+                {
+                  key: `${String(option.value ?? '')}:${String(option.label ?? '')}`,
+                  value: option.value as string | number | boolean | null
+                },
+                String(option.label ?? '')
+              ))
+            )
+          }
+        })
       }
     }
   })
@@ -75,9 +118,21 @@ describe('TokenLeaderboardView', () => {
     getAdminTokenLeaderboard.mockReset()
     getAdminTokenLeaderboardUserDetails.mockReset()
     grantAdminTokenLeaderboardBalance.mockReset()
+    getSettings.mockReset()
+    updateSettings.mockReset()
     showSuccess.mockReset()
     showError.mockReset()
-    getAllIncludingInactive.mockResolvedValue([{ id: 3, name: 'VIP' }])
+    getAllIncludingInactive.mockResolvedValue([
+      { id: 3, name: 'VIP', rate_multiplier: 1.25, status: 'active', subscription_type: 'standard', is_exclusive: false },
+      { id: 4, name: 'Hidden', rate_multiplier: 0.9, status: 'inactive', subscription_type: 'standard', is_exclusive: false },
+      { id: 5, name: 'Exclusive', rate_multiplier: 0.8, status: 'active', subscription_type: 'standard', is_exclusive: true },
+    ])
+    getSettings.mockResolvedValue({
+      token_leaderboard_common_group_id: 0
+    })
+    updateSettings.mockResolvedValue({
+      token_leaderboard_common_group_id: 4
+    })
     getAdminTokenLeaderboard.mockResolvedValue({
       ranking: [
         {
@@ -251,6 +306,23 @@ describe('TokenLeaderboardView', () => {
         notes: 'campaign bonus'
       }
     )
+    expect(showSuccess).toHaveBeenCalled()
+  })
+
+  it('saves the common fallback group and reloads leaderboard settings', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const select = wrapper.get('[data-testid="token-leaderboard-common-group-select"]')
+    expect(select).toBeTruthy()
+    await select.setValue('3')
+    await flushPromises()
+
+    const saveButton = wrapper.get('[data-testid="token-leaderboard-common-group-save"]')
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledWith({ token_leaderboard_common_group_id: 3 })
     expect(showSuccess).toHaveBeenCalled()
   })
 })

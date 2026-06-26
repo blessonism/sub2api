@@ -54,6 +54,10 @@ var (
 		"DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE",
 		"default subscription group cannot be duplicated",
 	)
+	ErrTokenLeaderboardCommonGroupInvalid = infraerrors.BadRequest(
+		"TOKEN_LEADERBOARD_COMMON_GROUP_INVALID",
+		"token leaderboard common group must be an active standard non-exclusive group",
+	)
 )
 
 type SettingRepository interface {
@@ -974,6 +978,14 @@ func parseChannelMonitorInterval(raw string) int {
 	return clampChannelMonitorInterval(v)
 }
 
+func parseSettingInt64(raw string) int64 {
+	v, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || v < 0 {
+		return 0
+	}
+	return v
+}
+
 // clampChannelMonitorInterval clamps v to the allowed range. 0 means "not provided".
 func clampChannelMonitorInterval(v int) int {
 	if v <= 0 {
@@ -1710,6 +1722,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
+	if err := s.validateTokenLeaderboardCommonGroup(ctx, settings.TokenLeaderboardCommonGroupID); err != nil {
+		return nil, err
+	}
 	normalizedWhitelist, err := NormalizeRegistrationEmailSuffixWhitelist(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", err.Error())
@@ -1987,6 +2002,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Token leaderboard user visibility switch
 	updates[SettingKeyTokenLeaderboardUserVisible] = strconv.FormatBool(settings.TokenLeaderboardUserVisible)
+	updates[SettingKeyTokenLeaderboardCommonGroupID] = strconv.FormatInt(settings.TokenLeaderboardCommonGroupID, 10)
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -2243,6 +2259,28 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 		}
 	}
 
+	return nil
+}
+
+func (s *SettingService) validateTokenLeaderboardCommonGroup(ctx context.Context, groupID int64) error {
+	if groupID <= 0 || s.defaultSubGroupReader == nil {
+		return nil
+	}
+
+	group, err := s.defaultSubGroupReader.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return ErrTokenLeaderboardCommonGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(groupID, 10),
+			})
+		}
+		return fmt.Errorf("get token leaderboard common group %d: %w", groupID, err)
+	}
+	if !group.IsActive() || group.IsExclusive || group.SubscriptionType != SubscriptionTypeStandard {
+		return ErrTokenLeaderboardCommonGroupInvalid.WithMetadata(map[string]string{
+			"group_id": strconv.FormatInt(groupID, 10),
+		})
+	}
 	return nil
 }
 
@@ -2959,7 +2997,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAvailableChannelsEnabled: "false",
 
 		// Token leaderboard user visibility (default visible; opt-out)
-		SettingKeyTokenLeaderboardUserVisible: "true",
+		SettingKeyTokenLeaderboardUserVisible:   "true",
+		SettingKeyTokenLeaderboardCommonGroupID: "0",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
@@ -3476,6 +3515,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Token leaderboard user visibility (default: visible; explicit false hides user side)
 	result.TokenLeaderboardUserVisible = !isFalseSettingValue(settings[SettingKeyTokenLeaderboardUserVisible])
+	result.TokenLeaderboardCommonGroupID = parseSettingInt64(settings[SettingKeyTokenLeaderboardCommonGroupID])
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

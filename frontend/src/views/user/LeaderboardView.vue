@@ -50,7 +50,15 @@
               {{ myRank.masked_email }}
             </span>
           </div>
-          <div class="mt-6 grid grid-cols-2 gap-4">
+          <div class="mt-6 grid grid-cols-3 gap-4">
+            <div class="rounded-md bg-gray-50 p-4 dark:bg-dark-800">
+              <p class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+                {{ t('leaderboard.discountRate') }}
+              </p>
+              <p class="mt-2 text-xl font-semibold text-emerald-700 dark:text-emerald-300">
+                {{ formatMultiplier(myRank.discount_rate_multiplier) }}
+              </p>
+            </div>
             <div class="rounded-md bg-gray-50 p-4 dark:bg-dark-800">
               <p class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
                 {{ t('leaderboard.tokens') }}
@@ -114,11 +122,12 @@
           />
         </div>
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[640px] text-sm">
+          <table class="w-full min-w-[760px] text-sm">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="w-24 px-5 py-3 text-left">{{ t('leaderboard.rank') }}</th>
                 <th class="px-5 py-3 text-left">{{ t('leaderboard.user') }}</th>
+                <th class="px-5 py-3 text-right">{{ t('leaderboard.discountRate') }}</th>
                 <th class="px-5 py-3 text-right">{{ t('leaderboard.tokens') }}</th>
                 <th class="px-5 py-3 text-right">{{ t('leaderboard.requests') }}</th>
               </tr>
@@ -136,6 +145,9 @@
                 </td>
                 <td class="px-5 py-4 font-medium text-gray-900 dark:text-white">
                   {{ item.masked_email }}
+                </td>
+                <td class="px-5 py-4 text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                  {{ formatMultiplier(item.discount_rate_multiplier) }}
                 </td>
                 <td class="px-5 py-4 text-right font-semibold text-gray-900 dark:text-white">
                   {{ formatTokenMillions(item.tokens) }}
@@ -158,6 +170,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { formatMultiplier as formatAdaptiveMultiplier } from '@/utils/formatters'
 import { TOKENS_PER_MILLION } from '@/utils/usagePricing'
 import { usageAPI, type UserTokenLeaderboardItem, type UserTokenLeaderboardPeriod, type UserTokenLeaderboardResponse } from '@/api/usage'
 
@@ -168,6 +181,7 @@ const emptyMyRank: UserTokenLeaderboardItem = {
   masked_email: '***',
   requests: 0,
   tokens: 0,
+  discount_rate_multiplier: 1,
   is_current_user: true,
 }
 
@@ -221,6 +235,11 @@ function formatFullNumber(value: number): string {
 
 function formatTokenMillions(value: number): string {
   return `${(value / TOKENS_PER_MILLION).toFixed(2)}M`
+}
+
+function formatMultiplier(value: number): string {
+  const normalized = Number.isFinite(value) && value > 0 ? value : 1
+  return `${formatAdaptiveMultiplier(normalized)}x`
 }
 
 function rankLabel(rank: number): string {
