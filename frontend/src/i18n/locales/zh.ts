@@ -1128,6 +1128,46 @@ export default {
     empty: {
       title: '暂无可显示的渠道',
       description: '管理员尚未配置可监控的渠道。'
+    },
+    modelIq: {
+      title: 'GPT 智商测试',
+      description: '实验性指标：固定 DeepSWE 题目探针的通过率会折算为 GPT 智商指数趋势，样本、口径和自动化仍在校准中。',
+      source: '查看信息源',
+      updatedAt: '更新于 {time} · {timezone}',
+      updatedUnknown: '暂无更新时间',
+      loadErrorTitle: '暂时无法加载 GPT 智力检测',
+      loadErrorDescription: '外部信息源当前不可用，渠道状态仍可正常查看。',
+      staleNotice: '正在显示最近一次成功快照',
+      score: 'IQ 分数',
+      passed: '通过题目',
+      baseline: '测试基线',
+      baselineValue: 'DeepSWE · {tasks} 题',
+      baselineEmpty: 'DeepSWE · 题数未知',
+      sampledAt: '采样批次：{date}',
+      testBadge: 'DeepSWE · {tasks} 题',
+      testBadgeFallback: 'DeepSWE 探针',
+      model: '测试模型',
+      duration: '耗时',
+      tokens: 'Tokens',
+      cost: '成本',
+      recentTrend: '智商指数趋势',
+      trendSubtitle: '近 12 个可用采样点',
+      emptyTrend: '暂无近期趋势数据',
+      reasoning: '推理强度：{effort}',
+      reasoningEmpty: '推理强度：-',
+      passRate: '通过 {passed}/{tasks} 题',
+      passEmpty: '通过题数未知',
+      outputTokens: '输出 {tokens}',
+      outputTokensEmpty: '输出 Tokens 未知',
+      seconds: '{seconds} 秒',
+      quotaSummary: '{window} 窗口 · 速率 {rate}',
+      quotaEmpty: '暂无配额雷达',
+      status: {
+        green: 'GREEN',
+        yellow: 'YELLOW',
+        red: 'RED',
+        unknown: 'UNKNOWN'
+      }
     }
   },
 

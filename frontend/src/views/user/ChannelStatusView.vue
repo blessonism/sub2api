@@ -19,6 +19,12 @@
       @card-click="openDetail"
     />
 
+    <GptIntelligencePanel
+      :snapshot="gptIntelligenceSnapshot"
+      :loading="gptIntelligenceLoading"
+      :error="gptIntelligenceError"
+    />
+
     <MonitorDetailDialog
       :show="showDetail"
       :monitor-id="detailTarget?.id ?? null"
@@ -39,11 +45,16 @@ import {
   type UserMonitorView,
   type UserMonitorDetail,
 } from '@/api/channelMonitor'
+import {
+  fetchGptIntelligenceSnapshot,
+  type GptIntelligenceSnapshot,
+} from '@/api/gptIntelligence'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MonitorHero, {
   type MonitorWindow,
   type OverallStatus,
 } from '@/components/user/monitor/MonitorHero.vue'
+import GptIntelligencePanel from '@/components/user/monitor/GptIntelligencePanel.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
@@ -59,15 +70,19 @@ const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
+const gptIntelligenceSnapshot = ref<GptIntelligenceSnapshot | null>(null)
+const gptIntelligenceLoading = ref(false)
+const gptIntelligenceError = ref<string | null>(null)
 
 let abortController: AbortController | null = null
+let gptIntelligenceAbortController: AbortController | null = null
 
 const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
   intervals: [30, 60, 120] as const,
   defaultInterval: DEFAULT_INTERVAL_SECONDS,
-  onRefresh: () => reload(true),
-  shouldPause: () => document.hidden || loading.value,
+  onRefresh: () => reloadAll(true),
+  shouldPause: () => document.hidden || loading.value || gptIntelligenceLoading.value,
 })
 const countdown = autoRefresh.countdown
 
@@ -108,8 +123,39 @@ async function reload(silent = false) {
   }
 }
 
+async function reloadModelIq(silent = false) {
+  if (gptIntelligenceAbortController) gptIntelligenceAbortController.abort()
+  const ctrl = new AbortController()
+  gptIntelligenceAbortController = ctrl
+  if (!silent) gptIntelligenceLoading.value = true
+  try {
+    const snapshot = await fetchGptIntelligenceSnapshot({ signal: ctrl.signal })
+    if (ctrl.signal.aborted || gptIntelligenceAbortController !== ctrl) return
+    gptIntelligenceSnapshot.value = snapshot
+    gptIntelligenceError.value = null
+  } catch (err: unknown) {
+    const e = err as { name?: string; code?: string; message?: string }
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    if (!ctrl.signal.aborted && gptIntelligenceAbortController === ctrl) {
+      gptIntelligenceError.value = e?.message || t('channelStatus.modelIq.loadErrorTitle')
+    }
+  } finally {
+    if (gptIntelligenceAbortController === ctrl) {
+      if (!silent) gptIntelligenceLoading.value = false
+      gptIntelligenceAbortController = null
+    }
+  }
+}
+
+async function reloadAll(silent = false) {
+  await Promise.all([
+    reload(silent),
+    reloadModelIq(silent),
+  ])
+}
+
 async function manualReload() {
-  await reload(false)
+  await reloadAll(false)
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {
@@ -160,7 +206,7 @@ watch(
 )
 
 onMounted(() => {
-  void reload(false)
+  void reloadAll(false)
   if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
     autoRefresh.setEnabled(true)
   }
@@ -168,5 +214,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (abortController) abortController.abort()
+  if (gptIntelligenceAbortController) gptIntelligenceAbortController.abort()
 })
 </script>
