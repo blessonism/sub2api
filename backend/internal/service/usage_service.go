@@ -361,11 +361,12 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 	}
 
 	myRank := usagestats.UserTokenLeaderboardItem{
-		Rank:          0,
-		MaskedEmail:   "***",
-		Requests:      0,
-		Tokens:        0,
-		IsCurrentUser: true,
+		Rank:                   0,
+		MaskedEmail:            "***",
+		Requests:               0,
+		Tokens:                 0,
+		DiscountRateMultiplier: 1,
+		IsCurrentUser:          true,
 	}
 	if rows.MyRank != nil {
 		myRank = userTokenLeaderboardPublicItem(*rows.MyRank, userID)
@@ -390,12 +391,20 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 
 func userTokenLeaderboardPublicItem(row usagestats.UserTokenLeaderboardRow, currentUserID int64) usagestats.UserTokenLeaderboardItem {
 	return usagestats.UserTokenLeaderboardItem{
-		Rank:          row.Rank,
-		MaskedEmail:   MaskEmail(row.Email),
-		Requests:      row.Requests,
-		Tokens:        row.Tokens,
-		IsCurrentUser: row.UserID == currentUserID,
+		Rank:                   row.Rank,
+		MaskedEmail:            MaskEmail(row.Email),
+		Requests:               row.Requests,
+		Tokens:                 row.Tokens,
+		DiscountRateMultiplier: normalizeLeaderboardRateMultiplier(row.DiscountRateMultiplier),
+		IsCurrentUser:          row.UserID == currentUserID,
 	}
+}
+
+func normalizeLeaderboardRateMultiplier(value float64) float64 {
+	if value <= 0 {
+		return 1
+	}
+	return value
 }
 
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.

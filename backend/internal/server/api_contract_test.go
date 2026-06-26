@@ -509,6 +509,7 @@ func TestAPIContracts(t *testing.T) {
 					"total_cache_creation_tokens": 1,
 					"total_cache_read_tokens": 2,
 					"total_tokens": 53,
+					"calibration_tokens": 0,
 					"total_cost": 0.75,
 					"total_actual_cost": 0.75,
 					"average_duration_ms": 200
@@ -888,6 +889,7 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
 					"token_leaderboard_user_visible": false,
+					"token_leaderboard_common_group_id": 0,
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1130,6 +1132,7 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
 					"token_leaderboard_user_visible": true,
+					"token_leaderboard_common_group_id": 0,
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -2540,6 +2543,11 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (r *stubUsageLogRepo) GetSharedIPUsersSummary(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")
 }

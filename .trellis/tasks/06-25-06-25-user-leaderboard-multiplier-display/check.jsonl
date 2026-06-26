@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查用户侧排行榜与自动倍率策略后端约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查用户 dashboard API 页面前端类型约束"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层数据契约"}

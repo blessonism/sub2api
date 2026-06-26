@@ -76,6 +76,36 @@
         </div>
       </div>
 
+      <div class="card p-4">
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
+          <label class="space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenLeaderboard.commonGroup') }}</span>
+            <Select
+              v-model="commonGroupId"
+              :options="commonGroupOptions"
+              :placeholder="t('admin.tokenLeaderboard.commonGroupPlaceholder')"
+              :disabled="settingsLoading || settingsSaving"
+              searchable
+              clearable
+              data-testid="token-leaderboard-common-group-select"
+            />
+          </label>
+          <button
+            class="btn btn-primary inline-flex items-center justify-center gap-2"
+            type="button"
+            :disabled="!canSaveCommonGroup"
+            @click="saveCommonGroup"
+            data-testid="token-leaderboard-common-group-save"
+          >
+            <Icon name="save" size="sm" />
+            {{ settingsSaving ? t('admin.tokenLeaderboard.savingCommonGroup') : t('admin.tokenLeaderboard.saveCommonGroup') }}
+          </button>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ commonGroupHint }}
+        </p>
+      </div>
+
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div v-for="metric in summaryMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
           <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ metric.label }}</div>
@@ -290,6 +320,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
+import { formatMultiplier as formatAdaptiveMultiplier } from '@/utils/formatters'
 import type {
   AdminTokenLeaderboardParams,
   AdminTokenLeaderboardAPIKeyUsage,
@@ -379,6 +410,10 @@ const groupId = ref<number | null>(null)
 const userStatus = ref<UserStatusFilter>('')
 const limit = ref<LimitOption>(10)
 const groups = ref<AdminGroup[]>([])
+const settingsLoading = ref(false)
+const settingsSaving = ref(false)
+const commonGroupId = ref<number | null>(null)
+const savedCommonGroupId = ref<number | null>(null)
 const leaderboard = ref<AdminTokenLeaderboardResponse | null>(null)
 const loading = ref(false)
 const expandedUserId = ref<number | null>(null)
@@ -415,6 +450,27 @@ const groupOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.tokenLeaderboard.allGroups') },
   ...groups.value.map((group) => ({ value: group.id, label: `${group.name} (#${group.id})` }))
 ])
+const commonGroups = computed(() => groups.value.filter((group) => (
+  group.status === 'active' && group.subscription_type === 'standard' && !group.is_exclusive
+)))
+const commonGroupOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.tokenLeaderboard.commonGroupUnset') },
+  ...commonGroups.value.map((group) => ({
+    value: group.id,
+    label: `${group.name} · ${formatMultiplier(group.rate_multiplier)} (#${group.id})`
+  }))
+])
+const selectedCommonGroup = computed(() => commonGroups.value.find((group) => group.id === commonGroupId.value) || null)
+const canSaveCommonGroup = computed(() => !settingsLoading.value && !settingsSaving.value && commonGroupId.value !== savedCommonGroupId.value)
+const commonGroupHint = computed(() => {
+  if (selectedCommonGroup.value) {
+    return t('admin.tokenLeaderboard.commonGroupSelectedHint', {
+      group: selectedCommonGroup.value.name,
+      multiplier: formatMultiplier(selectedCommonGroup.value.rate_multiplier)
+    })
+  }
+  return t('admin.tokenLeaderboard.commonGroupUnsetHint')
+})
 const statusOptions = computed<SelectOption[]>(() => [
   { value: '', label: t('admin.tokenLeaderboard.allStatuses') },
   { value: 'active', label: t('admin.tokenLeaderboard.active') },
@@ -435,6 +491,11 @@ function formatCost(value: number): string {
 function formatSignedTokens(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '-' : ''
   return `${sign}${formatNumber(Math.abs(value))}`
+}
+
+function formatMultiplier(value: number): string {
+  const normalized = Number.isFinite(value) && value > 0 ? value : 1
+  return `${formatAdaptiveMultiplier(normalized)}x`
 }
 
 function calibrationClass(value: number): string {
@@ -534,6 +595,43 @@ async function loadGroups(): Promise<void> {
   } catch (error) {
     console.error('Failed to load groups:', error)
     groups.value = []
+  }
+}
+
+async function loadSettings(): Promise<void> {
+  settingsLoading.value = true
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    const groupId = settings.token_leaderboard_common_group_id > 0 ? settings.token_leaderboard_common_group_id : null
+    commonGroupId.value = groupId
+    savedCommonGroupId.value = groupId
+  } catch (error) {
+    console.error('Failed to load token leaderboard settings:', error)
+    commonGroupId.value = null
+    savedCommonGroupId.value = null
+  } finally {
+    settingsLoading.value = false
+  }
+}
+
+async function saveCommonGroup(): Promise<void> {
+  if (!canSaveCommonGroup.value) return
+  settingsSaving.value = true
+  try {
+    const groupId = commonGroupId.value ?? 0
+    const settings = await adminAPI.settings.updateSettings({
+      token_leaderboard_common_group_id: groupId
+    })
+    const savedGroupId = settings.token_leaderboard_common_group_id > 0 ? settings.token_leaderboard_common_group_id : null
+    commonGroupId.value = savedGroupId
+    savedCommonGroupId.value = savedGroupId
+    appStore.showSuccess(t('admin.tokenLeaderboard.commonGroupSaved'))
+    await loadLeaderboard()
+  } catch (error: any) {
+    console.error('Failed to save token leaderboard common group:', error)
+    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.tokenLeaderboard.commonGroupSaveFailed'))
+  } finally {
+    settingsSaving.value = false
   }
 }
 
@@ -645,6 +743,7 @@ async function toggleDetails(userId: number): Promise<void> {
 
 onMounted(() => {
   void loadGroups()
+  void loadSettings()
   void loadLeaderboard()
 })
 </script>

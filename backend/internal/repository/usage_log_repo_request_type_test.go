@@ -723,10 +723,10 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 	end := start.Add(24 * time.Hour)
 	currentUserID := int64(9)
 
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens"}).
-		AddRow("top", int64(1), int64(2), "beta@example.com", int64(9), int64(900)).
-		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900)).
-		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120))
+	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
+		AddRow("top", int64(1), int64(2), "beta@example.com", int64(9), int64(900), 0.7).
+		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900), 0.8).
+		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120), 0.9)
 
 	mock.ExpectQuery("WITH raw_usage AS \\(").
 		WithArgs(start, end, 2, currentUserID, "2026-06-18", "2026-06-19").
@@ -735,16 +735,17 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 2, currentUserID)
 	require.NoError(t, err)
 	require.Equal(t, []usagestats.UserTokenLeaderboardRow{
-		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900},
-		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900},
+		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900, DiscountRateMultiplier: 0.7},
+		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900, DiscountRateMultiplier: 0.8},
 	}, got.Ranking)
 	require.NotNil(t, got.MyRank)
 	require.Equal(t, &usagestats.UserTokenLeaderboardRow{
-		Rank:     4,
-		UserID:   currentUserID,
-		Email:    "current@example.com",
-		Requests: 3,
-		Tokens:   120,
+		Rank:                   4,
+		UserID:                 currentUserID,
+		Email:                  "current@example.com",
+		Requests:               3,
+		Tokens:                 120,
+		DiscountRateMultiplier: 0.9,
 	}, got.MyRank)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -757,7 +758,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardDefaultsLimitToTop10(t *testin
 	end := start.Add(24 * time.Hour)
 	currentUserID := int64(9)
 
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens"})
+	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"})
 	mock.ExpectQuery("WITH raw_usage AS \\(").
 		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)

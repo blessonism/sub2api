@@ -301,7 +301,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
-		TokenLeaderboardUserVisible: settings.TokenLeaderboardUserVisible,
+		TokenLeaderboardUserVisible:   settings.TokenLeaderboardUserVisible,
+		TokenLeaderboardCommonGroupID: settings.TokenLeaderboardCommonGroupID,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
@@ -652,6 +653,9 @@ type UpdateSettingsRequest struct {
 
 	// Token Leaderboard user visibility switch
 	TokenLeaderboardUserVisible *bool `json:"token_leaderboard_user_visible"`
+
+	// Token Leaderboard fallback display multiplier group
+	TokenLeaderboardCommonGroupID *int64 `json:"token_leaderboard_common_group_id"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1804,6 +1808,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.TokenLeaderboardUserVisible
 		}(),
+		TokenLeaderboardCommonGroupID: func() int64 {
+			if req.TokenLeaderboardCommonGroupID != nil {
+				return *req.TokenLeaderboardCommonGroupID
+			}
+			return previousSettings.TokenLeaderboardCommonGroupID
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -2150,7 +2160,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
-		TokenLeaderboardUserVisible: updatedSettings.TokenLeaderboardUserVisible,
+		TokenLeaderboardUserVisible:   updatedSettings.TokenLeaderboardUserVisible,
+		TokenLeaderboardCommonGroupID: updatedSettings.TokenLeaderboardCommonGroupID,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
@@ -2643,6 +2654,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.TokenLeaderboardUserVisible != after.TokenLeaderboardUserVisible {
 		changed = append(changed, "token_leaderboard_user_visible")
+	}
+	if before.TokenLeaderboardCommonGroupID != after.TokenLeaderboardCommonGroupID {
+		changed = append(changed, "token_leaderboard_common_group_id")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")

@@ -208,6 +208,62 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsDuplicateGrou
 	require.Nil(t, repo.updates)
 }
 
+func TestSettingService_UpdateSettings_TokenLeaderboardCommonGroupAllowsStandardPublicGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &defaultSubGroupReaderStub{
+		byID: map[int64]*Group{
+			21: {ID: 21, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: false},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetDefaultSubscriptionGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		TokenLeaderboardCommonGroupID: 21,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "21", repo.updates[SettingKeyTokenLeaderboardCommonGroupID])
+	require.Equal(t, []int64{21}, groupReader.calls)
+}
+
+func TestSettingService_UpdateSettings_TokenLeaderboardCommonGroupRejectsNonCommonGroup(t *testing.T) {
+	tests := []struct {
+		name  string
+		group *Group
+	}{
+		{
+			name:  "subscription group",
+			group: &Group{ID: 21, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, IsExclusive: false},
+		},
+		{
+			name:  "exclusive group",
+			group: &Group{ID: 21, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: true},
+		},
+		{
+			name:  "inactive group",
+			group: &Group{ID: 21, Status: StatusInactive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &settingUpdateRepoStub{}
+			groupReader := &defaultSubGroupReaderStub{byID: map[int64]*Group{21: tt.group}}
+			svc := NewSettingService(repo, &config.Config{})
+			svc.SetDefaultSubscriptionGroupReader(groupReader)
+
+			err := svc.UpdateSettings(context.Background(), &SystemSettings{
+				TokenLeaderboardCommonGroupID: 21,
+			})
+
+			require.Error(t, err)
+			require.Equal(t, "TOKEN_LEADERBOARD_COMMON_GROUP_INVALID", infraerrors.Reason(err))
+			require.Nil(t, repo.updates)
+		})
+	}
+}
+
 func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normalized(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})
