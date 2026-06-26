@@ -507,6 +507,7 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 				return err
 			}
 		case service.TokenUsagePolicyChangeSkipManual:
+			clearPolicyGrantedGroupOwnership := shouldClearPolicyGrantedGroupOwnership(change)
 			if _, err := tx.ExecContext(ctx, `
 					INSERT INTO token_usage_auto_assignments (
 						policy_id, user_id, target_group_id, tier_id, last_token_usage, last_rate_multiplier,
@@ -520,11 +521,15 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 							tier_id = EXCLUDED.tier_id,
 							last_token_usage = EXCLUDED.last_token_usage,
 							previous_rate_multiplier = COALESCE(token_usage_auto_assignments.previous_rate_multiplier, EXCLUDED.previous_rate_multiplier),
+							group_granted_by_policy = CASE
+								WHEN $8 THEN FALSE
+								ELSE token_usage_auto_assignments.group_granted_by_policy
+							END,
 						manual_takeover = TRUE,
 						manual_takeover_reason = EXCLUDED.manual_takeover_reason,
 						manual_takeover_at = COALESCE(token_usage_auto_assignments.manual_takeover_at, NOW()),
 						updated_at = NOW()
-				`, policy.ID, change.UserID, policy.TargetGroupID, change.TierID, change.TokenUsage, change.OldRateMultiplier, change.Reason); err != nil {
+				`, policy.ID, change.UserID, policy.TargetGroupID, change.TierID, change.TokenUsage, change.OldRateMultiplier, change.Reason, clearPolicyGrantedGroupOwnership); err != nil {
 				return err
 			}
 		}
@@ -583,32 +588,42 @@ func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *s
 		manualTakeover = true
 		change.ManualTakeover = true
 		if change.Reason == "" || change.Reason == "policy cleared by admin" {
-			change.Reason = "manual takeover preserved; policy ownership cleared"
+			change.Reason = service.TokenUsagePolicyManualTakeoverPreservedReason
 		}
 	}
 	if !manualTakeover {
 		if previous.Valid {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-				VALUES ($1, $2, $3, NOW(), NOW())
-				ON CONFLICT (user_id, group_id)
-				DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
-			`, change.UserID, targetGroupID, previous.Float64); err != nil {
+			res, err := tx.ExecContext(ctx, `
+				UPDATE user_group_rate_multipliers
+				SET rate_multiplier = $3, updated_at = NOW()
+				WHERE user_id = $1 AND group_id = $2
+				  AND (($4::decimal IS NULL AND rate_multiplier IS NULL) OR rate_multiplier = $4::decimal)
+			`, change.UserID, targetGroupID, previous.Float64, nullableSQLFloat(lastAutoRate))
+			if err != nil {
 				return err
 			}
+			if markManualTakeoverWhenNoRowsAffected(res, change) {
+				manualTakeover = true
+			}
 		} else {
-			if _, err := tx.ExecContext(ctx, `
+			res, err := tx.ExecContext(ctx, `
 				UPDATE user_group_rate_multipliers
 				SET rate_multiplier = NULL, updated_at = NOW()
 				WHERE user_id = $1 AND group_id = $2
-			`, change.UserID, targetGroupID); err != nil {
+				  AND (($3::decimal IS NULL AND rate_multiplier IS NULL) OR rate_multiplier = $3::decimal)
+			`, change.UserID, targetGroupID, nullableSQLFloat(lastAutoRate))
+			if err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `
-				DELETE FROM user_group_rate_multipliers
-				WHERE user_id = $1 AND group_id = $2 AND rate_multiplier IS NULL AND rpm_override IS NULL
-			`, change.UserID, targetGroupID); err != nil {
-				return err
+			if markManualTakeoverWhenNoRowsAffected(res, change) {
+				manualTakeover = true
+			} else {
+				if _, err := tx.ExecContext(ctx, `
+					DELETE FROM user_group_rate_multipliers
+					WHERE user_id = $1 AND group_id = $2 AND rate_multiplier IS NULL AND rpm_override IS NULL
+				`, change.UserID, targetGroupID); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -622,6 +637,29 @@ func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *s
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM token_usage_auto_assignments WHERE policy_id = $1 AND user_id = $2`, policy.ID, change.UserID)
 	return err
+}
+
+func shouldClearPolicyGrantedGroupOwnership(change *service.TokenUsageAutoPolicyChange) bool {
+	return change.GroupGranted || change.Reason == service.TokenUsagePolicyManualGroupRemovedReason
+}
+
+func nullableSQLFloat(value sql.NullFloat64) any {
+	if !value.Valid {
+		return nil
+	}
+	return value.Float64
+}
+
+func markManualTakeoverWhenNoRowsAffected(res sql.Result, change *service.TokenUsageAutoPolicyChange) bool {
+	affected, err := res.RowsAffected()
+	if err != nil || affected > 0 {
+		return false
+	}
+	change.ManualTakeover = true
+	if change.Reason == "" || change.Reason == "policy cleared by admin" {
+		change.Reason = service.TokenUsagePolicyManualTakeoverPreservedReason
+	}
+	return true
 }
 
 func (r *tokenUsagePolicyRepository) BeginPolicyRun(ctx context.Context, policyID int64, runType string) (*service.TokenUsageAutoPolicyRun, error) {

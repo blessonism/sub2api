@@ -153,6 +153,63 @@ func TestTokenUsagePolicyBuildChangesDowngradeClearAndManualSkip(t *testing.T) {
 		require.True(t, changes[0].ManualTakeover)
 		require.Equal(t, 1, stats.SkipCount)
 	})
+
+	t.Run("manual priority clears policy group ownership when granted group was removed", func(t *testing.T) {
+		lastAuto := 0.7
+		repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 5, TokenUsage: 1500}}
+		repo.states = map[int64]TokenUsageAutoPolicyState{
+			5: {
+				UserID:          5,
+				CurrentRate:     &lastAuto,
+				HasAllowedGroup: false,
+				Assignment: &TokenUsageAutoAssignment{
+					UserID:                 5,
+					LastRateMultiplier:     &lastAuto,
+					GroupGrantedByPolicy:   true,
+					PreviousRateMultiplier: nil,
+				},
+			},
+		}
+
+		changes, stats, err := svc.buildPolicyChanges(context.Background(), policy)
+
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Equal(t, TokenUsagePolicyChangeSkipManual, changes[0].ChangeType)
+		require.Equal(t, TokenUsagePolicyManualGroupRemovedReason, changes[0].Reason)
+		require.True(t, changes[0].GroupGranted)
+		require.True(t, changes[0].ManualTakeover)
+		require.Equal(t, 1, stats.SkipCount)
+	})
+
+	t.Run("manual takeover still clears policy group ownership when granted group was removed", func(t *testing.T) {
+		lastAuto := 0.7
+		repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 6, TokenUsage: 1500}}
+		repo.states = map[int64]TokenUsageAutoPolicyState{
+			6: {
+				UserID:          6,
+				CurrentRate:     &lastAuto,
+				HasAllowedGroup: false,
+				Assignment: &TokenUsageAutoAssignment{
+					UserID:               6,
+					LastRateMultiplier:   &lastAuto,
+					GroupGrantedByPolicy: true,
+					ManualTakeover:       true,
+					ManualTakeoverReason: "rate_multiplier was changed manually",
+				},
+			},
+		}
+
+		changes, stats, err := svc.buildPolicyChanges(context.Background(), policy)
+
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Equal(t, TokenUsagePolicyChangeSkipManual, changes[0].ChangeType)
+		require.Equal(t, TokenUsagePolicyManualGroupRemovedReason, changes[0].Reason)
+		require.True(t, changes[0].GroupGranted)
+		require.True(t, changes[0].ManualTakeover)
+		require.Equal(t, 1, stats.SkipCount)
+	})
 }
 
 func TestTokenUsagePolicyRunWritesHistoryAndChanges(t *testing.T) {
@@ -244,7 +301,40 @@ func TestTokenUsagePolicyClearPreservesManualTakeoverRate(t *testing.T) {
 	require.Len(t, repo.appliedChanges, 1)
 	require.Equal(t, TokenUsagePolicyChangeClear, repo.appliedChanges[0].ChangeType)
 	require.True(t, repo.appliedChanges[0].ManualTakeover)
-	require.Equal(t, "manual takeover preserved; policy ownership cleared", repo.appliedChanges[0].Reason)
+	require.Equal(t, TokenUsagePolicyManualTakeoverPreservedReason, repo.appliedChanges[0].Reason)
+}
+
+func TestTokenUsagePolicyClearRestoresAutoRateAfterManualGroupRemoval(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.policy = baseTokenUsagePolicy()
+	currentRate := 0.7
+	previousRate := 1.0
+	repo.assignmentStates = map[int64]TokenUsageAutoPolicyState{
+		1: {
+			UserID:          1,
+			CurrentRate:     &currentRate,
+			HasAllowedGroup: false,
+			Assignment: &TokenUsageAutoAssignment{
+				UserID:                 1,
+				TargetGroupID:          repo.policy.TargetGroupID,
+				LastTokenUsage:         1500,
+				LastRateMultiplier:     &currentRate,
+				GroupGrantedByPolicy:   false,
+				PreviousRateMultiplier: &previousRate,
+				ManualTakeover:         true,
+				ManualTakeoverReason:   TokenUsagePolicyManualGroupRemovedReason,
+			},
+		},
+	}
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	_, err := svc.ClearPolicy(context.Background(), repo.policy.ID)
+
+	require.NoError(t, err)
+	require.Len(t, repo.appliedChanges, 1)
+	require.Equal(t, TokenUsagePolicyChangeClear, repo.appliedChanges[0].ChangeType)
+	require.False(t, repo.appliedChanges[0].ManualTakeover)
+	require.Equal(t, "policy cleared by admin", repo.appliedChanges[0].Reason)
 }
 
 func TestTokenUsagePolicyRunApplyFailureDoesNotSaveChanges(t *testing.T) {
