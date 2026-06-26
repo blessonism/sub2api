@@ -3069,12 +3069,16 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 		),
 		auto_multipliers AS (
 			SELECT
-				user_id,
-				MIN(last_rate_multiplier) AS rate_multiplier
-			FROM token_usage_auto_assignments
-			WHERE last_rate_multiplier IS NOT NULL
-			  AND manual_takeover = FALSE
-			GROUP BY user_id
+				a.user_id,
+				MIN(ugr.rate_multiplier) AS rate_multiplier
+			FROM token_usage_auto_assignments a
+			JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
+			JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'
+			JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
+			WHERE a.last_rate_multiplier IS NOT NULL
+			  AND a.manual_takeover = FALSE
+			  AND ugr.rate_multiplier = a.last_rate_multiplier
+			GROUP BY a.user_id
 		),
 		common_multiplier AS (
 			SELECT g.rate_multiplier
