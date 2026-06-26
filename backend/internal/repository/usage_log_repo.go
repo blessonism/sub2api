@@ -3084,23 +3084,23 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			auto_multipliers AS (
 				SELECT
 					a.user_id,
-					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier, ugr.rate_multiplier, target_group.rate_multiplier)) AS rate_multiplier
+					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier)) AS rate_multiplier
 				FROM token_usage_auto_assignments a
 				JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
 				JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'
-			JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
-			WHERE a.last_rate_multiplier IS NOT NULL
-			  AND a.manual_takeover = FALSE
-			  AND ugr.rate_multiplier = a.last_rate_multiplier
-			GROUP BY a.user_id
+				JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
+				WHERE a.last_rate_multiplier IS NOT NULL
+				  AND a.manual_takeover = FALSE
+				  AND ugr.rate_multiplier = a.last_rate_multiplier
+				GROUP BY a.user_id
 			),
 			common_multiplier AS (
-				SELECT COALESCE(g.visible_rate_multiplier, g.rate_multiplier) AS rate_multiplier
+				SELECT g.visible_rate_multiplier AS rate_multiplier
 				FROM settings s
 				JOIN groups g ON g.id = CASE WHEN s.value ~ '^[0-9]+$' THEN s.value::bigint ELSE 0 END
-			WHERE s.key = '` + service.SettingKeyTokenLeaderboardCommonGroupID + `'
-			  AND g.status = '` + service.StatusActive + `'
-			  AND g.subscription_type = '` + service.SubscriptionTypeStandard + `'
+				WHERE s.key = '` + service.SettingKeyTokenLeaderboardCommonGroupID + `'
+				  AND g.status = '` + service.StatusActive + `'
+				  AND g.subscription_type = '` + service.SubscriptionTypeStandard + `'
 			  AND g.is_exclusive = FALSE
 			LIMIT 1
 		),
@@ -3108,13 +3108,13 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			SELECT
 				ROW_NUMBER() OVER (ORDER BY uu.tokens DESC, uu.requests DESC, uu.user_id ASC) as rank,
 				uu.user_id,
-				uu.email,
-				uu.requests,
-				uu.tokens,
-				COALESCE(am.rate_multiplier, (SELECT rate_multiplier FROM common_multiplier), 1.0) AS discount_rate_multiplier
-			FROM user_usage uu
-			LEFT JOIN auto_multipliers am ON am.user_id = uu.user_id
-		),
+					uu.email,
+					uu.requests,
+					uu.tokens,
+					COALESCE(am.rate_multiplier, (SELECT rate_multiplier FROM common_multiplier)) AS discount_rate_multiplier
+				FROM user_usage uu
+				LEFT JOIN auto_multipliers am ON am.user_id = uu.user_id
+			),
 		selected AS (
 			SELECT 'top' as row_type, rank, user_id, email, requests, tokens, discount_rate_multiplier
 			FROM ranked
@@ -3149,9 +3149,11 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 	for rows.Next() {
 		var rowType string
 		var row usagestats.UserTokenLeaderboardRow
-		if err = rows.Scan(&rowType, &row.Rank, &row.UserID, &row.Email, &row.Requests, &row.Tokens, &row.DiscountRateMultiplier); err != nil {
+		var discountRate sql.NullFloat64
+		if err = rows.Scan(&rowType, &row.Rank, &row.UserID, &row.Email, &row.Requests, &row.Tokens, &discountRate); err != nil {
 			return nil, err
 		}
+		row.DiscountRateMultiplier = nullFloat64Ptr(discountRate)
 		if row.UserID == currentUserID {
 			rowCopy := row
 			out.MyRank = &rowCopy

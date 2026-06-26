@@ -191,7 +191,7 @@ const emptyMyRank: UserTokenLeaderboardItem = {
   masked_email: '***',
   requests: 0,
   tokens: 0,
-  discount_rate_multiplier: 1,
+  discount_rate_multiplier: null,
   is_current_user: true,
 }
 
@@ -248,8 +248,9 @@ function formatTokenMillions(value: number): string {
   return `${(value / TOKENS_PER_MILLION).toFixed(2)}M`
 }
 
-function formatMultiplier(value: number): string {
-  const normalized = Number.isFinite(value) && value > 0 ? value : 1
+function formatMultiplier(value: number | null): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return '-'
+  const normalized = value
   return `${formatAdaptiveMultiplier(normalized)}x`
 }
 

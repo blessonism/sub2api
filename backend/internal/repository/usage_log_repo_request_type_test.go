@@ -770,8 +770,8 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 2, currentUserID)
 	require.NoError(t, err)
 	require.Equal(t, []usagestats.UserTokenLeaderboardRow{
-		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900, DiscountRateMultiplier: 0.7},
-		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900, DiscountRateMultiplier: 0.8},
+		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900, DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.7)},
+		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900, DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.8)},
 	}, got.Ranking)
 	require.NotNil(t, got.MyRank)
 	require.Equal(t, &usagestats.UserTokenLeaderboardRow{
@@ -780,7 +780,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(
 		Email:                  "current@example.com",
 		Requests:               3,
 		Tokens:                 120,
-		DiscountRateMultiplier: 0.9,
+		DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.9),
 	}, got.MyRank)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -823,10 +823,14 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardUsesCurrentAutoMultiplier(t *t
 	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 10, currentUserID)
 	require.NoError(t, err)
 	require.Len(t, got.Ranking, 1)
-	require.Equal(t, 0.7, got.Ranking[0].DiscountRateMultiplier)
+	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.Ranking[0].DiscountRateMultiplier)
 	require.NotNil(t, got.MyRank)
-	require.Equal(t, 0.7, got.MyRank.DiscountRateMultiplier)
+	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.MyRank.DiscountRateMultiplier)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func ptrLeaderboardRateForRepoTest(v float64) *float64 {
+	return &v
 }
 
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {

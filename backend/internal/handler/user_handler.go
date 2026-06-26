@@ -539,7 +539,7 @@ func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64
 }
 
 func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {
-	base := dto.UserFromService(user)
+	base := dto.UserFromServiceUserVisible(user)
 	if base == nil {
 		return userProfileResponse{}
 	}

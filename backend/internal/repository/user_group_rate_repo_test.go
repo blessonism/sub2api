@@ -23,7 +23,7 @@ func TestUserGroupRateRepositorySyncGroupRateMultipliersRollsBackWhenUpsertFails
 		WithArgs(int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO user_group_rate_multipliers").
-		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnError(upsertErr)
 	mock.ExpectRollback()
 
@@ -56,8 +56,11 @@ func TestUserGroupRateRepositorySyncGroupRateMultipliersSupportsExplicitNull(t *
 	mock.ExpectExec("DELETE FROM user_group_rate_multipliers").
 		WithArgs(int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("INSERT INTO user_group_rate_multipliers").
-		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+	mock.ExpectExec("UPDATE user_group_rate_multipliers").
+		WithArgs(int64(10), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM user_group_rate_multipliers").
+		WithArgs(int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 

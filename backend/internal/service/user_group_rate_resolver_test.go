@@ -120,6 +120,28 @@ func TestInvalidateUserGroupRateCacheByGroupIDClearsRegisteredResolverCaches(t *
 	require.Equal(t, 1.9, cached)
 }
 
+func TestInvalidateUserGroupRateCacheByUserIDClearsRegisteredResolverCaches(t *testing.T) {
+	cache := gocache.New(time.Minute, time.Minute)
+	resolver := newUserGroupRateResolver(nil, cache, time.Minute, nil, "service.test")
+	resolver.cache.Set(userGroupRateCacheKey(101, 202), 1.7, time.Minute)
+	resolver.cache.Set(userGroupVisibleRateCacheKey(101, 202), 1.3, time.Minute)
+	resolver.cache.Set(userGroupRateCacheKey(303, 202), 1.9, time.Minute)
+	resolver.cache.Set(userGroupVisibleRateCacheKey(303, 202), 1.4, time.Minute)
+
+	invalidateUserGroupRateCacheByUserID(101)
+
+	_, ok := resolver.cache.Get(userGroupRateCacheKey(101, 202))
+	require.False(t, ok)
+	_, ok = resolver.cache.Get(userGroupVisibleRateCacheKey(101, 202))
+	require.False(t, ok)
+	cached, ok := resolver.cache.Get(userGroupRateCacheKey(303, 202))
+	require.True(t, ok)
+	require.Equal(t, 1.9, cached)
+	cached, ok = resolver.cache.Get(userGroupVisibleRateCacheKey(303, 202))
+	require.True(t, ok)
+	require.Equal(t, 1.4, cached)
+}
+
 func TestUserGroupRateResolverResolveVisible_PrecedenceAndFallbacks(t *testing.T) {
 	var nilResolver *userGroupRateResolver
 	groupVisible := 1.25

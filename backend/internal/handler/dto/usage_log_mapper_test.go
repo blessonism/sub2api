@@ -60,3 +60,100 @@ func TestUsageLogFromServiceUsesVisibleRateSnapshotForUserDTO(t *testing.T) {
 	require.Equal(t, 1.6, adminDTO.RateMultiplier)
 	require.Equal(t, &visibleRate, adminDTO.VisibleRateMultiplier)
 }
+
+func TestGroupFromServiceUserVisibleDoesNotExposeVisibleRateMultiplier(t *testing.T) {
+	visibleRate := 0.8
+	group := &service.Group{
+		ID:                    10,
+		Name:                  "vip",
+		RateMultiplier:        1.6,
+		VisibleRateMultiplier: &visibleRate,
+	}
+
+	userDTO := GroupFromServiceUserVisible(group)
+
+	require.NotNil(t, userDTO)
+	require.Equal(t, visibleRate, userDTO.RateMultiplier)
+	require.Nil(t, userDTO.VisibleRateMultiplier)
+}
+
+func TestAPIKeyFromServiceUserVisibleDoesNotExposeNestedGroupVisibleRateMultiplier(t *testing.T) {
+	visibleRate := 0.8
+	key := &service.APIKey{
+		ID: 1,
+		Group: &service.Group{
+			ID:                    10,
+			Name:                  "vip",
+			RateMultiplier:        1.6,
+			VisibleRateMultiplier: &visibleRate,
+		},
+	}
+
+	userDTO := APIKeyFromServiceUserVisible(key)
+
+	require.NotNil(t, userDTO)
+	require.NotNil(t, userDTO.Group)
+	require.Equal(t, visibleRate, userDTO.Group.RateMultiplier)
+	require.Nil(t, userDTO.Group.VisibleRateMultiplier)
+}
+
+func TestUserSubscriptionFromServiceUserVisibleDoesNotExposeNestedGroupVisibleRateMultiplier(t *testing.T) {
+	visibleRate := 0.8
+	subscription := &service.UserSubscription{
+		ID: 1,
+		Group: &service.Group{
+			ID:                    10,
+			Name:                  "vip",
+			RateMultiplier:        1.6,
+			VisibleRateMultiplier: &visibleRate,
+		},
+	}
+
+	userDTO := UserSubscriptionFromServiceUserVisible(subscription)
+
+	require.NotNil(t, userDTO)
+	require.NotNil(t, userDTO.Group)
+	require.Equal(t, visibleRate, userDTO.Group.RateMultiplier)
+	require.Nil(t, userDTO.Group.VisibleRateMultiplier)
+}
+
+func TestUserFromServiceUserVisibleDoesNotExposeNestedGroupVisibleRateMultiplier(t *testing.T) {
+	visibleRate := 0.8
+	user := &service.User{
+		ID: 1,
+		APIKeys: []service.APIKey{
+			{
+				ID: 2,
+				Group: &service.Group{
+					ID:                    10,
+					Name:                  "vip",
+					RateMultiplier:        1.6,
+					VisibleRateMultiplier: &visibleRate,
+				},
+			},
+		},
+		Subscriptions: []service.UserSubscription{
+			{
+				ID: 3,
+				Group: &service.Group{
+					ID:                    10,
+					Name:                  "vip",
+					RateMultiplier:        1.6,
+					VisibleRateMultiplier: &visibleRate,
+				},
+			},
+		},
+	}
+
+	userDTO := UserFromServiceUserVisible(user)
+
+	require.NotNil(t, userDTO)
+	require.Len(t, userDTO.APIKeys, 1)
+	require.NotNil(t, userDTO.APIKeys[0].Group)
+	require.Equal(t, visibleRate, userDTO.APIKeys[0].Group.RateMultiplier)
+	require.Nil(t, userDTO.APIKeys[0].Group.VisibleRateMultiplier)
+	require.Len(t, userDTO.Subscriptions, 1)
+	require.NotNil(t, userDTO.Subscriptions[0].Group)
+	require.Equal(t, visibleRate, userDTO.Subscriptions[0].Group.RateMultiplier)
+	require.Nil(t, userDTO.Subscriptions[0].Group.VisibleRateMultiplier)
+}

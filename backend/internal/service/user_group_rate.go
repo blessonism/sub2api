@@ -40,9 +40,6 @@ type UserGroupRateRepository interface {
 	// GetVisibleByUserID 获取用户所有专属可见分组倍率（仅返回非 NULL 的条目）
 	GetVisibleByUserID(ctx context.Context, userID int64) (map[int64]float64, error)
 
-	// GetVisibleByUserIDs 批量获取多个用户的专属可见分组倍率（仅返回非 NULL 的条目）
-	GetVisibleByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error)
-
 	// GetByUserAndGroup 获取用户在特定分组的专属 rate_multiplier（NULL 返回 nil）
 	GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
 
