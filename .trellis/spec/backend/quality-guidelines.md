@@ -149,6 +149,7 @@ SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 - Successful real runs must apply rate/group changes, persist `token_usage_auto_run_changes`, and update the run summary in one transaction so audit failure cannot leave applied configuration without matching history.
 - `token_usage_auto_run_changes.target_group_id` is an audit snapshot, not a live `groups` relationship; do not add a cascading `groups` foreign key that can delete history when a group is removed.
 - Explicit policy clearing must create a `run_type='clear'` run, persist `clear` run changes, and remove only this policy's assignment footprint. For manual takeover rows, clearing may remove the assignment record and this policy's own group grant, but must not overwrite the current manual `rate_multiplier`.
+- Manual takeover reason matters during clearing: a row whose only takeover reason is that the policy-granted group access was manually removed should still clear/restore the policy-owned rate footprint, while a real manual rate edit must preserve the current manual `rate_multiplier`.
 - Explicit policy clearing must disable the policy and clear `next_run_at` in the same transaction as apply/audit/summary, so the scheduler cannot automatically re-apply the policy after an admin clears it.
 
 #### 4. Validation & Error Matrix

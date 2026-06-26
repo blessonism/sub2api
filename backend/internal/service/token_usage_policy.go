@@ -36,6 +36,9 @@ const (
 	TokenUsagePolicyChangeDowngrade  = "downgrade"
 	TokenUsagePolicyChangeClear      = "clear"
 	TokenUsagePolicyChangeSkipManual = "skip_manual"
+
+	TokenUsagePolicyManualGroupRemovedReason      = "policy-granted group access was removed manually"
+	TokenUsagePolicyManualTakeoverPreservedReason = "manual takeover preserved; policy ownership cleared"
 )
 
 type TokenUsageAutoPolicy struct {
@@ -461,7 +464,7 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 			targetGroupID = policy.TargetGroupID
 		}
 
-		manualRate := assignment.ManualTakeover
+		manualRate := assignment.ManualTakeover && assignment.ManualTakeoverReason != TokenUsagePolicyManualGroupRemovedReason
 		if assignment.LastRateMultiplier != nil && !sameFloatPtr(state.CurrentRate, assignment.LastRateMultiplier) {
 			manualRate = true
 		}
@@ -474,7 +477,7 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 		}
 		reason := "policy cleared by admin"
 		if manualRate {
-			reason = "manual takeover preserved; policy ownership cleared"
+			reason = TokenUsagePolicyManualTakeoverPreservedReason
 		}
 		changes = append(changes, TokenUsageAutoPolicyChange{
 			ChangeType:        TokenUsagePolicyChangeClear,
@@ -604,6 +607,11 @@ func (s *TokenUsageAutoPolicyService) invalidateAuthCacheForPolicyChanges(ctx co
 
 func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAutoPolicyState, tokenUsage int64, tier *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyChange {
 	if state.Assignment != nil && state.Assignment.ManualTakeover && policy.ConflictMode == TokenUsagePolicyConflictManualPriority {
+		groupOwnershipRemoved := state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup
+		reason := state.Assignment.ManualTakeoverReason
+		if groupOwnershipRemoved {
+			reason = TokenUsagePolicyManualGroupRemovedReason
+		}
 		return &TokenUsageAutoPolicyChange{
 			ChangeType:     TokenUsagePolicyChangeSkipManual,
 			UserID:         state.UserID,
@@ -611,7 +619,8 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 			UserEmail:      state.UserEmail,
 			TokenUsage:     tokenUsage,
 			TargetGroupID:  policy.TargetGroupID,
-			Reason:         state.Assignment.ManualTakeoverReason,
+			Reason:         reason,
+			GroupGranted:   groupOwnershipRemoved,
 			ManualTakeover: true,
 		}
 	}
@@ -628,11 +637,11 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				TargetGroupID:     policy.TargetGroupID,
 				OldRateMultiplier: state.CurrentRate,
 				Reason:            reason,
+				GroupGranted:      state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup,
 				ManualTakeover:    true,
 			}
 		}
 		if state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup {
-			reason := "policy-granted group access was removed manually"
 			return &TokenUsageAutoPolicyChange{
 				ChangeType:     TokenUsagePolicyChangeSkipManual,
 				UserID:         state.UserID,
@@ -640,7 +649,8 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				UserEmail:      state.UserEmail,
 				TokenUsage:     tokenUsage,
 				TargetGroupID:  policy.TargetGroupID,
-				Reason:         reason,
+				Reason:         TokenUsagePolicyManualGroupRemovedReason,
+				GroupGranted:   true,
 				ManualTakeover: true,
 			}
 		}
