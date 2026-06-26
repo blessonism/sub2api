@@ -127,6 +127,23 @@ func TestTokenUsagePolicyRepositoryDeletePolicyNoRowsReturnsBadRequest(t *testin
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTokenUsagePolicyRepositoryCountAssignmentsIgnoresManualOnlyTakeovers(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*FROM token_usage_auto_assignments").
+		WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+
+	count, err := repo.CountAssignments(context.Background(), 9)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(0), count)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestTokenUsagePolicyRepositoryListPolicyStatesScopesAssignmentsToTargetGroup(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -141,6 +158,46 @@ func TestTokenUsagePolicyRepositoryListPolicyStatesScopesAssignmentsToTargetGrou
 
 	require.NoError(t, err)
 	require.Empty(t, states)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryApplyClearPreservesManualTakeoverRate(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	policy := service.TokenUsageAutoPolicy{
+		ID:            9,
+		TargetGroupID: 8,
+		ActionMode:    service.TokenUsagePolicyActionGrantGroupAndRate,
+	}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:     service.TokenUsagePolicyChangeClear,
+		UserID:         7,
+		TargetGroupID:  8,
+		ManualTakeover: true,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT a\\.previous_rate_multiplier, a\\.last_rate_multiplier, ugr\\.rate_multiplier").
+		WithArgs(int64(9), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier", "last_rate_multiplier", "rate_multiplier", "group_granted_by_policy", "target_group_id"}).
+			AddRow(nil, 0.7, 0.6, true, int64(8)))
+	mock.ExpectExec("DELETE FROM user_allowed_groups").
+		WithArgs(int64(7), int64(8)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_policies").
+		WithArgs(int64(9), sqlmock.AnyArg(), nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.ApplyPolicyChanges(context.Background(), policy, []service.TokenUsageAutoPolicyChange{change}, nil)
+
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -179,6 +236,39 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesDoesNotMarkConflictedGroupG
 		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier"}).AddRow(nil))
 	mock.ExpectExec("INSERT INTO token_usage_auto_assignments").
 		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), newRate, false, oldRate, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_policies").
+		WithArgs(int64(9), sqlmock.AnyArg(), nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.ApplyPolicyChanges(context.Background(), policy, []service.TokenUsageAutoPolicyChange{change}, nil)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryApplyClearDetectsManualRateBeforeRestore(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:     service.TokenUsagePolicyChangeClear,
+		UserID:         7,
+		TargetGroupID:  8,
+		ManualTakeover: false,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT a\\.previous_rate_multiplier, a\\.last_rate_multiplier, ugr\\.rate_multiplier").
+		WithArgs(int64(9), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier", "last_rate_multiplier", "rate_multiplier", "group_granted_by_policy", "target_group_id"}).
+			AddRow(1.0, 0.7, 0.6, false, int64(8)))
+	mock.ExpectExec("DELETE FROM token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_policies").
 		WithArgs(int64(9), sqlmock.AnyArg(), nil).
@@ -305,9 +395,108 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAudit
 		WillReturnError(insertErr)
 	mock.ExpectRollback()
 
-	err = repo.ApplyPolicyChangesAndFinishRun(context.Background(), 12, policy, []service.TokenUsageAutoPolicyChange{change}, stats, nil)
+	err = repo.ApplyPolicyChangesAndFinishRun(context.Background(), 12, policy, []service.TokenUsageAutoPolicyChange{change}, stats, nil, false)
 
 	require.ErrorIs(t, err, insertErr)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunPersistsHistory(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	oldRate := 0.7
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, ClearCount: 1}
+	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:        service.TokenUsagePolicyChangeClear,
+		UserID:            7,
+		TokenUsage:        1500,
+		TargetGroupID:     8,
+		OldRateMultiplier: &oldRate,
+		Reason:            "policy cleared by admin",
+		GroupGranted:      true,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT a\\.previous_rate_multiplier, a\\.last_rate_multiplier, ugr\\.rate_multiplier").
+		WithArgs(int64(9), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier", "last_rate_multiplier", "rate_multiplier", "group_granted_by_policy", "target_group_id"}).
+			AddRow(nil, 0.7, 0.7, true, int64(8)))
+	mock.ExpectExec("UPDATE user_group_rate_multipliers").
+		WithArgs(int64(7), int64(8)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM user_group_rate_multipliers").
+		WithArgs(int64(7), int64(8)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM user_allowed_groups").
+		WithArgs(int64(7), int64(8)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_policies").
+		WithArgs(int64(9), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_runs").
+		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.ApplyPolicyChangesAndFinishRun(context.Background(), 12, policy, []service.TokenUsageAutoPolicyChange{change}, stats, nil, true)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunAuditsManualRateDetectedInTx(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, ClearCount: 1}
+	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:    service.TokenUsagePolicyChangeClear,
+		UserID:        7,
+		TokenUsage:    1500,
+		TargetGroupID: 8,
+		Reason:        "policy cleared by admin",
+	}
+	currentManualRate := 0.6
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT a\\.previous_rate_multiplier, a\\.last_rate_multiplier, ugr\\.rate_multiplier").
+		WithArgs(int64(9), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier", "last_rate_multiplier", "rate_multiplier", "group_granted_by_policy", "target_group_id"}).
+			AddRow(1.0, 0.7, currentManualRate, false, int64(8)))
+	mock.ExpectExec("DELETE FROM token_usage_auto_assignments").
+		WithArgs(int64(9), int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_policies").
+		WithArgs(int64(9), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(
+			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
+			change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, &currentManualRate,
+			change.NewRateMultiplier, "manual takeover preserved; policy ownership cleared", false, true,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_runs").
+		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.ApplyPolicyChangesAndFinishRun(context.Background(), 12, policy, []service.TokenUsageAutoPolicyChange{change}, stats, nil, true)
+
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

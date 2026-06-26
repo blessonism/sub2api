@@ -126,6 +126,19 @@ func (h *TokenUsagePolicyHandler) Run(c *gin.Context) {
 	response.Success(c, run)
 }
 
+func (h *TokenUsagePolicyHandler) Clear(c *gin.Context) {
+	id, ok := parseTokenUsagePolicyID(c)
+	if !ok {
+		return
+	}
+	run, err := h.svc.ClearPolicy(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, run)
+}
+
 func (h *TokenUsagePolicyHandler) ListRuns(c *gin.Context) {
 	id, ok := parseTokenUsagePolicyID(c)
 	if !ok {

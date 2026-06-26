@@ -571,6 +571,70 @@ func (r *adminUsageCalibrationRepository) SumTokenAllocationsByDate(ctx context.
 	return result, nil
 }
 
+func (r *adminUsageCalibrationRepository) SumBalanceSpent(ctx context.Context, userID int64, startTime, endTime time.Time) (float64, error) {
+	conditions := []string{"balance_delta < 0"}
+	args := make([]any, 0, 3)
+	if userID > 0 {
+		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
+		args = append(args, userID)
+	}
+	if !startTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, startTime)
+	}
+	if !endTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
+		args = append(args, endTime)
+	}
+	query := "SELECT COALESCE(SUM(-balance_delta), 0) FROM admin_usage_calibrations " + buildWhere(conditions)
+	var total float64
+	if err := scanSingleRow(ctx, r.sql, query, args, &total); err != nil {
+		return 0, fmt.Errorf("sum balance calibration spend: %w", err)
+	}
+	return total, nil
+}
+
+func (r *adminUsageCalibrationRepository) SumBalanceSpentByUsers(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]float64, error) {
+	result := make(map[int64]float64)
+	ids := normalizePositiveInt64IDs(userIDs)
+	if len(ids) == 0 {
+		return result, nil
+	}
+	conditions := []string{"target_user_id = ANY($1)", "balance_delta < 0"}
+	args := []any{pq.Array(ids)}
+	if !startTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, startTime)
+	}
+	if !endTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
+		args = append(args, endTime)
+	}
+	query := `
+		SELECT target_user_id, COALESCE(SUM(-balance_delta), 0) AS spent
+		FROM admin_usage_calibrations
+		` + buildWhere(conditions) + `
+		GROUP BY target_user_id
+	`
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("sum balance calibration spend by users: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var userID int64
+		var spent float64
+		if err := rows.Scan(&userID, &spent); err != nil {
+			return nil, err
+		}
+		result[userID] = spent
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func sumTokenAllocationsByDateRange(ctx context.Context, exec sqlQueryer, userID int64, startDate, endDateExclusive string) (int64, error) {
 	conditions := make([]string, 0, 3)
 	args := make([]any, 0, 3)

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -65,6 +66,23 @@ func TestCreateAdminUsageCalibrationRejectsNegativeBalanceWithoutAuditInsert(t *
 	require.Nil(t, got)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "negative")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAdminUsageCalibrationSumBalanceSpentUsesOnlyNegativeDelta(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+	start := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(-balance_delta\\), 0\\) FROM admin_usage_calibrations WHERE balance_delta < 0 AND target_user_id = \\$1 AND created_at >= \\$2 AND created_at < \\$3").
+		WithArgs(int64(42), start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(3.75))
+
+	got, err := repo.SumBalanceSpent(context.Background(), 42, start, end)
+
+	require.NoError(t, err)
+	require.InDelta(t, 3.75, got, 1e-9)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

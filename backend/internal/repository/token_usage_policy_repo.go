@@ -366,6 +366,49 @@ func (r *tokenUsagePolicyRepository) ListPolicyStates(ctx context.Context, polic
 	return result, nil
 }
 
+func (r *tokenUsagePolicyRepository) ListPolicyAssignmentStates(ctx context.Context, policyID int64) (map[int64]service.TokenUsageAutoPolicyState, error) {
+	result := map[int64]service.TokenUsageAutoPolicyState{}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT a.id, a.policy_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
+		       a.target_group_id, a.tier_id, a.last_token_usage, a.last_rate_multiplier,
+		       a.group_granted_by_policy, a.previous_rate_multiplier, a.manual_takeover,
+		       COALESCE(a.manual_takeover_reason, ''), a.manual_takeover_at, a.last_applied_at,
+		       a.created_at, a.updated_at,
+		       ugr.rate_multiplier,
+		       EXISTS (
+		           SELECT 1 FROM user_allowed_groups uag
+		           WHERE uag.user_id = a.user_id AND uag.group_id = a.target_group_id
+		       ) AS has_allowed_group
+		FROM token_usage_auto_assignments a
+			LEFT JOIN users u ON u.id = a.user_id
+			LEFT JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
+		WHERE a.policy_id = $1
+		ORDER BY a.user_id ASC
+	`, policyID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		assignment, currentRate, hasAllowed, err := scanTokenUsageAssignmentState(rows)
+		if err != nil {
+			return nil, err
+		}
+		result[assignment.UserID] = service.TokenUsageAutoPolicyState{
+			UserID:          assignment.UserID,
+			UserName:        assignment.UserName,
+			UserEmail:       assignment.UserEmail,
+			CurrentRate:     currentRate,
+			HasAllowedGroup: hasAllowed,
+			Assignment:      &assignment,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (r *tokenUsagePolicyRepository) ApplyPolicyChanges(ctx context.Context, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, nextRunAt *time.Time) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -373,20 +416,20 @@ func (r *tokenUsagePolicyRepository) ApplyPolicyChanges(ctx context.Context, pol
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt); err != nil {
+	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt, false); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func (r *tokenUsagePolicyRepository) ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, stats service.TokenUsageAutoPolicyRunStats, nextRunAt *time.Time) error {
+func (r *tokenUsagePolicyRepository) ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, stats service.TokenUsageAutoPolicyRunStats, nextRunAt *time.Time, disablePolicy bool) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt); err != nil {
+	if err := r.applyPolicyChangesInTx(ctx, tx, policy, changes, nextRunAt, disablePolicy); err != nil {
 		return err
 	}
 	if err := insertTokenUsageRunChanges(ctx, tx, runID, policy.ID, changes); err != nil {
@@ -398,9 +441,10 @@ func (r *tokenUsagePolicyRepository) ApplyPolicyChangesAndFinishRun(ctx context.
 	return tx.Commit()
 }
 
-func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, nextRunAt *time.Time) error {
+func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, changes []service.TokenUsageAutoPolicyChange, nextRunAt *time.Time, disablePolicy bool) error {
 	now := time.Now().UTC()
-	for _, change := range changes {
+	for i := range changes {
+		change := &changes[i]
 		switch change.ChangeType {
 		case service.TokenUsagePolicyChangeCreate, service.TokenUsagePolicyChangeUpdate, service.TokenUsagePolicyChangeDowngrade:
 			if change.NewRateMultiplier == nil || change.TierID == nil {
@@ -486,6 +530,16 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 		}
 	}
 
+	if disablePolicy {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE token_usage_auto_policies
+			SET enabled = FALSE, last_run_at = $2, next_run_at = NULL, updated_at = NOW()
+			WHERE id = $1
+		`, policy.ID, now); err != nil {
+			return err
+		}
+		return nil
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE token_usage_auto_policies
 		SET last_run_at = $2, next_run_at = $3, updated_at = NOW()
@@ -496,49 +550,73 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 	return nil
 }
 
-func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, change service.TokenUsageAutoPolicyChange) error {
+func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *sql.Tx, policy service.TokenUsageAutoPolicy, change *service.TokenUsageAutoPolicyChange) error {
 	var previous sql.NullFloat64
+	var lastAutoRate sql.NullFloat64
+	var currentRate sql.NullFloat64
 	var granted bool
+	var targetGroupID int64
 	err := scanSingleRow(ctx, tx, `
-		SELECT previous_rate_multiplier, group_granted_by_policy
-		FROM token_usage_auto_assignments
-		WHERE policy_id = $1 AND user_id = $2
-	`, []any{policy.ID, change.UserID}, &previous, &granted)
+		SELECT a.previous_rate_multiplier, a.last_rate_multiplier, ugr.rate_multiplier,
+		       a.group_granted_by_policy, a.target_group_id
+		FROM token_usage_auto_assignments a
+		LEFT JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
+		WHERE a.policy_id = $1 AND a.user_id = $2
+	`, []any{policy.ID, change.UserID}, &previous, &lastAutoRate, &currentRate, &granted, &targetGroupID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		return err
 	}
-	if previous.Valid {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-			VALUES ($1, $2, $3, NOW(), NOW())
-			ON CONFLICT (user_id, group_id)
-			DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
-		`, change.UserID, policy.TargetGroupID, previous.Float64); err != nil {
-			return err
+	if targetGroupID <= 0 {
+		targetGroupID = policy.TargetGroupID
+	}
+	change.TargetGroupID = targetGroupID
+	change.GroupGranted = granted
+	if currentRate.Valid {
+		v := currentRate.Float64
+		change.OldRateMultiplier = &v
+	}
+	manualTakeover := change.ManualTakeover
+	if lastAutoRate.Valid && !sameSQLFloat(currentRate, lastAutoRate) {
+		manualTakeover = true
+		change.ManualTakeover = true
+		if change.Reason == "" || change.Reason == "policy cleared by admin" {
+			change.Reason = "manual takeover preserved; policy ownership cleared"
 		}
-	} else {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE user_group_rate_multipliers
-			SET rate_multiplier = NULL, updated_at = NOW()
-			WHERE user_id = $1 AND group_id = $2
-		`, change.UserID, policy.TargetGroupID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			DELETE FROM user_group_rate_multipliers
-			WHERE user_id = $1 AND group_id = $2 AND rate_multiplier IS NULL AND rpm_override IS NULL
-		`, change.UserID, policy.TargetGroupID); err != nil {
-			return err
+	}
+	if !manualTakeover {
+		if previous.Valid {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+				VALUES ($1, $2, $3, NOW(), NOW())
+				ON CONFLICT (user_id, group_id)
+				DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
+			`, change.UserID, targetGroupID, previous.Float64); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE user_group_rate_multipliers
+				SET rate_multiplier = NULL, updated_at = NOW()
+				WHERE user_id = $1 AND group_id = $2
+			`, change.UserID, targetGroupID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				DELETE FROM user_group_rate_multipliers
+				WHERE user_id = $1 AND group_id = $2 AND rate_multiplier IS NULL AND rpm_override IS NULL
+			`, change.UserID, targetGroupID); err != nil {
+				return err
+			}
 		}
 	}
 	if granted {
 		if _, err := tx.ExecContext(ctx, `
 			DELETE FROM user_allowed_groups
 			WHERE user_id = $1 AND group_id = $2
-		`, change.UserID, policy.TargetGroupID); err != nil {
+		`, change.UserID, targetGroupID); err != nil {
 			return err
 		}
 	}
@@ -911,6 +989,17 @@ func scanTokenUsageRunChange(rows *sql.Rows, runID *int64) (service.TokenUsageAu
 		change.NewRateMultiplier = &v
 	}
 	return change, nil
+}
+
+func sameSQLFloat(a, b sql.NullFloat64) bool {
+	if !a.Valid || !b.Valid {
+		return a.Valid == b.Valid
+	}
+	delta := a.Float64 - b.Float64
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta < 0.00001
 }
 
 func normalizePolicyPagination(params pagination.PaginationParams) (int, int) {

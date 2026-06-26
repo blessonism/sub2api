@@ -447,15 +447,6 @@
         </div>
       </div>
 
-      <div>
-        <label class="input-label">{{ t('usage.adminCalibrationReason') }}</label>
-        <textarea
-          v-model="calibrationForm.reason"
-          class="input min-h-[88px] w-full resize-y"
-          :placeholder="t('usage.adminCalibrationReasonPlaceholder')"
-        ></textarea>
-      </div>
-
       <div class="grid gap-4 lg:grid-cols-2">
         <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
           <label class="flex items-center gap-2">
@@ -583,7 +574,6 @@
               <span class="font-medium">{{ formatCalibrationSummary(item) }}</span>
               <span class="text-gray-500 dark:text-dark-400">{{ formatDateTime(item.created_at) }}</span>
             </div>
-            <div class="mt-1 text-gray-500 dark:text-dark-400">{{ item.reason }}</div>
           </div>
         </div>
       </section>
@@ -881,7 +871,6 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 const usageStats = ref<UsageStatsResponse | null>(null)
 
 type CalibrationFormState = {
-  reason: string
   tokenEnabled: boolean
   tokenMode: AdminUsageCalibrationMode
   tokenValue: string
@@ -904,7 +893,6 @@ const loadingCalibrations = ref(false)
 const calibrationHistory = ref<AdminUsageCalibration[]>([])
 const calibrationTokenCurrentTotal = ref(0)
 const calibrationForm = reactive<CalibrationFormState>({
-  reason: '',
   tokenEnabled: true,
   tokenMode: 'delta',
   tokenValue: '',
@@ -1443,7 +1431,6 @@ const loadCalibrationHistory = async () => {
 }
 
 const resetCalibrationForm = () => {
-  calibrationForm.reason = ''
   calibrationForm.tokenEnabled = true
   calibrationForm.tokenMode = 'delta'
   calibrationForm.tokenValue = ''
@@ -1490,19 +1477,13 @@ const validateCalibrationForm = (): CreateAdminUsageCalibrationRequest | null =>
     appStore.showWarning(t('usage.adminDeletedUserCannotCalibrate'))
     return null
   }
-  const reason = calibrationForm.reason.trim()
-  if (!reason) {
-    appStore.showWarning(t('usage.adminCalibrationReasonRequired'))
-    return null
-  }
   if (!calibrationForm.tokenEnabled && !calibrationForm.balanceEnabled) {
     appStore.showWarning(t('usage.adminCalibrationSelectAtLeastOne'))
     return null
   }
 
   const payload: CreateAdminUsageCalibrationRequest = {
-    target_user_id: targetUserID,
-    reason
+    target_user_id: targetUserID
   }
 
   if (calibrationForm.tokenEnabled) {

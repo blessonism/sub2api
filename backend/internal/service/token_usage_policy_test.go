@@ -172,6 +172,79 @@ func TestTokenUsagePolicyRunWritesHistoryAndChanges(t *testing.T) {
 	require.Equal(t, TokenUsagePolicyChangeCreate, repo.appliedChanges[0].ChangeType)
 	require.Len(t, repo.savedRunChanges, 1)
 	require.Equal(t, TokenUsagePolicyChangeCreate, repo.savedRunChanges[0].ChangeType)
+	require.False(t, repo.disablePolicy)
+}
+
+func TestTokenUsagePolicyClearGeneratesClearChangesAndWritesHistory(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.policy = baseTokenUsagePolicy()
+	currentRate := 0.7
+	previousRate := 1.0
+	tierID := int64(2)
+	repo.assignmentStates = map[int64]TokenUsageAutoPolicyState{
+		1: {
+			UserID:          1,
+			UserName:        "u1",
+			UserEmail:       "u1@example.com",
+			CurrentRate:     &currentRate,
+			HasAllowedGroup: true,
+			Assignment: &TokenUsageAutoAssignment{
+				UserID:                 1,
+				TargetGroupID:          repo.policy.TargetGroupID,
+				TierID:                 &tierID,
+				LastTokenUsage:         1500,
+				LastRateMultiplier:     &currentRate,
+				GroupGrantedByPolicy:   true,
+				PreviousRateMultiplier: &previousRate,
+			},
+		},
+	}
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	run, err := svc.ClearPolicy(context.Background(), repo.policy.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, TokenUsagePolicyRunStatusSuccess, run.Status)
+	require.True(t, repo.runStarted)
+	require.True(t, repo.applyCalled)
+	require.Len(t, repo.appliedChanges, 1)
+	require.Equal(t, TokenUsagePolicyChangeClear, repo.appliedChanges[0].ChangeType)
+	require.False(t, repo.appliedChanges[0].ManualTakeover)
+	require.Equal(t, 1, repo.lastRun.ClearCount)
+	require.Len(t, repo.savedRunChanges, 1)
+	require.Equal(t, TokenUsagePolicyChangeClear, repo.savedRunChanges[0].ChangeType)
+	require.True(t, repo.disablePolicy)
+	require.Nil(t, repo.nextRunAt)
+}
+
+func TestTokenUsagePolicyClearPreservesManualTakeoverRate(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.policy = baseTokenUsagePolicy()
+	currentRate := 0.6
+	lastAutoRate := 0.7
+	repo.assignmentStates = map[int64]TokenUsageAutoPolicyState{
+		1: {
+			UserID:      1,
+			CurrentRate: &currentRate,
+			Assignment: &TokenUsageAutoAssignment{
+				UserID:               1,
+				TargetGroupID:        repo.policy.TargetGroupID,
+				LastTokenUsage:       1500,
+				LastRateMultiplier:   &lastAutoRate,
+				GroupGrantedByPolicy: true,
+				ManualTakeover:       true,
+			},
+		},
+	}
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	_, err := svc.ClearPolicy(context.Background(), repo.policy.ID)
+
+	require.NoError(t, err)
+	require.Len(t, repo.appliedChanges, 1)
+	require.Equal(t, TokenUsagePolicyChangeClear, repo.appliedChanges[0].ChangeType)
+	require.True(t, repo.appliedChanges[0].ManualTakeover)
+	require.Equal(t, "manual takeover preserved; policy ownership cleared", repo.appliedChanges[0].Reason)
 }
 
 func TestTokenUsagePolicyRunApplyFailureDoesNotSaveChanges(t *testing.T) {
@@ -203,6 +276,37 @@ func TestTokenUsagePolicyRunInvalidatesAuthCacheForGrantGroupChanges(t *testing.
 	svc.authCacheInvalidator = invalidator
 
 	_, err := svc.RunPolicy(context.Background(), repo.policy.ID, TokenUsagePolicyRunTypeManual)
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{1}, invalidator.userIDs)
+	_, ok := rateResolverCache.Get(userGroupRateCacheKey(1, repo.policy.TargetGroupID))
+	require.False(t, ok)
+}
+
+func TestTokenUsagePolicyClearInvalidatesAuthCacheForPolicyGrantedGroups(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.policy = baseTokenUsagePolicy()
+	repo.policy.ActionMode = TokenUsagePolicyActionRateOnly
+	currentRate := 0.7
+	repo.assignmentStates = map[int64]TokenUsageAutoPolicyState{
+		1: {
+			UserID:      1,
+			CurrentRate: &currentRate,
+			Assignment: &TokenUsageAutoAssignment{
+				UserID:               1,
+				TargetGroupID:        repo.policy.TargetGroupID,
+				LastRateMultiplier:   &currentRate,
+				GroupGrantedByPolicy: true,
+			},
+		},
+	}
+	invalidator := &tokenUsagePolicyAuthCacheInvalidator{}
+	rateResolverCache := newUserGroupRateResolver(nil, nil, time.Minute, nil, "service.test").cache
+	rateResolverCache.Set(userGroupRateCacheKey(1, repo.policy.TargetGroupID), 9.9, time.Minute)
+	svc := NewTokenUsageAutoPolicyService(repo)
+	svc.authCacheInvalidator = invalidator
+
+	_, err := svc.ClearPolicy(context.Background(), repo.policy.ID)
 
 	require.NoError(t, err)
 	require.Equal(t, []int64{1}, invalidator.userIDs)
@@ -245,6 +349,30 @@ func TestTokenUsagePolicyDeleteAndRunsValidatePolicyExists(t *testing.T) {
 	_, _, err = svc.ListRuns(context.Background(), repo.policy.ID, 1, 20)
 	require.Error(t, err)
 	require.Equal(t, "INVALID_POLICY_ID", infraerrors.Reason(err))
+}
+
+func TestTokenUsagePolicyDeleteRejectsBlockingAssignments(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.assignmentCount = 1
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	err := svc.DeletePolicy(context.Background(), repo.policy.ID)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "POLICY_HAS_ASSIGNMENTS", infraerrors.Reason(err))
+	require.False(t, repo.deleteCalled)
+}
+
+func TestTokenUsagePolicyDeleteAllowsManualOnlyAssignments(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	repo.assignmentCount = 0
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	err := svc.DeletePolicy(context.Background(), repo.policy.ID)
+
+	require.NoError(t, err)
+	require.True(t, repo.deleteCalled)
 }
 
 func TestTokenUsagePolicyRunAlreadyRunningReturnsConflict(t *testing.T) {
@@ -294,19 +422,23 @@ func (i *tokenUsagePolicyAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ con
 }
 
 type tokenUsagePolicyFakeRepo struct {
-	policy          TokenUsageAutoPolicy
-	getErr          error
-	applyErr        error
-	usageRows       []TokenUsageAutoPolicyUsageRow
-	states          map[int64]TokenUsageAutoPolicyState
-	assignmentCount int64
-	updateCalled    bool
-	tryLockAllowed  bool
-	applyCalled     bool
-	runStarted      bool
-	appliedChanges  []TokenUsageAutoPolicyChange
-	savedRunChanges []TokenUsageAutoPolicyChange
-	lastRun         TokenUsageAutoPolicyRun
+	policy           TokenUsageAutoPolicy
+	getErr           error
+	applyErr         error
+	usageRows        []TokenUsageAutoPolicyUsageRow
+	states           map[int64]TokenUsageAutoPolicyState
+	assignmentStates map[int64]TokenUsageAutoPolicyState
+	assignmentCount  int64
+	updateCalled     bool
+	deleteCalled     bool
+	tryLockAllowed   bool
+	applyCalled      bool
+	runStarted       bool
+	appliedChanges   []TokenUsageAutoPolicyChange
+	savedRunChanges  []TokenUsageAutoPolicyChange
+	nextRunAt        *time.Time
+	disablePolicy    bool
+	lastRun          TokenUsageAutoPolicyRun
 }
 
 func newTokenUsagePolicyFakeRepo() *tokenUsagePolicyFakeRepo {
@@ -338,7 +470,10 @@ func (r *tokenUsagePolicyFakeRepo) UpdatePolicy(context.Context, *TokenUsageAuto
 	return &r.policy, nil
 }
 
-func (r *tokenUsagePolicyFakeRepo) DeletePolicy(context.Context, int64) error { return nil }
+func (r *tokenUsagePolicyFakeRepo) DeletePolicy(context.Context, int64) error {
+	r.deleteCalled = true
+	return nil
+}
 
 func (r *tokenUsagePolicyFakeRepo) CountAssignments(context.Context, int64) (int64, error) {
 	return r.assignmentCount, nil
@@ -364,6 +499,14 @@ func (r *tokenUsagePolicyFakeRepo) ListPolicyStates(context.Context, int64, int6
 	return out, nil
 }
 
+func (r *tokenUsagePolicyFakeRepo) ListPolicyAssignmentStates(context.Context, int64) (map[int64]TokenUsageAutoPolicyState, error) {
+	out := make(map[int64]TokenUsageAutoPolicyState, len(r.assignmentStates))
+	for k, v := range r.assignmentStates {
+		out[k] = v
+	}
+	return out, nil
+}
+
 func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChanges(_ context.Context, _ TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, _ *time.Time) error {
 	r.applyCalled = true
 	r.appliedChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
@@ -373,9 +516,11 @@ func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChanges(_ context.Context, _ Token
 	return nil
 }
 
-func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChangesAndFinishRun(_ context.Context, _ int64, _ TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, _ *time.Time) error {
+func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChangesAndFinishRun(_ context.Context, _ int64, _ TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, nextRunAt *time.Time, disablePolicy bool) error {
 	r.applyCalled = true
 	r.appliedChanges = append([]TokenUsageAutoPolicyChange(nil), changes...)
+	r.nextRunAt = nextRunAt
+	r.disablePolicy = disablePolicy
 	if r.applyErr != nil {
 		return r.applyErr
 	}
@@ -390,9 +535,9 @@ func (r *tokenUsagePolicyFakeRepo) ApplyPolicyChangesAndFinishRun(_ context.Cont
 	return nil
 }
 
-func (r *tokenUsagePolicyFakeRepo) BeginPolicyRun(context.Context, int64, string) (*TokenUsageAutoPolicyRun, error) {
+func (r *tokenUsagePolicyFakeRepo) BeginPolicyRun(_ context.Context, _ int64, runType string) (*TokenUsageAutoPolicyRun, error) {
 	r.runStarted = true
-	r.lastRun = TokenUsageAutoPolicyRun{ID: 1, PolicyID: r.policy.ID, RunType: TokenUsagePolicyRunTypeManual, Status: TokenUsagePolicyRunStatusRunning, CreatedAt: time.Now()}
+	r.lastRun = TokenUsageAutoPolicyRun{ID: 1, PolicyID: r.policy.ID, RunType: runType, Status: TokenUsagePolicyRunStatusRunning, CreatedAt: time.Now()}
 	return &r.lastRun, nil
 }
 

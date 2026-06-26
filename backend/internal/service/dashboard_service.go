@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -264,7 +265,7 @@ func (s *DashboardService) fetchDashboardStats(ctx context.Context) (*usagestats
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyTokenCalibrationToDashboardStats(ctx, stats); err != nil {
+	if err := s.applyCalibrationToDashboardStats(ctx, stats); err != nil {
 		return nil, err
 	}
 	return stats, nil
@@ -430,6 +431,27 @@ func (s *DashboardService) GetBatchUserUsageStats(ctx context.Context, userIDs [
 	if err != nil {
 		return nil, fmt.Errorf("get batch user usage stats: %w", err)
 	}
+	if len(stats) == 0 || s.calibrationRepo == nil {
+		return stats, nil
+	}
+	if startTime.IsZero() {
+		startTime = time.Now().AddDate(0, 0, -30)
+	}
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	spentByUser, err := s.calibrationRepo.SumBalanceSpentByUsers(ctx, userIDs, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("sum batch user balance calibrations: %w", err)
+	}
+	todaySpentByUser, err := s.calibrationRepo.SumBalanceSpentByUsers(ctx, userIDs, timezone.Today(), time.Time{})
+	if err != nil {
+		return nil, fmt.Errorf("sum batch user today balance calibrations: %w", err)
+	}
+	for userID, stat := range stats {
+		stat.TotalActualCost += spentByUser[userID]
+		stat.TodayActualCost += todaySpentByUser[userID]
+	}
 	return stats, nil
 }
 
@@ -441,7 +463,7 @@ func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyI
 	return stats, nil
 }
 
-func (s *DashboardService) applyTokenCalibrationToDashboardStats(ctx context.Context, stats *usagestats.DashboardStats) error {
+func (s *DashboardService) applyCalibrationToDashboardStats(ctx context.Context, stats *usagestats.DashboardStats) error {
 	if stats == nil || s.calibrationRepo == nil {
 		return nil
 	}
@@ -454,11 +476,22 @@ func (s *DashboardService) applyTokenCalibrationToDashboardStats(ctx context.Con
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	totalBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, 0, time.Time{}, time.Time{})
+	if err != nil {
+		return fmt.Errorf("sum dashboard balance calibrations: %w", err)
+	}
+	stats.TotalActualCost += totalBalanceSpent
+
 	todayDelta, err := s.calibrationRepo.SumAllTokenAllocations(ctx, today.Format("2006-01-02"), today.AddDate(0, 0, 1).Format("2006-01-02"))
 	if err != nil {
 		return fmt.Errorf("sum dashboard today token calibrations: %w", err)
 	}
 	stats.TodayCalibrationTokens += todayDelta
 	stats.TodayTokens += todayDelta
+	todayBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, 0, today, today.AddDate(0, 0, 1))
+	if err != nil {
+		return fmt.Errorf("sum dashboard today balance calibrations: %w", err)
+	}
+	stats.TodayActualCost += todayBalanceSpent
 	return nil
 }

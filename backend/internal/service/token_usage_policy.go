@@ -25,6 +25,7 @@ const (
 	TokenUsagePolicyRunTypePreview   = "preview"
 	TokenUsagePolicyRunTypeManual    = "manual"
 	TokenUsagePolicyRunTypeScheduled = "scheduled"
+	TokenUsagePolicyRunTypeClear     = "clear"
 
 	TokenUsagePolicyRunStatusRunning = "running"
 	TokenUsagePolicyRunStatusSuccess = "success"
@@ -185,8 +186,9 @@ type TokenUsageAutoPolicyRepository interface {
 	TryLockPolicy(ctx context.Context, policyID int64) (bool, error)
 	AggregatePolicyUsage(ctx context.Context, policy TokenUsageAutoPolicy, since time.Time) ([]TokenUsageAutoPolicyUsageRow, error)
 	ListPolicyStates(ctx context.Context, policyID, targetGroupID int64, userIDs []int64) (map[int64]TokenUsageAutoPolicyState, error)
+	ListPolicyAssignmentStates(ctx context.Context, policyID int64) (map[int64]TokenUsageAutoPolicyState, error)
 	ApplyPolicyChanges(ctx context.Context, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, nextRunAt *time.Time) error
-	ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, nextRunAt *time.Time) error
+	ApplyPolicyChangesAndFinishRun(ctx context.Context, runID int64, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, stats TokenUsageAutoPolicyRunStats, nextRunAt *time.Time, disablePolicy bool) error
 	BeginPolicyRun(ctx context.Context, policyID int64, runType string) (*TokenUsageAutoPolicyRun, error)
 	FinishPolicyRun(ctx context.Context, runID int64, status string, stats TokenUsageAutoPolicyRunStats, changes []TokenUsageAutoPolicyChange, errMessage string) error
 	ListPolicyRuns(ctx context.Context, policyID int64, params pagination.PaginationParams) ([]TokenUsageAutoPolicyRun, *pagination.PaginationResult, error)
@@ -296,6 +298,17 @@ func (s *TokenUsageAutoPolicyService) RunPolicy(ctx context.Context, id int64, r
 	return s.runPolicy(ctx, *policy, runType)
 }
 
+func (s *TokenUsageAutoPolicyService) ClearPolicy(ctx context.Context, id int64) (*TokenUsageAutoPolicyRun, error) {
+	if id <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_POLICY_ID", "invalid policy id")
+	}
+	policy, err := s.repo.GetPolicyByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.clearPolicy(ctx, *policy)
+}
+
 func (s *TokenUsageAutoPolicyService) ListRuns(ctx context.Context, policyID int64, page, pageSize int) ([]TokenUsageAutoPolicyRun, *pagination.PaginationResult, error) {
 	if policyID <= 0 {
 		return nil, nil, infraerrors.BadRequest("INVALID_POLICY_ID", "invalid policy id")
@@ -355,7 +368,7 @@ func (s *TokenUsageAutoPolicyService) runPolicy(ctx context.Context, policy Toke
 	if !policy.Enabled {
 		nextRun = nil
 	}
-	if err := s.repo.ApplyPolicyChangesAndFinishRun(ctx, run.ID, policy, changes, stats, nextRun); err != nil {
+	if err := s.repo.ApplyPolicyChangesAndFinishRun(ctx, run.ID, policy, changes, stats, nextRun, false); err != nil {
 		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, nil, err.Error())
 		return nil, err
 	}
@@ -375,6 +388,115 @@ func (s *TokenUsageAutoPolicyService) runPolicy(ctx context.Context, policy Toke
 	now := time.Now().UTC()
 	run.FinishedAt = &now
 	return run, nil
+}
+
+func (s *TokenUsageAutoPolicyService) clearPolicy(ctx context.Context, policy TokenUsageAutoPolicy) (*TokenUsageAutoPolicyRun, error) {
+	locked, err := s.repo.TryLockPolicy(ctx, policy.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !locked {
+		return nil, infraerrors.Conflict("POLICY_ALREADY_RUNNING", "policy is already running")
+	}
+
+	run, err := s.repo.BeginPolicyRun(ctx, policy.ID, TokenUsagePolicyRunTypeClear)
+	if err != nil {
+		return nil, err
+	}
+
+	changes, stats, buildErr := s.buildPolicyClearChanges(ctx, policy)
+	if buildErr != nil {
+		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, nil, buildErr.Error())
+		return nil, buildErr
+	}
+
+	var nextRun *time.Time
+	if err := s.repo.ApplyPolicyChangesAndFinishRun(ctx, run.ID, policy, changes, stats, nextRun, true); err != nil {
+		_ = s.repo.FinishPolicyRun(ctx, run.ID, TokenUsagePolicyRunStatusFailed, stats, nil, err.Error())
+		return nil, err
+	}
+	s.invalidateAuthCacheForPolicyChanges(ctx, policy, changes)
+
+	finished, _, err := s.repo.ListPolicyRuns(ctx, policy.ID, pagination.PaginationParams{Page: 1, PageSize: 1, SortBy: "created_at", SortOrder: "desc"})
+	if err == nil && len(finished) > 0 {
+		return &finished[0], nil
+	}
+	run.Status = TokenUsagePolicyRunStatusSuccess
+	run.TotalUsers = stats.TotalUsers
+	run.ClearCount = stats.ClearCount
+	now := time.Now().UTC()
+	run.FinishedAt = &now
+	return run, nil
+}
+
+func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Context, policy TokenUsageAutoPolicy) ([]TokenUsageAutoPolicyChange, TokenUsageAutoPolicyRunStats, error) {
+	if policy.ID <= 0 {
+		return nil, TokenUsageAutoPolicyRunStats{}, infraerrors.BadRequest("INVALID_POLICY_ID", "invalid policy id")
+	}
+	states, err := s.repo.ListPolicyAssignmentStates(ctx, policy.ID)
+	if err != nil {
+		return nil, TokenUsageAutoPolicyRunStats{}, err
+	}
+
+	userIDs := make([]int64, 0, len(states))
+	for userID := range states {
+		userIDs = append(userIDs, userID)
+	}
+	userIDs = uniqueSortedInt64(userIDs)
+
+	tierMinByID := make(map[int64]int64, len(policy.Tiers))
+	for _, tier := range policy.Tiers {
+		tierMinByID[tier.ID] = tier.MinTokens
+	}
+
+	changes := make([]TokenUsageAutoPolicyChange, 0, len(userIDs))
+	for _, userID := range userIDs {
+		state := states[userID]
+		if state.Assignment == nil {
+			continue
+		}
+		assignment := state.Assignment
+		targetGroupID := assignment.TargetGroupID
+		if targetGroupID <= 0 {
+			targetGroupID = policy.TargetGroupID
+		}
+
+		manualRate := assignment.ManualTakeover
+		if assignment.LastRateMultiplier != nil && !sameFloatPtr(state.CurrentRate, assignment.LastRateMultiplier) {
+			manualRate = true
+		}
+
+		var tierMin *int64
+		if assignment.TierID != nil {
+			if v, ok := tierMinByID[*assignment.TierID]; ok {
+				tierMin = &v
+			}
+		}
+		reason := "policy cleared by admin"
+		if manualRate {
+			reason = "manual takeover preserved; policy ownership cleared"
+		}
+		changes = append(changes, TokenUsageAutoPolicyChange{
+			ChangeType:        TokenUsagePolicyChangeClear,
+			UserID:            state.UserID,
+			UserName:          state.UserName,
+			UserEmail:         state.UserEmail,
+			TokenUsage:        assignment.LastTokenUsage,
+			TargetGroupID:     targetGroupID,
+			TierID:            assignment.TierID,
+			TierMinTokens:     tierMin,
+			OldRateMultiplier: state.CurrentRate,
+			Reason:            reason,
+			GroupGranted:      assignment.GroupGrantedByPolicy,
+			ManualTakeover:    manualRate,
+		})
+	}
+
+	stats := TokenUsageAutoPolicyRunStats{
+		TotalUsers: len(changes),
+		ClearCount: len(changes),
+	}
+	return changes, stats, nil
 }
 
 func (s *TokenUsageAutoPolicyService) buildPolicyChanges(ctx context.Context, policy TokenUsageAutoPolicy) ([]TokenUsageAutoPolicyChange, TokenUsageAutoPolicyRunStats, error) {
@@ -473,10 +595,10 @@ func (s *TokenUsageAutoPolicyService) invalidateAuthCacheForPolicyChanges(ctx co
 			continue
 		}
 		seen[change.UserID] = struct{}{}
-		if s.authCacheInvalidator != nil && policy.ActionMode == TokenUsagePolicyActionGrantGroupAndRate {
+		if s.authCacheInvalidator != nil && (policy.ActionMode == TokenUsagePolicyActionGrantGroupAndRate || change.GroupGranted) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, change.UserID)
 		}
-		invalidateUserGroupRateCache(change.UserID, policy.TargetGroupID)
+		invalidateUserGroupRateCache(change.UserID, change.TargetGroupID)
 	}
 }
 

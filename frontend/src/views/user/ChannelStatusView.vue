@@ -19,11 +19,13 @@
       @card-click="openDetail"
     />
 
-    <GptIntelligencePanel
-      :snapshot="gptIntelligenceSnapshot"
-      :loading="gptIntelligenceLoading"
-      :error="gptIntelligenceError"
-    />
+    <div class="mt-5">
+      <GptIntelligencePanel
+        :snapshot="gptIntelligenceSnapshot"
+        :loading="gptIntelligenceLoading"
+        :error="gptIntelligenceError"
+      />
+    </div>
 
     <MonitorDetailDialog
       :show="showDetail"

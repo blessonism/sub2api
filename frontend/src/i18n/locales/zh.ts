@@ -918,9 +918,6 @@ export default {
     adminCalibration: '校准',
     adminCalibrationTitle: '用量与余额校准',
     adminCalibrationAdminOnlyHint: '该校准只对管理员可见；普通用户只会看到校准后的汇总结果。',
-    adminCalibrationReason: '校准原因',
-    adminCalibrationReasonPlaceholder: '填写本次校准原因，便于管理员审计',
-    adminCalibrationReasonRequired: '请填写校准原因',
     adminCalibrationMode: '校准方式',
     adminCalibrationModeDelta: '增减量',
     adminCalibrationModeTarget: '目标值',
@@ -1734,7 +1731,10 @@ export default {
       history: '历史',
       runNow: '立即执行',
       running: '执行中',
+      clear: '清退',
+      clearing: '清退中',
       runConfirm: '确认立即执行策略「{name}」？',
+      clearConfirm: '确认清退策略「{name}」产生的倍率和授权？系统会保留手动接管的倍率，并禁用该策略避免后续定时任务再次接管。',
       deleteConfirm: '确认删除策略「{name}」？已有自动归属时后端会拒绝删除。',
       emptyTitle: '暂无自动策略',
       emptyDescription: '创建策略后，系统会按窗口期 Token 用量自动写入分组专属倍率。',
@@ -1767,10 +1767,12 @@ export default {
       updated: '策略已更新',
       deleted: '策略已删除',
       runQueued: '策略执行完成',
+      cleared: '策略已清退并禁用',
       loadFailed: '加载策略失败',
       saveFailed: '保存策略失败',
       previewFailed: '预览失败',
       runFailed: '执行失败',
+      clearFailed: '清退失败',
       historyFailed: '加载执行历史失败',
       deleteFailed: '删除策略失败',
       nameRequired: '请输入策略名称',
@@ -1808,7 +1810,8 @@ export default {
       runTypes: {
         preview: '预览',
         manual: '手动',
-        scheduled: '定时'
+        scheduled: '定时',
+        clear: '清退'
       },
       runStatuses: {
         running: '执行中',
