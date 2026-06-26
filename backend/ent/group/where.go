@@ -85,6 +85,11 @@ func RateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// VisibleRateMultiplier applies equality check predicate on the "visible_rate_multiplier" field. It's identical to VisibleRateMultiplierEQ.
+func VisibleRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldVisibleRateMultiplier, v))
+}
+
 // IsExclusive applies equality check predicate on the "is_exclusive" field. It's identical to IsExclusiveEQ.
 func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
@@ -518,6 +523,56 @@ func RateMultiplierLT(v float64) predicate.Group {
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRateMultiplier, v))
+}
+
+// VisibleRateMultiplierEQ applies the EQ predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierNEQ applies the NEQ predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierIn applies the In predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldVisibleRateMultiplier, vs...))
+}
+
+// VisibleRateMultiplierNotIn applies the NotIn predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldVisibleRateMultiplier, vs...))
+}
+
+// VisibleRateMultiplierGT applies the GT predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierGTE applies the GTE predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierLT applies the LT predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierLTE applies the LTE predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldVisibleRateMultiplier, v))
+}
+
+// VisibleRateMultiplierIsNil applies the IsNil predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldVisibleRateMultiplier))
+}
+
+// VisibleRateMultiplierNotNil applies the NotNil predicate on the "visible_rate_multiplier" field.
+func VisibleRateMultiplierNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldVisibleRateMultiplier))
 }
 
 // IsExclusiveEQ applies the EQ predicate on the "is_exclusive" field.

@@ -157,7 +157,8 @@ type UpdateUserInput struct {
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
-	GroupRates map[int64]*float64
+	GroupRates        map[int64]*float64
+	VisibleGroupRates map[int64]*float64
 }
 
 type BalanceGrantInput struct {
@@ -240,15 +241,16 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	RateMultiplier   float64
-	IsExclusive      bool
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name                  string
+	Description           string
+	Platform              string
+	RateMultiplier        float64
+	VisibleRateMultiplier *float64
+	IsExclusive           bool
+	SubscriptionType      string   // standard/subscription
+	DailyLimitUSD         *float64 // 日限额 (USD)
+	WeeklyLimitUSD        *float64 // 周限额 (USD)
+	MonthlyLimitUSD       *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -280,16 +282,18 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name             string
-	Description      *string
-	Platform         string
-	RateMultiplier   *float64 // 使用指针以支持设置为0
-	IsExclusive      *bool
-	Status           string
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name                     string
+	Description              *string
+	Platform                 string
+	RateMultiplier           *float64 // 使用指针以支持设置为0
+	VisibleRateMultiplier    *float64
+	VisibleRateMultiplierSet bool
+	IsExclusive              *bool
+	Status                   string
+	SubscriptionType         string   // standard/subscription
+	DailyLimitUSD            *float64 // 日限额 (USD)
+	WeeklyLimitUSD           *float64 // 周限额 (USD)
+	MonthlyLimitUSD          *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -689,12 +693,34 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 						users[i].GroupRates = rates
 					}
 				}
+				s.loadVisibleUserGroupRatesInBatch(ctx, users, userIDs)
 			}
 		} else {
 			s.loadUserGroupRatesOneByOne(ctx, users)
 		}
 	}
 	return users, result.Total, nil
+}
+
+func (s *adminServiceImpl) loadVisibleUserGroupRatesInBatch(ctx context.Context, users []User, userIDs []int64) {
+	visibleRatesByUser, err := s.userGroupRateRepo.GetVisibleByUserIDs(ctx, userIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "failed to load user visible group rates in batch: err=%v", err)
+		for i := range users {
+			visibleRates, singleErr := s.userGroupRateRepo.GetVisibleByUserID(ctx, users[i].ID)
+			if singleErr != nil {
+				logger.LegacyPrintf("service.admin", "failed to load user visible group rates: user_id=%d err=%v", users[i].ID, singleErr)
+				continue
+			}
+			users[i].VisibleGroupRates = visibleRates
+		}
+		return
+	}
+	for i := range users {
+		if rates, ok := visibleRatesByUser[users[i].ID]; ok {
+			users[i].VisibleGroupRates = rates
+		}
+	}
 }
 
 func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users []User) {
@@ -708,6 +734,12 @@ func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users
 			continue
 		}
 		users[i].GroupRates = rates
+		visibleRates, err := s.userGroupRateRepo.GetVisibleByUserID(ctx, users[i].ID)
+		if err != nil {
+			logger.LegacyPrintf("service.admin", "failed to load user visible group rates: user_id=%d err=%v", users[i].ID, err)
+			continue
+		}
+		users[i].VisibleGroupRates = visibleRates
 	}
 }
 
@@ -729,6 +761,12 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 			logger.LegacyPrintf("service.admin", "failed to load user group rates: user_id=%d err=%v", id, err)
 		} else {
 			user.GroupRates = rates
+		}
+		visibleRates, err := s.userGroupRateRepo.GetVisibleByUserID(ctx, id)
+		if err != nil {
+			logger.LegacyPrintf("service.admin", "failed to load user visible group rates: user_id=%d err=%v", id, err)
+		} else {
+			user.VisibleGroupRates = visibleRates
 		}
 	}
 	return user, nil
@@ -793,6 +831,13 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			}
 		}
 	}
+	if input.VisibleGroupRates != nil {
+		for groupID, rate := range input.VisibleGroupRates {
+			if rate != nil && *rate <= 0 {
+				return nil, fmt.Errorf("visible_rate_multiplier must be > 0 (group_id=%d)", groupID)
+			}
+		}
+	}
 
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -850,6 +895,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.GroupRates != nil && s.userGroupRateRepo != nil {
 		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to sync user group rates: user_id=%d err=%v", user.ID, err)
+		} else {
+			invalidateUserGroupRateCacheForUserGroups(user.ID, input.GroupRates)
+		}
+	}
+	if input.VisibleGroupRates != nil && s.userGroupRateRepo != nil {
+		if err := s.userGroupRateRepo.SyncUserGroupVisibleRates(ctx, user.ID, input.VisibleGroupRates); err != nil {
+			logger.LegacyPrintf("service.admin", "failed to sync user visible group rates: user_id=%d err=%v", user.ID, err)
+		} else {
+			invalidateUserGroupRateCacheForUserGroups(user.ID, input.VisibleGroupRates)
 		}
 	}
 
@@ -883,6 +937,16 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func invalidateUserGroupRateCacheForUserGroups(userID int64, rates map[int64]*float64) {
+	if len(rates) == 0 {
+		invalidateUserGroupRateCacheByUserID(userID)
+		return
+	}
+	for groupID := range rates {
+		invalidateUserGroupRateCache(userID, groupID)
+	}
 }
 
 func sameInt64Set(a, b []int64) bool {
@@ -1935,6 +1999,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
+	if input.VisibleRateMultiplier != nil && *input.VisibleRateMultiplier <= 0 {
+		return nil, errors.New("visible_rate_multiplier must be > 0")
+	}
 
 	platform := input.Platform
 	if platform == "" {
@@ -2023,6 +2090,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Description:                     input.Description,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		VisibleRateMultiplier:           input.VisibleRateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -2192,6 +2260,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.RateMultiplier = *input.RateMultiplier
 	}
+	if input.VisibleRateMultiplierSet {
+		if input.VisibleRateMultiplier == nil {
+			group.VisibleRateMultiplier = nil
+		} else if *input.VisibleRateMultiplier <= 0 {
+			return nil, errors.New("visible_rate_multiplier must be > 0")
+		} else {
+			group.VisibleRateMultiplier = input.VisibleRateMultiplier
+		}
+	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
 	}
@@ -2309,6 +2386,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
+	invalidateUserGroupRateCacheByGroupID(id)
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
@@ -2438,7 +2516,11 @@ func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupI
 	if s.userGroupRateRepo == nil {
 		return nil
 	}
-	return s.userGroupRateRepo.DeleteByGroupID(ctx, groupID)
+	if err := s.userGroupRateRepo.ClearGroupRateMultipliers(ctx, groupID); err != nil {
+		return err
+	}
+	invalidateUserGroupRateCacheByGroupID(groupID)
+	return nil
 }
 
 func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
@@ -2455,11 +2537,24 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("duplicate user_id: %d", e.UserID))
 		}
 		seenUserIDs[e.UserID] = struct{}{}
-		if err := validateGroupRateMultiplierBasic(e.RateMultiplier, e.UserID); err != nil {
-			return err
+		if !e.RateMultiplierSet && !e.VisibleRateMultiplierSet {
+			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("rate_multiplier or visible_rate_multiplier is required (user_id=%d)", e.UserID))
 		}
-		if !hasAtMostTwoDecimalPlaces(e.RateMultiplier) {
+		if e.RateMultiplier != nil {
+			if err := validateGroupRateMultiplierBasic(*e.RateMultiplier, e.UserID); err != nil {
+				return err
+			}
+		}
+		if e.VisibleRateMultiplier != nil {
+			if err := validateGroupRateMultiplierValue("visible_rate_multiplier", *e.VisibleRateMultiplier, e.UserID); err != nil {
+				return err
+			}
+		}
+		if e.RateMultiplier != nil && !hasAtMostTwoDecimalPlaces(*e.RateMultiplier) {
 			needsCurrentRates = true
+		}
+		if e.VisibleRateMultiplier != nil && !hasAtMostTwoDecimalPlaces(*e.VisibleRateMultiplier) {
+			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("visible_rate_multiplier supports at most 2 decimal places (user_id=%d)", e.UserID))
 		}
 	}
 	if needsCurrentRates {
@@ -2468,12 +2563,19 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 			return err
 		}
 		for _, e := range entries {
-			if err := validateGroupRateMultiplierDecimals(e.RateMultiplier, e.UserID, currentRates); err != nil {
+			if e.RateMultiplier == nil {
+				continue
+			}
+			if err := validateGroupRateMultiplierDecimals(*e.RateMultiplier, e.UserID, currentRates); err != nil {
 				return err
 			}
 		}
 	}
-	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
+	if err := s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries); err != nil {
+		return err
+	}
+	invalidateUserGroupRateCacheByGroupID(groupID)
+	return nil
 }
 
 func (s *adminServiceImpl) currentGroupRateMultiplierMap(ctx context.Context, groupID int64) (map[int64]float64, error) {
@@ -2492,8 +2594,12 @@ func (s *adminServiceImpl) currentGroupRateMultiplierMap(ctx context.Context, gr
 }
 
 func validateGroupRateMultiplierBasic(rate float64, userID int64) error {
+	return validateGroupRateMultiplierValue("rate_multiplier", rate, userID)
+}
+
+func validateGroupRateMultiplierValue(field string, rate float64, userID int64) error {
 	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
-		return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("rate_multiplier must be > 0 (user_id=%d)", userID))
+		return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("%s must be > 0 (user_id=%d)", field, userID))
 	}
 	return nil
 }

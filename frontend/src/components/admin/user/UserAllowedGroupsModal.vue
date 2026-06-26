@@ -76,17 +76,31 @@
                 </div>
 
                 <!-- 专属倍率输入 -->
-                <div class="flex flex-shrink-0 items-center gap-3">
-                  <label class="text-sm font-medium text-gray-600 dark:text-gray-400">{{ t('admin.users.customRate') }}</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    :value="config.customRate ?? ''"
-                    @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
-                    :placeholder="String(config.defaultRate)"
-                    class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-                  />
+                <div class="grid flex-shrink-0 grid-cols-2 gap-3">
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.users.customRate') }}
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      :value="config.customRate ?? ''"
+                      @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
+                      :placeholder="String(config.defaultRate)"
+                      class="hide-spinner mt-1 w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                    />
+                  </label>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.users.visibleRate') }}
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      :value="config.visibleRate ?? ''"
+                      @input="updateVisibleRate(config.groupId, ($event.target as HTMLInputElement).value)"
+                      :placeholder="String(config.defaultVisibleRate)"
+                      class="hide-spinner mt-1 w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                    />
+                  </label>
                 </div>
               </div>
             </div>
@@ -134,17 +148,31 @@
                 </div>
 
                 <!-- 专属倍率输入 -->
-                <div class="flex flex-shrink-0 items-center gap-3">
-                  <label class="text-sm font-medium text-gray-600 dark:text-gray-400">{{ t('admin.users.customRate') }}</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    :value="config.customRate ?? ''"
-                    @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
-                    :placeholder="String(config.defaultRate)"
-                    class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-                  />
+                <div class="grid flex-shrink-0 grid-cols-2 gap-3">
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.users.customRate') }}
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      :value="config.customRate ?? ''"
+                      @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
+                      :placeholder="String(config.defaultRate)"
+                      class="hide-spinner mt-1 w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                    />
+                  </label>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.users.visibleRate') }}
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      :value="config.visibleRate ?? ''"
+                      @input="updateVisibleRate(config.groupId, ($event.target as HTMLInputElement).value)"
+                      :placeholder="String(config.defaultVisibleRate)"
+                      class="hide-spinner mt-1 w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                    />
+                  </label>
                 </div>
               </div>
             </div>
@@ -193,7 +221,9 @@ interface GroupRateConfig {
   platform: GroupPlatform
   isExclusive: boolean
   defaultRate: number
+  defaultVisibleRate: number
   customRate: number | null
+  visibleRate: number | null
   isSelected: boolean
 }
 
@@ -205,6 +235,7 @@ const appStore = useAppStore()
 const groups = ref<Group[]>([])
 const groupConfigs = ref<GroupRateConfig[]>([])
 const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属倍率，用于检测删除
+const originalVisibleGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -234,9 +265,11 @@ const load = async () => {
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []
     const userGroupRates = props.user?.group_rates || {}
+    const userVisibleGroupRates = props.user?.visible_group_rates || {}
 
     // 保存原始专属倍率，用于检测删除操作
     originalGroupRates.value = { ...userGroupRates }
+    originalVisibleGroupRates.value = { ...userVisibleGroupRates }
 
     groupConfigs.value = groups.value.map((g) => ({
       groupId: g.id,
@@ -244,7 +277,9 @@ const load = async () => {
       platform: g.platform,
       isExclusive: g.is_exclusive,
       defaultRate: g.rate_multiplier,
+      defaultVisibleRate: g.visible_rate_multiplier ?? g.rate_multiplier,
       customRate: userGroupRates[g.id] ?? null,
+      visibleRate: userVisibleGroupRates[g.id] ?? null,
       // 专属分组：检查是否在 allowed_groups 中
       // 公开分组：始终选中
       isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
@@ -263,15 +298,25 @@ const toggleExclusiveGroup = (groupId: number) => {
   }
 }
 
+const parseOptionalRate = (value: string): number | null => {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+  const numValue = Number(value)
+  return Number.isFinite(numValue) && numValue > 0 ? numValue : null
+}
+
 const updateCustomRate = (groupId: number, value: string) => {
   const config = groupConfigs.value.find((c) => c.groupId === groupId)
   if (config) {
-    if (value === '' || value === null || value === undefined) {
-      config.customRate = null
-    } else {
-      const numValue = parseFloat(value)
-      config.customRate = isNaN(numValue) ? null : numValue
-    }
+    config.customRate = parseOptionalRate(value)
+  }
+}
+
+const updateVisibleRate = (groupId: number, value: string) => {
+  const config = groupConfigs.value.find((c) => c.groupId === groupId)
+  if (config) {
+    config.visibleRate = parseOptionalRate(value)
   }
 }
 
@@ -287,8 +332,10 @@ const handleSave = async () => {
     // - 有新专属倍率: 设置为该值
     // - 原本有专属倍率但现在被清空: 设置为 null（表示删除）
     const groupRates: Record<number, number | null> = {}
+    const visibleGroupRates: Record<number, number | null> = {}
     for (const c of groupConfigs.value) {
       const hadOriginalRate = originalGroupRates.value[c.groupId] !== undefined
+      const hadOriginalVisibleRate = originalVisibleGroupRates.value[c.groupId] !== undefined
 
       if (c.customRate !== null) {
         // 有专属倍率
@@ -297,11 +344,18 @@ const handleSave = async () => {
         // 原本有专属倍率，现在被清空，需要显式删除
         groupRates[c.groupId] = null
       }
+
+      if (c.visibleRate !== null) {
+        visibleGroupRates[c.groupId] = c.visibleRate
+      } else if (hadOriginalVisibleRate) {
+        visibleGroupRates[c.groupId] = null
+      }
     }
 
     await adminAPI.users.update(props.user.id, {
       allowed_groups: allowedGroups,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
+      visible_group_rates: Object.keys(visibleGroupRates).length > 0 ? visibleGroupRates : undefined,
     })
 
     appStore.showSuccess(t('admin.users.groupConfigUpdated'))

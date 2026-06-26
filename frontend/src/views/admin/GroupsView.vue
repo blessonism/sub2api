@@ -180,9 +180,17 @@
           </template>
 
           <template #cell-rate_multiplier="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
-            >
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}x</span>
+          </template>
+
+          <template #cell-visible_rate_multiplier="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">
+              {{ row.visible_rate_multiplier ?? row.rate_multiplier }}x
+            </span>
+            <span
+              v-if="row.visible_rate_multiplier == null"
+              class="ml-1 text-xs text-gray-400 dark:text-gray-500"
+            >{{ t("admin.groups.inheritedRate") }}</span>
           </template>
 
           <template #cell-is_exclusive="{ value }">
@@ -496,6 +504,20 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.visibleRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="createForm.visible_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0.001"
+            class="input"
+            :placeholder="String(createForm.rate_multiplier || 1)"
+          />
+          <p class="input-hint">{{ t("admin.groups.visibleRateMultiplierHint") }}</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -1782,6 +1804,20 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.visibleRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="editForm.visible_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0.001"
+            class="input"
+            :placeholder="String(editForm.rate_multiplier || 1)"
+          />
+          <p class="input-hint">{{ t("admin.groups.visibleRateMultiplierHint") }}</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3101,6 +3137,11 @@ const columns = computed<Column[]>(() => [
     sortable: true,
   },
   {
+    key: "visible_rate_multiplier",
+    label: t("admin.groups.visibleRateMultiplier"),
+    sortable: false,
+  },
+  {
     key: "is_exclusive",
     label: t("admin.groups.columns.type"),
     sortable: true,
@@ -3328,6 +3369,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  visible_rate_multiplier: null as number | null,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -3658,6 +3700,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  visible_rate_multiplier: null as number | null,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -3955,6 +3998,16 @@ const normalizeOptionalLimit = (
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 
+const normalizeOptionalPositiveNumber = (
+  value: number | string | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 const normalizeImageRateMultiplier = (
   value: number | string | null | undefined,
 ): number => {
@@ -4008,6 +4061,9 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
+    requestData.visible_rate_multiplier = normalizeOptionalPositiveNumber(
+      requestData.visible_rate_multiplier,
+    );
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
@@ -4036,6 +4092,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.visible_rate_multiplier = group.visible_rate_multiplier ?? null;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -4147,6 +4204,9 @@ const handleUpdateGroup = async () => {
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
+    payload.visible_rate_multiplier = normalizeOptionalPositiveNumber(
+      payload.visible_rate_multiplier,
+    );
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );

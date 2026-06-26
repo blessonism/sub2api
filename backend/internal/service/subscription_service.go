@@ -43,6 +43,7 @@ var (
 type SubscriptionService struct {
 	groupRepo           GroupRepository
 	userSubRepo         UserSubscriptionRepository
+	userGroupRateRepo   UserGroupRateRepository
 	billingCacheService *BillingCacheService
 	entClient           *dbent.Client
 
@@ -66,6 +67,13 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 	svc.initSubCache(cfg)
 	svc.initMaintenanceQueue(cfg)
 	return svc
+}
+
+func (s *SubscriptionService) SetUserGroupRateRepository(repo UserGroupRateRepository) {
+	if s == nil {
+		return
+	}
+	s.userGroupRateRepo = repo
 }
 
 func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {
@@ -662,6 +670,9 @@ func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID 
 	}
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
+	if err := s.applyVisibleGroupRatesToSubscriptions(ctx, userID, subs); err != nil {
+		return nil, err
+	}
 	return subs, nil
 }
 
@@ -672,7 +683,36 @@ func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, u
 		return nil, err
 	}
 	normalizeExpiredWindows(subs)
+	if err := s.applyVisibleGroupRatesToSubscriptions(ctx, userID, subs); err != nil {
+		return nil, err
+	}
 	return subs, nil
+}
+
+func (s *SubscriptionService) applyVisibleGroupRatesToSubscriptions(ctx context.Context, userID int64, subs []UserSubscription) error {
+	if len(subs) == 0 {
+		return nil
+	}
+	userVisibleRates := map[int64]float64{}
+	if s != nil && s.userGroupRateRepo != nil && userID > 0 {
+		rates, err := s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get user visible group rates: %w", err)
+		}
+		userVisibleRates = rates
+	}
+	for i := range subs {
+		if subs[i].Group == nil {
+			continue
+		}
+		if rate, ok := userVisibleRates[subs[i].Group.ID]; ok {
+			subs[i].Group.RateMultiplier = rate
+		} else {
+			subs[i].Group.RateMultiplier = subs[i].Group.VisibleEffectiveRateMultiplier()
+		}
+		subs[i].Group.VisibleRateMultiplier = nil
+	}
+	return nil
 }
 
 // ListGroupSubscriptions 获取分组的所有订阅

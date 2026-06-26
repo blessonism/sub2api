@@ -16,9 +16,11 @@ type Group struct {
 	Description    string
 	Platform       string
 	RateMultiplier float64
-	IsExclusive    bool
-	Status         string
-	Hydrated       bool // indicates the group was loaded from a trusted repository source
+	// VisibleRateMultiplier 是用户侧展示倍率；nil 表示跟随真实倍率。
+	VisibleRateMultiplier *float64
+	IsExclusive           bool
+	Status                string
+	Hydrated              bool // indicates the group was loaded from a trusted repository source
 
 	SubscriptionType    string
 	DailyLimitUSD       *float64
@@ -83,6 +85,16 @@ func (g *Group) IsActive() bool {
 
 func (g *Group) IsSubscriptionType() bool {
 	return g.SubscriptionType == SubscriptionTypeSubscription
+}
+
+func (g *Group) VisibleEffectiveRateMultiplier() float64 {
+	if g == nil {
+		return 1
+	}
+	if g.VisibleRateMultiplier != nil {
+		return *g.VisibleRateMultiplier
+	}
+	return g.RateMultiplier
 }
 
 func (g *Group) HasDailyLimit() bool {

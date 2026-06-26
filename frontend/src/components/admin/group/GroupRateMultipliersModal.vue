@@ -13,6 +13,10 @@
         <span class="text-gray-600 dark:text-gray-400">
           {{ t('admin.groups.columns.rateMultiplier') }}: {{ group.rate_multiplier }}x
         </span>
+        <span class="text-gray-400">|</span>
+        <span class="text-gray-600 dark:text-gray-400">
+          {{ t('admin.groups.visibleRateMultiplier') }}: {{ group.visible_rate_multiplier ?? group.rate_multiplier }}x
+        </span>
       </div>
 
       <!-- 操作区 -->
@@ -147,6 +151,7 @@
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
                     <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.visibleRateMultiplier') }}</th>
                     <th class="w-10 px-2 py-2"></th>
                   </tr>
                 </thead>
@@ -191,6 +196,18 @@
                         :placeholder="String(props.group?.rate_multiplier ?? 1)"
                         class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
                         @change="updateLocalRate(entry.user_id, ($event.target as HTMLInputElement).value)"
+                      />
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        autocomplete="off"
+                        :value="entry.visible_rate_multiplier ?? ''"
+                        :placeholder="String(props.group?.visible_rate_multiplier ?? props.group?.rate_multiplier ?? 1)"
+                        class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                        @change="updateLocalVisibleRate(entry.user_id, ($event.target as HTMLInputElement).value)"
                       />
                     </td>
                     <td class="px-2 py-2">
@@ -295,6 +312,7 @@ const pageSize = ref(10)
 const bulkRateInput = ref('')
 const selectedEntryIds = ref<Set<number>>(new Set())
 const changedRateEntryIds = ref<Set<number>>(new Set())
+const changedVisibleRateEntryIds = ref<Set<number>>(new Set())
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
@@ -310,8 +328,19 @@ const platformColorClass = computed(() => {
 // 检测是否有未保存的修改
 const isDirty = computed(() => {
   if (localEntries.value.length !== serverEntries.value.length) return true
-  const serverMap = new Map(serverEntries.value.map(e => [e.user_id, e.rate_multiplier ?? null]))
-  return localEntries.value.some(e => serverMap.get(e.user_id) !== (e.rate_multiplier ?? null))
+  const serverMap = new Map(serverEntries.value.map(e => [
+    e.user_id,
+    {
+      rate: e.rate_multiplier ?? null,
+      visibleRate: e.visible_rate_multiplier ?? null
+    }
+  ]))
+  return localEntries.value.some(e => {
+    const server = serverMap.get(e.user_id)
+    return !server ||
+      server.rate !== (e.rate_multiplier ?? null) ||
+      server.visibleRate !== (e.visible_rate_multiplier ?? null)
+  })
 })
 
 const paginatedLocalEntries = computed(() => {
@@ -346,12 +375,19 @@ const resetSelection = () => {
 
 const resetChangedRateEntries = () => {
   changedRateEntryIds.value = new Set()
+  changedVisibleRateEntryIds.value = new Set()
 }
 
 const markRateEntryChanged = (userId: number) => {
   const next = new Set(changedRateEntryIds.value)
   next.add(userId)
   changedRateEntryIds.value = next
+}
+
+const markVisibleRateEntryChanged = (userId: number) => {
+  const next = new Set(changedVisibleRateEntryIds.value)
+  next.add(userId)
+  changedVisibleRateEntryIds.value = next
 }
 
 const pruneSelection = () => {
@@ -364,8 +400,8 @@ const loadEntries = async () => {
   loading.value = true
   try {
     const raw = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
-    // 仅显示已设置 rate_multiplier 的条目；rpm_override 在另一个弹窗管理，保留不动
-    serverEntries.value = raw.filter(e => e.rate_multiplier != null)
+    // 仅显示已设置真实或可见倍率的条目；rpm_override 在另一个弹窗管理，保留不动
+    serverEntries.value = raw.filter(e => e.rate_multiplier != null || e.visible_rate_multiplier != null)
     localEntries.value = cloneEntries(serverEntries.value)
     resetSelection()
     resetChangedRateEntries()
@@ -446,6 +482,7 @@ const handleAddLocal = () => {
     user_notes: user.notes || '',
     user_status: user.status || 'active',
     rate_multiplier: parsedRate,
+    visible_rate_multiplier: null,
     rpm_override: null
   }
   if (idx >= 0) {
@@ -466,6 +503,7 @@ const updateLocalRate = (userId: number, value: string) => {
   if (!entry) return
   if (value.trim() === '') {
     entry.rate_multiplier = null
+    markRateEntryChanged(userId)
     return
   }
   const parsedRate = parseRateInput(value)
@@ -475,6 +513,24 @@ const updateLocalRate = (userId: number, value: string) => {
   }
   entry.rate_multiplier = parsedRate
   markRateEntryChanged(userId)
+}
+
+// 本地修改用户可见倍率；留空表示继承分组可见倍率/真实倍率。
+const updateLocalVisibleRate = (userId: number, value: string) => {
+  const entry = localEntries.value.find(e => e.user_id === userId)
+  if (!entry) return
+  if (value.trim() === '') {
+    entry.visible_rate_multiplier = null
+    markVisibleRateEntryChanged(userId)
+    return
+  }
+  const parsedRate = parseRateInput(value)
+  if (parsedRate == null) {
+    appStore.showError(t('admin.groups.invalidRateMultiplier'))
+    return
+  }
+  entry.visible_rate_multiplier = parsedRate
+  markVisibleRateEntryChanged(userId)
 }
 
 // 本地删除
@@ -544,18 +600,23 @@ const handleCancel = () => {
   adjustPage()
 }
 
-// 保存：一次性提交所有数据（只提交 rate_multiplier；rpm_override 由独立弹窗管理）
+// 保存：一次性提交真实/可见倍率；rpm_override 由独立弹窗管理
 const handleSave = async () => {
   if (!props.group) return
   saving.value = true
   try {
     const entries = localEntries.value
-      .filter(e => e.rate_multiplier != null)
+      .filter(e => e.rate_multiplier != null || e.visible_rate_multiplier != null)
       .map(e => ({
         user_id: e.user_id,
-        rate_multiplier: e.rate_multiplier as number
+        rate_multiplier: e.rate_multiplier ?? null,
+        visible_rate_multiplier: e.visible_rate_multiplier ?? null
       }))
-    if (entries.some(e => changedRateEntryIds.value.has(e.user_id) && !isRateInputValid(String(e.rate_multiplier)))) {
+    if (entries.some(e => changedRateEntryIds.value.has(e.user_id) && e.rate_multiplier != null && !isRateInputValid(String(e.rate_multiplier)))) {
+      appStore.showError(t('admin.groups.invalidRateMultiplier'))
+      return
+    }
+    if (entries.some(e => changedVisibleRateEntryIds.value.has(e.user_id) && e.visible_rate_multiplier != null && !isRateInputValid(String(e.visible_rate_multiplier)))) {
       appStore.showError(t('admin.groups.invalidRateMultiplier'))
       return
     }

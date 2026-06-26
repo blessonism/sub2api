@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端双倍率、迁移、接口与计费链路规范"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端类型与用户侧展示规范"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有倍率配置与展示组件"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨数据库、服务、接口、前端展示的数据流"}

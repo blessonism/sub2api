@@ -193,6 +193,7 @@ export interface GroupRateMultiplierEntry {
   user_notes: string
   user_status: string
   rate_multiplier?: number | null
+  visible_rate_multiplier?: number | null
   rpm_override?: number | null
 }
 
@@ -234,11 +235,15 @@ export async function clearGroupRateMultipliers(id: number): Promise<{ message: 
 
 /**
  * Batch set rate multipliers for users in a group
- * Only touches rate_multiplier column; preserves rpm_override on existing rows.
+ * Touches the real and visible rate multiplier columns; preserves rpm_override on existing rows.
  */
 export async function batchSetGroupRateMultipliers(
   id: number,
-  entries: Array<{ user_id: number; rate_multiplier: number }>
+  entries: Array<{
+    user_id: number
+    rate_multiplier?: number | null
+    visible_rate_multiplier?: number | null
+  }>
 ): Promise<{ message: string }> {
   const { data } = await apiClient.put<{ message: string }>(
     `/admin/groups/${id}/rate-multipliers`,

@@ -67,10 +67,11 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		return nil
 	}
 	return &AdminUser{
-		User:       *base,
-		Notes:      u.Notes,
-		LastUsedAt: u.LastUsedAt,
-		GroupRates: u.GroupRates,
+		User:              *base,
+		Notes:             u.Notes,
+		LastUsedAt:        u.LastUsedAt,
+		GroupRates:        u.GroupRates,
+		VisibleGroupRates: u.VisibleGroupRates,
 	}
 }
 
@@ -135,6 +136,15 @@ func GroupFromService(g *service.Group) *Group {
 	return GroupFromServiceShallow(g)
 }
 
+func GroupFromServiceUserVisible(g *service.Group) *Group {
+	if g == nil {
+		return nil
+	}
+	out := groupFromServiceBase(g)
+	out.VisibleRateMultiplier = nil
+	return &out
+}
+
 // GroupFromServiceAdmin converts a service Group to DTO for admin users.
 // It includes internal fields like model_routing and account_count.
 func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
@@ -172,6 +182,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		Description:                     g.Description,
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
+		VisibleRateMultiplier:           g.VisibleRateMultiplier,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
@@ -580,7 +591,11 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	if requestedModel == "" {
 		requestedModel = l.Model
 	}
-	return UsageLog{
+	displayRateMultiplier := l.RateMultiplier
+	if l.VisibleRateMultiplier != nil {
+		displayRateMultiplier = *l.VisibleRateMultiplier
+	}
+	out := UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
@@ -605,7 +620,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		CacheReadCost:         l.CacheReadCost,
 		TotalCost:             l.TotalCost,
 		ActualCost:            l.ActualCost,
-		RateMultiplier:        l.RateMultiplier,
+		RateMultiplier:        displayRateMultiplier,
 		BillingType:           l.BillingType,
 		RequestType:           requestType.String(),
 		Stream:                stream,
@@ -630,6 +645,19 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		Group:                 GroupFromServiceShallow(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 	}
+	if out.Group != nil {
+		out.Group.RateMultiplier = displayRateMultiplier
+		out.Group.VisibleRateMultiplier = nil
+	}
+	if out.APIKey != nil && out.APIKey.Group != nil {
+		out.APIKey.Group.RateMultiplier = displayRateMultiplier
+		out.APIKey.Group.VisibleRateMultiplier = nil
+	}
+	if out.Subscription != nil && out.Subscription.Group != nil {
+		out.Subscription.Group.RateMultiplier = displayRateMultiplier
+		out.Subscription.Group.VisibleRateMultiplier = nil
+	}
+	return out
 }
 
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
@@ -648,8 +676,11 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	if l == nil {
 		return nil
 	}
+	usage := usageLogFromServiceUser(l)
+	usage.RateMultiplier = l.RateMultiplier
 	return &AdminUsageLog{
-		UsageLog:              usageLogFromServiceUser(l),
+		UsageLog:              usage,
+		VisibleRateMultiplier: l.VisibleRateMultiplier,
 		UpstreamModel:         l.UpstreamModel,
 		ChannelID:             l.ChannelID,
 		ModelMappingChain:     l.ModelMappingChain,

@@ -105,6 +105,20 @@ func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_c *GroupCreate) SetVisibleRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetVisibleRateMultiplier(v)
+	return _c
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVisibleRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetVisibleRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_c *GroupCreate) SetIsExclusive(v bool) *GroupCreate {
 	_c.mutation.SetIsExclusive(v)
@@ -873,6 +887,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+		_node.VisibleRateMultiplier = &value
+	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
@@ -1220,6 +1238,30 @@ func (u *GroupUpsert) UpdateRateMultiplier() *GroupUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldRateMultiplier, v)
+	return u
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *GroupUpsert) SetVisibleRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldVisibleRateMultiplier, v)
+	return u
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVisibleRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldVisibleRateMultiplier)
+	return u
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *GroupUpsert) AddVisibleRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldVisibleRateMultiplier, v)
+	return u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *GroupUpsert) ClearVisibleRateMultiplier() *GroupUpsert {
+	u.SetNull(group.FieldVisibleRateMultiplier)
 	return u
 }
 
@@ -1830,6 +1872,34 @@ func (u *GroupUpsertOne) AddRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *GroupUpsertOne) SetVisibleRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVisibleRateMultiplier(v)
+	})
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *GroupUpsertOne) AddVisibleRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVisibleRateMultiplier(v)
+	})
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVisibleRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVisibleRateMultiplier()
+	})
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *GroupUpsertOne) ClearVisibleRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVisibleRateMultiplier()
 	})
 }
 
@@ -2685,6 +2755,34 @@ func (u *GroupUpsertBulk) AddRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetVisibleRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVisibleRateMultiplier(v)
+	})
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddVisibleRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVisibleRateMultiplier(v)
+	})
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVisibleRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVisibleRateMultiplier()
+	})
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *GroupUpsertBulk) ClearVisibleRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVisibleRateMultiplier()
 	})
 }
 

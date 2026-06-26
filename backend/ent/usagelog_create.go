@@ -351,6 +351,20 @@ func (_c *UsageLogCreate) SetNillableRateMultiplier(v *float64) *UsageLogCreate 
 	return _c
 }
 
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (_c *UsageLogCreate) SetVisibleRateMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetVisibleRateMultiplier(v)
+	return _c
+}
+
+// SetNillableVisibleRateMultiplier sets the "visible_rate_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableVisibleRateMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetVisibleRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_c *UsageLogCreate) SetAccountRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetAccountRateMultiplier(v)
@@ -942,6 +956,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+	}
+	if value, ok := _c.mutation.VisibleRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldVisibleRateMultiplier, field.TypeFloat64, value)
+		_node.VisibleRateMultiplier = &value
 	}
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
@@ -1581,6 +1599,30 @@ func (u *UsageLogUpsert) UpdateRateMultiplier() *UsageLogUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *UsageLogUpsert) AddRateMultiplier(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldRateMultiplier, v)
+	return u
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *UsageLogUpsert) SetVisibleRateMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldVisibleRateMultiplier, v)
+	return u
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateVisibleRateMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldVisibleRateMultiplier)
+	return u
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *UsageLogUpsert) AddVisibleRateMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldVisibleRateMultiplier, v)
+	return u
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *UsageLogUpsert) ClearVisibleRateMultiplier() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldVisibleRateMultiplier)
 	return u
 }
 
@@ -2402,6 +2444,34 @@ func (u *UsageLogUpsertOne) AddRateMultiplier(v float64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertOne) SetVisibleRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVisibleRateMultiplier(v)
+	})
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertOne) AddVisibleRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVisibleRateMultiplier(v)
+	})
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateVisibleRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVisibleRateMultiplier()
+	})
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertOne) ClearVisibleRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVisibleRateMultiplier()
 	})
 }
 
@@ -3432,6 +3502,34 @@ func (u *UsageLogUpsertBulk) AddRateMultiplier(v float64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetVisibleRateMultiplier sets the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) SetVisibleRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVisibleRateMultiplier(v)
+	})
+}
+
+// AddVisibleRateMultiplier adds v to the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) AddVisibleRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVisibleRateMultiplier(v)
+	})
+}
+
+// UpdateVisibleRateMultiplier sets the "visible_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateVisibleRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVisibleRateMultiplier()
+	})
+}
+
+// ClearVisibleRateMultiplier clears the value of the "visible_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) ClearVisibleRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVisibleRateMultiplier()
 	})
 }
 

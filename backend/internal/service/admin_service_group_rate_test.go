@@ -34,8 +34,16 @@ func (s *userGroupRateRepoStubForGroupRate) GetByUserID(_ context.Context, _ int
 	panic("unexpected GetByUserID call")
 }
 
+func (s *userGroupRateRepoStubForGroupRate) GetVisibleByUserID(_ context.Context, _ int64) (map[int64]float64, error) {
+	panic("unexpected GetVisibleByUserID call")
+}
+
 func (s *userGroupRateRepoStubForGroupRate) GetByUserAndGroup(_ context.Context, _, _ int64) (*float64, error) {
 	panic("unexpected GetByUserAndGroup call")
+}
+
+func (s *userGroupRateRepoStubForGroupRate) GetVisibleByUserAndGroup(_ context.Context, _, _ int64) (*float64, error) {
+	panic("unexpected GetVisibleByUserAndGroup call")
 }
 
 func (s *userGroupRateRepoStubForGroupRate) GetRPMOverrideByUserAndGroup(_ context.Context, _, _ int64) (*int, error) {
@@ -51,6 +59,10 @@ func (s *userGroupRateRepoStubForGroupRate) GetByGroupID(_ context.Context, grou
 
 func (s *userGroupRateRepoStubForGroupRate) SyncUserGroupRates(_ context.Context, _ int64, _ map[int64]*float64) error {
 	panic("unexpected SyncUserGroupRates call")
+}
+
+func (s *userGroupRateRepoStubForGroupRate) SyncUserGroupVisibleRates(_ context.Context, _ int64, _ map[int64]*float64) error {
+	panic("unexpected SyncUserGroupVisibleRates call")
 }
 
 func (s *userGroupRateRepoStubForGroupRate) SyncGroupRateMultipliers(_ context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
@@ -69,6 +81,11 @@ func (s *userGroupRateRepoStubForGroupRate) ClearGroupRPMOverrides(_ context.Con
 	panic("unexpected ClearGroupRPMOverrides call")
 }
 
+func (s *userGroupRateRepoStubForGroupRate) ClearGroupRateMultipliers(_ context.Context, groupID int64) error {
+	s.deletedGroupIDs = append(s.deletedGroupIDs, groupID)
+	return s.deleteByGroupErr
+}
+
 func (s *userGroupRateRepoStubForGroupRate) DeleteByGroupID(_ context.Context, groupID int64) error {
 	s.deletedGroupIDs = append(s.deletedGroupIDs, groupID)
 	return s.deleteByGroupErr
@@ -82,6 +99,22 @@ func requireApplicationErrorStatus(t *testing.T, err error, status int) {
 	t.Helper()
 	require.Error(t, err)
 	require.Equal(t, status, infraerrors.Code(err))
+}
+
+func groupRateMultiplierInput(userID int64, rate *float64) GroupRateMultiplierInput {
+	return GroupRateMultiplierInput{
+		UserID:            userID,
+		RateMultiplier:    rate,
+		RateMultiplierSet: true,
+	}
+}
+
+func visibleGroupRateMultiplierInput(userID int64, visibleRate *float64) GroupRateMultiplierInput {
+	return GroupRateMultiplierInput{
+		UserID:                   userID,
+		VisibleRateMultiplier:    visibleRate,
+		VisibleRateMultiplierSet: true,
+	}
 }
 
 func TestAdminService_GetGroupRateMultipliers(t *testing.T) {
@@ -176,8 +209,8 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		entries := []GroupRateMultiplierInput{
-			{UserID: 1, RateMultiplier: 1.5},
-			{UserID: 2, RateMultiplier: 0.8},
+			groupRateMultiplierInput(1, ptrFloat(1.5)),
+			groupRateMultiplierInput(2, ptrFloat(0.8)),
 		}
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, entries)
 		require.NoError(t, err)
@@ -199,7 +232,7 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-			{UserID: 0, RateMultiplier: 1.25},
+			groupRateMultiplierInput(0, ptrFloat(1.25)),
 		})
 		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
 		require.Empty(t, repo.syncedEntries)
@@ -212,8 +245,8 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-			{UserID: 1, RateMultiplier: 1.25},
-			{UserID: 1, RateMultiplier: 1.50},
+			groupRateMultiplierInput(1, ptrFloat(1.25)),
+			groupRateMultiplierInput(1, ptrFloat(1.50)),
 		})
 		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
 		require.Empty(t, repo.syncedEntries)
@@ -227,7 +260,7 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 			svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 			err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-				{UserID: 1, RateMultiplier: rate},
+				groupRateMultiplierInput(1, ptrFloat(rate)),
 			})
 			requireApplicationErrorStatus(t, err, http.StatusBadRequest)
 			require.Empty(t, repo.syncedEntries)
@@ -241,7 +274,7 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-			{UserID: 1, RateMultiplier: 1.234},
+			groupRateMultiplierInput(1, ptrFloat(1.234)),
 		})
 		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
 		require.Empty(t, repo.syncedEntries)
@@ -259,8 +292,22 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		entries := []GroupRateMultiplierInput{
-			{UserID: 1, RateMultiplier: 1.50},
-			{UserID: 2, RateMultiplier: 1.2345},
+			groupRateMultiplierInput(1, ptrFloat(1.50)),
+			groupRateMultiplierInput(2, ptrFloat(1.2345)),
+		}
+		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, entries)
+		require.NoError(t, err)
+		require.Equal(t, entries, repo.syncedEntries)
+	})
+
+	t.Run("allows explicit visible rate clear", func(t *testing.T) {
+		repo := &userGroupRateRepoStubForGroupRate{
+			getByGroupIDData: map[int64][]UserGroupRateEntry{10: {}},
+		}
+		svc := &adminServiceImpl{userGroupRateRepo: repo}
+
+		entries := []GroupRateMultiplierInput{
+			visibleGroupRateMultiplierInput(1, nil),
 		}
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, entries)
 		require.NoError(t, err)
@@ -278,7 +325,7 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-			{UserID: 2, RateMultiplier: 1.2346},
+			groupRateMultiplierInput(2, ptrFloat(1.2346)),
 		})
 		requireApplicationErrorStatus(t, err, http.StatusBadRequest)
 		require.Empty(t, repo.syncedEntries)
@@ -292,7 +339,7 @@ func TestAdminService_BatchSetGroupRateMultipliers(t *testing.T) {
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.BatchSetGroupRateMultipliers(context.Background(), 10, []GroupRateMultiplierInput{
-			{UserID: 1, RateMultiplier: 1.0},
+			groupRateMultiplierInput(1, ptrFloat(1.0)),
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "sync failed")

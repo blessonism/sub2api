@@ -30,7 +30,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, visible_rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -64,6 +64,7 @@ var usageLogInsertArgTypes = [...]string{
 	"numeric",     // total_cost
 	"numeric",     // actual_cost
 	"numeric",     // rate_multiplier
+	"numeric",     // visible_rate_multiplier
 	"numeric",     // account_rate_multiplier
 	"smallint",    // billing_type
 	"smallint",    // request_type
@@ -389,6 +390,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -421,7 +423,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -831,6 +833,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -859,7 +862,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*50)
+	args := make([]any, 0, len(keys)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -910,9 +913,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				cache_creation_cost,
 				cache_read_cost,
 				total_cost,
-				actual_cost,
-				rate_multiplier,
-				account_rate_multiplier,
+					actual_cost,
+					rate_multiplier,
+					visible_rate_multiplier,
+					account_rate_multiplier,
 				billing_type,
 				request_type,
 				stream,
@@ -962,9 +966,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				cache_creation_cost,
 				cache_read_cost,
 				total_cost,
-				actual_cost,
-				rate_multiplier,
-				account_rate_multiplier,
+					actual_cost,
+					rate_multiplier,
+					visible_rate_multiplier,
+					account_rate_multiplier,
 				billing_type,
 				request_type,
 				stream,
@@ -1056,6 +1061,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -1084,7 +1090,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*50)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1134,6 +1140,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -1186,6 +1193,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -1246,6 +1254,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			visible_rate_multiplier,
 			account_rate_multiplier,
 			billing_type,
 			request_type,
@@ -1278,7 +1287,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1300,6 +1309,10 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 
 	groupID := nullInt64(log.GroupID)
 	subscriptionID := nullInt64(log.SubscriptionID)
+	visibleRateMultiplier := log.VisibleRateMultiplier
+	if visibleRateMultiplier == nil {
+		visibleRateMultiplier = &rateMultiplier
+	}
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 	userAgent := nullString(log.UserAgent)
@@ -1358,6 +1371,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.TotalCost,
 			log.ActualCost,
 			rateMultiplier,
+			visibleRateMultiplier,
 			log.AccountRateMultiplier,
 			log.BillingType,
 			requestType,
@@ -3067,23 +3081,23 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			LEFT JOIN users u ON u.id = COALESCE(r.user_id, c.user_id)
 			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
 		),
-		auto_multipliers AS (
-			SELECT
-				a.user_id,
-				MIN(ugr.rate_multiplier) AS rate_multiplier
-			FROM token_usage_auto_assignments a
-			JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
-			JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'
+			auto_multipliers AS (
+				SELECT
+					a.user_id,
+					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier, ugr.rate_multiplier, target_group.rate_multiplier)) AS rate_multiplier
+				FROM token_usage_auto_assignments a
+				JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
+				JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'
 			JOIN user_group_rate_multipliers ugr ON ugr.user_id = a.user_id AND ugr.group_id = a.target_group_id
 			WHERE a.last_rate_multiplier IS NOT NULL
 			  AND a.manual_takeover = FALSE
 			  AND ugr.rate_multiplier = a.last_rate_multiplier
 			GROUP BY a.user_id
-		),
-		common_multiplier AS (
-			SELECT g.rate_multiplier
-			FROM settings s
-			JOIN groups g ON g.id = CASE WHEN s.value ~ '^[0-9]+$' THEN s.value::bigint ELSE 0 END
+			),
+			common_multiplier AS (
+				SELECT COALESCE(g.visible_rate_multiplier, g.rate_multiplier) AS rate_multiplier
+				FROM settings s
+				JOIN groups g ON g.id = CASE WHEN s.value ~ '^[0-9]+$' THEN s.value::bigint ELSE 0 END
 			WHERE s.key = '` + service.SettingKeyTokenLeaderboardCommonGroupID + `'
 			  AND g.status = '` + service.StatusActive + `'
 			  AND g.subscription_type = '` + service.SubscriptionTypeStandard + `'
@@ -5103,6 +5117,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		totalCost             float64
 		actualCost            float64
 		rateMultiplier        float64
+		visibleRateMultiplier sql.NullFloat64
 		accountRateMultiplier sql.NullFloat64
 		billingType           int16
 		requestTypeRaw        int16
@@ -5157,6 +5172,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&totalCost,
 		&actualCost,
 		&rateMultiplier,
+		&visibleRateMultiplier,
 		&accountRateMultiplier,
 		&billingType,
 		&requestTypeRaw,
@@ -5209,6 +5225,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		TotalCost:             totalCost,
 		ActualCost:            actualCost,
 		RateMultiplier:        rateMultiplier,
+		VisibleRateMultiplier: nullFloat64Ptr(visibleRateMultiplier),
 		AccountRateMultiplier: nullFloat64Ptr(accountRateMultiplier),
 		BillingType:           int8(billingType),
 		RequestType:           service.RequestTypeFromInt16(requestTypeRaw),

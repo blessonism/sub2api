@@ -619,9 +619,12 @@ func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *s
 				manualTakeover = true
 			} else {
 				if _, err := tx.ExecContext(ctx, `
-					DELETE FROM user_group_rate_multipliers
-					WHERE user_id = $1 AND group_id = $2 AND rate_multiplier IS NULL AND rpm_override IS NULL
-				`, change.UserID, targetGroupID); err != nil {
+						DELETE FROM user_group_rate_multipliers
+						WHERE user_id = $1 AND group_id = $2
+						  AND rate_multiplier IS NULL
+						  AND visible_rate_multiplier IS NULL
+						  AND rpm_override IS NULL
+					`, change.UserID, targetGroupID); err != nil {
 					return err
 				}
 			}
