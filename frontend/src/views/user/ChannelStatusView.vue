@@ -25,6 +25,7 @@
         :snapshot="gptIntelligenceSnapshot"
         :loading="gptIntelligenceLoading"
         :error="gptIntelligenceError"
+        :can-edit-intelligence-templates="authStore.isAdmin"
       />
     </div>
 
@@ -41,6 +42,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   list as listChannelMonitorViews,
@@ -65,6 +67,7 @@ import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])

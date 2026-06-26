@@ -28,6 +28,25 @@ const messages: Record<string, string> = {
   'channelStatus.modelIq.trendSubtitle': 'Latest 12 available samples',
   'channelStatus.modelIq.overviewTrend': 'IQ Index Overview',
   'channelStatus.modelIq.overviewSubtitle': 'Recent samples aligned by model and reasoning effort',
+  'channelStatus.modelIq.intelligenceCheck.button': 'Intelligence check',
+  'channelStatus.modelIq.intelligenceCheck.title': 'GPT intelligence check',
+  'channelStatus.modelIq.intelligenceCheck.subtitle': 'Pick a prompt template',
+  'channelStatus.modelIq.intelligenceCheck.adminDraft': 'Admin draft',
+  'channelStatus.modelIq.intelligenceCheck.titleLabel': 'Prompt title',
+  'channelStatus.modelIq.intelligenceCheck.titlePlaceholder': 'Enter a prompt title',
+  'channelStatus.modelIq.intelligenceCheck.descriptionLabel': 'Description',
+  'channelStatus.modelIq.intelligenceCheck.descriptionPlaceholder': 'Enter a template description',
+  'channelStatus.modelIq.intelligenceCheck.reset': 'Reset default',
+  'channelStatus.modelIq.intelligenceCheck.saveDraft': 'Save draft',
+  'channelStatus.modelIq.intelligenceCheck.saved': 'Draft saved',
+  'channelStatus.modelIq.intelligenceCheck.saveFailed': 'Failed to save draft',
+  'channelStatus.modelIq.intelligenceCheck.copyPrompt': 'Copy prompt',
+  'channelStatus.modelIq.intelligenceCheck.promptLabel': 'Prompt template',
+  'channelStatus.modelIq.intelligenceCheck.promptPlaceholder': 'Enter an intelligence-check prompt',
+  'channelStatus.modelIq.intelligenceCheck.expectedLabel': 'Expected signal',
+  'channelStatus.modelIq.intelligenceCheck.expectedPlaceholder': 'Enter the expected signal',
+  'channelStatus.modelIq.intelligenceCheck.thresholdLabel': 'Failure threshold',
+  'channelStatus.modelIq.intelligenceCheck.thresholdPlaceholder': 'Enter the failure threshold',
   'channelStatus.modelIq.reasoningTrends': 'Reasoning Effort Trends',
   'channelStatus.modelIq.reasoningTrendsSubtitle': 'Each model/reasoning effort uses the same chart lens as the current xhigh series',
   'channelStatus.modelIq.currentSeries': 'Current primary probe',
@@ -68,6 +87,19 @@ vi.mock('vue-chartjs', () => ({
   Line: {
     props: ['data', 'options'],
     template: '<div class="line-chart">{{ JSON.stringify(data) }}</div>',
+  },
+}))
+
+vi.mock('@/components/common/BaseDialog.vue', () => ({
+  default: {
+    props: ['show', 'title'],
+    template: `
+      <div v-if="show" class="base-dialog">
+        <h3>{{ title }}</h3>
+        <slot />
+        <slot name="footer" />
+      </div>
+    `,
   },
 }))
 
@@ -215,6 +247,8 @@ describe('GptIntelligencePanel', () => {
     expect(wrapper.text()).toContain('GPT-5.5-high')
     expect(wrapper.text()).toContain('IQ Index Overview')
     expect(wrapper.text()).toContain('Reasoning Effort Trends')
+    expect(wrapper.text()).toContain('Intelligence check')
+    expect(wrapper.text()).not.toContain('GPT intelligence check')
 
     const charts = wrapper.findAll('.line-chart')
     expect(charts).toHaveLength(3)
@@ -229,6 +263,61 @@ describe('GptIntelligencePanel', () => {
 
     const highChartData = JSON.parse(charts[2].text())
     expect(highChartData.datasets[0].data).toEqual([87.5, 100, 87.5])
+  })
+
+  it('opens intelligence check templates as read-only for regular users', async () => {
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot,
+        loading: false,
+        error: null,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Intelligence check')
+    expect(wrapper.text()).not.toContain('GPT intelligence check')
+
+    await wrapper.get('button[aria-label="Intelligence check"]').trigger('click')
+
+    expect(wrapper.text()).toContain('GPT intelligence check')
+    expect(wrapper.text()).toContain('逻辑推理')
+    expect(wrapper.text()).toContain('指令遵循')
+    expect(wrapper.text()).toContain('上下文抗干扰')
+    expect(wrapper.text()).toContain('Copy prompt')
+    expect(wrapper.text()).not.toContain('Save draft')
+    expect(wrapper.find('#model-iq-template-title').exists()).toBe(false)
+    expect(wrapper.find('#model-iq-template-description').exists()).toBe(false)
+    expect(wrapper.find('.base-dialog').exists()).toBe(true)
+  })
+
+  it('lets admins edit intelligence check template fields', async () => {
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot,
+        loading: false,
+        error: null,
+        canEditIntelligenceTemplates: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.get('button[aria-label="Intelligence check"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Admin draft')
+    expect(wrapper.text()).toContain('Save draft')
+    expect(wrapper.find('#model-iq-template-title').exists()).toBe(true)
+    expect(wrapper.find('#model-iq-template-description').exists()).toBe(true)
+    expect(wrapper.find('textarea[placeholder="Enter the expected signal"]').exists()).toBe(true)
+    expect(wrapper.find('textarea[placeholder="Enter the failure threshold"]').exists()).toBe(true)
   })
 
   it('shows an inline error when there is no cached snapshot', () => {
