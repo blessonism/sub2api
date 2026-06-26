@@ -1124,6 +1124,46 @@ export default {
     empty: {
       title: 'No channels available',
       description: 'No monitored channels have been configured yet.'
+    },
+    modelIq: {
+      title: 'GPT IQ Test',
+      description: 'Experimental metric: pass rates from a fixed DeepSWE probe are converted into a GPT IQ trend while samples, scoring, and automation are still being calibrated.',
+      source: 'View source',
+      updatedAt: 'Updated {time} · {timezone}',
+      updatedUnknown: 'Update time unavailable',
+      loadErrorTitle: 'Unable to load GPT intelligence check',
+      loadErrorDescription: 'The external source is unavailable. Channel status remains visible.',
+      staleNotice: 'Showing the last successful snapshot',
+      score: 'IQ Score',
+      passed: 'Passed Tasks',
+      baseline: 'Baseline',
+      baselineValue: 'DeepSWE · {tasks} tasks',
+      baselineEmpty: 'DeepSWE · tasks unknown',
+      sampledAt: 'Sample batch: {date}',
+      testBadge: 'DeepSWE · {tasks} tasks',
+      testBadgeFallback: 'DeepSWE probe',
+      model: 'Test Model',
+      duration: 'Duration',
+      tokens: 'Tokens',
+      cost: 'Cost',
+      recentTrend: 'IQ Index Trend',
+      trendSubtitle: 'Latest 12 available samples',
+      emptyTrend: 'No recent trend data',
+      reasoning: 'Reasoning: {effort}',
+      reasoningEmpty: 'Reasoning: -',
+      passRate: 'Passed {passed}/{tasks}',
+      passEmpty: 'Pass count unavailable',
+      outputTokens: 'Output {tokens}',
+      outputTokensEmpty: 'Output tokens unavailable',
+      seconds: '{seconds}s',
+      quotaSummary: '{window} window · rate {rate}',
+      quotaEmpty: 'Quota radar unavailable',
+      status: {
+        green: 'GREEN',
+        yellow: 'YELLOW',
+        red: 'RED',
+        unknown: 'UNKNOWN'
+      }
     }
   },
 
