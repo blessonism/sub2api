@@ -60,14 +60,20 @@ func (s *userRepoStubForListUsers) GetLatestUsedAtByUserID(_ context.Context, us
 }
 
 type userGroupRateRepoStubForListUsers struct {
-	batchCalls int
-	singleCall []int64
+	batchCalls        int
+	visibleBatchCalls int
+	singleCall        []int64
+	visibleSingleCall []int64
 
-	batchErr  error
-	batchData map[int64]map[int64]float64
+	batchErr         error
+	visibleBatchErr  error
+	batchData        map[int64]map[int64]float64
+	visibleBatchData map[int64]map[int64]float64
 
-	singleErr  map[int64]error
-	singleData map[int64]map[int64]float64
+	singleErr         map[int64]error
+	visibleSingleErr  map[int64]error
+	singleData        map[int64]map[int64]float64
+	visibleSingleData map[int64]map[int64]float64
 }
 
 func (s *userGroupRateRepoStubForListUsers) GetByUserIDs(_ context.Context, _ []int64) (map[int64]map[int64]float64, error) {
@@ -89,8 +95,23 @@ func (s *userGroupRateRepoStubForListUsers) GetByUserID(_ context.Context, userI
 	return map[int64]float64{}, nil
 }
 
-func (s *userGroupRateRepoStubForListUsers) GetVisibleByUserID(_ context.Context, _ int64) (map[int64]float64, error) {
-	panic("unexpected GetVisibleByUserID call")
+func (s *userGroupRateRepoStubForListUsers) GetVisibleByUserID(_ context.Context, userID int64) (map[int64]float64, error) {
+	s.visibleSingleCall = append(s.visibleSingleCall, userID)
+	if err, ok := s.visibleSingleErr[userID]; ok {
+		return nil, err
+	}
+	if rates, ok := s.visibleSingleData[userID]; ok {
+		return rates, nil
+	}
+	return map[int64]float64{}, nil
+}
+
+func (s *userGroupRateRepoStubForListUsers) GetVisibleByUserIDs(_ context.Context, _ []int64) (map[int64]map[int64]float64, error) {
+	s.visibleBatchCalls++
+	if s.visibleBatchErr != nil {
+		return nil, s.visibleBatchErr
+	}
+	return s.visibleBatchData, nil
 }
 
 func (s *userGroupRateRepoStubForListUsers) GetByUserAndGroup(_ context.Context, userID, groupID int64) (*float64, error) {
@@ -168,6 +189,42 @@ func TestAdminService_ListUsers_BatchRateFallbackToSingle(t *testing.T) {
 	require.ElementsMatch(t, []int64{101, 202}, rateRepo.singleCall)
 	require.Equal(t, 1.1, users[0].GroupRates[11])
 	require.Equal(t, 2.2, users[1].GroupRates[22])
+}
+
+func TestAdminService_ListUsers_LoadsVisibleGroupRatesInBatch(t *testing.T) {
+	userRepo := &userRepoStubForListUsers{
+		users: []User{
+			{ID: 101, Username: "u1"},
+			{ID: 202, Username: "u2"},
+		},
+	}
+	rateRepo := &userGroupRateRepoStubForListUsers{
+		batchData: map[int64]map[int64]float64{
+			101: {11: 1.1},
+			202: {22: 2.2},
+		},
+		visibleBatchData: map[int64]map[int64]float64{
+			101: {11: 0.9},
+			202: {22: 1.2},
+		},
+	}
+	svc := &adminServiceImpl{
+		userRepo:          userRepo,
+		userGroupRateRepo: rateRepo,
+	}
+
+	users, total, err := svc.ListUsers(context.Background(), 1, 20, UserListFilters{}, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, users, 2)
+	require.Equal(t, 1, rateRepo.batchCalls)
+	require.Equal(t, 1, rateRepo.visibleBatchCalls)
+	require.Empty(t, rateRepo.singleCall)
+	require.Empty(t, rateRepo.visibleSingleCall)
+	require.Equal(t, 1.1, users[0].GroupRates[11])
+	require.Equal(t, 0.9, users[0].VisibleGroupRates[11])
+	require.Equal(t, 2.2, users[1].GroupRates[22])
+	require.Equal(t, 1.2, users[1].VisibleGroupRates[22])
 }
 
 func TestAdminService_ListUsers_PassesSortParams(t *testing.T) {

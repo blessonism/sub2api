@@ -111,9 +111,9 @@ describe('GroupRateMultipliersModal', () => {
     await flushPromises()
 
     expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
-      { user_id: 1, rate_multiplier: 1.25, visible_rate_multiplier: null },
-      { user_id: 2, rate_multiplier: 1.25, visible_rate_multiplier: null },
-      { user_id: 3, rate_multiplier: 3, visible_rate_multiplier: null }
+      { user_id: 1, rate_multiplier: 1.25 },
+      { user_id: 2, rate_multiplier: 1.25 },
+      { user_id: 3 }
     ])
   })
 
@@ -156,10 +156,31 @@ describe('GroupRateMultipliersModal', () => {
     await flushPromises()
 
     expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
-      { user_id: 1, rate_multiplier: 1.25, visible_rate_multiplier: null },
-      { user_id: 2, rate_multiplier: 1.25, visible_rate_multiplier: null },
-      { user_id: 3, rate_multiplier: 1.234, visible_rate_multiplier: null },
-      { user_id: 4, rate_multiplier: 2.3456, visible_rate_multiplier: null }
+      { user_id: 1, rate_multiplier: 1.25 },
+      { user_id: 2, rate_multiplier: 1.25 },
+      { user_id: 3 },
+      { user_id: 4 }
+    ])
+  })
+
+  it('删除条目时显式发送 null 清空真实和可见倍率', async () => {
+    apiMocks.getGroupRateMultipliers.mockResolvedValueOnce([
+      { user_id: 1, user_name: 'alice', user_email: 'alice@example.com', user_notes: '', user_status: 'active', rate_multiplier: 1, visible_rate_multiplier: 0.8, rpm_override: null },
+      { user_id: 2, user_name: 'bob', user_email: 'bob@example.com', user_notes: '', user_status: 'active', rate_multiplier: 2, visible_rate_multiplier: null, rpm_override: null }
+    ])
+    const wrapper = await mountModal()
+
+    const firstRowRemoveButton = wrapper.findAll('tbody tr')[0].find('button')
+    await firstRowRemoveButton.trigger('click')
+
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'common.save')
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
+      { user_id: 1, rate_multiplier: null, visible_rate_multiplier: null },
+      { user_id: 2 }
     ])
   })
 })

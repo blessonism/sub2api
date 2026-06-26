@@ -412,49 +412,85 @@ func (r *userGroupRateRepository) syncGroupRateMultipliersOnExec(ctx context.Con
 		return nil
 	}
 
-	userIDs := make([]int64, len(entries))
-	rates := make([]float64, len(entries))
-	rateSet := make([]bool, len(entries))
-	rateHasValue := make([]bool, len(entries))
-	visibleRates := make([]float64, len(entries))
-	visibleRateSet := make([]bool, len(entries))
-	visibleRateHasValue := make([]bool, len(entries))
-	for i, e := range entries {
-		userIDs[i] = e.UserID
-		if e.RateMultiplier != nil {
-			rates[i] = *e.RateMultiplier
-			rateHasValue[i] = true
-		}
+	var clearRateUserIDs []int64
+	var upsertRateUserIDs []int64
+	var upsertRates []float64
+	var clearVisibleRateUserIDs []int64
+	var upsertVisibleRateUserIDs []int64
+	var upsertVisibleRates []float64
+	for _, e := range entries {
 		if e.RateMultiplierSet {
-			rateSet[i] = true
-		}
-		if e.VisibleRateMultiplier != nil {
-			visibleRates[i] = *e.VisibleRateMultiplier
-			visibleRateHasValue[i] = true
+			if e.RateMultiplier == nil {
+				clearRateUserIDs = append(clearRateUserIDs, e.UserID)
+			} else {
+				upsertRateUserIDs = append(upsertRateUserIDs, e.UserID)
+				upsertRates = append(upsertRates, *e.RateMultiplier)
+			}
 		}
 		if e.VisibleRateMultiplierSet {
-			visibleRateSet[i] = true
+			if e.VisibleRateMultiplier == nil {
+				clearVisibleRateUserIDs = append(clearVisibleRateUserIDs, e.UserID)
+			} else {
+				upsertVisibleRateUserIDs = append(upsertVisibleRateUserIDs, e.UserID)
+				upsertVisibleRates = append(upsertVisibleRates, *e.VisibleRateMultiplier)
+			}
 		}
 	}
 	now := time.Now()
-	_, err := exec.ExecContext(ctx, `
-		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, visible_rate_multiplier, created_at, updated_at)
-		SELECT
-			data.user_id,
-			$1::bigint,
-			CASE WHEN data.rate_set AND data.rate_has_value THEN data.rate_multiplier ELSE NULL END,
-			CASE WHEN data.visible_rate_set AND data.visible_rate_has_value THEN data.visible_rate_multiplier ELSE NULL END,
-			$2::timestamptz,
-			$2::timestamptz
-		FROM unnest($3::bigint[], $4::double precision[], $5::boolean[], $6::boolean[], $7::double precision[], $8::boolean[], $9::boolean[]) AS data(user_id, rate_multiplier, rate_set, rate_has_value, visible_rate_multiplier, visible_rate_set, visible_rate_has_value)
-		ON CONFLICT (user_id, group_id)
+	if len(clearRateUserIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, `
+			UPDATE user_group_rate_multipliers
+			SET rate_multiplier = NULL, updated_at = $2
+			WHERE group_id = $1 AND user_id = ANY($3)
+		`, groupID, now, pq.Array(clearRateUserIDs)); err != nil {
+			return err
+		}
+	}
+	if len(clearVisibleRateUserIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, `
+			UPDATE user_group_rate_multipliers
+			SET visible_rate_multiplier = NULL, updated_at = $2
+			WHERE group_id = $1 AND user_id = ANY($3)
+		`, groupID, now, pq.Array(clearVisibleRateUserIDs)); err != nil {
+			return err
+		}
+	}
+	if len(upsertRateUserIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, `
+			INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+			SELECT data.user_id, $1::bigint, data.rate_multiplier, $2::timestamptz, $2::timestamptz
+			FROM unnest($3::bigint[], $4::double precision[]) AS data(user_id, rate_multiplier)
+			ON CONFLICT (user_id, group_id)
 			DO UPDATE SET
-				rate_multiplier = CASE WHEN data.rate_set THEN EXCLUDED.rate_multiplier ELSE user_group_rate_multipliers.rate_multiplier END,
-				visible_rate_multiplier = CASE WHEN data.visible_rate_set THEN EXCLUDED.visible_rate_multiplier ELSE user_group_rate_multipliers.visible_rate_multiplier END,
+				rate_multiplier = EXCLUDED.rate_multiplier,
 				updated_at = EXCLUDED.updated_at
-			WHERE (data.rate_set AND user_group_rate_multipliers.rate_multiplier IS DISTINCT FROM EXCLUDED.rate_multiplier)
-			   OR (data.visible_rate_set AND user_group_rate_multipliers.visible_rate_multiplier IS DISTINCT FROM EXCLUDED.visible_rate_multiplier)
-		`, groupID, now, pq.Array(userIDs), pq.Array(rates), pq.Array(rateSet), pq.Array(rateHasValue), pq.Array(visibleRates), pq.Array(visibleRateSet), pq.Array(visibleRateHasValue))
+			WHERE user_group_rate_multipliers.rate_multiplier IS DISTINCT FROM EXCLUDED.rate_multiplier
+		`, groupID, now, pq.Array(upsertRateUserIDs), pq.Array(upsertRates)); err != nil {
+			return err
+		}
+	}
+	if len(upsertVisibleRateUserIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, `
+			INSERT INTO user_group_rate_multipliers (user_id, group_id, visible_rate_multiplier, created_at, updated_at)
+			SELECT data.user_id, $1::bigint, data.visible_rate_multiplier, $2::timestamptz, $2::timestamptz
+			FROM unnest($3::bigint[], $4::double precision[]) AS data(user_id, visible_rate_multiplier)
+			ON CONFLICT (user_id, group_id)
+			DO UPDATE SET
+				visible_rate_multiplier = EXCLUDED.visible_rate_multiplier,
+				updated_at = EXCLUDED.updated_at
+			WHERE user_group_rate_multipliers.visible_rate_multiplier IS DISTINCT FROM EXCLUDED.visible_rate_multiplier
+		`, groupID, now, pq.Array(upsertVisibleRateUserIDs), pq.Array(upsertVisibleRates)); err != nil {
+			return err
+		}
+	}
+
+	_, err := exec.ExecContext(ctx, `
+		DELETE FROM user_group_rate_multipliers
+		WHERE group_id = $1
+		  AND rate_multiplier IS NULL
+		  AND visible_rate_multiplier IS NULL
+		  AND rpm_override IS NULL
+	`, groupID)
 	return err
 }
 

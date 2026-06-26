@@ -612,6 +612,10 @@ type userGroupRateBatchReader interface {
 	GetByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error)
 }
 
+type userGroupVisibleRateBatchReader interface {
+	GetVisibleByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error)
+}
+
 // NewAdminService creates a new AdminService
 func NewAdminService(
 	userRepo UserRepository,
@@ -703,7 +707,20 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 }
 
 func (s *adminServiceImpl) loadVisibleUserGroupRatesInBatch(ctx context.Context, users []User, userIDs []int64) {
-	visibleRatesByUser, err := s.userGroupRateRepo.GetVisibleByUserIDs(ctx, userIDs)
+	batchRepo, ok := s.userGroupRateRepo.(userGroupVisibleRateBatchReader)
+	if !ok {
+		for i := range users {
+			visibleRates, err := s.userGroupRateRepo.GetVisibleByUserID(ctx, users[i].ID)
+			if err != nil {
+				logger.LegacyPrintf("service.admin", "failed to load user visible group rates: user_id=%d err=%v", users[i].ID, err)
+				continue
+			}
+			users[i].VisibleGroupRates = visibleRates
+		}
+		return
+	}
+
+	visibleRatesByUser, err := batchRepo.GetVisibleByUserIDs(ctx, userIDs)
 	if err != nil {
 		logger.LegacyPrintf("service.admin", "failed to load user visible group rates in batch: err=%v", err)
 		for i := range users {
@@ -2537,9 +2554,6 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("duplicate user_id: %d", e.UserID))
 		}
 		seenUserIDs[e.UserID] = struct{}{}
-		if !e.RateMultiplierSet && !e.VisibleRateMultiplierSet {
-			return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", fmt.Sprintf("rate_multiplier or visible_rate_multiplier is required (user_id=%d)", e.UserID))
-		}
 		if e.RateMultiplier != nil {
 			if err := validateGroupRateMultiplierBasic(*e.RateMultiplier, e.UserID); err != nil {
 				return err

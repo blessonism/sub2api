@@ -38,19 +38,34 @@ func UserFromService(u *service.User) *User {
 	if u == nil {
 		return nil
 	}
+	return userFromServiceWithNestedMappers(u, APIKeyFromService, UserSubscriptionFromService)
+}
+
+func UserFromServiceUserVisible(u *service.User) *User {
+	if u == nil {
+		return nil
+	}
+	return userFromServiceWithNestedMappers(u, APIKeyFromServiceUserVisible, UserSubscriptionFromServiceUserVisible)
+}
+
+func userFromServiceWithNestedMappers(
+	u *service.User,
+	apiKeyMapper func(*service.APIKey) *APIKey,
+	subscriptionMapper func(*service.UserSubscription) *UserSubscription,
+) *User {
 	out := UserFromServiceShallow(u)
 	if len(u.APIKeys) > 0 {
 		out.APIKeys = make([]APIKey, 0, len(u.APIKeys))
 		for i := range u.APIKeys {
 			k := u.APIKeys[i]
-			out.APIKeys = append(out.APIKeys, *APIKeyFromService(&k))
+			out.APIKeys = append(out.APIKeys, *apiKeyMapper(&k))
 		}
 	}
 	if len(u.Subscriptions) > 0 {
 		out.Subscriptions = make([]UserSubscription, 0, len(u.Subscriptions))
 		for i := range u.Subscriptions {
 			s := u.Subscriptions[i]
-			out.Subscriptions = append(out.Subscriptions, *UserSubscriptionFromService(&s))
+			out.Subscriptions = append(out.Subscriptions, *subscriptionMapper(&s))
 		}
 	}
 	return out
@@ -79,6 +94,17 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
 	}
+	return apiKeyFromServiceWithGroupMapper(k, GroupFromServiceShallow)
+}
+
+func APIKeyFromServiceUserVisible(k *service.APIKey) *APIKey {
+	if k == nil {
+		return nil
+	}
+	return apiKeyFromServiceWithGroupMapper(k, GroupFromServiceUserVisible)
+}
+
+func apiKeyFromServiceWithGroupMapper(k *service.APIKey, groupMapper func(*service.Group) *Group) *APIKey {
 	out := &APIKey{
 		ID:            k.ID,
 		UserID:        k.UserID,
@@ -104,7 +130,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window1dStart: k.Window1dStart,
 		Window7dStart: k.Window7dStart,
 		User:          UserFromServiceShallow(k.User),
-		Group:         GroupFromServiceShallow(k.Group),
+		Group:         groupMapper(k.Group),
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
@@ -141,6 +167,7 @@ func GroupFromServiceUserVisible(g *service.Group) *Group {
 		return nil
 	}
 	out := groupFromServiceBase(g)
+	out.RateMultiplier = g.VisibleEffectiveRateMultiplier()
 	out.VisibleRateMultiplier = nil
 	return &out
 }
@@ -641,9 +668,9 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		BillingMode:           l.BillingMode,
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
-		APIKey:                APIKeyFromService(l.APIKey),
+		APIKey:                APIKeyFromServiceUserVisible(l.APIKey),
 		Group:                 GroupFromServiceShallow(l.Group),
-		Subscription:          UserSubscriptionFromService(l.Subscription),
+		Subscription:          UserSubscriptionFromServiceUserVisible(l.Subscription),
 	}
 	if out.Group != nil {
 		out.Group.RateMultiplier = displayRateMultiplier
@@ -747,7 +774,15 @@ func UserSubscriptionFromService(sub *service.UserSubscription) *UserSubscriptio
 	if sub == nil {
 		return nil
 	}
-	out := userSubscriptionFromServiceBase(sub)
+	out := userSubscriptionFromServiceBase(sub, GroupFromServiceShallow)
+	return &out
+}
+
+func UserSubscriptionFromServiceUserVisible(sub *service.UserSubscription) *UserSubscription {
+	if sub == nil {
+		return nil
+	}
+	out := userSubscriptionFromServiceBase(sub, GroupFromServiceUserVisible)
 	return &out
 }
 
@@ -758,7 +793,7 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 		return nil
 	}
 	return &AdminUserSubscription{
-		UserSubscription: userSubscriptionFromServiceBase(sub),
+		UserSubscription: userSubscriptionFromServiceBase(sub, GroupFromServiceShallow),
 		AssignedBy:       sub.AssignedBy,
 		AssignedAt:       sub.AssignedAt,
 		Notes:            sub.Notes,
@@ -766,7 +801,7 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 	}
 }
 
-func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscription {
+func userSubscriptionFromServiceBase(sub *service.UserSubscription, groupMapper func(*service.Group) *Group) UserSubscription {
 	return UserSubscription{
 		ID:                 sub.ID,
 		UserID:             sub.UserID,
@@ -783,7 +818,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		CreatedAt:          sub.CreatedAt,
 		UpdatedAt:          sub.UpdatedAt,
 		User:               UserFromServiceShallow(sub.User),
-		Group:              GroupFromServiceShallow(sub.Group),
+		Group:              groupMapper(sub.Group),
 	}
 }
 

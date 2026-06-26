@@ -285,6 +285,12 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 
 interface LocalEntry extends GroupRateMultiplierEntry {}
 
+type GroupRateMultiplierPayloadEntry = {
+  user_id: number
+  rate_multiplier?: number | null
+  visible_rate_multiplier?: number | null
+}
+
 const props = defineProps<{
   show: boolean
   group: AdminGroup | null
@@ -354,6 +360,33 @@ const isAllCurrentPageSelected = computed(() => {
   return paginatedLocalEntries.value.length > 0 &&
     paginatedLocalEntries.value.every(entry => selectedEntryIds.value.has(entry.user_id))
 })
+
+const buildSaveEntries = (): GroupRateMultiplierPayloadEntry[] => {
+  const localIDs = new Set(localEntries.value.map(entry => entry.user_id))
+  const localByID = new Map(localEntries.value.map(entry => [entry.user_id, entry]))
+  const serverIDs = new Set(serverEntries.value.map(entry => entry.user_id))
+  const userIDs = new Set([...serverIDs, ...localIDs])
+  const entries: GroupRateMultiplierPayloadEntry[] = []
+
+  for (const userID of userIDs) {
+    const local = localByID.get(userID)
+    const payload: GroupRateMultiplierPayloadEntry = { user_id: userID }
+    if (!local) {
+      payload.rate_multiplier = null
+      payload.visible_rate_multiplier = null
+    } else {
+      if (!serverIDs.has(userID) || changedRateEntryIds.value.has(userID)) {
+        payload.rate_multiplier = local.rate_multiplier ?? null
+      }
+      if (!serverIDs.has(userID) || changedVisibleRateEntryIds.value.has(userID)) {
+        payload.visible_rate_multiplier = local.visible_rate_multiplier ?? null
+      }
+    }
+    entries.push(payload)
+  }
+
+  return entries
+}
 
 const parseRateInput = (value: string | number | null | undefined): number | null => {
   const trimmed = String(value ?? '').trim()
@@ -605,13 +638,7 @@ const handleSave = async () => {
   if (!props.group) return
   saving.value = true
   try {
-    const entries = localEntries.value
-      .filter(e => e.rate_multiplier != null || e.visible_rate_multiplier != null)
-      .map(e => ({
-        user_id: e.user_id,
-        rate_multiplier: e.rate_multiplier ?? null,
-        visible_rate_multiplier: e.visible_rate_multiplier ?? null
-      }))
+    const entries = buildSaveEntries()
     if (entries.some(e => changedRateEntryIds.value.has(e.user_id) && e.rate_multiplier != null && !isRateInputValid(String(e.rate_multiplier)))) {
       appStore.showError(t('admin.groups.invalidRateMultiplier'))
       return

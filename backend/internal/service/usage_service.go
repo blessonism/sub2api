@@ -361,12 +361,11 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 	}
 
 	myRank := usagestats.UserTokenLeaderboardItem{
-		Rank:                   0,
-		MaskedEmail:            "***",
-		Requests:               0,
-		Tokens:                 0,
-		DiscountRateMultiplier: 1,
-		IsCurrentUser:          true,
+		Rank:          0,
+		MaskedEmail:   "***",
+		Requests:      0,
+		Tokens:        0,
+		IsCurrentUser: true,
 	}
 	if rows.MyRank != nil {
 		myRank = userTokenLeaderboardPublicItem(*rows.MyRank, userID)
@@ -400,9 +399,9 @@ func userTokenLeaderboardPublicItem(row usagestats.UserTokenLeaderboardRow, curr
 	}
 }
 
-func normalizeLeaderboardRateMultiplier(value float64) float64 {
-	if value <= 0 {
-		return 1
+func normalizeLeaderboardRateMultiplier(value *float64) *float64 {
+	if value == nil || *value <= 0 {
+		return nil
 	}
 	return value
 }

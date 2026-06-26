@@ -167,7 +167,7 @@ describe('LeaderboardView', () => {
         masked_email: 'm***e@example.com',
         requests: 0,
         tokens: 0,
-        discount_rate_multiplier: 1,
+        discount_rate_multiplier: null,
         is_current_user: true,
       },
       start_date: '2026-06-18',
@@ -181,6 +181,7 @@ describe('LeaderboardView', () => {
 
     expect(wrapper.get('[data-testid="empty"]').text()).toContain('No usage today')
     expect(wrapper.text()).toContain('Unranked')
+    expect(wrapper.text()).toContain('-')
   })
 
   it('switches to weekly leaderboard and updates empty copy', async () => {
@@ -216,7 +217,7 @@ describe('LeaderboardView', () => {
           masked_email: 'm***e@example.com',
           requests: 0,
           tokens: 0,
-          discount_rate_multiplier: 1,
+          discount_rate_multiplier: null,
           is_current_user: true,
         },
         start_date: '2026-06-15',
@@ -245,6 +246,7 @@ describe('LeaderboardView', () => {
           masked_email: 'm***e@example.com',
           requests: 0,
           tokens: 0,
+          discount_rate_multiplier: null,
           is_current_user: true,
         },
         start_date: '2026-06-20',
@@ -259,6 +261,7 @@ describe('LeaderboardView', () => {
           masked_email: 'm***e@example.com',
           requests: 0,
           tokens: 0,
+          discount_rate_multiplier: null,
           is_current_user: true,
         },
         start_date: '2026-06-14',
