@@ -122,6 +122,7 @@ func registerTokenUsagePolicyRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		policies.DELETE("/:id", h.Admin.TokenUsagePolicy.Delete)
 		policies.POST("/:id/preview", h.Admin.TokenUsagePolicy.Preview)
 		policies.POST("/:id/run", h.Admin.TokenUsagePolicy.Run)
+		policies.POST("/:id/clear", h.Admin.TokenUsagePolicy.Clear)
 		policies.GET("/:id/runs", h.Admin.TokenUsagePolicy.ListRuns)
 		policies.GET("/:id/runs/:run_id/changes", h.Admin.TokenUsagePolicy.ListRunChanges)
 	}

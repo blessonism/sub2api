@@ -805,17 +805,8 @@ describe('user UsageView tooltip', () => {
     setupState.calibrationDialogVisible = true
     await nextTick()
 
-    const reason = document.body.querySelector<HTMLTextAreaElement>(
-      'textarea[placeholder="usage.adminCalibrationReasonPlaceholder"]',
-    )
     const numberInputs = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="number"]'))
-    expect(reason).not.toBeNull()
     expect(numberInputs.length).toBeGreaterThanOrEqual(2)
-
-    reason!.value = 'manual audit'
-    reason!.dispatchEvent(new Event('input', { bubbles: true }))
-    await nextTick()
-    expect(setupState.calibrationDialogVisible).toBe(true)
 
     numberInputs[0].value = '1000'
     numberInputs[0].dispatchEvent(new Event('input', { bubbles: true }))

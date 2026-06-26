@@ -80,7 +80,6 @@ export interface AdminUsageBalanceCalibrationInput {
 
 export interface CreateAdminUsageCalibrationRequest {
   target_user_id: number
-  reason: string
   token?: AdminUsageTokenCalibrationInput
   balance?: AdminUsageBalanceCalibrationInput
 }
@@ -99,7 +98,7 @@ export interface AdminUsageCalibration {
   id: number
   target_user_id: number
   admin_user_id: number
-  reason: string
+  reason?: string
   token_mode?: AdminUsageCalibrationMode
   token_input_value?: number
   token_before_value?: number

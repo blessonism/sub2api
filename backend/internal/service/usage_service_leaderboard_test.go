@@ -42,6 +42,57 @@ func (s *usageLeaderboardUserRepoStub) GetByID(ctx context.Context, id int64) (*
 	return &clone, nil
 }
 
+type usageStatsRepoStub struct {
+	UsageLogRepository
+
+	stats          *usagestats.UsageStats
+	dashboardStats *usagestats.UserDashboardStats
+}
+
+func (s *usageStatsRepoStub) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	return s.stats, nil
+}
+
+func (s *usageStatsRepoStub) GetUserDashboardStats(ctx context.Context, userID int64) (*usagestats.UserDashboardStats, error) {
+	return s.dashboardStats, nil
+}
+
+type usageCalibrationRepoStub struct {
+	AdminUsageCalibrationRepository
+
+	tokenDelta   int64
+	balanceSpent map[string]float64
+}
+
+func (s *usageCalibrationRepoStub) SumTokenAllocations(ctx context.Context, userID int64, startDate, endDateExclusive string) (int64, error) {
+	return s.tokenDelta, nil
+}
+
+func (s *usageCalibrationRepoStub) SumAllTokenAllocations(ctx context.Context, startDate, endDateExclusive string) (int64, error) {
+	return s.tokenDelta, nil
+}
+
+func (s *usageCalibrationRepoStub) SumTokenAllocationsByDate(ctx context.Context, userID int64, startDate, endDateExclusive string) (map[string]int64, error) {
+	return nil, nil
+}
+
+func (s *usageCalibrationRepoStub) SumBalanceSpent(ctx context.Context, userID int64, startTime, endTime time.Time) (float64, error) {
+	if s.balanceSpent == nil {
+		return 0, nil
+	}
+	if startTime.IsZero() && endTime.IsZero() {
+		return s.balanceSpent["total"], nil
+	}
+	if !startTime.IsZero() && !endTime.IsZero() && endTime.Sub(startTime) == 24*time.Hour {
+		return s.balanceSpent["today"], nil
+	}
+	return s.balanceSpent["range"], nil
+}
+
+func (s *usageCalibrationRepoStub) SumBalanceSpentByUsers(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]float64, error) {
+	return nil, nil
+}
+
 func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
@@ -82,6 +133,51 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(payload), "alpha@example.com")
 	require.NotContains(t, string(payload), "current@example.com")
+}
+
+func TestUsageServiceGetStatsByUserIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+	start := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	repo := &usageStatsRepoStub{
+		stats: &usagestats.UsageStats{
+			TotalTokens:     100,
+			TotalActualCost: 1.25,
+		},
+	}
+	calibrationRepo := &usageCalibrationRepoStub{
+		balanceSpent: map[string]float64{"range": 2.5},
+	}
+	svc := NewUsageService(repo, nil, nil, nil)
+	svc.SetAdminUsageCalibrationRepository(calibrationRepo)
+
+	got, err := svc.GetStatsByUser(context.Background(), 7, start, end)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(100), got.TotalTokens)
+	require.InDelta(t, 3.75, got.TotalActualCost, 1e-9)
+}
+
+func TestUsageServiceGetUserDashboardStatsIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+	repo := &usageStatsRepoStub{
+		dashboardStats: &usagestats.UserDashboardStats{
+			TotalActualCost: 10,
+			TodayActualCost: 1,
+		},
+	}
+	calibrationRepo := &usageCalibrationRepoStub{
+		balanceSpent: map[string]float64{
+			"total": 3.25,
+			"today": 0.75,
+		},
+	}
+	svc := NewUsageService(repo, nil, nil, nil)
+	svc.SetAdminUsageCalibrationRepository(calibrationRepo)
+
+	got, err := svc.GetUserDashboardStats(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.InDelta(t, 13.25, got.TotalActualCost, 1e-9)
+	require.InDelta(t, 1.75, got.TodayActualCost, 1e-9)
 }
 
 func TestUsageServiceGetUserTokenLeaderboardReturnsZeroRankWhenCurrentUserHasNoUsage(t *testing.T) {
