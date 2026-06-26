@@ -16,11 +16,14 @@
               <span class="mr-1.5 h-1.5 w-1.5 rounded-full" :class="statusDotClass"></span>
               {{ statusLabel }}
             </span>
-            <span
+            <a
+              href="https://codexradar.com/current.json"
+              target="_blank"
+              rel="noopener noreferrer"
               class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 dark:border-dark-600 dark:bg-dark-900/70 dark:text-gray-300"
             >
               {{ probeLabel }}
-            </span>
+            </a>
           </div>
           <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
             {{ t('channelStatus.modelIq.description') }}
@@ -29,15 +32,6 @@
 
         <div class="flex flex-col items-start gap-1 text-xs text-gray-500 dark:text-gray-400 lg:items-end lg:text-right">
           <div>{{ updatedLabel }}</div>
-          <a
-            href="https://codexradar.com/current.json"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-          >
-            {{ t('channelStatus.modelIq.source') }}
-            <Icon name="externalLink" size="xs" />
-          </a>
         </div>
       </div>
     </div>
