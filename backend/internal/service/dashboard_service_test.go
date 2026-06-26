@@ -16,15 +16,19 @@ import (
 
 type usageRepoStub struct {
 	UsageLogRepository
-	stats      *usagestats.DashboardStats
-	rangeStats *usagestats.DashboardStats
-	err        error
-	rangeErr   error
-	calls      int32
-	rangeCalls int32
-	rangeStart time.Time
-	rangeEnd   time.Time
-	onCall     chan struct{}
+	stats          *usagestats.DashboardStats
+	rangeStats     *usagestats.DashboardStats
+	batchUserStats map[int64]*usagestats.BatchUserUsageStats
+	err            error
+	rangeErr       error
+	calls          int32
+	rangeCalls     int32
+	rangeStart     time.Time
+	rangeEnd       time.Time
+	batchUserIDs   []int64
+	batchStart     time.Time
+	batchEnd       time.Time
+	onCall         chan struct{}
 }
 
 func (s *usageRepoStub) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -52,6 +56,43 @@ func (s *usageRepoStub) GetDashboardStatsWithRange(ctx context.Context, start, e
 		return s.rangeStats, nil
 	}
 	return s.stats, nil
+}
+
+func (s *usageRepoStub) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error) {
+	s.batchUserIDs = append([]int64(nil), userIDs...)
+	s.batchStart = startTime
+	s.batchEnd = endTime
+	return s.batchUserStats, nil
+}
+
+type dashboardCalibrationRepoStub struct {
+	AdminUsageCalibrationRepository
+
+	rangeSpent map[int64]float64
+	todaySpent map[int64]float64
+}
+
+func (s *dashboardCalibrationRepoStub) SumTokenAllocations(ctx context.Context, userID int64, startDate, endDateExclusive string) (int64, error) {
+	return 0, nil
+}
+
+func (s *dashboardCalibrationRepoStub) SumAllTokenAllocations(ctx context.Context, startDate, endDateExclusive string) (int64, error) {
+	return 0, nil
+}
+
+func (s *dashboardCalibrationRepoStub) SumTokenAllocationsByDate(ctx context.Context, userID int64, startDate, endDateExclusive string) (map[string]int64, error) {
+	return nil, nil
+}
+
+func (s *dashboardCalibrationRepoStub) SumBalanceSpent(ctx context.Context, userID int64, startTime, endTime time.Time) (float64, error) {
+	return 0, nil
+}
+
+func (s *dashboardCalibrationRepoStub) SumBalanceSpentByUsers(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]float64, error) {
+	if endTime.IsZero() && !startTime.IsZero() {
+		return s.todaySpent, nil
+	}
+	return s.rangeSpent, nil
 }
 
 type dashboardCacheStub struct {
@@ -392,4 +433,33 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&repo.rangeCalls))
 	require.False(t, repo.rangeEnd.IsZero())
 	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
+}
+
+func TestDashboardServiceGetBatchUserUsageStatsIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+	start := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	repo := &usageRepoStub{
+		batchUserStats: map[int64]*usagestats.BatchUserUsageStats{
+			7: {
+				UserID:          7,
+				TotalActualCost: 10,
+				TodayActualCost: 1,
+			},
+		},
+	}
+	calibrationRepo := &dashboardCalibrationRepoStub{
+		rangeSpent: map[int64]float64{7: 2.5},
+		todaySpent: map[int64]float64{7: 0.75},
+	}
+	svc := NewDashboardService(repo, nil, nil, &config.Config{})
+	svc.SetAdminUsageCalibrationRepository(calibrationRepo)
+
+	got, err := svc.GetBatchUserUsageStats(context.Background(), []int64{7}, start, end)
+
+	require.NoError(t, err)
+	require.InDelta(t, 12.5, got[7].TotalActualCost, 1e-9)
+	require.InDelta(t, 1.75, got[7].TodayActualCost, 1e-9)
+	require.Equal(t, []int64{7}, repo.batchUserIDs)
+	require.Equal(t, start, repo.batchStart)
+	require.Equal(t, end, repo.batchEnd)
 }

@@ -67,7 +67,6 @@ type CreateUsageCleanupTaskRequest struct {
 
 type CreateAdminUsageCalibrationRequest struct {
 	TargetUserID int64                                      `json:"target_user_id"`
-	Reason       string                                     `json:"reason"`
 	Token        *service.AdminUsageTokenCalibrationInput   `json:"token,omitempty"`
 	Balance      *service.AdminUsageBalanceCalibrationInput `json:"balance,omitempty"`
 }
@@ -495,7 +494,6 @@ func (h *UsageHandler) CreateCalibration(c *gin.Context) {
 	input := service.AdminUsageCalibrationCreateInput{
 		TargetUserID: req.TargetUserID,
 		AdminUserID:  subject.UserID,
-		Reason:       req.Reason,
 		Token:        req.Token,
 		Balance:      req.Balance,
 	}

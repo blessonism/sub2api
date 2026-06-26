@@ -213,7 +213,7 @@ func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTi
 		TotalActualCost:          stats.TotalActualCost,
 		AverageDurationMs:        stats.AverageDurationMs,
 	}
-	if err := s.applyTokenCalibrationToUsageStats(ctx, userID, startTime, endTime, out); err != nil {
+	if err := s.applyCalibrationToUsageStats(ctx, userID, startTime, endTime, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -309,7 +309,7 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("get user dashboard stats: %w", err)
 	}
-	if err := s.applyTokenCalibrationToUserDashboardStats(ctx, userID, stats); err != nil {
+	if err := s.applyCalibrationToUserDashboardStats(ctx, userID, stats); err != nil {
 		return nil, err
 	}
 	return stats, nil
@@ -473,30 +473,34 @@ func (s *UsageService) GetStatsWithFilters(ctx context.Context, filters usagesta
 		return nil, fmt.Errorf("get usage stats with filters: %w", err)
 	}
 	if s.shouldApplyTokenCalibrationToFilters(filters) {
-		if err := s.applyTokenCalibrationToFilteredStats(ctx, filters, stats); err != nil {
+		if err := s.applyCalibrationToFilteredStats(ctx, filters, stats); err != nil {
 			return nil, err
 		}
 	}
 	return stats, nil
 }
 
-func (s *UsageService) applyTokenCalibrationToUsageStats(ctx context.Context, userID int64, startTime, endTime time.Time, stats *UsageStats) error {
+func (s *UsageService) applyCalibrationToUsageStats(ctx context.Context, userID int64, startTime, endTime time.Time, stats *UsageStats) error {
 	if stats == nil || s.calibrationRepo == nil || userID <= 0 {
 		return nil
 	}
 	startDate, endDate, ok := tokenAllocationDateRange(startTime, endTime)
-	if !ok {
-		return nil
+	if ok {
+		delta, err := s.calibrationRepo.SumTokenAllocations(ctx, userID, startDate, endDate)
+		if err != nil {
+			return fmt.Errorf("sum token calibrations: %w", err)
+		}
+		addTokenDeltaToUsageStats(stats, delta)
 	}
-	delta, err := s.calibrationRepo.SumTokenAllocations(ctx, userID, startDate, endDate)
+	balanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, startTime, endTime)
 	if err != nil {
-		return fmt.Errorf("sum token calibrations: %w", err)
+		return fmt.Errorf("sum balance calibrations: %w", err)
 	}
-	addTokenDeltaToUsageStats(stats, delta)
+	stats.TotalActualCost += balanceSpent
 	return nil
 }
 
-func (s *UsageService) applyTokenCalibrationToUserDashboardStats(ctx context.Context, userID int64, stats *usagestats.UserDashboardStats) error {
+func (s *UsageService) applyCalibrationToUserDashboardStats(ctx context.Context, userID int64, stats *usagestats.UserDashboardStats) error {
 	if stats == nil || s.calibrationRepo == nil || userID <= 0 {
 		return nil
 	}
@@ -514,6 +518,16 @@ func (s *UsageService) applyTokenCalibrationToUserDashboardStats(ctx context.Con
 	}
 	stats.TodayCalibrationTokens += todayDelta
 	stats.TodayTokens += todayDelta
+	totalBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, time.Time{}, time.Time{})
+	if err != nil {
+		return fmt.Errorf("sum total balance calibrations: %w", err)
+	}
+	stats.TotalActualCost += totalBalanceSpent
+	todayBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, today, today.AddDate(0, 0, 1))
+	if err != nil {
+		return fmt.Errorf("sum today balance calibrations: %w", err)
+	}
+	stats.TodayActualCost += todayBalanceSpent
 	return nil
 }
 
@@ -562,7 +576,7 @@ func (s *UsageService) shouldApplyTokenCalibrationToFilters(filters usagestats.U
 		filters.BillingMode == ""
 }
 
-func (s *UsageService) applyTokenCalibrationToFilteredStats(ctx context.Context, filters usagestats.UsageLogFilters, stats *usagestats.UsageStats) error {
+func (s *UsageService) applyCalibrationToFilteredStats(ctx context.Context, filters usagestats.UsageLogFilters, stats *usagestats.UsageStats) error {
 	if stats == nil || s.calibrationRepo == nil {
 		return nil
 	}
@@ -575,23 +589,27 @@ func (s *UsageService) applyTokenCalibrationToFilteredStats(ctx context.Context,
 		end = *filters.EndTime
 	}
 	startDate, endDate, ok := tokenAllocationDateRange(start, end)
-	if !ok {
-		return nil
+	if ok {
+		var (
+			delta int64
+			err   error
+		)
+		if filters.UserID > 0 {
+			delta, err = s.calibrationRepo.SumTokenAllocations(ctx, filters.UserID, startDate, endDate)
+		} else {
+			delta, err = s.calibrationRepo.SumAllTokenAllocations(ctx, startDate, endDate)
+		}
+		if err != nil {
+			return fmt.Errorf("sum token calibrations for filtered stats: %w", err)
+		}
+		stats.CalibrationTokens += delta
+		stats.TotalTokens += delta
 	}
-	var (
-		delta int64
-		err   error
-	)
-	if filters.UserID > 0 {
-		delta, err = s.calibrationRepo.SumTokenAllocations(ctx, filters.UserID, startDate, endDate)
-	} else {
-		delta, err = s.calibrationRepo.SumAllTokenAllocations(ctx, startDate, endDate)
-	}
+	balanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, filters.UserID, start, end)
 	if err != nil {
-		return fmt.Errorf("sum token calibrations for filtered stats: %w", err)
+		return fmt.Errorf("sum balance calibrations for filtered stats: %w", err)
 	}
-	stats.CalibrationTokens += delta
-	stats.TotalTokens += delta
+	stats.TotalActualCost += balanceSpent
 	return nil
 }
 
