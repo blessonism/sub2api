@@ -11,6 +11,7 @@
     />
 
     <MonitorCardGrid
+      v-if="items.length > 0 || loading"
       :items="items"
       :window="currentWindow"
       :countdown-seconds="countdown"

@@ -26,6 +26,7 @@ export interface GptIntelligenceComparison {
   model: string
   reasoning_effort: string
   latest: GptIntelligenceRun | null
+  recent_days: GptIntelligenceRun[]
 }
 
 export interface GptIntelligenceQuotaRadar {
@@ -130,6 +131,9 @@ function parseComparisons(value: unknown): GptIntelligenceComparison[] {
         model: readString(raw.model),
         reasoning_effort: readString(raw.reasoning_effort),
         latest: parseRun(raw.latest),
+        recent_days: Array.isArray(raw.recent_days)
+          ? raw.recent_days.map(parseRun).filter((item): item is GptIntelligenceRun => item !== null)
+          : [],
       }
     })
     .filter((item): item is GptIntelligenceComparison => item !== null)

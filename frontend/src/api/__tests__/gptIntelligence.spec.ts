@@ -29,6 +29,10 @@ const payload = {
         model: 'gpt-5.5',
         reasoning_effort: 'high',
         latest: { date: '2026-06-24-pm', score: 87.5, status: 'yellow', passed: 7, tasks: 12 },
+        recent_days: [
+          { date: '2026-06-23', score: 100, status: 'green', passed: 8, tasks: 12 },
+          { date: '2026-06-24-pm', score: 87.5, status: 'yellow', passed: 7, tasks: 12 },
+        ],
       },
     },
     quota_radar: {
@@ -58,6 +62,8 @@ describe('parseGptIntelligenceSnapshot', () => {
       key: 'gpt_55_high',
       label: 'GPT-5.5 high',
     })
+    expect(snapshot.comparisons[0]?.recent_days).toHaveLength(2)
+    expect(snapshot.comparisons[0]?.recent_days[0]?.score).toBe(100)
     expect(snapshot.quota_radar?.basis_window_label).toBe('5h')
   })
 
