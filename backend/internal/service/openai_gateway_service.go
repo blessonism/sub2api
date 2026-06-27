@@ -252,6 +252,7 @@ type OpenAIForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	ActualCost         float64
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -6037,6 +6038,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
+		result.ActualCost = cost.ActualCost
 	}
 	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier

@@ -83,6 +83,9 @@ func RegisterAdminRoutes(
 		// 上游渠道真实成本校准
 		registerUpstreamCostCalibrationRoutes(admin, h)
 
+		// OpenAI 对话历史
+		registerConversationRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -109,6 +112,32 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerConversationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	conversations := admin.Group("/conversations")
+	{
+		conversations.GET("/config", h.Admin.Conversation.GetConfig)
+		conversations.PUT("/config", h.Admin.Conversation.UpdateConfig)
+		conversations.GET("/sessions", h.Admin.Conversation.ListSessions)
+		conversations.GET("/sessions/:id", h.Admin.Conversation.GetSession)
+		conversations.GET("/sessions/:id/turns", h.Admin.Conversation.ListSessionTurns)
+		conversations.GET("/turns/:id", h.Admin.Conversation.GetTurn)
+		conversations.PUT("/sessions/:id/exportable", h.Admin.Conversation.SetSessionExportable)
+		conversations.PUT("/turns/:id/exportable", h.Admin.Conversation.SetTurnExportable)
+		conversations.PUT("/sessions/:id/quality", h.Admin.Conversation.SetSessionQuality)
+		conversations.PUT("/turns/:id/quality", h.Admin.Conversation.SetTurnQuality)
+		conversations.PUT("/quality/bulk", h.Admin.Conversation.BulkSetQuality)
+		conversations.POST("/sessions/merge", h.Admin.Conversation.MergeSessions)
+		conversations.POST("/sessions/:id/split", h.Admin.Conversation.SplitSession)
+		conversations.POST("/turns/:id/move", h.Admin.Conversation.MoveTurn)
+		conversations.POST("/export/messages-jsonl", h.Admin.Conversation.ExportMessagesJSONL)
+		conversations.POST("/export-jobs", h.Admin.Conversation.CreateExportJob)
+		conversations.GET("/export-jobs", h.Admin.Conversation.ListExportJobs)
+		conversations.GET("/export-jobs/:id", h.Admin.Conversation.GetExportJob)
+		conversations.POST("/export-jobs/:id/download-ticket", h.Admin.Conversation.CreateExportDownloadTicket)
+		conversations.DELETE("/export-jobs/:id", h.Admin.Conversation.DeleteExportJob)
 	}
 }
 

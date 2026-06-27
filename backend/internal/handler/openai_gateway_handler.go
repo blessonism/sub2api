@@ -28,17 +28,18 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	gatewayService           *service.OpenAIGatewayService
-	billingCacheService      *service.BillingCacheService
-	apiKeyService            *service.APIKeyService
-	usageRecordWorkerPool    *service.UsageRecordWorkerPool
-	errorPassthroughService  *service.ErrorPassthroughService
-	contentModerationService *service.ContentModerationService
-	opsService               *service.OpsService
-	concurrencyHelper        *ConcurrencyHelper
-	imageLimiter             *imageConcurrencyLimiter
-	maxAccountSwitches       int
-	cfg                      *config.Config
+	gatewayService             *service.OpenAIGatewayService
+	billingCacheService        *service.BillingCacheService
+	apiKeyService              *service.APIKeyService
+	usageRecordWorkerPool      *service.UsageRecordWorkerPool
+	errorPassthroughService    *service.ErrorPassthroughService
+	contentModerationService   *service.ContentModerationService
+	conversationCaptureService *service.ConversationCaptureService
+	opsService                 *service.OpsService
+	concurrencyHelper          *ConcurrencyHelper
+	imageLimiter               *imageConcurrencyLimiter
+	maxAccountSwitches         int
+	cfg                        *config.Config
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -106,6 +107,7 @@ func NewOpenAIGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
+	conversationCaptureService *service.ConversationCaptureService,
 	opsService *service.OpsService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
@@ -118,17 +120,18 @@ func NewOpenAIGatewayHandler(
 		}
 	}
 	return &OpenAIGatewayHandler{
-		gatewayService:           gatewayService,
-		billingCacheService:      billingCacheService,
-		apiKeyService:            apiKeyService,
-		usageRecordWorkerPool:    usageRecordWorkerPool,
-		errorPassthroughService:  errorPassthroughService,
-		contentModerationService: contentModerationService,
-		opsService:               opsService,
-		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		imageLimiter:             &imageConcurrencyLimiter{},
-		maxAccountSwitches:       maxAccountSwitches,
-		cfg:                      cfg,
+		gatewayService:             gatewayService,
+		billingCacheService:        billingCacheService,
+		apiKeyService:              apiKeyService,
+		usageRecordWorkerPool:      usageRecordWorkerPool,
+		errorPassthroughService:    errorPassthroughService,
+		contentModerationService:   contentModerationService,
+		conversationCaptureService: conversationCaptureService,
+		opsService:                 opsService,
+		concurrencyHelper:          NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		imageLimiter:               &imageConcurrencyLimiter{},
+		maxAccountSwitches:         maxAccountSwitches,
+		cfg:                        cfg,
 	}
 }
 
@@ -497,6 +500,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		conversationID := strings.TrimSpace(c.GetHeader("X-Conversation-ID"))
+		clientRequestID := clientRequestIDFromContext(c.Request.Context())
+		var captureState *conversationCaptureState
+		if value, ok := c.Get(conversationCaptureStateKey); ok {
+			captureState, _ = value.(*conversationCaptureState)
+		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
@@ -524,6 +533,29 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.record_usage_failed", zap.Error(err))
+				return
+			}
+			if !cyberBlocked && result != nil {
+				publishConversationCaptureMetaToState(captureState, service.ConversationCaptureMeta{
+					RequestID:          firstNonEmptyString(result.RequestID, clientRequestID),
+					UpstreamRequestID:  result.RequestID,
+					ClientRequestID:    clientRequestID,
+					ConversationID:     conversationID,
+					ResponseID:         result.ResponseID,
+					PreviousResponseID: previousResponseID,
+					EndpointKind:       service.ConversationCaptureEndpointResponses,
+					UserID:             subject.UserID,
+					APIKeyID:           apiKey.ID,
+					AccountID:          account.ID,
+					Model:              reqModel,
+					UpstreamModel:      result.UpstreamModel,
+					RequestPath:        inboundEndpoint,
+					Stream:             reqStream,
+					Usage:              result.Usage,
+					ActualCost:         result.ActualCost,
+					RequestBody:        append([]byte(nil), body...),
+					ClientDisconnect:   result.ClientDisconnect,
+				})
 			}
 		})
 		reqLog.Debug("openai.request_completed",
