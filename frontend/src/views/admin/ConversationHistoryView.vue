@@ -1,21 +1,15 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.title') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.description') }}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button class="btn btn-secondary inline-flex items-center gap-2" type="button" @click="loadAll">
-            <Icon name="refresh" size="sm" />
-            {{ t('common.refresh') }}
-          </button>
-          <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="exporting" @click="exportJSONL">
-            <Icon name="download" size="sm" />
-            {{ exporting ? t('admin.conversations.exporting') : t('admin.conversations.exportJsonl') }}
-          </button>
-        </div>
+      <div class="flex flex-wrap justify-end gap-2">
+        <button class="btn btn-secondary inline-flex items-center gap-2" type="button" @click="loadAll">
+          <Icon name="refresh" size="sm" />
+          {{ t('common.refresh') }}
+        </button>
+        <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="exporting" @click="exportJSONL">
+          <Icon name="download" size="sm" />
+          {{ exporting ? t('admin.conversations.exporting') : t('admin.conversations.exportJsonl') }}
+        </button>
       </div>
 
       <section class="card p-4">
