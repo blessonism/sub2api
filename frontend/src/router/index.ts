@@ -451,6 +451,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/upstream-relay-group-monitoring',
+    name: 'AdminUpstreamRelayGroupMonitoring',
+    component: () => import('@/views/admin/UpstreamRelayGroupMonitoringView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Upstream Relay Group Monitoring',
+      titleKey: 'admin.upstreamRelayGroupMonitoring.title',
+      descriptionKey: 'admin.upstreamRelayGroupMonitoring.description'
+    }
+  },
+  {
     path: '/admin/balance-redemption',
     name: 'AdminBalanceRedemption',
     component: () => import('@/views/admin/BalanceRedemptionView.vue'),
