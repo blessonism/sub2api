@@ -382,6 +382,7 @@ export default {
     tokenUsagePolicies: 'Token 自动策略',
     conversations: '对话历史',
     upstreamCostCalibrations: '成本校准',
+    balanceRedemption: '余额与兑换',
     balanceSummary: '余额汇总',
     leaderboard: '排行榜',
     redeem: '兑换',
@@ -2023,6 +2024,15 @@ export default {
         running: '运行中',
         success: '成功',
         failed: '失败'
+      }
+    },
+
+    balanceRedemption: {
+      title: '余额与兑换',
+      description: '统一查看用户余额汇总与全站兑换流水',
+      tabs: {
+        balanceSummary: '余额汇总',
+        redeemRecords: '兑换记录'
       }
     },
 

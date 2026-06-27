@@ -49,10 +49,11 @@ describe('AppSidebar admin token leaderboard entry', () => {
   })
 })
 
-describe('AppSidebar admin balance summary entry', () => {
-  it('keeps the balance summary as an admin-only navigation item', () => {
-    expect(componentSource).toContain("path: '/admin/balance-summary'")
-    expect(componentSource).toContain("label: t('nav.balanceSummary')")
+describe('AppSidebar admin balance redemption entry', () => {
+  it('keeps balance and redeem records behind one admin navigation item', () => {
+    expect(componentSource).toContain("path: '/admin/balance-redemption'")
+    expect(componentSource).toContain("label: t('nav.balanceRedemption')")
+    expect(componentSource).not.toContain("path: '/admin/redeem-records'")
   })
 })
 

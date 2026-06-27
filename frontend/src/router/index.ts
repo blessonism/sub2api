@@ -451,16 +451,20 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/balance-summary',
-    name: 'AdminBalanceSummary',
-    component: () => import('@/views/admin/BalanceSummaryView.vue'),
+    path: '/admin/balance-redemption',
+    name: 'AdminBalanceRedemption',
+    component: () => import('@/views/admin/BalanceRedemptionView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Balance Summary',
-      titleKey: 'admin.balanceSummary.title',
-      descriptionKey: 'admin.balanceSummary.description'
+      title: 'Balance & Redeem',
+      titleKey: 'admin.balanceRedemption.title',
+      descriptionKey: 'admin.balanceRedemption.description'
     }
+  },
+  {
+    path: '/admin/balance-summary',
+    redirect: '/admin/balance-redemption'
   },
   {
     path: '/admin/ops',
@@ -599,15 +603,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/redeem-records',
-    name: 'AdminRedeemRecords',
-    component: () => import('@/views/admin/RedeemRecordsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Redeem Records',
-      titleKey: 'admin.redeemRecords.title',
-      descriptionKey: 'admin.redeemRecords.description'
-    }
+    redirect: { path: '/admin/balance-redemption', query: { tab: 'redeem-records' } }
   },
   {
     path: '/admin/promo-codes',
@@ -930,12 +926,14 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
-      '/admin/redeem-records',
       '/subscriptions',
       '/redeem'
     ]
 
-    if (restrictedPaths.some((path) => to.path.startsWith(path))) {
+    const restrictedBalanceRedemptionTab =
+      to.path === '/admin/balance-redemption' && to.query.tab === 'redeem-records'
+
+    if (restrictedBalanceRedemptionTab || restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return

@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <component :is="layoutComponent">
     <div class="space-y-6">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -232,7 +232,7 @@
         @action="refreshSummary"
       />
     </div>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -251,6 +251,14 @@ import type {
 } from '@/api/admin/dashboard'
 import type { AdminUser } from '@/types'
 import { formatNumber } from '@/utils/format'
+
+const props = withDefaults(defineProps<{
+  embedded?: boolean
+}>(), {
+  embedded: false
+})
+
+const layoutComponent = computed(() => props.embedded ? 'div' : AppLayout)
 
 type MetricTone = 'blue' | 'emerald' | 'amber' | 'slate'
 type MetricIconName = 'dollar' | 'users' | 'user' | 'calculator'

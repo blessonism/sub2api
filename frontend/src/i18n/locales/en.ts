@@ -382,6 +382,7 @@ export default {
     tokenUsagePolicies: 'Token Auto Policies',
     conversations: 'Conversations',
     upstreamCostCalibrations: 'Cost Calibration',
+    balanceRedemption: 'Balance & Redeem',
     balanceSummary: 'Balance Summary',
     leaderboard: 'Leaderboard',
     redeem: 'Redeem',
@@ -2002,6 +2003,15 @@ export default {
         running: 'Running',
         success: 'Success',
         failed: 'Failed'
+      }
+    },
+
+    balanceRedemption: {
+      title: 'Balance & Redeem',
+      description: 'Review user balance summaries and global redeem activity in one place',
+      tabs: {
+        balanceSummary: 'Balance Summary',
+        redeemRecords: 'Redeem Records'
       }
     },
 
