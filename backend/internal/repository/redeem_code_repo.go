@@ -18,6 +18,14 @@ type redeemCodeRepository struct {
 	client *dbent.Client
 }
 
+var redeemHistoryTypes = []string{
+	service.RedeemTypeBalance,
+	service.AdjustmentTypeAdminBalance,
+	service.RedeemTypeConcurrency,
+	service.AdjustmentTypeAdminConcurrency,
+	service.RedeemTypeSubscription,
+}
+
 func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository {
 	return &redeemCodeRepository{client: client}
 }
@@ -380,6 +388,39 @@ func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID i
 		Offset(params.Offset()).
 		Limit(params.Limit()).
 		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return redeemCodeEntitiesToService(codes), paginationResultFromTotal(int64(total), params), nil
+}
+
+// ListUsedPaginated 只返回全局已使用/已生效的兑换记录。
+// 这里刻意排除未使用、已过期和已禁用的兑换码库存记录。
+func (r *redeemCodeRepository) ListUsedPaginated(ctx context.Context, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	q := r.client.RedeemCode.Query().
+		Where(
+			redeemcode.StatusEQ(service.StatusUsed),
+			redeemcode.UsedByNotNil(),
+			redeemcode.TypeIn(redeemHistoryTypes...),
+		)
+
+	if codeType != "" {
+		q = q.Where(redeemcode.TypeEQ(codeType))
+	}
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	codes, err := q.
+		WithUser().
+		WithGroup().
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, err
