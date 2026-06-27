@@ -50,6 +50,8 @@ type AdminService interface {
 	// codeType is optional - pass empty string to return all types.
 	// Also returns totalRecharged (sum of all positive balance top-ups).
 	GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error)
+	// GetGlobalBalanceHistory 返回分页的全局已使用/已生效兑换记录。
+	GetGlobalBalanceHistory(ctx context.Context, page, pageSize int, codeType string) ([]RedeemCode, int64, error)
 	BindUserAuthIdentity(ctx context.Context, userID int64, input AdminBindAuthIdentityInput) (*AdminBoundAuthIdentity, error)
 
 	// Group management
@@ -1399,6 +1401,102 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	return codes, total, totalRecharged, nil
 }
 
+// GetGlobalBalanceHistory 返回后台全局时间流使用的已使用/已生效记录。
+func (s *adminServiceImpl) GetGlobalBalanceHistory(ctx context.Context, page, pageSize int, codeType string) ([]RedeemCode, int64, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	if codeType == RedeemTypeAffiliateBalance {
+		return s.listGlobalAffiliateBalanceHistory(ctx, params)
+	}
+
+	if codeType == "" {
+		return s.getAllGlobalBalanceHistory(ctx, params)
+	}
+
+	codes, result, err := s.redeemCodeRepo.ListUsedPaginated(ctx, params, codeType)
+	if err != nil {
+		return nil, 0, err
+	}
+	total := int64(0)
+	if result != nil {
+		total = result.Total
+	}
+	return codes, total, nil
+}
+
+func (s *adminServiceImpl) getAllGlobalBalanceHistory(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, int64, error) {
+	needed := params.Offset() + params.Limit()
+	if needed < params.Limit() {
+		needed = params.Limit()
+	}
+
+	redeemCodes, redeemTotal, err := s.listGlobalRedeemBalanceHistoryForMerge(ctx, needed)
+	if err != nil {
+		return nil, 0, err
+	}
+	affiliateCodes, affiliateTotal, err := s.listGlobalAffiliateBalanceHistoryForMerge(ctx, needed)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, params), redeemTotal + affiliateTotal, nil
+}
+
+func (s *adminServiceImpl) listGlobalRedeemBalanceHistoryForMerge(ctx context.Context, needed int) ([]RedeemCode, int64, error) {
+	if needed <= 0 {
+		return nil, 0, nil
+	}
+
+	var (
+		out   []RedeemCode
+		total int64
+	)
+	for page := 1; len(out) < needed; page++ {
+		params := pagination.PaginationParams{Page: page, PageSize: 1000}
+		codes, result, err := s.redeemCodeRepo.ListUsedPaginated(ctx, params, "")
+		if err != nil {
+			return nil, 0, err
+		}
+		if result != nil {
+			total = result.Total
+		}
+		out = append(out, codes...)
+		if len(codes) < params.Limit() || int64(len(out)) >= total {
+			break
+		}
+	}
+	if len(out) > needed {
+		out = out[:needed]
+	}
+	return out, total, nil
+}
+
+func (s *adminServiceImpl) listGlobalAffiliateBalanceHistoryForMerge(ctx context.Context, needed int) ([]RedeemCode, int64, error) {
+	if needed <= 0 {
+		return nil, 0, nil
+	}
+
+	var (
+		out   []RedeemCode
+		total int64
+	)
+	for page := 1; len(out) < needed; page++ {
+		params := pagination.PaginationParams{Page: page, PageSize: 1000}
+		codes, currentTotal, err := s.listGlobalAffiliateBalanceHistory(ctx, params)
+		if err != nil {
+			return nil, 0, err
+		}
+		total = currentTotal
+		out = append(out, codes...)
+		if len(codes) < params.Limit() || int64(len(out)) >= total {
+			break
+		}
+	}
+	if len(out) > needed {
+		out = out[:needed]
+	}
+	return out, total, nil
+}
+
 func (s *adminServiceImpl) getAllUserBalanceHistory(ctx context.Context, userID int64, params pagination.PaginationParams) ([]RedeemCode, int64, float64, error) {
 	needed := params.Offset() + params.Limit()
 	if needed < params.Limit() {
@@ -1530,12 +1628,134 @@ LIMIT $3`, userID, params.Offset(), params.Limit())
 	return codes, total, nil
 }
 
+func (s *adminServiceImpl) listGlobalAffiliateBalanceHistory(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, int64, error) {
+	if s == nil || s.entClient == nil {
+		return nil, 0, nil
+	}
+
+	rows, err := s.entClient.QueryContext(ctx, `
+SELECT l.id,
+       l.user_id,
+       l.amount::double precision,
+       l.created_at,
+       u.email,
+       COALESCE(u.username, ''),
+       u.role,
+       u.balance::double precision,
+       u.concurrency,
+       u.status,
+       u.created_at,
+       u.updated_at
+FROM user_affiliate_ledger l
+JOIN users u ON u.id = l.user_id
+WHERE l.action = 'transfer'
+ORDER BY l.created_at DESC, l.id DESC
+OFFSET $1
+LIMIT $2`, params.Offset(), params.Limit())
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	codes := make([]RedeemCode, 0, params.Limit())
+	for rows.Next() {
+		var (
+			id            int64
+			userID        int64
+			amount        float64
+			createdAt     time.Time
+			email         string
+			username      string
+			role          string
+			balance       float64
+			concurrency   int
+			status        string
+			userCreatedAt time.Time
+			userUpdatedAt time.Time
+		)
+		if err := rows.Scan(
+			&id,
+			&userID,
+			&amount,
+			&createdAt,
+			&email,
+			&username,
+			&role,
+			&balance,
+			&concurrency,
+			&status,
+			&userCreatedAt,
+			&userUpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+
+		usedBy := userID
+		usedAt := createdAt
+		codes = append(codes, RedeemCode{
+			ID:        -id,
+			Code:      fmt.Sprintf("AFF-%d", id),
+			Type:      RedeemTypeAffiliateBalance,
+			Value:     amount,
+			Status:    StatusUsed,
+			UsedBy:    &usedBy,
+			UsedAt:    &usedAt,
+			CreatedAt: createdAt,
+			User: &User{
+				ID:          userID,
+				Email:       email,
+				Username:    username,
+				Role:        role,
+				Balance:     balance,
+				Concurrency: concurrency,
+				Status:      status,
+				CreatedAt:   userCreatedAt,
+				UpdatedAt:   userUpdatedAt,
+			},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	total, err := countGlobalAffiliateBalanceHistory(ctx, s.entClient)
+	if err != nil {
+		return nil, 0, err
+	}
+	return codes, total, nil
+}
+
 func countAffiliateBalanceHistory(ctx context.Context, client *dbent.Client, userID int64) (int64, error) {
 	rows, err := client.QueryContext(ctx, `
 SELECT COUNT(*)
 FROM user_affiliate_ledger
 WHERE user_id = $1
   AND action = 'transfer'`, userID)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var total sql.NullInt64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return total.Int64, nil
+}
+
+func countGlobalAffiliateBalanceHistory(ctx context.Context, client *dbent.Client) (int64, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT COUNT(*)
+FROM user_affiliate_ledger
+WHERE action = 'transfer'`)
 	if err != nil {
 		return 0, err
 	}

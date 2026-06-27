@@ -397,6 +397,7 @@ export default {
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
+    redeemRecords: 'Redeem Records',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
@@ -1990,6 +1991,25 @@ export default {
       roleUser: 'User',
       statusActive: 'Active',
       statusDisabled: 'Disabled'
+    },
+
+    redeemRecords: {
+      title: 'Redeem Records',
+      description: 'View the global timeline of used/effective redeems, top-ups, and entitlement changes',
+      failedToLoad: 'Failed to load redeem records',
+      userFallback: 'User #{id}',
+      columns: {
+        user: 'User',
+        type: 'Type',
+        value: 'Value/Entitlement',
+        occurredAt: 'Occurred At',
+        source: 'Code/Source'
+      },
+      sources: {
+        affiliate: 'Affiliate balance transfer',
+        adminAdjustment: 'Admin adjustment',
+        system: 'System record'
+      }
     },
 
     backup: {

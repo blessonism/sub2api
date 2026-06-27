@@ -448,6 +448,8 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerRedeemCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/redeem-records", h.Admin.User.GetGlobalBalanceHistory)
+
 	codes := admin.Group("/redeem-codes")
 	{
 		codes.GET("", h.Admin.Redeem.List)

@@ -397,6 +397,7 @@ export default {
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
+    redeemRecords: '兑换记录',
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',
@@ -2011,6 +2012,25 @@ export default {
       roleUser: '普通用户',
       statusActive: '启用',
       statusDisabled: '禁用'
+    },
+
+    redeemRecords: {
+      title: '兑换记录',
+      description: '查看全站已使用/已生效的兑换、充值和权益变更时间流',
+      failedToLoad: '加载兑换记录失败',
+      userFallback: '用户 #{id}',
+      columns: {
+        user: '用户',
+        type: '类型',
+        value: '数值/权益',
+        occurredAt: '发生时间',
+        source: '兑换码/来源'
+      },
+      sources: {
+        affiliate: '推广余额转入',
+        adminAdjustment: '管理员调整',
+        system: '系统记录'
+      }
     },
 
     backup: {

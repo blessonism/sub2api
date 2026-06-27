@@ -455,6 +455,38 @@ func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 	})
 }
 
+// GetGlobalBalanceHistory 获取全局已使用/已生效的兑换记录。
+// GET /api/v1/admin/redeem-records
+// Query params:
+//   - type: 按记录类型过滤（balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription）
+func (h *UserHandler) GetGlobalBalanceHistory(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	codeType := c.Query("type")
+
+	codes, total, err := h.adminService.GetGlobalBalanceHistory(c.Request.Context(), page, pageSize, codeType)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.AdminRedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+	}
+
+	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if pages < 1 {
+		pages = 1
+	}
+	response.Success(c, gin.H{
+		"items":     out,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+		"pages":     pages,
+	})
+}
+
 // ReplaceGroupRequest represents the request to replace a user's exclusive group
 type ReplaceGroupRequest struct {
 	OldGroupID int64 `json:"old_group_id" binding:"required,gt=0"`

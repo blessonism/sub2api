@@ -84,3 +84,32 @@ func TestMergeBalanceHistoryCodesPaginatesAfterCombiningSources(t *testing.T) {
 	require.Equal(t, RedeemTypeConcurrency, got[0].Type)
 	require.Equal(t, int64(-4), got[1].ID)
 }
+
+func TestMergeBalanceHistoryCodesKeepsGlobalTimelineAcrossUsers(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC)
+	userA := int64(10)
+	userB := int64(20)
+	at := func(minutes int) *time.Time {
+		v := base.Add(time.Duration(minutes) * time.Minute)
+		return &v
+	}
+
+	got := mergeBalanceHistoryCodes(
+		[]RedeemCode{
+			{ID: 1, Type: RedeemTypeBalance, UsedBy: &userA, UsedAt: at(5), CreatedAt: *at(5)},
+			{ID: 2, Type: RedeemTypeSubscription, UsedBy: &userB, UsedAt: at(1), CreatedAt: *at(1)},
+		},
+		[]RedeemCode{
+			{ID: -3, Type: RedeemTypeAffiliateBalance, UsedBy: &userB, UsedAt: at(3), CreatedAt: *at(3)},
+		},
+		pagination.PaginationParams{Page: 1, PageSize: 3},
+	)
+
+	require.Len(t, got, 3)
+	require.Equal(t, int64(1), got[0].ID)
+	require.Equal(t, int64(-3), got[1].ID)
+	require.Equal(t, int64(2), got[2].ID)
+	require.Equal(t, userB, *got[1].UsedBy)
+}

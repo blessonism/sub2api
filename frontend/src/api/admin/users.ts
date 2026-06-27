@@ -251,6 +251,8 @@ export interface BalanceHistoryResponse extends PaginatedResponse<BalanceHistory
   total_recharged: number
 }
 
+export type GlobalBalanceHistoryResponse = PaginatedResponse<BalanceHistoryItem>
+
 /**
  * Get user's balance/concurrency change history
  * @param id - User ID
@@ -269,6 +271,27 @@ export async function getUserBalanceHistory(
   if (type) params.type = type
   const { data } = await apiClient.get<BalanceHistoryResponse>(
     `/admin/users/${id}/balance-history`,
+    { params }
+  )
+  return data
+}
+
+/**
+ * 获取管理员全局已使用/已生效兑换记录
+ * @param page - 页码
+ * @param pageSize - 每页数量
+ * @param type - 可选类型过滤（balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription）
+ * @returns 分页的全局兑换记录
+ */
+export async function getGlobalBalanceHistory(
+  page: number = 1,
+  pageSize: number = 20,
+  type?: string
+): Promise<GlobalBalanceHistoryResponse> {
+  const params: Record<string, any> = { page, page_size: pageSize }
+  if (type) params.type = type
+  const { data } = await apiClient.get<GlobalBalanceHistoryResponse>(
+    '/admin/redeem-records',
     { params }
   )
   return data
@@ -388,6 +411,7 @@ export const usersAPI = {
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
+  getGlobalBalanceHistory,
   replaceGroup,
   bindUserAuthIdentity,
   getPlatformQuotas,
