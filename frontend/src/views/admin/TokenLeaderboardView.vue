@@ -1,30 +1,20 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
-            {{ t('admin.tokenLeaderboard.title') }}
-          </h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('admin.tokenLeaderboard.description') }}
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2 self-start md:self-auto">
-          <button
-            class="btn btn-secondary inline-flex items-center gap-2"
-            type="button"
-            :aria-pressed="showUserIds"
-            @click="showUserIds = !showUserIds"
-          >
-            <Icon :name="showUserIds ? 'eyeOff' : 'eye'" size="sm" />
-            {{ showUserIds ? t('admin.tokenLeaderboard.hideUserIds') : t('admin.tokenLeaderboard.showUserIds') }}
-          </button>
-          <button class="btn btn-primary inline-flex items-center gap-2" type="button" @click="loadLeaderboard">
-            <Icon name="refresh" size="sm" />
-            {{ t('admin.tokenLeaderboard.refresh') }}
-          </button>
-        </div>
+      <div class="flex flex-wrap justify-end gap-2">
+        <button
+          class="btn btn-secondary inline-flex items-center gap-2"
+          type="button"
+          :aria-pressed="showUserIds"
+          @click="showUserIds = !showUserIds"
+        >
+          <Icon :name="showUserIds ? 'eyeOff' : 'eye'" size="sm" />
+          {{ showUserIds ? t('admin.tokenLeaderboard.hideUserIds') : t('admin.tokenLeaderboard.showUserIds') }}
+        </button>
+        <button class="btn btn-primary inline-flex items-center gap-2" type="button" @click="loadLeaderboard">
+          <Icon name="refresh" size="sm" />
+          {{ t('admin.tokenLeaderboard.refresh') }}
+        </button>
       </div>
 
       <div class="card p-4">
