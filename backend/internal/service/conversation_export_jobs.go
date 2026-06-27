@@ -284,6 +284,8 @@ func buildConversationExportPayload(turns []ConversationTurn, encoding string, d
 }
 
 func buildConversationExportPayloadWithOptions(turns []ConversationTurn, encoding string, filters ConversationExportJobFilters) ([]byte, int64, int64, error) {
+	exportReq := conversationExportRequestFromJobFilters(filters)
+	turns = FilterConversationExportableTurns(turns, exportReq)
 	var raw bytes.Buffer
 	seenSessions := map[string]struct{}{}
 	seenDedupe := map[string]struct{}{}
