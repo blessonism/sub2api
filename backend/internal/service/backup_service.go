@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	settingKeyBackupS3Config = "backup_s3_config"
+	SettingKeyBackupS3Config = "backup_s3_config"
+	settingKeyBackupS3Config = SettingKeyBackupS3Config
 	settingKeyBackupSchedule = "backup_schedule"
 	settingKeyBackupRecords  = "backup_records"
 

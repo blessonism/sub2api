@@ -725,6 +725,8 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// ConversationCapture: OpenAI 对话采集配置（默认关闭）
+	ConversationCapture GatewayConversationCaptureConfig `mapstructure:"conversation_capture"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -836,6 +838,23 @@ type UserMessageQueueConfig struct {
 	MaxDelayMs int `mapstructure:"max_delay_ms"`
 	// CleanupIntervalSeconds: 孤儿锁清理间隔（秒），0 表示禁用
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
+}
+
+// GatewayConversationCaptureConfig 控制轻量结构化对话采集。
+type GatewayConversationCaptureConfig struct {
+	Enabled                bool `mapstructure:"enabled"`
+	SamplePercent          int  `mapstructure:"sample_percent"`
+	CaptureChatCompletions bool `mapstructure:"capture_chat_completions"`
+	CaptureResponses       bool `mapstructure:"capture_responses"`
+	RawArchiveEnabled      bool `mapstructure:"raw_archive_enabled"`
+	MaxTurnPayloadBytes    int  `mapstructure:"max_turn_payload_bytes"`
+	PayloadPreviewChars    int  `mapstructure:"payload_preview_chars"`
+	SessionWindowMinutes   int  `mapstructure:"session_window_minutes"`
+	RetentionDays          int  `mapstructure:"retention_days"`
+	ExportEnabled          bool `mapstructure:"export_enabled"`
+	WorkerCount            int  `mapstructure:"worker_count"`
+	QueueSize              int  `mapstructure:"queue_size"`
+	TaskTimeoutSeconds     int  `mapstructure:"task_timeout_seconds"`
 }
 
 // WaitTimeout 返回等待超时的 time.Duration
@@ -1881,6 +1900,19 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.conversation_capture.enabled", false)
+	viper.SetDefault("gateway.conversation_capture.sample_percent", 100)
+	viper.SetDefault("gateway.conversation_capture.capture_chat_completions", true)
+	viper.SetDefault("gateway.conversation_capture.capture_responses", false)
+	viper.SetDefault("gateway.conversation_capture.raw_archive_enabled", false)
+	viper.SetDefault("gateway.conversation_capture.max_turn_payload_bytes", 1048576)
+	viper.SetDefault("gateway.conversation_capture.payload_preview_chars", 8000)
+	viper.SetDefault("gateway.conversation_capture.session_window_minutes", 30)
+	viper.SetDefault("gateway.conversation_capture.retention_days", 30)
+	viper.SetDefault("gateway.conversation_capture.export_enabled", true)
+	viper.SetDefault("gateway.conversation_capture.worker_count", 2)
+	viper.SetDefault("gateway.conversation_capture.queue_size", 256)
+	viper.SetDefault("gateway.conversation_capture.task_timeout_seconds", 10)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))

@@ -42,6 +42,7 @@ func ProvideAdminHandlers(
 	complianceHandler *admin.ComplianceHandler,
 	tokenUsagePolicyHandler *admin.TokenUsagePolicyHandler,
 	upstreamCostCalibrationHandler *admin.UpstreamCostCalibrationHandler,
+	conversationHandler *admin.ConversationHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:               dashboardHandler,
@@ -77,6 +78,7 @@ func ProvideAdminHandlers(
 		Compliance:              complianceHandler,
 		TokenUsagePolicy:        tokenUsagePolicyHandler,
 		UpstreamCostCalibration: upstreamCostCalibrationHandler,
+		Conversation:            conversationHandler,
 	}
 }
 
@@ -207,6 +209,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewComplianceHandler,
 	admin.NewTokenUsagePolicyHandler,
 	admin.NewUpstreamCostCalibrationHandler,
+	admin.NewConversationHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

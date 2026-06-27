@@ -232,12 +232,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	scheduledTestResultRepository := repository.NewScheduledTestResultRepository(db)
 	scheduledTestService := service.ProvideScheduledTestService(scheduledTestPlanRepository, scheduledTestResultRepository)
 	scheduledTestHandler := admin.NewScheduledTestHandler(scheduledTestService)
-	tokenUsageAutoPolicyRepository := repository.NewTokenUsageAutoPolicyRepository(db)
-	tokenUsageAutoPolicyService := service.ProvideTokenUsageAutoPolicyService(tokenUsageAutoPolicyRepository, apiKeyAuthCacheInvalidator)
-	tokenUsagePolicyHandler := admin.NewTokenUsagePolicyHandler(tokenUsageAutoPolicyService)
-	upstreamCostCalibrationRepository := repository.NewUpstreamCostCalibrationRepository(db)
-	upstreamCostCalibrationService := service.ProvideUpstreamCostCalibrationService(upstreamCostCalibrationRepository, apiKeyAuthCacheInvalidator)
-	upstreamCostCalibrationHandler := admin.NewUpstreamCostCalibrationHandler(upstreamCostCalibrationService)
 	channelHandler := admin.NewChannelHandler(channelService, billingService, pricingService)
 	channelMonitorHandler := admin.NewChannelMonitorHandler(channelMonitorService)
 	channelMonitorRequestTemplateRepository := repository.NewChannelMonitorRequestTemplateRepository(client, db)
@@ -250,12 +244,23 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	complianceHandler := admin.NewComplianceHandler(settingService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, paymentHandler, affiliateHandler, complianceHandler, tokenUsagePolicyHandler, upstreamCostCalibrationHandler)
+	tokenUsageAutoPolicyRepository := repository.NewTokenUsageAutoPolicyRepository(db)
+	tokenUsageAutoPolicyService := service.ProvideTokenUsageAutoPolicyService(tokenUsageAutoPolicyRepository, apiKeyAuthCacheInvalidator)
+	tokenUsagePolicyHandler := admin.NewTokenUsagePolicyHandler(tokenUsageAutoPolicyService)
+	upstreamCostCalibrationRepository := repository.NewUpstreamCostCalibrationRepository(db)
+	upstreamCostCalibrationService := service.ProvideUpstreamCostCalibrationService(upstreamCostCalibrationRepository, apiKeyAuthCacheInvalidator)
+	upstreamCostCalibrationHandler := admin.NewUpstreamCostCalibrationHandler(upstreamCostCalibrationService)
+	conversationRepository := repository.NewConversationCaptureRepository(db)
+	conversationCaptureWorkerPool := service.NewConversationCaptureWorkerPool(configConfig)
+	conversationExportWorkerPool := service.NewConversationExportWorkerPool(configConfig)
+	conversationCaptureService := service.ProvideConversationCaptureService(conversationRepository, settingRepository, conversationCaptureWorkerPool, conversationExportWorkerPool, configConfig, secretEncryptor, backupObjectStoreFactory)
+	conversationHandler := admin.NewConversationHandler(conversationCaptureService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, paymentHandler, affiliateHandler, complianceHandler, tokenUsagePolicyHandler, upstreamCostCalibrationHandler, conversationHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService)
-	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, configConfig)
+	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, conversationCaptureService, opsService, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService, channelService)
@@ -279,11 +284,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	proxyExpiryService := service.ProvideProxyExpiryService(proxyRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository, settingRepository, notificationEmailService, leaderLockCache, db)
+	conversationCaptureCleanupService := service.ProvideConversationCaptureCleanupService(conversationCaptureService)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, tokenUsageAutoPolicyRunner, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, tokenUsageAutoPolicyRunner, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, conversationCaptureWorkerPool, conversationExportWorkerPool, conversationCaptureCleanupService, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -330,6 +336,9 @@ func provideCleanup(
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	conversationCaptureWorkerPool *service.ConversationCaptureWorkerPool,
+	conversationExportWorkerPool *service.ConversationExportWorkerPool,
+	conversationCaptureCleanup *service.ConversationCaptureCleanupService,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -449,6 +458,24 @@ func provideCleanup(
 			{"UsageRecordWorkerPool", func() error {
 				if usageRecordWorkerPool != nil {
 					usageRecordWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"ConversationCaptureWorkerPool", func() error {
+				if conversationCaptureWorkerPool != nil {
+					conversationCaptureWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"ConversationExportWorkerPool", func() error {
+				if conversationExportWorkerPool != nil {
+					conversationExportWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"ConversationCaptureCleanupService", func() error {
+				if conversationCaptureCleanup != nil {
+					conversationCaptureCleanup.Stop()
 				}
 				return nil
 			}},

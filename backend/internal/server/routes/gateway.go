@@ -68,14 +68,14 @@ func RegisterGatewayRoutes(
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.Responses(c)
+				h.OpenAIGateway.ResponsesWithConversationCapture(c)
 				return
 			}
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.Responses(c)
+				h.OpenAIGateway.ResponsesWithConversationCapture(c)
 				return
 			}
 			h.Gateway.Responses(c)
@@ -84,7 +84,7 @@ func RegisterGatewayRoutes(
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.ChatCompletions(c)
+				h.OpenAIGateway.ChatCompletionsWithConversationCapture(c)
 				return
 			}
 			h.Gateway.ChatCompletions(c)
@@ -148,7 +148,7 @@ func RegisterGatewayRoutes(
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformOpenAI {
-			h.OpenAIGateway.Responses(c)
+			h.OpenAIGateway.ResponsesWithConversationCapture(c)
 			return
 		}
 		h.Gateway.Responses(c)
@@ -166,7 +166,7 @@ func RegisterGatewayRoutes(
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformOpenAI {
-			h.OpenAIGateway.ChatCompletions(c)
+			h.OpenAIGateway.ChatCompletionsWithConversationCapture(c)
 			return
 		}
 		h.Gateway.ChatCompletions(c)

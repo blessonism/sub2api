@@ -39,6 +39,7 @@ type AdminHandlers struct {
 	Compliance              *admin.ComplianceHandler
 	TokenUsagePolicy        *admin.TokenUsagePolicyHandler
 	UpstreamCostCalibration *admin.UpstreamCostCalibrationHandler
+	Conversation            *admin.ConversationHandler
 }
 
 // Handlers contains all HTTP handlers
