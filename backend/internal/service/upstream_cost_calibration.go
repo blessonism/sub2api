@@ -52,6 +52,7 @@ type UpstreamCostCalibrationAccount struct {
 	Platform        string         `json:"platform,omitempty"`
 	CurrentPriority *int           `json:"current_priority,omitempty"`
 	AdapterConfig   map[string]any `json:"adapter_config"`
+	AccountExtra    map[string]any `json:"-"`
 	CreatedAt       time.Time      `json:"created_at,omitempty"`
 }
 
@@ -171,15 +172,16 @@ type ManualBalanceAdapter struct{}
 func (ManualBalanceAdapter) Type() string { return UpstreamCostCalibrationAdapterManual }
 
 func (ManualBalanceAdapter) Sample(_ context.Context, task UpstreamCostCalibrationTask, account UpstreamCostCalibrationAccount) BalanceSampleSet {
-	if samples, ok := manualBalanceSamples(account.AdapterConfig); ok {
+	config := mergeManualBalanceConfig(account.AccountExtra, account.AdapterConfig)
+	if samples, ok := manualBalanceSamples(config); ok {
 		if task.SampleCount > 0 && len(samples) > task.SampleCount {
 			samples = samples[:task.SampleCount]
 		}
 		return BalanceSampleSet{Samples: samples}
 	}
-	before, okBefore := adapterConfigFloat(account.AdapterConfig, "before_balance")
-	after, okAfter := adapterConfigFloat(account.AdapterConfig, "after_balance")
-	latency, _ := adapterConfigInt(account.AdapterConfig, "latency_ms")
+	before, okBefore := adapterConfigFloat(config, "before_balance")
+	after, okAfter := adapterConfigFloat(config, "after_balance")
+	latency, _ := adapterConfigInt(config, "latency_ms")
 	if !okBefore || !okAfter {
 		return BalanceSampleSet{ErrorMessage: "manual adapter requires before_balance and after_balance"}
 	}
@@ -582,6 +584,20 @@ func manualBalanceSamples(config map[string]any) ([]BalanceSample, bool) {
 		samples = append(samples, BalanceSample{BeforeBalance: &before, AfterBalance: &after, LatencyMs: latency})
 	}
 	return samples, true
+}
+
+func mergeManualBalanceConfig(base, override map[string]any) map[string]any {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(base)+len(override))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range override {
+		out[key] = value
+	}
+	return out
 }
 
 func medianFloat64(values []float64) float64 {

@@ -118,6 +118,9 @@ func TestUpstreamCostCalibrationRepositoryCreateTaskRejectsAccountOutsideTargetG
 	mock.ExpectExec("INSERT INTO upstream_cost_calibration_task_accounts").
 		WithArgs(int64(9), int64(101), int64(7), "{}").
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(101), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectRollback()
 
 	_, err := repo.CreateTask(ctx, task, []service.UpstreamCostCalibrationAccount{
@@ -128,6 +131,107 @@ func TestUpstreamCostCalibrationRepositoryCreateTaskRejectsAccountOutsideTargetG
 	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
 	require.Equal(t, "CALIBRATION_ACCOUNT_NOT_IN_GROUP", infraerrors.Reason(err))
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamCostCalibrationRepositoryCreateTaskRejectsPlatformMismatch(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamCostCalibrationRepository(db)
+	ctx := context.Background()
+	task := calibrationTaskFixture()
+
+	mock.ExpectBegin()
+	expectCalibrationTaskInsert(mock, task, int64(9))
+	mock.ExpectExec("INSERT INTO upstream_cost_calibration_task_accounts").
+		WithArgs(int64(9), int64(101), int64(7), "{}").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(101), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	_, err := repo.CreateTask(ctx, task, []service.UpstreamCostCalibrationAccount{
+		{AccountID: 101, AdapterConfig: map[string]any{}},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "CALIBRATION_ACCOUNT_PLATFORM_MISMATCH", infraerrors.Reason(err))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamCostCalibrationRepositoryCreateTaskRejectsUnsupportedDeclaredModel(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamCostCalibrationRepository(db)
+	ctx := context.Background()
+	task := calibrationTaskFixture()
+
+	mock.ExpectBegin()
+	expectCalibrationTaskInsert(mock, task, int64(9))
+	mock.ExpectExec("INSERT INTO upstream_cost_calibration_task_accounts").
+		WithArgs(int64(9), int64(101), int64(7), `{"supported_models":["claude-haiku-*"]}`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT COALESCE\\(extra").
+		WithArgs(int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"extra"}).AddRow([]byte(`{}`)))
+	mock.ExpectRollback()
+
+	_, err := repo.CreateTask(ctx, task, []service.UpstreamCostCalibrationAccount{
+		{AccountID: 101, AdapterConfig: map[string]any{"supported_models": []string{"claude-haiku-*"}}},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "CALIBRATION_ACCOUNT_MODEL_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamCostCalibrationRepositoryDeleteTaskRejectsRunHistory(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamCostCalibrationRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM upstream_cost_calibration_runs").
+		WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+
+	err := repo.DeleteTask(ctx, 9)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.Equal(t, "CALIBRATION_TASK_HAS_RUNS", infraerrors.Reason(err))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func calibrationTaskFixture() *service.UpstreamCostCalibrationTask {
+	return &service.UpstreamCostCalibrationTask{
+		Name:          "calibration",
+		Enabled:       true,
+		TargetGroupID: 7,
+		Model:         "claude-sonnet-4-20250514",
+		AdapterType:   service.UpstreamCostCalibrationAdapterManual,
+		Unit:          "credit",
+		TestPrompt:    "ping",
+		SampleCount:   1,
+		PriorityStart: 10,
+		PriorityStep:  10,
+	}
+}
+
+func expectCalibrationTaskInsert(mock sqlmock.Sqlmock, task *service.UpstreamCostCalibrationTask, id int64) {
+	mock.ExpectQuery("INSERT INTO upstream_cost_calibration_tasks").
+		WithArgs(
+			task.Name,
+			task.Enabled,
+			task.TargetGroupID,
+			task.Model,
+			task.AdapterType,
+			task.Unit,
+			task.TestPrompt,
+			task.SampleCount,
+			task.PriorityStart,
+			task.PriorityStep,
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(id))
 }
 
 func expectCalibrationRunDetail(mock sqlmock.Sqlmock, now time.Time, applied bool) {
