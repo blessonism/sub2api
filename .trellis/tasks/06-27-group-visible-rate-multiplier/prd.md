@@ -10,6 +10,7 @@
 - 用户排行榜当前使用 `discount_rate_multiplier` 展示倍率，近期任务正在确保它等于当前真实生效倍率；本任务要正式拆出展示口径。
 - 用户侧 `/groups/rates` 现在返回用户专属真实倍率，Key 页面和可用渠道页用它覆盖分组倍率展示；本任务必须改为可见倍率口径。
 - 用户用量明细现在暴露 `usage_logs.rate_multiplier`，这是请求发生时的真实倍率快照；本任务需要新增可见倍率快照避免历史明细泄露真实倍率。
+- 用户排行榜未命中可见倍率时按产品决策显示 `-`，不回退展示真实倍率。
 - 用户已确认：用户侧金额保持真实，不按可见倍率伪造。
 - 本仓库是 `Wei-Shaw/sub2api` 下游二开，变更必须遵守 `.trellis/spec/guides/downstream-fork-workflow.md`。
 
@@ -27,7 +28,7 @@
 - 普通用户接口不得返回真实倍率：
   - `/groups/available` 的 `rate_multiplier` 对用户返回可见倍率。
   - `/groups/rates` 返回当前用户各分组的可见倍率覆盖结果。
-  - 用户排行榜 `discount_rate_multiplier` 返回可见倍率。
+  - 用户排行榜 `discount_rate_multiplier` 返回可见倍率；无用户专属/分组可见倍率时返回 `NULL`，前端展示 `-`。
   - 用户用量列表、tooltip、CSV 中的 `rate_multiplier` 返回可见倍率快照。
 - 管理员接口允许读写双倍率：
   - 分组 DTO 返回 `rate_multiplier` 和 `visible_rate_multiplier`。
@@ -37,7 +38,7 @@
 
 ## Acceptance Criteria
 
-- [ ] 旧数据没有配置可见倍率时，用户展示仍与当前真实倍率一致。
+- [ ] 旧 usage log 没有可见倍率快照时，用户用量明细回退显示真实倍率；用户排行榜无可见倍率配置时显示 `-`。
 - [ ] 分组配置可见倍率后，没有用户专属可见倍率的用户看到分组可见倍率。
 - [ ] 用户配置专属可见倍率后，用户侧展示优先使用专属可见倍率。
 - [ ] 可见倍率与真实倍率不一致时，`actual_cost`、余额扣减和管理员统计仍按真实倍率。
