@@ -551,10 +551,12 @@ async function loadCandidateAccounts() {
     appStore.showWarning(t('admin.upstreamCostCalibrations.groupRequired'))
     return
   }
+  const group = groups.value.find((item) => item.id === form.target_group_id)
   accountsLoading.value = true
   try {
     const result = await accountsAPI.list(1, 200, {
       group: String(form.target_group_id),
+      platform: group?.platform,
       status: 'active',
       sort_by: 'priority',
       sort_order: 'asc'

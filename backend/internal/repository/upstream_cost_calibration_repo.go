@@ -117,7 +117,7 @@ func (r *upstreamCostCalibrationRepository) CreateTask(ctx context.Context, task
 	if err != nil {
 		return nil, translateUpstreamCostCalibrationWriteError(err)
 	}
-	if err := insertCalibrationTaskAccounts(ctx, tx, id, task.TargetGroupID, accounts); err != nil {
+	if err := insertCalibrationTaskAccounts(ctx, tx, id, *task, accounts); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -149,7 +149,7 @@ func (r *upstreamCostCalibrationRepository) UpdateTask(ctx context.Context, task
 	if _, err := tx.ExecContext(ctx, `DELETE FROM upstream_cost_calibration_task_accounts WHERE task_id = $1`, task.ID); err != nil {
 		return nil, err
 	}
-	if err := insertCalibrationTaskAccounts(ctx, tx, task.ID, task.TargetGroupID, accounts); err != nil {
+	if err := insertCalibrationTaskAccounts(ctx, tx, task.ID, *task, accounts); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -159,6 +159,13 @@ func (r *upstreamCostCalibrationRepository) UpdateTask(ctx context.Context, task
 }
 
 func (r *upstreamCostCalibrationRepository) DeleteTask(ctx context.Context, id int64) error {
+	var runCount int64
+	if err := scanSingleRow(ctx, r.db, `SELECT COUNT(*) FROM upstream_cost_calibration_runs WHERE task_id = $1`, []any{id}, &runCount); err != nil {
+		return err
+	}
+	if runCount > 0 {
+		return infraerrors.Conflict("CALIBRATION_TASK_HAS_RUNS", "calibration task has run history and cannot be deleted")
+	}
 	res, err := r.db.ExecContext(ctx, `DELETE FROM upstream_cost_calibration_tasks WHERE id = $1`, id)
 	if err != nil {
 		return err
@@ -378,7 +385,7 @@ func (r *upstreamCostCalibrationRepository) ApplyRunSuggestions(ctx context.Cont
 	return r.GetRun(ctx, taskID, runID)
 }
 
-func insertCalibrationTaskAccounts(ctx context.Context, tx *sql.Tx, taskID, targetGroupID int64, accounts []service.UpstreamCostCalibrationAccount) error {
+func insertCalibrationTaskAccounts(ctx context.Context, tx *sql.Tx, taskID int64, task service.UpstreamCostCalibrationTask, accounts []service.UpstreamCostCalibrationAccount) error {
 	for _, account := range accounts {
 		raw, err := json.Marshal(account.AdapterConfig)
 		if err != nil {
@@ -388,13 +395,19 @@ func insertCalibrationTaskAccounts(ctx context.Context, tx *sql.Tx, taskID, targ
 			INSERT INTO upstream_cost_calibration_task_accounts (task_id, account_id, adapter_config, created_at)
 			SELECT $1, ag.account_id, $4::jsonb, NOW()
 			FROM account_groups ag
+			JOIN groups g ON g.id = ag.group_id
+			JOIN accounts a ON a.id = ag.account_id
 			WHERE ag.account_id = $2 AND ag.group_id = $3
-		`, taskID, account.AccountID, targetGroupID, string(raw))
+			  AND LOWER(TRIM(a.platform)) = LOWER(TRIM(g.platform))
+		`, taskID, account.AccountID, task.TargetGroupID, string(raw))
 		if err != nil {
 			return translateUpstreamCostCalibrationWriteError(err)
 		}
 		if affected, _ := res.RowsAffected(); affected == 0 {
-			return infraerrors.BadRequest("CALIBRATION_ACCOUNT_NOT_IN_GROUP", "calibration account must belong to target group")
+			return calibrationAccountSelectionError(ctx, tx, account.AccountID, task.TargetGroupID)
+		}
+		if err := validateCalibrationAccountModel(ctx, tx, account.AccountID, task.Model, account.AdapterConfig); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -445,7 +458,7 @@ func (r *upstreamCostCalibrationRepository) attachCalibrationTaskChildren(ctx co
 	}
 	accountRows, err := r.db.QueryContext(ctx, `
 		SELECT ta.task_id, ta.account_id, COALESCE(a.name, ''), COALESCE(a.platform, ''),
-		       ag.priority, ta.adapter_config, ta.created_at
+		       ag.priority, ta.adapter_config, COALESCE(a.extra, '{}'::jsonb), ta.created_at
 		FROM upstream_cost_calibration_task_accounts ta
 		JOIN upstream_cost_calibration_tasks t ON t.id = ta.task_id
 		LEFT JOIN accounts a ON a.id = ta.account_id
@@ -463,8 +476,9 @@ func (r *upstreamCostCalibrationRepository) attachCalibrationTaskChildren(ctx co
 			account   service.UpstreamCostCalibrationAccount
 			priority  sql.NullInt64
 			configRaw []byte
+			extraRaw  []byte
 		)
-		if err := accountRows.Scan(&taskID, &account.AccountID, &account.AccountName, &account.Platform, &priority, &configRaw, &account.CreatedAt); err != nil {
+		if err := accountRows.Scan(&taskID, &account.AccountID, &account.AccountName, &account.Platform, &priority, &configRaw, &extraRaw, &account.CreatedAt); err != nil {
 			return err
 		}
 		if priority.Valid {
@@ -474,6 +488,10 @@ func (r *upstreamCostCalibrationRepository) attachCalibrationTaskChildren(ctx co
 		account.AdapterConfig = map[string]any{}
 		if len(configRaw) > 0 {
 			_ = json.Unmarshal(configRaw, &account.AdapterConfig)
+		}
+		account.AccountExtra = map[string]any{}
+		if len(extraRaw) > 0 {
+			_ = json.Unmarshal(extraRaw, &account.AccountExtra)
 		}
 		if task := byID[taskID]; task != nil {
 			task.Accounts = append(task.Accounts, account)
@@ -689,6 +707,112 @@ func upstreamCostCalibrationNotFoundError(cause error) error {
 
 func upstreamCostCalibrationRunNotFoundError(cause error) error {
 	return infraerrors.BadRequest("INVALID_CALIBRATION_RUN_ID", "invalid calibration run id").WithCause(cause)
+}
+
+func calibrationAccountSelectionError(ctx context.Context, q sqlQueryer, accountID, groupID int64) error {
+	exists, err := calibrationAccountGroupExists(ctx, q, accountID, groupID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return infraerrors.BadRequest("CALIBRATION_ACCOUNT_NOT_IN_GROUP", "calibration account must belong to target group")
+	}
+	return infraerrors.BadRequest("CALIBRATION_ACCOUNT_PLATFORM_MISMATCH", "calibration account platform must match target group platform")
+}
+
+func validateCalibrationAccountModel(ctx context.Context, q sqlQueryer, accountID int64, model string, adapterConfig map[string]any) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+	}
+	var raw []byte
+	if err := scanSingleRow(ctx, q, `SELECT COALESCE(extra, '{}'::jsonb) FROM accounts WHERE id = $1`, []any{accountID}, &raw); err != nil {
+		return err
+	}
+	extra := map[string]any{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &extra)
+	}
+	models := calibrationDeclaredModels(adapterConfig)
+	if len(models) == 0 {
+		models = calibrationDeclaredModels(extra)
+	}
+	if len(models) == 0 || calibrationModelMatchesAny(model, models) {
+		return nil
+	}
+	return infraerrors.BadRequest("CALIBRATION_ACCOUNT_MODEL_UNSUPPORTED", "calibration account does not declare support for target model")
+}
+
+func calibrationDeclaredModels(config map[string]any) []string {
+	if len(config) == 0 {
+		return nil
+	}
+	keys := []string{"supported_models", "available_models", "upstream_models", "models"}
+	for _, key := range keys {
+		if models := stringSliceFromAny(config[key]); len(models) > 0 {
+			return models
+		}
+	}
+	if nested, ok := config["upstream"].(map[string]any); ok {
+		if models := calibrationDeclaredModels(nested); len(models) > 0 {
+			return models
+		}
+	}
+	return nil
+}
+
+func stringSliceFromAny(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return normalizeCalibrationModelList(v)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return normalizeCalibrationModelList(out)
+	case string:
+		parts := strings.FieldsFunc(v, func(r rune) bool {
+			return r == ',' || r == '\n' || r == '\t' || r == ' '
+		})
+		return normalizeCalibrationModelList(parts)
+	default:
+		return nil
+	}
+}
+
+func normalizeCalibrationModelList(models []string) []string {
+	out := make([]string, 0, len(models))
+	seen := map[string]struct{}{}
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		key := strings.ToLower(model)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, model)
+	}
+	return out
+}
+
+func calibrationModelMatchesAny(model string, candidates []string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	for _, candidate := range candidates {
+		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		if candidate == "*" || candidate == model {
+			return true
+		}
+		if strings.HasSuffix(candidate, "*") && strings.HasPrefix(model, strings.TrimSuffix(candidate, "*")) {
+			return true
+		}
+	}
+	return false
 }
 
 func translateUpstreamCostCalibrationWriteError(err error) error {

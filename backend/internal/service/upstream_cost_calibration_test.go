@@ -38,6 +38,38 @@ func TestManualBalanceAdapterSamplesUseTaskSampleCount(t *testing.T) {
 	require.Equal(t, 100, *result.LatencyMs)
 }
 
+func TestManualBalanceAdapterFallsBackToAccountExtra(t *testing.T) {
+	task := UpstreamCostCalibrationTask{ID: 1, Unit: "credit", SampleCount: 1}
+	account := UpstreamCostCalibrationAccount{
+		AccountID:    7,
+		AccountExtra: map[string]any{"before_balance": 12.0, "after_balance": 11.25, "latency_ms": 90},
+	}
+
+	samples := ManualBalanceAdapter{}.Sample(context.Background(), task, account)
+	result := buildCalibrationResult(task, account, samples)
+
+	require.True(t, result.Valid)
+	require.NotNil(t, result.CostDelta)
+	require.InDelta(t, 0.75, *result.CostDelta, 0.0000001)
+	require.Equal(t, 90, *result.LatencyMs)
+}
+
+func TestManualBalanceAdapterConfigOverridesAccountExtra(t *testing.T) {
+	task := UpstreamCostCalibrationTask{ID: 1, Unit: "credit", SampleCount: 1}
+	account := UpstreamCostCalibrationAccount{
+		AccountID:     7,
+		AccountExtra:  map[string]any{"before_balance": 12.0, "after_balance": 11.25},
+		AdapterConfig: map[string]any{"before_balance": 8.0, "after_balance": 7.5},
+	}
+
+	samples := ManualBalanceAdapter{}.Sample(context.Background(), task, account)
+	result := buildCalibrationResult(task, account, samples)
+
+	require.True(t, result.Valid)
+	require.NotNil(t, result.CostDelta)
+	require.InDelta(t, 0.5, *result.CostDelta, 0.0000001)
+}
+
 func TestScoreCalibrationResultsFiltersInvalidAndRanksCheapest(t *testing.T) {
 	priority := 20
 	cheap := 0.1
