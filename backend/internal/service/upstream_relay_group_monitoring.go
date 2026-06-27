@@ -27,8 +27,9 @@ const (
 	UpstreamRelayConnectorStatusInvalid     = "invalid"
 	UpstreamRelayConnectorStatusPaused      = "paused"
 
-	UpstreamRelayRateSourceAvailable = "login_available_groups"
-	UpstreamRelayRateSourceOverride  = "login_user_group_rates"
+	UpstreamRelayRateSourceAvailable  = "login_available_groups"
+	UpstreamRelayRateSourceOverride   = "login_user_group_rates"
+	UpstreamRelayRateSourceUsageDelta = "usage_cost_delta"
 
 	UpstreamRelayRunStatusSuccess = "success"
 	UpstreamRelayRunStatusFailed  = "failed"
@@ -37,6 +38,7 @@ const (
 	upstreamRelayPriorityStep         = 10
 	upstreamRelayHTTPTimeout          = 20 * time.Second
 	upstreamRelaySnapshotFreshness    = 24 * time.Hour
+	upstreamRelayUsageDeltaFreshness  = 24 * time.Hour
 	upstreamRelayProbeFreshness       = 30 * time.Minute
 	upstreamRelaySnapshotStatusStale  = "stale"
 )
@@ -153,6 +155,8 @@ type UpstreamRelayCandidate struct {
 	LastProbeResultID *int64                          `json:"last_probe_result_id,omitempty"`
 	LatestProbe       *UpstreamRelayProbeResult       `json:"latest_probe,omitempty"`
 	LatestSnapshot    *UpstreamRelayGroupRateSnapshot `json:"latest_snapshot,omitempty"`
+	Health            *UpstreamRelayCandidateHealth   `json:"health,omitempty"`
+	LatestUsageDelta  *UpstreamRelayUsageDeltaSample  `json:"latest_usage_delta,omitempty"`
 	CreatedBy         int64                           `json:"created_by,omitempty"`
 	CreatedAt         time.Time                       `json:"created_at"`
 	UpdatedAt         time.Time                       `json:"updated_at"`
@@ -178,6 +182,37 @@ type UpstreamRelayProbeResult struct {
 	ErrorClass   string    `json:"error_class,omitempty"`
 	ErrorMessage string    `json:"error_message,omitempty"`
 	ProbedAt     time.Time `json:"probed_at"`
+}
+
+type UpstreamRelayCandidateHealth struct {
+	ProbeCount           int        `json:"probe_count"`
+	SuccessCount         int        `json:"success_count"`
+	SuccessRate          float64    `json:"success_rate"`
+	AvgLatencyMs         *int       `json:"avg_latency_ms,omitempty"`
+	P95LatencyMs         *int       `json:"p95_latency_ms,omitempty"`
+	ConsecutiveSuccesses int        `json:"consecutive_successes"`
+	ConsecutiveFailures  int        `json:"consecutive_failures"`
+	LastErrorClass       string     `json:"last_error_class,omitempty"`
+	LastSuccessAt        *time.Time `json:"last_success_at,omitempty"`
+	WindowMinutes        int        `json:"window_minutes"`
+	SampleSize           int        `json:"sample_size"`
+}
+
+type UpstreamRelayUsageDeltaSample struct {
+	ID                    int64     `json:"id,omitempty"`
+	CandidateID           int64     `json:"candidate_id"`
+	ProbeResultID         *int64    `json:"probe_result_id,omitempty"`
+	Model                 string    `json:"model"`
+	Status                string    `json:"status"`
+	BeforeCost            *float64  `json:"before_cost,omitempty"`
+	BeforeActualCost      *float64  `json:"before_actual_cost,omitempty"`
+	AfterCost             *float64  `json:"after_cost,omitempty"`
+	AfterActualCost       *float64  `json:"after_actual_cost,omitempty"`
+	CostDelta             *float64  `json:"cost_delta,omitempty"`
+	ActualCostDelta       *float64  `json:"actual_cost_delta,omitempty"`
+	DerivedRateMultiplier *float64  `json:"derived_rate_multiplier,omitempty"`
+	UnreliableReason      string    `json:"unreliable_reason,omitempty"`
+	SampledAt             time.Time `json:"sampled_at"`
 }
 
 type UpstreamRelayRecommendationRun struct {
@@ -210,6 +245,10 @@ type UpstreamRelayRecommendationSuggestion struct {
 	NewPriority         int        `json:"new_priority"`
 	FinalRateMultiplier float64    `json:"final_rate_multiplier"`
 	HealthStatus        string     `json:"health_status"`
+	ReasonCode          string     `json:"reason_code"`
+	Confidence          string     `json:"confidence"`
+	HealthSummary       string     `json:"health_summary"`
+	RateSource          string     `json:"rate_source"`
 	Reason              string     `json:"reason"`
 	Applied             bool       `json:"applied"`
 	AppliedBy           *int64     `json:"applied_by,omitempty"`
@@ -243,6 +282,7 @@ type UpstreamRelayRepository interface {
 	UpdateCandidate(ctx context.Context, candidate *UpstreamRelayCandidate) (*UpstreamRelayCandidate, error)
 	SoftDeleteCandidate(ctx context.Context, id int64) error
 	InsertProbeResult(ctx context.Context, result UpstreamRelayProbeResult) (*UpstreamRelayProbeResult, error)
+	InsertUsageDeltaSample(ctx context.Context, sample UpstreamRelayUsageDeltaSample) (*UpstreamRelayUsageDeltaSample, error)
 
 	ListRecommendationInputs(ctx context.Context) ([]UpstreamRelayCandidate, error)
 	CreateRecommendationRun(ctx context.Context, run UpstreamRelayRecommendationRun, suggestions []UpstreamRelayRecommendationSuggestion) (*UpstreamRelayRecommendationRun, error)
@@ -398,8 +438,25 @@ func (s *UpstreamRelayGroupMonitoringService) ProbeCandidate(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+	sampleUsage := shouldSampleUsageDelta(*candidate, time.Now())
+	var beforeUsage *upstreamRelayUsageSnapshot
+	var beforeErr error
+	if sampleUsage {
+		beforeUsage, beforeErr = s.fetchUsageSnapshotForAccount(ctx, account)
+	}
 	probe := s.runCandidateProbe(ctx, *candidate, account)
-	return s.repo.InsertProbeResult(ctx, probe)
+	inserted, err := s.repo.InsertProbeResult(ctx, probe)
+	if err != nil {
+		return nil, err
+	}
+	if sampleUsage {
+		afterUsage, afterErr := s.fetchUsageSnapshotForAccount(ctx, account)
+		sample := buildUsageDeltaSample(*candidate, inserted, beforeUsage, beforeErr, afterUsage, afterErr)
+		if sample != nil {
+			_, _ = s.repo.InsertUsageDeltaSample(ctx, *sample)
+		}
+	}
+	return inserted, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) GenerateRecommendations(ctx context.Context, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
@@ -872,10 +929,8 @@ func buildUpstreamRelaySuggestions(candidates []UpstreamRelayCandidate) []Upstre
 		if candidate.CurrentPriority != nil && *candidate.CurrentPriority == newPriority {
 			continue
 		}
-		latency := 0
-		if candidate.LatestProbe != nil && candidate.LatestProbe.LatencyMs != nil {
-			latency = *candidate.LatestProbe.LatencyMs
-		}
+		rate, rateSource, _ := effectiveRelayRate(candidate, now)
+		healthSummary := relayHealthSummary(candidate)
 		suggestions = append(suggestions, UpstreamRelayRecommendationSuggestion{
 			CandidateID:         candidate.ID,
 			ConnectorID:         candidate.ConnectorID,
@@ -884,9 +939,13 @@ func buildUpstreamRelaySuggestions(candidates []UpstreamRelayCandidate) []Upstre
 			TargetGroupID:       candidate.TargetGroupID,
 			OldPriority:         candidate.CurrentPriority,
 			NewPriority:         newPriority,
-			FinalRateMultiplier: candidate.LatestSnapshot.FinalRateMultiplier,
-			HealthStatus:        "success",
-			Reason:              fmt.Sprintf("上游最终倍率 %.4g，最近探测成功，延迟 %dms，按倍率升序建议 priority=%d", candidate.LatestSnapshot.FinalRateMultiplier, latency, newPriority),
+			FinalRateMultiplier: rate,
+			HealthStatus:        relayHealthStatus(candidate),
+			ReasonCode:          "rate_health_priority",
+			Confidence:          relayRateConfidence(rateSource),
+			HealthSummary:       healthSummary,
+			RateSource:          rateSource,
+			Reason:              fmt.Sprintf("上游倍率 %.4g，来源 %s，%s，按倍率、成功率与延迟建议 priority=%d", rate, rateSource, healthSummary, newPriority),
 		})
 	}
 	return suggestions
@@ -896,10 +955,7 @@ func isUpstreamRelayCandidateEligible(candidate UpstreamRelayCandidate, now time
 	if !candidate.Enabled || candidate.ConnectorStatus != UpstreamRelayConnectorStatusActive {
 		return false
 	}
-	if candidate.LatestSnapshot == nil || candidate.LatestSnapshot.Status == upstreamRelaySnapshotStatusStale {
-		return false
-	}
-	if now.Sub(candidate.LatestSnapshot.LastSeenAt) > upstreamRelaySnapshotFreshness {
+	if _, _, ok := effectiveRelayRate(candidate, now); !ok {
 		return false
 	}
 	if candidate.LatestProbe == nil || !candidate.LatestProbe.Success {
@@ -908,34 +964,139 @@ func isUpstreamRelayCandidateEligible(candidate UpstreamRelayCandidate, now time
 	if now.Sub(candidate.LatestProbe.ProbedAt) > upstreamRelayProbeFreshness {
 		return false
 	}
+	if candidate.Health != nil {
+		if candidate.Health.ConsecutiveFailures > 0 {
+			return false
+		}
+		if candidate.Health.ProbeCount >= 3 && candidate.Health.SuccessRate < 0.5 {
+			return false
+		}
+	}
 	return true
 }
 
 func sortRelayCandidates(candidates []UpstreamRelayCandidate) {
+	now := time.Now()
 	sort.SliceStable(candidates, func(i, j int) bool {
 		left, right := candidates[i], candidates[j]
 		leftRate, rightRate := math.MaxFloat64, math.MaxFloat64
-		if left.LatestSnapshot != nil {
-			leftRate = left.LatestSnapshot.FinalRateMultiplier
+		if rate, _, ok := effectiveRelayRate(left, now); ok {
+			leftRate = rate
 		}
-		if right.LatestSnapshot != nil {
-			rightRate = right.LatestSnapshot.FinalRateMultiplier
+		if rate, _, ok := effectiveRelayRate(right, now); ok {
+			rightRate = rate
 		}
 		if leftRate != rightRate {
 			return leftRate < rightRate
 		}
-		leftLatency, rightLatency := math.MaxInt, math.MaxInt
-		if left.LatestProbe != nil && left.LatestProbe.LatencyMs != nil {
-			leftLatency = *left.LatestProbe.LatencyMs
+		leftSuccess, rightSuccess := relaySuccessRate(left), relaySuccessRate(right)
+		if leftSuccess != rightSuccess {
+			return leftSuccess > rightSuccess
 		}
-		if right.LatestProbe != nil && right.LatestProbe.LatencyMs != nil {
-			rightLatency = *right.LatestProbe.LatencyMs
-		}
+		leftLatency, rightLatency := relayP95Latency(left), relayP95Latency(right)
 		if leftLatency != rightLatency {
 			return leftLatency < rightLatency
 		}
 		return left.ID < right.ID
 	})
+}
+
+func effectiveRelayRate(candidate UpstreamRelayCandidate, now time.Time) (float64, string, bool) {
+	if hasFreshLoginRelayRate(candidate, now) {
+		source := candidate.LatestSnapshot.Source
+		if source == "" {
+			source = UpstreamRelayRateSourceAvailable
+		}
+		return candidate.LatestSnapshot.FinalRateMultiplier, source, true
+	}
+	if hasFreshReliableUsageDelta(candidate, now) {
+		return *candidate.LatestUsageDelta.DerivedRateMultiplier, UpstreamRelayRateSourceUsageDelta, true
+	}
+	return 0, "", false
+}
+
+func shouldSampleUsageDelta(candidate UpstreamRelayCandidate, now time.Time) bool {
+	if hasFreshLoginRelayRate(candidate, now) {
+		return false
+	}
+	return !hasFreshReliableUsageDelta(candidate, now)
+}
+
+func hasFreshLoginRelayRate(candidate UpstreamRelayCandidate, now time.Time) bool {
+	return candidate.LatestSnapshot != nil &&
+		candidate.LatestSnapshot.Status != upstreamRelaySnapshotStatusStale &&
+		now.Sub(candidate.LatestSnapshot.LastSeenAt) <= upstreamRelaySnapshotFreshness
+}
+
+func hasFreshReliableUsageDelta(candidate UpstreamRelayCandidate, now time.Time) bool {
+	return candidate.LatestUsageDelta != nil &&
+		candidate.LatestUsageDelta.Status == "reliable" &&
+		candidate.LatestUsageDelta.DerivedRateMultiplier != nil &&
+		now.Sub(candidate.LatestUsageDelta.SampledAt) <= upstreamRelayUsageDeltaFreshness
+}
+
+func relayRateConfidence(source string) string {
+	switch source {
+	case UpstreamRelayRateSourceOverride:
+		return "high"
+	case UpstreamRelayRateSourceAvailable:
+		return "medium"
+	case UpstreamRelayRateSourceUsageDelta:
+		return "low"
+	default:
+		return "unknown"
+	}
+}
+
+func relayHealthStatus(candidate UpstreamRelayCandidate) string {
+	if candidate.Health == nil {
+		return "latest_success"
+	}
+	if candidate.Health.ConsecutiveFailures > 0 {
+		return "degraded"
+	}
+	return "healthy"
+}
+
+func relayHealthSummary(candidate UpstreamRelayCandidate) string {
+	if candidate.Health == nil || candidate.Health.ProbeCount == 0 {
+		latency := 0
+		if candidate.LatestProbe != nil && candidate.LatestProbe.LatencyMs != nil {
+			latency = *candidate.LatestProbe.LatencyMs
+		}
+		return fmt.Sprintf("最近探测成功，延迟 %dms", latency)
+	}
+	latency := "-"
+	if candidate.Health.P95LatencyMs != nil {
+		latency = fmt.Sprintf("p95 %dms", *candidate.Health.P95LatencyMs)
+	}
+	return fmt.Sprintf("最近%d次成功率 %.0f%%，连续成功 %d，连续失败 %d，%s",
+		candidate.Health.ProbeCount,
+		candidate.Health.SuccessRate*100,
+		candidate.Health.ConsecutiveSuccesses,
+		candidate.Health.ConsecutiveFailures,
+		latency,
+	)
+}
+
+func relaySuccessRate(candidate UpstreamRelayCandidate) float64 {
+	if candidate.Health == nil || candidate.Health.ProbeCount == 0 {
+		if candidate.LatestProbe != nil && candidate.LatestProbe.Success {
+			return 1
+		}
+		return 0
+	}
+	return candidate.Health.SuccessRate
+}
+
+func relayP95Latency(candidate UpstreamRelayCandidate) int {
+	if candidate.Health != nil && candidate.Health.P95LatencyMs != nil {
+		return *candidate.Health.P95LatencyMs
+	}
+	if candidate.LatestProbe != nil && candidate.LatestProbe.LatencyMs != nil {
+		return *candidate.LatestProbe.LatencyMs
+	}
+	return math.MaxInt
 }
 
 type upstreamRelayAvailableGroup struct {
@@ -998,6 +1159,117 @@ func parseGroupRates(body []byte) (map[string]float64, error) {
 		out[key] = relayFloat(value, 1)
 	}
 	return out, nil
+}
+
+type upstreamRelayUsageSnapshot struct {
+	Cost       float64
+	ActualCost float64
+}
+
+func (s *UpstreamRelayGroupMonitoringService) fetchUsageSnapshotForAccount(ctx context.Context, account *Account) (*upstreamRelayUsageSnapshot, error) {
+	if account == nil {
+		return nil, fmt.Errorf("account not found")
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" && account.IsOpenAI() {
+		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("bound account has no usable api key")
+	}
+	endpoint := resolveUsageEndpoint(account)
+	if endpoint == "" {
+		return nil, fmt.Errorf("bound account has no supported usage endpoint")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("usage HTTP %d: %s", resp.StatusCode, sanitizeUpstreamRelayError(string(body)))
+	}
+	return parseUsageSnapshot(body)
+}
+
+func parseUsageSnapshot(body []byte) (*upstreamRelayUsageSnapshot, error) {
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse usage: %w", err)
+	}
+	root, _ := raw.(map[string]any)
+	if root == nil {
+		return nil, fmt.Errorf("usage response is not an object")
+	}
+	if data, ok := root["data"].(map[string]any); ok {
+		root = data
+	}
+	cost, costOK := relayFloatOK(firstPresent(root, "cost", "total_cost"))
+	actualCost, actualOK := relayFloatOK(firstPresent(root, "actual_cost", "total_actual_cost"))
+	if !costOK || !actualOK {
+		return nil, fmt.Errorf("usage response missing cost or actual_cost")
+	}
+	return &upstreamRelayUsageSnapshot{Cost: cost, ActualCost: actualCost}, nil
+}
+
+func buildUsageDeltaSample(candidate UpstreamRelayCandidate, probe *UpstreamRelayProbeResult, before *upstreamRelayUsageSnapshot, beforeErr error, after *upstreamRelayUsageSnapshot, afterErr error) *UpstreamRelayUsageDeltaSample {
+	if before == nil && beforeErr == nil && after == nil && afterErr == nil {
+		return nil
+	}
+	sample := &UpstreamRelayUsageDeltaSample{
+		CandidateID: candidate.ID,
+		Model:       candidate.ProbeModel,
+		Status:      "insufficient",
+		SampledAt:   time.Now(),
+	}
+	if probe != nil {
+		sample.ProbeResultID = &probe.ID
+	}
+	if beforeErr != nil {
+		sample.Status = "unavailable"
+		sample.UnreliableReason = truncateRelayMessage(sanitizeUpstreamRelayError(beforeErr.Error()))
+		return sample
+	}
+	if before != nil {
+		sample.BeforeCost = &before.Cost
+		sample.BeforeActualCost = &before.ActualCost
+	}
+	if afterErr != nil {
+		sample.Status = "unavailable"
+		sample.UnreliableReason = truncateRelayMessage(sanitizeUpstreamRelayError(afterErr.Error()))
+		return sample
+	}
+	if after != nil {
+		sample.AfterCost = &after.Cost
+		sample.AfterActualCost = &after.ActualCost
+	}
+	if before == nil || after == nil {
+		sample.UnreliableReason = "usage sample missing before or after snapshot"
+		return sample
+	}
+	costDelta := after.Cost - before.Cost
+	actualCostDelta := after.ActualCost - before.ActualCost
+	sample.CostDelta = &costDelta
+	sample.ActualCostDelta = &actualCostDelta
+	if probe == nil || !probe.Success {
+		sample.UnreliableReason = "probe did not succeed"
+		return sample
+	}
+	if costDelta <= 0 || actualCostDelta <= 0 {
+		sample.UnreliableReason = "usage delta is not positive"
+		return sample
+	}
+	derived := costDelta / actualCostDelta
+	sample.DerivedRateMultiplier = &derived
+	sample.Status = "reliable"
+	return sample
 }
 
 func parseUpstreamRelayLoginToken(body []byte) (upstreamRelayLoginToken, bool, error) {
@@ -1112,6 +1384,25 @@ func relayFloat(value any, fallback float64) float64 {
 	return fallback
 }
 
+func relayFloatOK(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		f, err := v.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
 func normalizeBearerToken(raw string) string {
 	token := strings.TrimSpace(raw)
 	token = strings.TrimPrefix(token, "Bearer ")
@@ -1160,6 +1451,17 @@ func resolveProbeEndpoint(account *Account) string {
 	}
 }
 
+func resolveUsageEndpoint(account *Account) string {
+	base := strings.TrimRight(resolveProbeEndpoint(account), "/")
+	if base == "" {
+		return ""
+	}
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/usage"
+	}
+	return base + "/v1/usage"
+}
+
 func upstreamRelayProviderFromAccount(account *Account) string {
 	if account == nil {
 		return ""
@@ -1179,14 +1481,24 @@ func upstreamRelayProviderFromAccount(account *Account) string {
 func classifyProbeError(status int, message string) string {
 	lower := strings.ToLower(message)
 	switch {
+	case looksLikeBrowserChallenge([]byte(message)):
+		return "browser_challenge"
 	case status == http.StatusUnauthorized || status == http.StatusForbidden || strings.Contains(lower, "unauthorized") || strings.Contains(lower, "forbidden"):
 		return "auth_failed"
 	case status == http.StatusTooManyRequests || strings.Contains(lower, "rate limit"):
 		return "rate_limited"
 	case status >= 500:
 		return "upstream_5xx"
+	case strings.Contains(lower, "insufficient") || strings.Contains(lower, "quota") || strings.Contains(lower, "balance"):
+		return "insufficient_quota"
+	case strings.Contains(lower, "context window") || strings.Contains(lower, "context length") || strings.Contains(lower, "maximum context"):
+		return "context_window_exceeded"
+	case status == http.StatusBadRequest || strings.Contains(lower, "invalid request") || strings.Contains(lower, "bad request"):
+		return "invalid_request"
 	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline"):
 		return "timeout"
+	case strings.Contains(lower, "connection refused") || strings.Contains(lower, "no such host") || strings.Contains(lower, "network"):
+		return "network_error"
 	case strings.Contains(lower, "model"):
 		return "model_unavailable"
 	default:

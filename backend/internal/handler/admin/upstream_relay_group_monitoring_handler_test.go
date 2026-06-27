@@ -100,6 +100,10 @@ func (r *upstreamRelayHandlerRepo) InsertProbeResult(context.Context, service.Up
 	return nil, service.ErrUpstreamRelayCandidateNotFound
 }
 
+func (r *upstreamRelayHandlerRepo) InsertUsageDeltaSample(context.Context, service.UpstreamRelayUsageDeltaSample) (*service.UpstreamRelayUsageDeltaSample, error) {
+	return nil, nil
+}
+
 func (r *upstreamRelayHandlerRepo) ListRecommendationInputs(context.Context) ([]service.UpstreamRelayCandidate, error) {
 	return nil, nil
 }

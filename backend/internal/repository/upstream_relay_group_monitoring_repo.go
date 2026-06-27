@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -245,6 +248,9 @@ func (r *upstreamRelayRepository) ListCandidates(ctx context.Context, params pag
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := r.decorateRelayCandidates(ctx, items); err != nil {
+		return nil, nil, err
+	}
 	return items, relayPage(total, page, pageSize), nil
 }
 
@@ -260,6 +266,9 @@ func (r *upstreamRelayRepository) GetCandidate(ctx context.Context, id int64) (*
 	}
 	if len(items) == 0 {
 		return nil, service.ErrUpstreamRelayCandidateNotFound
+	}
+	if err := r.decorateRelayCandidates(ctx, items); err != nil {
+		return nil, err
 	}
 	return &items[0], nil
 }
@@ -346,6 +355,37 @@ func (r *upstreamRelayRepository) InsertProbeResult(ctx context.Context, result 
 	return candidate.LatestProbe, nil
 }
 
+func (r *upstreamRelayRepository) InsertUsageDeltaSample(ctx context.Context, sample service.UpstreamRelayUsageDeltaSample) (*service.UpstreamRelayUsageDeltaSample, error) {
+	var id int64
+	if err := scanSingleRow(ctx, r.db, `
+		INSERT INTO upstream_relay_usage_delta_samples (
+			candidate_id, probe_result_id, model, status,
+			before_cost, before_actual_cost, after_cost, after_actual_cost,
+			cost_delta, actual_cost_delta, derived_rate_multiplier,
+			unreliable_reason, sampled_at
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+		RETURNING id
+	`, []any{
+		sample.CandidateID, nullableInt64Value(sample.ProbeResultID), sample.Model, sample.Status,
+		nullableFloat64Value(sample.BeforeCost), nullableFloat64Value(sample.BeforeActualCost),
+		nullableFloat64Value(sample.AfterCost), nullableFloat64Value(sample.AfterActualCost),
+		nullableFloat64Value(sample.CostDelta), nullableFloat64Value(sample.ActualCostDelta),
+		nullableFloat64Value(sample.DerivedRateMultiplier), sample.UnreliableReason,
+	}, &id); err != nil {
+		return nil, err
+	}
+	samples, err := r.latestUsageDeltaSamples(ctx, []int64{sample.CandidateID})
+	if err != nil {
+		return nil, err
+	}
+	if got := samples[sample.CandidateID]; got != nil {
+		return got, nil
+	}
+	sample.ID = id
+	return &sample, nil
+}
+
 func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) ([]service.UpstreamRelayCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, relayCandidateSelect()+`
 		WHERE c.deleted_at IS NULL
@@ -356,7 +396,14 @@ func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanRelayCandidates(rows)
+	items, err := scanRelayCandidates(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.decorateRelayCandidates(ctx, items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (r *upstreamRelayRepository) CreateRecommendationRun(ctx context.Context, run service.UpstreamRelayRecommendationRun, suggestions []service.UpstreamRelayRecommendationSuggestion) (*service.UpstreamRelayRecommendationRun, error) {
@@ -377,15 +424,18 @@ func (r *upstreamRelayRepository) CreateRecommendationRun(ctx context.Context, r
 	}
 	for _, suggestion := range suggestions {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO upstream_relay_recommendation_suggestions (
-				run_id, candidate_id, connector_id, account_id, upstream_group_id,
-				target_group_id, old_priority, new_priority, final_rate_multiplier,
-				health_status, reason, applied, created_at
-			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,FALSE,NOW())
-		`, runID, suggestion.CandidateID, suggestion.ConnectorID, suggestion.AccountID,
+				INSERT INTO upstream_relay_recommendation_suggestions (
+					run_id, candidate_id, connector_id, account_id, upstream_group_id,
+					target_group_id, old_priority, new_priority, final_rate_multiplier,
+					health_status, reason_code, confidence, health_summary, rate_source,
+					reason, applied, created_at
+				)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,FALSE,NOW())
+			`, runID, suggestion.CandidateID, suggestion.ConnectorID, suggestion.AccountID,
 			suggestion.UpstreamGroupID, suggestion.TargetGroupID, nullableIntValue(suggestion.OldPriority),
-			suggestion.NewPriority, suggestion.FinalRateMultiplier, suggestion.HealthStatus, suggestion.Reason); err != nil {
+			suggestion.NewPriority, suggestion.FinalRateMultiplier, suggestion.HealthStatus,
+			suggestion.ReasonCode, suggestion.Confidence, suggestion.HealthSummary, suggestion.RateSource,
+			suggestion.Reason); err != nil {
 			return nil, err
 		}
 	}
@@ -687,7 +737,9 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		SELECT s.id, s.run_id, s.candidate_id, s.connector_id, COALESCE(rc.name, ''),
 		       s.account_id, COALESCE(a.name, ''), s.upstream_group_id, COALESCE(gs.name, ''),
 		       s.target_group_id, COALESCE(g.name, ''), s.old_priority, s.new_priority,
-		       s.final_rate_multiplier, s.health_status, s.reason, s.applied, s.applied_by,
+		       s.final_rate_multiplier, s.health_status, COALESCE(s.reason_code, ''),
+		       COALESCE(s.confidence, ''), COALESCE(s.health_summary, ''), COALESCE(s.rate_source, ''),
+		       s.reason, s.applied, s.applied_by,
 		       s.applied_at, s.created_at
 		FROM upstream_relay_recommendation_suggestions s
 		LEFT JOIN upstream_relay_connectors rc ON rc.id = s.connector_id
@@ -708,7 +760,8 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		if err := rows.Scan(&item.ID, &item.RunID, &item.CandidateID, &item.ConnectorID, &item.ConnectorName,
 			&item.AccountID, &item.AccountName, &item.UpstreamGroupID, &item.UpstreamGroupName,
 			&item.TargetGroupID, &item.TargetGroupName, &oldPriority, &item.NewPriority,
-			&item.FinalRateMultiplier, &item.HealthStatus, &item.Reason, &item.Applied, &appliedBy,
+			&item.FinalRateMultiplier, &item.HealthStatus, &item.ReasonCode, &item.Confidence,
+			&item.HealthSummary, &item.RateSource, &item.Reason, &item.Applied, &appliedBy,
 			&item.AppliedAt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -717,6 +770,187 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+type relayProbeRow struct {
+	candidateID int64
+	success     bool
+	latency     sql.NullInt64
+	errorClass  string
+	probedAt    time.Time
+}
+
+func (r *upstreamRelayRepository) decorateRelayCandidates(ctx context.Context, items []service.UpstreamRelayCandidate) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	health, err := r.candidateHealthSummaries(ctx, ids)
+	if err != nil {
+		return err
+	}
+	usageSamples, err := r.latestUsageDeltaSamples(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		items[i].Health = health[items[i].ID]
+		items[i].LatestUsageDelta = usageSamples[items[i].ID]
+	}
+	return nil
+}
+
+func (r *upstreamRelayRepository) candidateHealthSummaries(ctx context.Context, ids []int64) (map[int64]*service.UpstreamRelayCandidateHealth, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT candidate_id, success, latency_ms, COALESCE(error_class, ''), probed_at
+		FROM (
+			SELECT candidate_id, success, latency_ms, error_class, probed_at,
+			       ROW_NUMBER() OVER (PARTITION BY candidate_id ORDER BY probed_at DESC, id DESC) AS rn
+			FROM upstream_relay_probe_results
+			WHERE candidate_id = ANY($1)
+			  AND probed_at >= NOW() - INTERVAL '30 minutes'
+		) recent
+		WHERE rn <= 20
+		ORDER BY candidate_id ASC, probed_at DESC
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	grouped := map[int64][]relayProbeRow{}
+	for rows.Next() {
+		var row relayProbeRow
+		if err := rows.Scan(&row.candidateID, &row.success, &row.latency, &row.errorClass, &row.probedAt); err != nil {
+			return nil, err
+		}
+		grouped[row.candidateID] = append(grouped[row.candidateID], row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := map[int64]*service.UpstreamRelayCandidateHealth{}
+	for id, probes := range grouped {
+		out[id] = buildRelayHealth(probes)
+	}
+	return out, nil
+}
+
+func buildRelayHealth(probes []relayProbeRow) *service.UpstreamRelayCandidateHealth {
+	health := &service.UpstreamRelayCandidateHealth{ProbeCount: len(probes), WindowMinutes: 30, SampleSize: len(probes)}
+	if len(probes) == 0 {
+		return health
+	}
+	latencies := []int{}
+	countingStreak := true
+	for i, probe := range probes {
+		if probe.success {
+			health.SuccessCount++
+			if health.LastSuccessAt == nil {
+				t := probe.probedAt
+				health.LastSuccessAt = &t
+			}
+		} else if health.LastErrorClass == "" {
+			health.LastErrorClass = probe.errorClass
+		}
+		if probe.latency.Valid {
+			latencies = append(latencies, int(probe.latency.Int64))
+		}
+		if i == 0 {
+			if probe.success {
+				health.ConsecutiveSuccesses = 1
+			} else {
+				health.ConsecutiveFailures = 1
+			}
+			continue
+		}
+		if !countingStreak {
+			continue
+		}
+		if probe.success == probes[0].success {
+			if probe.success {
+				health.ConsecutiveSuccesses++
+			} else {
+				health.ConsecutiveFailures++
+			}
+			continue
+		}
+		countingStreak = false
+	}
+	health.SuccessRate = float64(health.SuccessCount) / float64(len(probes))
+	if len(latencies) > 0 {
+		total := 0
+		for _, latency := range latencies {
+			total += latency
+		}
+		avg := int(math.Round(float64(total) / float64(len(latencies))))
+		sort.Ints(latencies)
+		p95Index := int(math.Ceil(float64(len(latencies))*0.95)) - 1
+		if p95Index < 0 {
+			p95Index = 0
+		}
+		if p95Index >= len(latencies) {
+			p95Index = len(latencies) - 1
+		}
+		p95 := latencies[p95Index]
+		health.AvgLatencyMs = &avg
+		health.P95LatencyMs = &p95
+	}
+	return health
+}
+
+func (r *upstreamRelayRepository) latestUsageDeltaSamples(ctx context.Context, ids []int64) (map[int64]*service.UpstreamRelayUsageDeltaSample, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, candidate_id, probe_result_id, model, status,
+		       before_cost, before_actual_cost, after_cost, after_actual_cost,
+		       cost_delta, actual_cost_delta, derived_rate_multiplier,
+		       COALESCE(unreliable_reason, ''), sampled_at
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY candidate_id ORDER BY sampled_at DESC, id DESC) AS rn
+			FROM upstream_relay_usage_delta_samples
+			WHERE candidate_id = ANY($1)
+		) latest
+		WHERE rn = 1
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int64]*service.UpstreamRelayUsageDeltaSample{}
+	for rows.Next() {
+		sample, err := scanUsageDeltaSample(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[sample.CandidateID] = sample
+	}
+	return out, rows.Err()
+}
+
+func scanUsageDeltaSample(rows *sql.Rows) (*service.UpstreamRelayUsageDeltaSample, error) {
+	var item service.UpstreamRelayUsageDeltaSample
+	var probeID sql.NullInt64
+	var beforeCost, beforeActualCost, afterCost, afterActualCost sql.NullFloat64
+	var costDelta, actualCostDelta, derived sql.NullFloat64
+	if err := rows.Scan(
+		&item.ID, &item.CandidateID, &probeID, &item.Model, &item.Status,
+		&beforeCost, &beforeActualCost, &afterCost, &afterActualCost,
+		&costDelta, &actualCostDelta, &derived,
+		&item.UnreliableReason, &item.SampledAt,
+	); err != nil {
+		return nil, err
+	}
+	item.ProbeResultID = nullInt64Ptr(probeID)
+	item.BeforeCost = nullableFloat64Ptr(beforeCost)
+	item.BeforeActualCost = nullableFloat64Ptr(beforeActualCost)
+	item.AfterCost = nullableFloat64Ptr(afterCost)
+	item.AfterActualCost = nullableFloat64Ptr(afterActualCost)
+	item.CostDelta = nullableFloat64Ptr(costDelta)
+	item.ActualCostDelta = nullableFloat64Ptr(actualCostDelta)
+	item.DerivedRateMultiplier = nullableFloat64Ptr(derived)
+	return &item, nil
 }
 
 func nullableIntFromSQL(v sql.NullInt64) *int {

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"testing"
 	"time"
@@ -91,6 +92,61 @@ func TestUpstreamRelayRepositoryUpdateConnectorIncrementsCredentialVersionAndPer
 	require.Equal(t, int64(2), got.CredentialVersion)
 	require.Equal(t, "enc-refresh", got.RefreshTokenEncrypted)
 	require.Equal(t, "enc-admin@example.com", got.LoginEmailEncrypted)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonFields(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	oldPriority := 50
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("INSERT INTO upstream_relay_recommendation_runs").
+		WithArgs(service.UpstreamRelayRunStatusSuccess, 1, 1, nil, int64(88)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(44)))
+	mock.ExpectExec(`VALUES \(\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8,\$9,\$10,\$11,\$12,\$13,\$14,\$15,FALSE,NOW\(\)\)`).
+		WithArgs(
+			int64(44), int64(9), int64(10), int64(101), "cheap-upstream",
+			int64(7), oldPriority, 10, 0.75, "healthy", "rate_health_priority",
+			"high", "最近3次成功率 100%，连续成功 3，连续失败 0，p95 80ms",
+			service.UpstreamRelayRateSourceOverride, "结构化建议原因",
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectUpstreamRelayRunDetailSingle(mock, now)
+
+	run, err := repo.CreateRecommendationRun(ctx, service.UpstreamRelayRecommendationRun{
+		Status:          service.UpstreamRelayRunStatusSuccess,
+		TotalCandidates: 1,
+		SuggestionCount: 1,
+		CreatedBy:       88,
+	}, []service.UpstreamRelayRecommendationSuggestion{
+		{
+			CandidateID:         9,
+			ConnectorID:         10,
+			AccountID:           101,
+			UpstreamGroupID:     "cheap-upstream",
+			TargetGroupID:       7,
+			OldPriority:         &oldPriority,
+			NewPriority:         10,
+			FinalRateMultiplier: 0.75,
+			HealthStatus:        "healthy",
+			ReasonCode:          "rate_health_priority",
+			Confidence:          "high",
+			HealthSummary:       "最近3次成功率 100%，连续成功 3，连续失败 0，p95 80ms",
+			RateSource:          service.UpstreamRelayRateSourceOverride,
+			Reason:              "结构化建议原因",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, run.Suggestions, 1)
+	require.Equal(t, "rate_health_priority", run.Suggestions[0].ReasonCode)
+	require.Equal(t, "high", run.Suggestions[0].Confidence)
+	require.Equal(t, service.UpstreamRelayRateSourceOverride, run.Suggestions[0].RateSource)
+	require.Equal(t, "结构化建议原因", run.Suggestions[0].Reason)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -223,6 +279,89 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsEmptyPendingSuggest
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpstreamRelayRepositoryInsertUsageDeltaSamplePersistsAndReadsLatest(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	probeID := int64(88)
+	beforeCost := 10.0
+	beforeActualCost := 2.0
+	afterCost := 14.0
+	afterActualCost := 3.0
+	costDelta := 4.0
+	actualCostDelta := 1.0
+	derivedRate := 4.0
+
+	mock.ExpectQuery("INSERT INTO upstream_relay_usage_delta_samples").
+		WithArgs(int64(9), probeID, "gpt-5.5", "reliable", beforeCost, beforeActualCost, afterCost, afterActualCost, costDelta, actualCostDelta, derivedRate, "").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(101)))
+	mock.ExpectQuery("SELECT id, candidate_id, probe_result_id, model, status").
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "candidate_id", "probe_result_id", "model", "status",
+			"before_cost", "before_actual_cost", "after_cost", "after_actual_cost",
+			"cost_delta", "actual_cost_delta", "derived_rate_multiplier",
+			"unreliable_reason", "sampled_at",
+		}).AddRow(
+			int64(101), int64(9), probeID, "gpt-5.5", "reliable",
+			beforeCost, beforeActualCost, afterCost, afterActualCost,
+			costDelta, actualCostDelta, derivedRate,
+			"", now,
+		))
+
+	got, err := repo.InsertUsageDeltaSample(ctx, service.UpstreamRelayUsageDeltaSample{
+		CandidateID:           9,
+		ProbeResultID:         &probeID,
+		Model:                 "gpt-5.5",
+		Status:                "reliable",
+		BeforeCost:            &beforeCost,
+		BeforeActualCost:      &beforeActualCost,
+		AfterCost:             &afterCost,
+		AfterActualCost:       &afterActualCost,
+		CostDelta:             &costDelta,
+		ActualCostDelta:       &actualCostDelta,
+		DerivedRateMultiplier: &derivedRate,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(101), got.ID)
+	require.Equal(t, int64(9), got.CandidateID)
+	require.NotNil(t, got.DerivedRateMultiplier)
+	require.Equal(t, derivedRate, *got.DerivedRateMultiplier)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayBuildRelayHealthComputesWindowStats(t *testing.T) {
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	latencyFast := sqlNullInt64(40)
+	latencySlow := sqlNullInt64(120)
+	latencyMid := sqlNullInt64(80)
+	health := buildRelayHealth([]relayProbeRow{
+		{candidateID: 1, success: true, latency: latencyFast, probedAt: now},
+		{candidateID: 1, success: true, latency: latencySlow, probedAt: now.Add(-time.Minute)},
+		{candidateID: 1, success: false, latency: latencyMid, errorClass: "rate_limited", probedAt: now.Add(-2 * time.Minute)},
+		{candidateID: 1, success: true, latency: latencyMid, probedAt: now.Add(-3 * time.Minute)},
+	})
+
+	require.Equal(t, 4, health.ProbeCount)
+	require.Equal(t, 3, health.SuccessCount)
+	require.InDelta(t, 0.75, health.SuccessRate, 0.0001)
+	require.Equal(t, 2, health.ConsecutiveSuccesses)
+	require.Equal(t, 0, health.ConsecutiveFailures)
+	require.Equal(t, "rate_limited", health.LastErrorClass)
+	require.NotNil(t, health.AvgLatencyMs)
+	require.Equal(t, 80, *health.AvgLatencyMs)
+	require.NotNil(t, health.P95LatencyMs)
+	require.Equal(t, 120, *health.P95LatencyMs)
+	require.NotNil(t, health.LastSuccessAt)
+	require.Equal(t, now, *health.LastSuccessAt)
+}
+
+func sqlNullInt64(v int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: v, Valid: true}
+}
+
 func expectUpstreamRelayConnectorGet(mock sqlmock.Sqlmock, id int64, now time.Time, connector service.UpstreamRelayConnector) {
 	mock.ExpectQuery("SELECT id, name, base_url, auth_mode").
 		WithArgs(id).
@@ -254,9 +393,37 @@ func expectUpstreamRelayRunDetail(mock sqlmock.Sqlmock, now time.Time, applied b
 			"id", "run_id", "candidate_id", "connector_id", "connector_name",
 			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
 			"target_group_id", "target_group_name", "old_priority", "new_priority",
-			"final_rate_multiplier", "health_status", "reason", "applied", "applied_by",
+			"final_rate_multiplier", "health_status", "reason_code", "confidence",
+			"health_summary", "rate_source", "reason", "applied", "applied_by",
 			"applied_at", "created_at",
 		}).
-			AddRow(int64(1), int64(44), int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", int64(7), "local-a", 50, 10, 0.8, "success", "rate", applied, int64(99), now, now).
-			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(101), "account-a", "fast", "fast upstream", int64(8), "local-b", 60, 20, 1.1, "success", "rate", applied, int64(99), now, now))
+			AddRow(int64(1), int64(44), int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", int64(7), "local-a", 50, 10, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", applied, int64(99), now, now).
+			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(101), "account-a", "fast", "fast upstream", int64(8), "local-b", 60, 20, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", applied, int64(99), now, now))
+}
+
+func expectUpstreamRelayRunDetailSingle(mock sqlmock.Sqlmock, now time.Time) {
+	mock.ExpectQuery("SELECT id, status, total_candidates, suggestion_count").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
+			"applied_at", "error_message", "created_by", "created_at",
+		}).AddRow(
+			int64(44), service.UpstreamRelayRunStatusSuccess, 1, 1, false, nil, nil, "", int64(88), now,
+		))
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "run_id", "candidate_id", "connector_id", "connector_name",
+			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
+			"target_group_id", "target_group_name", "old_priority", "new_priority",
+			"final_rate_multiplier", "health_status", "reason_code", "confidence",
+			"health_summary", "rate_source", "reason", "applied", "applied_by",
+			"applied_at", "created_at",
+		}).AddRow(
+			int64(1), int64(44), int64(9), int64(10), "relay", int64(101), "account-a",
+			"cheap-upstream", "cheap upstream", int64(7), "local-a", 50, 10, 0.75,
+			"healthy", "rate_health_priority", "high",
+			"最近3次成功率 100%，连续成功 3，连续失败 0，p95 80ms",
+			service.UpstreamRelayRateSourceOverride, "结构化建议原因", false, nil, nil, now,
+		))
 }

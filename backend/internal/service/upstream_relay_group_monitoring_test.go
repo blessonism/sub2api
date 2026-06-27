@@ -455,6 +455,9 @@ func TestUpstreamRelayBuildSuggestionsOnlyUsesMappedHealthyCandidates(t *testing
 	require.Equal(t, 0.6, suggestions[0].FinalRateMultiplier)
 	require.Equal(t, int64(1), suggestions[1].CandidateID)
 	require.Equal(t, 20, suggestions[1].NewPriority)
+	require.Equal(t, "rate_health_priority", suggestions[0].ReasonCode)
+	require.NotEmpty(t, suggestions[0].HealthSummary)
+	require.NotEmpty(t, suggestions[0].RateSource)
 }
 
 func TestUpstreamRelayBuildSuggestionsSkipsStaleState(t *testing.T) {
@@ -491,4 +494,147 @@ func TestUpstreamRelayBuildSuggestionsSkipsStaleState(t *testing.T) {
 	}
 
 	require.Empty(t, buildUpstreamRelaySuggestions(candidates))
+}
+
+func TestUpstreamRelayBuildSuggestionsUsesUsageDeltaFallback(t *testing.T) {
+	now := time.Now()
+	priority50 := 50
+	rate := 0.7
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:              9,
+			ConnectorID:     10,
+			ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			AccountID:       109,
+			UpstreamGroupID: "usage-delta",
+			TargetGroupID:   7,
+			CurrentPriority: &priority50,
+			Enabled:         true,
+			LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestUsageDelta: &UpstreamRelayUsageDeltaSample{
+				Status:                "reliable",
+				DerivedRateMultiplier: &rate,
+				SampledAt:             now,
+			},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:           3,
+				SuccessCount:         3,
+				SuccessRate:          1,
+				ConsecutiveSuccesses: 3,
+				WindowMinutes:        30,
+				SampleSize:           3,
+			},
+		},
+	}
+
+	suggestions := buildUpstreamRelaySuggestions(candidates)
+
+	require.Len(t, suggestions, 1)
+	require.Equal(t, UpstreamRelayRateSourceUsageDelta, suggestions[0].RateSource)
+	require.Equal(t, "low", suggestions[0].Confidence)
+	require.Equal(t, rate, suggestions[0].FinalRateMultiplier)
+}
+
+func TestUpstreamRelayShouldSampleUsageDeltaOnlyWhenFallbackIsNeeded(t *testing.T) {
+	now := time.Now()
+	rate := 0.7
+
+	require.False(t, shouldSampleUsageDelta(UpstreamRelayCandidate{
+		LatestSnapshot: &UpstreamRelayGroupRateSnapshot{
+			FinalRateMultiplier: 0.5,
+			LastSeenAt:          now,
+		},
+	}, now))
+
+	require.True(t, shouldSampleUsageDelta(UpstreamRelayCandidate{
+		LatestSnapshot: &UpstreamRelayGroupRateSnapshot{
+			FinalRateMultiplier: 0.5,
+			LastSeenAt:          now.Add(-upstreamRelaySnapshotFreshness - time.Minute),
+		},
+	}, now))
+
+	require.False(t, shouldSampleUsageDelta(UpstreamRelayCandidate{
+		LatestUsageDelta: &UpstreamRelayUsageDeltaSample{
+			Status:                "reliable",
+			DerivedRateMultiplier: &rate,
+			SampledAt:             now,
+		},
+	}, now))
+
+	require.True(t, shouldSampleUsageDelta(UpstreamRelayCandidate{
+		LatestUsageDelta: &UpstreamRelayUsageDeltaSample{
+			Status:                "reliable",
+			DerivedRateMultiplier: &rate,
+			SampledAt:             now.Add(-upstreamRelayUsageDeltaFreshness - time.Minute),
+		},
+	}, now))
+
+	require.True(t, shouldSampleUsageDelta(UpstreamRelayCandidate{
+		LatestUsageDelta: &UpstreamRelayUsageDeltaSample{
+			Status:    "insufficient",
+			SampledAt: now,
+		},
+	}, now))
+}
+
+func TestUpstreamRelayBuildSuggestionsSkipsConsecutiveFailures(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:              10,
+			ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			Enabled:         true,
+			LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.5, LastSeenAt: now},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:           4,
+				SuccessCount:         2,
+				SuccessRate:          0.5,
+				ConsecutiveFailures:  1,
+				ConsecutiveSuccesses: 0,
+				WindowMinutes:        30,
+				SampleSize:           4,
+			},
+		},
+	}
+
+	require.Empty(t, buildUpstreamRelaySuggestions(candidates))
+}
+
+func TestUpstreamRelayUsageDeltaSampleReliability(t *testing.T) {
+	probeID := int64(77)
+	probe := &UpstreamRelayProbeResult{ID: probeID, Success: true}
+	sample := buildUsageDeltaSample(
+		UpstreamRelayCandidate{ID: 1, ProbeModel: "gpt-5.5"},
+		probe,
+		&upstreamRelayUsageSnapshot{Cost: 10, ActualCost: 2},
+		nil,
+		&upstreamRelayUsageSnapshot{Cost: 14, ActualCost: 3},
+		nil,
+	)
+
+	require.NotNil(t, sample)
+	require.Equal(t, "reliable", sample.Status)
+	require.NotNil(t, sample.DerivedRateMultiplier)
+	require.Equal(t, 4.0, *sample.DerivedRateMultiplier)
+	require.Equal(t, probeID, *sample.ProbeResultID)
+
+	insufficient := buildUsageDeltaSample(
+		UpstreamRelayCandidate{ID: 1, ProbeModel: "gpt-5.5"},
+		probe,
+		&upstreamRelayUsageSnapshot{Cost: 10, ActualCost: 2},
+		nil,
+		&upstreamRelayUsageSnapshot{Cost: 10, ActualCost: 2},
+		nil,
+	)
+	require.Equal(t, "insufficient", insufficient.Status)
+	require.Contains(t, insufficient.UnreliableReason, "not positive")
+}
+
+func TestUpstreamRelayClassifyProbeErrorPhase2Categories(t *testing.T) {
+	require.Equal(t, "insufficient_quota", classifyProbeError(http.StatusPaymentRequired, "insufficient quota balance"))
+	require.Equal(t, "context_window_exceeded", classifyProbeError(http.StatusBadRequest, "input exceeds the context window"))
+	require.Equal(t, "browser_challenge", classifyProbeError(http.StatusForbidden, "<html>cloudflare turnstile</html>"))
+	require.Equal(t, "network_error", classifyProbeError(0, "dial tcp: no such host"))
+	require.Equal(t, "invalid_request", classifyProbeError(http.StatusBadRequest, "invalid request body"))
 }
