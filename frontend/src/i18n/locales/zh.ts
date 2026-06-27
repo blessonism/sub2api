@@ -1131,7 +1131,7 @@ export default {
       description: '管理员尚未配置可监控的渠道。'
     },
     modelIq: {
-      title: 'GPT 智商测试',
+      title: '官方 GPT 智商测试',
       description: '实验性指标：固定 DeepSWE 题目探针的通过率会折算为 GPT 智商指数趋势，样本、口径和自动化仍在校准中。',
       source: '查看信息源',
       updatedAt: '更新于 {time} · {timezone}',
