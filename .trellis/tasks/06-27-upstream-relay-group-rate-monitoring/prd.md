@@ -18,7 +18,7 @@
 - 实测上游 `GET /api/v1/groups/rates` 支持用户登录态读取当前用户专属分组倍率覆盖；返回空对象 `{}` 表示没有专属覆盖，此时使用 `/groups/available` 中的 `rate_multiplier`。
 - 实测上游 `GET /v1/usage` 支持普通网关 API Key 自查用量，返回 `cost` 与 `actual_cost`；同一 Key 的增量 `cost / actual_cost` 可作为登录态不可用时的候选有效倍率兜底读数。
 - 普通 `sk-*` 网关 Key 不能访问 `/api/v1/groups/available` 和 `/api/v1/groups/rates`；这两个接口需要用户登录态，不需要上游管理员 API。
-- 当前已有 `upstream-cost-calibrations` 功能，但它主要面向本地 `Account` 的一次性成本采样，第一版使用 manual 余额适配器，尚未直接对接上游 sub2api 的分组倍率、健康探测和自动托管。
+- 旧的一次性成本校准方向已经废弃；当前保留并推进的是上游 sub2api 分组倍率、健康探测和自动托管方向。
 
 ## Assumptions (temporary)
 
@@ -229,10 +229,8 @@
 
 ## Technical Notes
 
-- 现有相关功能：`backend/internal/service/upstream_cost_calibration.go`
-- 现有相关页面：`frontend/src/views/admin/UpstreamCostCalibrationsView.vue`
-- 现有任务背景：`.trellis/tasks/06-25-upstream-cost-calibration/prd.md`
-- 当前实现缺口：更偏一次性成本校准，不是持续监控上游 sub2api 分组状态与自动托管。
+- 旧成本校准任务仅作为历史背景保留，当前实现入口是上游倍率监控。
+- 当前实现重点：持续监控上游 sub2api 分组状态与自动托管。
 - 关键约束：无上游管理员 API，因此 MVP 应以“上游登录态连接器 + 分组倍率同步 + 本地候选映射配置 + 健康探测 + 本地调度动作”为核心。
 - 登录态倍率事实源：`/api/v1/groups/available` 返回用户可见分组和 `rate_multiplier`；`/api/v1/groups/rates` 返回当前用户专属覆盖倍率，空对象表示没有覆盖。
 - Turnstile 场景结论：账号密码后台直连登录不可靠；应由管理员浏览器完成挑战后粘贴 `Authorization`、必要 Cookie 和 User-Agent。

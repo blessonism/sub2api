@@ -439,18 +439,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/upstream-cost-calibrations',
-    name: 'AdminUpstreamCostCalibrations',
-    component: () => import('@/views/admin/UpstreamCostCalibrationsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Upstream Cost Calibrations',
-      titleKey: 'admin.upstreamCostCalibrations.title',
-      descriptionKey: 'admin.upstreamCostCalibrations.description'
-    }
-  },
-  {
     path: '/admin/upstream-relay-group-monitoring',
     name: 'AdminUpstreamRelayGroupMonitoring',
     component: () => import('@/views/admin/UpstreamRelayGroupMonitoringView.vue'),

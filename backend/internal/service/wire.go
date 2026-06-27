@@ -654,7 +654,6 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestRunnerService,
 	ProvideTokenUsageAutoPolicyService,
 	ProvideTokenUsageAutoPolicyRunner,
-	ProvideUpstreamCostCalibrationService,
 	NewUpstreamRelayGroupMonitoringService,
 	NewGroupCapacityService,
 	NewChannelService,

@@ -827,7 +827,6 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/token-leaderboard', label: t('nav.tokenLeaderboard'), icon: LeaderboardIcon },
     { path: '/admin/token-usage-policies', label: t('nav.tokenUsagePolicies'), icon: PolicyIcon },
     { path: '/admin/conversations', label: t('nav.conversations'), icon: UsageIcon },
-    { path: '/admin/upstream-cost-calibrations', label: t('nav.upstreamCostCalibrations'), icon: ChartIcon },
     { path: '/admin/upstream-relay-group-monitoring', label: t('nav.upstreamRelayGroupMonitoring'), icon: SignalIcon },
     { path: '/admin/balance-redemption', label: t('nav.balanceRedemption'), icon: WalletIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ActivityIcon, featureFlag: flagOpsMonitoring },
