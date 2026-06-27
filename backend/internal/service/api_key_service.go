@@ -482,23 +482,15 @@ func (s *APIKeyService) applyVisibleGroupRatesToAPIKeyPtrs(ctx context.Context, 
 	if len(keys) == 0 {
 		return nil
 	}
-	userVisibleRates := map[int64]float64{}
-	var err error
-	if s.userGroupRateRepo != nil && userID > 0 {
-		userVisibleRates, err = s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
-		if err != nil {
-			return fmt.Errorf("get user visible group rates: %w", err)
-		}
+	userRates, err := loadUserGroupRateMaps(ctx, s.userGroupRateRepo, userID)
+	if err != nil {
+		return err
 	}
 	for i := range keys {
 		if keys[i] == nil || keys[i].Group == nil {
 			continue
 		}
-		if rate, ok := userVisibleRates[keys[i].Group.ID]; ok {
-			keys[i].Group.RateMultiplier = rate
-		} else {
-			keys[i].Group.RateMultiplier = keys[i].Group.VisibleEffectiveRateMultiplier()
-		}
+		keys[i].Group.RateMultiplier = effectiveVisibleRateForGroup(keys[i].Group, userRates)
 		keys[i].Group.VisibleRateMultiplier = nil
 	}
 	return nil
@@ -812,10 +804,14 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	}
 
 	// 过滤出用户有权限的分组
+	userRates, err := loadUserGroupRateMaps(ctx, s.userGroupRateRepo, userID)
+	if err != nil {
+		return nil, err
+	}
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
-			group.RateMultiplier = group.VisibleEffectiveRateMultiplier()
+			group.RateMultiplier = effectiveVisibleRateForGroup(&group, userRates)
 			group.VisibleRateMultiplier = nil
 			availableGroups = append(availableGroups, group)
 		}
@@ -849,21 +845,14 @@ func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (ma
 	if err != nil {
 		return nil, fmt.Errorf("list active groups: %w", err)
 	}
-	userVisibleRates := map[int64]float64{}
-	if s.userGroupRateRepo != nil {
-		userVisibleRates, err = s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
-		if err != nil {
-			return nil, fmt.Errorf("get user visible group rates: %w", err)
-		}
+	userRates, err := loadUserGroupRateMaps(ctx, s.userGroupRateRepo, userID)
+	if err != nil {
+		return nil, err
 	}
 	rates := make(map[int64]float64, len(groups))
 	for i := range groups {
 		group := groups[i]
-		if rate, ok := userVisibleRates[group.ID]; ok {
-			rates[group.ID] = rate
-			continue
-		}
-		rates[group.ID] = group.VisibleEffectiveRateMultiplier()
+		rates[group.ID] = effectiveVisibleRateForGroup(&group, userRates)
 	}
 	return rates, nil
 }

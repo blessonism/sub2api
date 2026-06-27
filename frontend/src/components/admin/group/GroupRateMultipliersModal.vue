@@ -205,7 +205,7 @@
                         min="0.01"
                         autocomplete="off"
                         :value="entry.visible_rate_multiplier ?? ''"
-                        :placeholder="String(props.group?.visible_rate_multiplier ?? props.group?.rate_multiplier ?? 1)"
+                        :placeholder="String(effectiveVisibleRatePlaceholder(entry))"
                         class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
                         @change="updateLocalVisibleRate(entry.user_id, ($event.target as HTMLInputElement).value)"
                       />
@@ -402,6 +402,10 @@ const cloneEntries = (entries: GroupRateMultiplierEntry[]): LocalEntry[] => {
   return entries.map(e => ({ ...e }))
 }
 
+const effectiveVisibleRatePlaceholder = (entry: LocalEntry) => {
+  return entry.rate_multiplier ?? props.group?.visible_rate_multiplier ?? props.group?.rate_multiplier ?? 1
+}
+
 const resetSelection = () => {
   selectedEntryIds.value = new Set()
 }
@@ -548,7 +552,7 @@ const updateLocalRate = (userId: number, value: string) => {
   markRateEntryChanged(userId)
 }
 
-// 本地修改用户可见倍率；留空表示继承分组可见倍率/真实倍率。
+// 本地修改用户可见倍率；留空表示按用户专属真实倍率、分组可见倍率、分组真实倍率依次兜底。
 const updateLocalVisibleRate = (userId: number, value: string) => {
   const entry = localEntries.value.find(e => e.user_id === userId)
   if (!entry) return

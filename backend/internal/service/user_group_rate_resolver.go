@@ -207,6 +207,14 @@ func (r *userGroupRateResolver) ResolveVisible(ctx context.Context, userID, grou
 		multiplier := defaultVisible
 		if userVisibleRate != nil {
 			multiplier = *userVisibleRate
+		} else {
+			userRate, rateErr := r.repo.GetByUserAndGroup(ctx, userID, groupID)
+			if rateErr != nil {
+				return nil, rateErr
+			}
+			if userRate != nil {
+				multiplier = *userRate
+			}
 		}
 		if r.cache != nil {
 			r.cache.Set(key, multiplier, r.cacheTTL)

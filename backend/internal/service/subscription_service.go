@@ -693,23 +693,19 @@ func (s *SubscriptionService) applyVisibleGroupRatesToSubscriptions(ctx context.
 	if len(subs) == 0 {
 		return nil
 	}
-	userVisibleRates := map[int64]float64{}
-	if s != nil && s.userGroupRateRepo != nil && userID > 0 {
-		rates, err := s.userGroupRateRepo.GetVisibleByUserID(ctx, userID)
-		if err != nil {
-			return fmt.Errorf("get user visible group rates: %w", err)
-		}
-		userVisibleRates = rates
+	var repo UserGroupRateRepository
+	if s != nil {
+		repo = s.userGroupRateRepo
+	}
+	userRates, err := loadUserGroupRateMaps(ctx, repo, userID)
+	if err != nil {
+		return err
 	}
 	for i := range subs {
 		if subs[i].Group == nil {
 			continue
 		}
-		if rate, ok := userVisibleRates[subs[i].Group.ID]; ok {
-			subs[i].Group.RateMultiplier = rate
-		} else {
-			subs[i].Group.RateMultiplier = subs[i].Group.VisibleEffectiveRateMultiplier()
-		}
+		subs[i].Group.RateMultiplier = effectiveVisibleRateForGroup(subs[i].Group, userRates)
 		subs[i].Group.VisibleRateMultiplier = nil
 	}
 	return nil

@@ -490,7 +490,8 @@ func TestOpenAIGatewayServiceRecordUsage_FallsBackToGroupDefaultRateOnResolverEr
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, rateRepo.calls)
+	require.Equal(t, 2, rateRepo.calls)
+	require.Equal(t, 1, rateRepo.visibleCalls)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, groupRate, usageRepo.lastLog.RateMultiplier)
 
