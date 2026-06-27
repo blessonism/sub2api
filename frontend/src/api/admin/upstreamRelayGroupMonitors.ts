@@ -67,6 +67,37 @@ export interface UpstreamRelayProbeResult {
   probed_at: string
 }
 
+export interface UpstreamRelayCandidateHealth {
+  probe_count: number
+  success_count: number
+  success_rate: number
+  avg_latency_ms?: number | null
+  p95_latency_ms?: number | null
+  consecutive_successes: number
+  consecutive_failures: number
+  last_error_class?: string
+  last_success_at?: string | null
+  window_minutes: number
+  sample_size: number
+}
+
+export interface UpstreamRelayUsageDeltaSample {
+  id?: number
+  candidate_id: number
+  probe_result_id?: number | null
+  model: string
+  status: 'reliable' | 'insufficient' | 'unavailable'
+  before_cost?: number | null
+  before_actual_cost?: number | null
+  after_cost?: number | null
+  after_actual_cost?: number | null
+  cost_delta?: number | null
+  actual_cost_delta?: number | null
+  derived_rate_multiplier?: number | null
+  unreliable_reason?: string
+  sampled_at: string
+}
+
 export interface UpstreamRelayCandidate {
   id: number
   connector_id: number
@@ -86,6 +117,8 @@ export interface UpstreamRelayCandidate {
   notes: string
   latest_probe?: UpstreamRelayProbeResult | null
   latest_snapshot?: UpstreamRelayGroupRateSnapshot | null
+  health?: UpstreamRelayCandidateHealth | null
+  latest_usage_delta?: UpstreamRelayUsageDeltaSample | null
   created_by?: number
   created_at: string
   updated_at: string
@@ -118,6 +151,10 @@ export interface UpstreamRelayRecommendationSuggestion {
   new_priority: number
   final_rate_multiplier: number
   health_status: string
+  reason_code: string
+  confidence: string
+  health_summary: string
+  rate_source: string
   reason: string
   applied: boolean
   applied_by?: number | null
