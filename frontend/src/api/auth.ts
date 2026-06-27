@@ -157,6 +157,14 @@ export async function getCurrentUser() {
 }
 
 /**
+ * Report foreground user activity.
+ * 前端只应在页面可见且近期有真实用户交互时调用。
+ */
+export async function reportActivity(): Promise<void> {
+  await apiClient.post('/user/activity')
+}
+
+/**
  * User logout
  * Clears authentication token and user data from localStorage
  * Optionally revokes the refresh token on the server
@@ -663,6 +671,7 @@ export const authAPI = {
   isTotp2FARequired,
   register,
   getCurrentUser,
+  reportActivity,
   logout,
   isAuthenticated,
   setAuthToken,

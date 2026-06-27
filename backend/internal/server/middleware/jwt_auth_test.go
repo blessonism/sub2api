@@ -126,7 +126,7 @@ func TestJWTAuth_ValidToken_LowercaseBearer(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestJWTAuth_ValidToken_TouchesLastActive(t *testing.T) {
+func TestJWTAuth_ValidToken_DoesNotTouchLastActive(t *testing.T) {
 	user := &service.User{
 		ID:           1,
 		Email:        "test@example.com",
@@ -162,7 +162,7 @@ func TestJWTAuth_ValidToken_TouchesLastActive(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, []int64{1}, toucher.userIDs)
+	require.Empty(t, toucher.userIDs)
 }
 
 func TestJWTAuth_MissingAuthorizationHeader(t *testing.T) {

@@ -139,6 +139,46 @@ func (s *userHandlerRepoStub) UnbindUserAuthProvider(_ context.Context, _ int64,
 	return nil
 }
 
+func TestUserHandlerReportActivityTouchesCurrentUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:       11,
+			Email:    "activity@example.com",
+			Username: "activity-user",
+			Role:     service.RoleUser,
+			Status:   service.StatusActive,
+		},
+	}
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/user/activity", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11})
+
+	handler.ReportActivity(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, repo.user.LastActiveAt)
+	require.WithinDuration(t, time.Now(), *repo.user.LastActiveAt, 2*time.Second)
+}
+
+func TestUserHandlerReportActivityRequiresAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewUserHandler(service.NewUserService(&userHandlerRepoStub{}, nil, nil, nil), nil, nil, nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/user/activity", nil)
+
+	handler.ReportActivity(c)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
 func TestUserHandlerUpdateProfileReturnsAvatarURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
