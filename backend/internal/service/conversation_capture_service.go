@@ -182,10 +182,17 @@ func (s *ConversationCaptureService) SetTurnQuality(ctx context.Context, id int6
 
 func (s *ConversationCaptureService) BulkSetQuality(ctx context.Context, req ConversationBulkQualityUpdateRequest) error {
 	req.QualityStatus = strings.TrimSpace(req.QualityStatus)
+	normalized := normalizeConversationQualityUpdate(ConversationQualityUpdateRequest{
+		QualityStatus: req.QualityStatus,
+		QualityErrors: req.QualityErrors,
+		Exportable:    req.Exportable,
+	})
+	req.QualityStatus = normalized.QualityStatus
+	req.QualityErrors = normalized.QualityErrors
+	req.Exportable = normalized.Exportable
 	if err := validateConversationQualityStatus(req.QualityStatus); err != nil {
 		return err
 	}
-	req.QualityErrors = normalizeConversationQualityErrors(req.QualityErrors)
 	if len(req.SessionIDs) == 0 && len(req.TurnIDs) == 0 {
 		return infraerrors.BadRequest("EMPTY_CONVERSATION_QUALITY_TARGETS", "session_ids or turn_ids is required")
 	}
@@ -243,6 +250,7 @@ func (s *ConversationCaptureService) ExportMessagesJSONL(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+	turns = FilterConversationExportableTurns(turns, req)
 	var buf bytes.Buffer
 	seen := map[string]struct{}{}
 	for _, turn := range turns {
@@ -301,7 +309,6 @@ func (s *ConversationCaptureService) capture(ctx context.Context, decision Conve
 		sessionID = "cc_" + hashHex([]byte(fmt.Sprintf("%d:%d:%s:%s", meta.UserID, meta.APIKeyID, meta.RequestID, now.Format(time.RFC3339Nano))))[:24]
 		sessionSource = ConversationSessionSourceSingle
 	}
-	exportable := false
 	record := ConversationTurnRecord{
 		SessionID:         sessionID,
 		SessionSource:     sessionSource,
@@ -338,8 +345,8 @@ func (s *ConversationCaptureService) capture(ctx context.Context, decision Conve
 		Stream:           meta.Stream,
 		ClientDisconnect: input.ClientDisconnect || meta.ClientDisconnect,
 		Truncated:        truncated || input.Truncated,
-		QualityStatus:    "unchecked",
-		Exportable:       exportable,
+		QualityStatus:    ConversationQualityStatusUnchecked,
+		Exportable:       false,
 		ParseStatus:      parsed.ParseStatus,
 		ParseError:       parsed.ParseError,
 		DedupeHash:       buildConversationDedupeHash(parsed.RequestMessages, parsed.ResponseMessages, parsed.Tools, meta, requestBody, responseRaw),
@@ -365,6 +372,10 @@ func (s *ConversationCaptureService) capture(ctx context.Context, decision Conve
 	if record.RequestPath == "" {
 		record.RequestPath = "/v1/chat/completions"
 	}
+	assessment := AssessConversationTurnQuality(record)
+	record.QualityStatus = assessment.QualityStatus
+	record.QualityErrors = assessment.QualityErrors
+	record.Exportable = assessment.Exportable
 	return s.repo.UpsertTurn(ctx, record)
 }
 

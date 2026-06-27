@@ -33,6 +33,26 @@ func TestBuildConversationExportPayloadZstdDedupe(t *testing.T) {
 	require.Len(t, nonEmptyJSONLLines(t, decompressed), 1)
 }
 
+func TestBuildConversationExportPayloadRechecksQualityGate(t *testing.T) {
+	rejected := conversationExportTurn("req-rejected", "hash-rejected")
+	rejected.ClientDisconnect = true
+	rejected.QualityStatus = ConversationQualityStatusClean
+	rejected.Exportable = true
+	clean := conversationExportTurn("req-clean", "hash-clean")
+
+	payload, sessions, turnsCount, err := buildConversationExportPayloadWithOptions(
+		[]ConversationTurn{rejected, clean},
+		ConversationExportEncodingPlain,
+		ConversationExportJobFilters{IncludeDuplicates: true, Limit: 10},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), sessions)
+	require.Equal(t, int64(1), turnsCount)
+	require.Contains(t, string(payload), "req-clean")
+	require.NotContains(t, string(payload), "req-rejected")
+}
+
 func TestConversationExportJobUploadFailureMarksFailed(t *testing.T) {
 	repo := newConversationExportJobTestRepo()
 	store := &conversationExportJobTestStore{uploadErr: errors.New("upload failed")}

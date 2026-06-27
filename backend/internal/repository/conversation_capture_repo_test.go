@@ -25,12 +25,159 @@ func TestConversationCaptureRepositorySetSessionExportableUpdatesEligibleTurns(t
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE conversation_sessions SET exportable = $2, updated_at = NOW() WHERE id = $1`)).
 		WithArgs(int64(9), true).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE conversation_turns").
+	mock.ExpectExec("quality_status = 'clean'").
 		WithArgs("s1", true).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectCommit()
 
 	require.NoError(t, repo.SetSessionExportable(context.Background(), 9, true))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositorySetSessionExportableFalseClearsAllTurns(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_sessions WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE conversation_sessions SET exportable = $2, updated_at = NOW() WHERE id = $1`)).
+		WithArgs(int64(9), false).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE conversation_turns SET exportable = FALSE WHERE session_id = $1`)).
+		WithArgs("s1").
+		WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.SetSessionExportable(context.Background(), 9, false))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositorySetTurnExportableRecalculatesSession(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE conversation_turns SET exportable = $2 WHERE id = $1`)).
+		WithArgs(int64(7), true).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	expectConversationSessionSummaryRecalculation(mock, "s1")
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.SetTurnExportable(context.Background(), 7, true))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositorySetTurnQualityRecalculatesSession(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+	exportable := true
+	qualityErrors := []service.QualityError{{Code: "manual_review", Message: "verified", Source: "admin"}}
+	errorsRaw, err := json.Marshal(qualityErrors)
+	require.NoError(t, err)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+	mock.ExpectExec("UPDATE conversation_turns").
+		WithArgs(int64(7), service.ConversationQualityStatusClean, string(errorsRaw), exportable).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	expectConversationSessionSummaryRecalculation(mock, "s1")
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.SetTurnQuality(context.Background(), 7, service.ConversationQualityStatusClean, qualityErrors, &exportable))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositoryBulkSetQualityRecalculatesAffectedTurnSessionsOnce(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+	exportable := true
+	qualityErrors := []service.QualityError{{Code: "manual_clean", Message: "approved"}}
+	errorsRaw, err := json.Marshal(qualityErrors)
+	require.NoError(t, err)
+
+	mock.ExpectBegin()
+	for _, turnID := range []int64{7, 8} {
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`)).
+			WithArgs(turnID).
+			WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+		mock.ExpectExec("UPDATE conversation_turns").
+			WithArgs(turnID, service.ConversationQualityStatusClean, string(errorsRaw), exportable).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s2"))
+	mock.ExpectExec("UPDATE conversation_turns").
+		WithArgs(int64(9), service.ConversationQualityStatusClean, string(errorsRaw), exportable).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	expectConversationSessionSummaryRecalculation(mock, "s1")
+	expectConversationSessionSummaryRecalculation(mock, "s2")
+	mock.ExpectCommit()
+
+	err = repo.BulkSetQuality(context.Background(), service.ConversationBulkQualityUpdateRequest{
+		TurnIDs:       []int64{7, 8, 9},
+		QualityStatus: service.ConversationQualityStatusClean,
+		QualityErrors: qualityErrors,
+		Exportable:    &exportable,
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositoryBulkSetQualityKeepsSessionLevelUpdateLast(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+	exportable := true
+	qualityErrors := []service.QualityError{{Code: "manual_clean", Message: "approved"}}
+	errorsRaw, err := json.Marshal(qualityErrors)
+	require.NoError(t, err)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+	mock.ExpectExec("UPDATE conversation_turns").
+		WithArgs(int64(7), service.ConversationQualityStatusClean, string(errorsRaw), exportable).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	expectConversationSessionSummaryRecalculation(mock, "s1")
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT session_id FROM conversation_sessions WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id"}).AddRow("s1"))
+	mock.ExpectExec("UPDATE conversation_sessions").
+		WithArgs(int64(5), service.ConversationQualityStatusClean, string(errorsRaw), exportable).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE conversation_turns").
+		WithArgs("s1", exportable).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.BulkSetQuality(context.Background(), service.ConversationBulkQualityUpdateRequest{
+		SessionIDs:    []int64{5},
+		TurnIDs:       []int64{7},
+		QualityStatus: service.ConversationQualityStatusClean,
+		QualityErrors: qualityErrors,
+		Exportable:    &exportable,
+	})
+
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -62,6 +209,23 @@ func TestConversationCaptureRepositoryListExportableTurnsSQLHardGate(t *testing.
 
 	require.Contains(t, sqlText, "t.exportable = TRUE")
 	require.NotContains(t, sqlText, "OR s.exportable")
+}
+
+func TestConversationCaptureRepositoryListExportableTurnsCleanFilterStillUsesTurnHardGate(t *testing.T) {
+	sqlText, args := buildConversationExportTurnsSQL(service.ConversationExportMessagesJSONLRequest{
+		ConversationSessionFilters: service.ConversationSessionFilters{
+			QualityStatus: service.ConversationQualityStatusClean,
+		},
+		Limit: 10,
+	})
+
+	require.Contains(t, sqlText, "t.exportable = TRUE")
+	require.Contains(t, sqlText, "t.parse_status = 'success'")
+	require.Contains(t, sqlText, "t.truncated = FALSE")
+	require.Contains(t, sqlText, "t.client_disconnect = FALSE")
+	require.Contains(t, sqlText, "s.quality_status = $1")
+	require.NotContains(t, sqlText, "OR s.exportable")
+	require.Equal(t, []any{service.ConversationQualityStatusClean, 10}, args)
 }
 
 func TestConversationCaptureRepositoryListTurnsBySessionIDUsesSummaryColumns(t *testing.T) {
@@ -104,6 +268,42 @@ func TestConversationCaptureRepositoryListTurnsBySessionIDUsesSummaryColumns(t *
 	require.NotContains(t, summarySQL, "meta,")
 }
 
+func TestConversationCaptureRepositoryListSessionsQualityStatusFilterUsesSessionStatus(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+	now := time.Now()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM conversation_sessions s WHERE s.quality_status = $1`)).
+		WithArgs(service.ConversationQualityStatusClean).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT s.id, s.session_id")).
+		WithArgs(service.ConversationQualityStatusClean, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "session_id", "user_id", "api_key_id", "account_id", "provider", "model", "request_path", "status",
+			"turn_count", "source_request_count", "input_tokens", "output_tokens", "total_tokens", "actual_cost",
+			"quality_status", "quality_errors", "exportable", "duplicate_turn_count", "capture_status", "session_source", "retention_until",
+			"started_at", "ended_at", "created_at", "updated_at",
+		}).AddRow(
+			int64(1), "s1", int64(1), int64(2), nil, service.ConversationProviderOpenAI, "gpt-5", "/v1/chat/completions", "active",
+			1, 1, int64(1), int64(2), int64(3), float64(0.01),
+			service.ConversationQualityStatusClean, []byte(`[]`), true, int64(0), "captured", service.ConversationSessionSourceExplicit, now,
+			now, now, now, now,
+		))
+
+	items, total, err := repo.ListSessions(context.Background(), service.ConversationSessionFilters{
+		QualityStatus: service.ConversationQualityStatusClean,
+	}, 1, 20)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	require.Equal(t, service.ConversationQualityStatusClean, items[0].QualityStatus)
+	require.True(t, items[0].Exportable)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestConversationCaptureRepositoryUpsertTurnCreatesSessionBeforeLock(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -121,8 +321,41 @@ func TestConversationCaptureRepositoryUpsertTurnCreatesSessionBeforeLock(t *test
 		WillReturnRows(sqlmock.NewRows([]string{"turn_count"}).AddRow(1))
 	mock.ExpectExec("INSERT INTO conversation_turns").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM conversation_turns WHERE session_id = $1`)).
+		WithArgs(record.SessionID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectExec("UPDATE conversation_sessions").
-		WithArgs(record.SessionID, record.InputTokens, record.OutputTokens, record.TotalTokens, record.ActualCost, record.CreatedAt, record.RetentionUntil, record.Truncated, false).
+		WithArgs(record.SessionID, record.CreatedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.UpsertTurn(context.Background(), record))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConversationCaptureRepositoryUpsertTurnRecalculatesSessionQuality(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewConversationCaptureRepository(db)
+	now := time.Now()
+	record := conversationCaptureRepoTestTurnRecord(now)
+	record.QualityStatus = service.ConversationQualityStatusClean
+	record.Exportable = true
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO conversation_sessions").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT turn_count FROM conversation_sessions WHERE session_id = $1 FOR UPDATE`)).
+		WithArgs(record.SessionID).
+		WillReturnRows(sqlmock.NewRows([]string{"turn_count"}).AddRow(0))
+	mock.ExpectExec("INSERT INTO conversation_turns").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM conversation_turns WHERE session_id = $1`)).
+		WithArgs(record.SessionID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectExec("UPDATE conversation_sessions").
+		WithArgs(record.SessionID, record.CreatedAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -285,4 +518,13 @@ func conversationCaptureRepoTestTurnRecord(now time.Time) service.ConversationTu
 		RetentionUntil:   now.AddDate(0, 0, 30),
 		CreatedAt:        now,
 	}
+}
+
+func expectConversationSessionSummaryRecalculation(mock sqlmock.Sqlmock, sessionID string) {
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM conversation_turns WHERE session_id = $1`)).
+		WithArgs(sessionID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectExec("UPDATE conversation_sessions").
+		WithArgs(sessionID, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 }

@@ -83,21 +83,7 @@ INSERT INTO conversation_turns (
 		return fmt.Errorf("conversation turn insert skipped for session_id=%s turn_index=%d", record.SessionID, record.TurnIndex)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-UPDATE conversation_sessions
-SET turn_count = turn_count + 1,
-    source_request_count = source_request_count + 1,
-    input_tokens = input_tokens + $2,
-    output_tokens = output_tokens + $3,
-    total_tokens = total_tokens + $4,
-    actual_cost = actual_cost + $5,
-    ended_at = $6,
-    updated_at = $6,
-    retention_until = GREATEST(retention_until, $7),
-    capture_status = CASE WHEN $8 THEN 'truncated' WHEN $9 THEN 'parse_failed' ELSE capture_status END
-WHERE session_id = $1`,
-		record.SessionID, record.InputTokens, record.OutputTokens, record.TotalTokens, record.ActualCost, record.CreatedAt, record.RetentionUntil, record.Truncated, record.ParseStatus == service.ConversationParseStatusFailed)
-	if err != nil {
+	if err := r.recalculateSessionSummaryTx(ctx, tx, record.SessionID, record.CreatedAt); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -209,13 +195,21 @@ func (r *conversationCaptureRepository) SetSessionExportable(ctx context.Context
 	if _, err := tx.ExecContext(ctx, `UPDATE conversation_sessions SET exportable = $2, updated_at = NOW() WHERE id = $1`, id, exportable); err != nil {
 		return err
 	}
+	if !exportable {
+		_, err = tx.ExecContext(ctx, `UPDATE conversation_turns SET exportable = FALSE WHERE session_id = $1`, sessionID)
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 	_, err = tx.ExecContext(ctx, `
 UPDATE conversation_turns
 SET exportable = $2
 WHERE session_id = $1
   AND parse_status = 'success'
   AND truncated = FALSE
-  AND client_disconnect = FALSE`, sessionID, exportable)
+  AND client_disconnect = FALSE
+  AND quality_status = 'clean'`, sessionID, exportable)
 	if err != nil {
 		return err
 	}
@@ -223,8 +217,22 @@ WHERE session_id = $1
 }
 
 func (r *conversationCaptureRepository) SetTurnExportable(ctx context.Context, id int64, exportable bool) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE conversation_turns SET exportable = $2 WHERE id = $1`, id, exportable)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var sessionID string
+	if err := tx.QueryRowContext(ctx, `SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`, id).Scan(&sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE conversation_turns SET exportable = $2 WHERE id = $1`, id, exportable); err != nil {
+		return err
+	}
+	if err := r.recalculateSessionSummaryTx(ctx, tx, sessionID, time.Now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *conversationCaptureRepository) SetSessionQuality(ctx context.Context, id int64, status string, qualityErrors []service.QualityError, exportable *bool) error {
@@ -267,7 +275,7 @@ WHERE session_id = $1
   AND parse_status = 'success'
   AND truncated = FALSE
   AND client_disconnect = FALSE
-  AND quality_status NOT IN ('needs_review','rejected')`, sessionID, *nextExportable)
+  AND quality_status = 'clean'`, sessionID, *nextExportable)
 		if err != nil {
 			return err
 		}
@@ -281,27 +289,19 @@ WHERE session_id = $1
 }
 
 func (r *conversationCaptureRepository) SetTurnQuality(ctx context.Context, id int64, status string, qualityErrors []service.QualityError, exportable *bool) error {
-	errorsRaw, err := json.Marshal(qualityErrors)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	nextExportable := exportable
-	if status == service.ConversationQualityStatusRejected || status == service.ConversationQualityStatusNeedsReview {
-		value := false
-		nextExportable = &value
-	}
-	if nextExportable == nil {
-		_, err = r.db.ExecContext(ctx, `
-UPDATE conversation_turns
-SET quality_status = $2, quality_errors = $3::jsonb
-WHERE id = $1`, id, status, string(errorsRaw))
+	defer func() { _ = tx.Rollback() }()
+	sessionID, err := r.setTurnQualityTx(ctx, tx, id, status, qualityErrors, exportable)
+	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `
-UPDATE conversation_turns
-SET quality_status = $2, quality_errors = $3::jsonb, exportable = $4
-WHERE id = $1`, id, status, string(errorsRaw), *nextExportable)
-	return err
+	if err := r.recalculateSessionSummaryTx(ctx, tx, sessionID, time.Now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *conversationCaptureRepository) BulkSetQuality(ctx context.Context, req service.ConversationBulkQualityUpdateRequest) error {
@@ -310,13 +310,27 @@ func (r *conversationCaptureRepository) BulkSetQuality(ctx context.Context, req 
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, id := range req.SessionIDs {
-		if err := r.setSessionQualityTx(ctx, tx, id, req.QualityStatus, req.QualityErrors, req.Exportable); err != nil {
+	affectedSessions := make([]string, 0, len(req.TurnIDs))
+	seenAffectedSessions := make(map[string]struct{}, len(req.TurnIDs))
+	for _, id := range req.TurnIDs {
+		sessionID, err := r.setTurnQualityTx(ctx, tx, id, req.QualityStatus, req.QualityErrors, req.Exportable)
+		if err != nil {
+			return err
+		}
+		if _, ok := seenAffectedSessions[sessionID]; ok {
+			continue
+		}
+		seenAffectedSessions[sessionID] = struct{}{}
+		affectedSessions = append(affectedSessions, sessionID)
+	}
+	now := time.Now()
+	for _, sessionID := range affectedSessions {
+		if err := r.recalculateSessionSummaryTx(ctx, tx, sessionID, now); err != nil {
 			return err
 		}
 	}
-	for _, id := range req.TurnIDs {
-		if err := r.setTurnQualityTx(ctx, tx, id, req.QualityStatus, req.QualityErrors, req.Exportable); err != nil {
+	for _, id := range req.SessionIDs {
+		if err := r.setSessionQualityTx(ctx, tx, id, req.QualityStatus, req.QualityErrors, req.Exportable); err != nil {
 			return err
 		}
 	}
@@ -548,32 +562,36 @@ WHERE session_id = $1
   AND parse_status = 'success'
   AND truncated = FALSE
   AND client_disconnect = FALSE
-  AND quality_status NOT IN ('needs_review','rejected')`, sessionID, *nextExportable)
+  AND quality_status = 'clean'`, sessionID, *nextExportable)
 	return err
 }
 
-func (r *conversationCaptureRepository) setTurnQualityTx(ctx context.Context, tx *sql.Tx, id int64, status string, qualityErrors []service.QualityError, exportable *bool) error {
+func (r *conversationCaptureRepository) setTurnQualityTx(ctx context.Context, tx *sql.Tx, id int64, status string, qualityErrors []service.QualityError, exportable *bool) (string, error) {
 	errorsRaw, err := json.Marshal(qualityErrors)
 	if err != nil {
-		return err
+		return "", err
 	}
 	nextExportable := exportable
 	if status == service.ConversationQualityStatusRejected || status == service.ConversationQualityStatusNeedsReview {
 		value := false
 		nextExportable = &value
 	}
+	var sessionID string
+	if err := tx.QueryRowContext(ctx, `SELECT session_id FROM conversation_turns WHERE id = $1 FOR UPDATE`, id).Scan(&sessionID); err != nil {
+		return "", err
+	}
 	if nextExportable == nil {
 		_, err = tx.ExecContext(ctx, `
 UPDATE conversation_turns
 SET quality_status = $2, quality_errors = $3::jsonb
 WHERE id = $1`, id, status, string(errorsRaw))
-		return err
+		return sessionID, err
 	}
 	_, err = tx.ExecContext(ctx, `
 UPDATE conversation_turns
 SET quality_status = $2, quality_errors = $3::jsonb, exportable = $4
 WHERE id = $1`, id, status, string(errorsRaw), *nextExportable)
-	return err
+	return sessionID, err
 }
 
 func (r *conversationCaptureRepository) reindexSessionTurnsTx(ctx context.Context, tx *sql.Tx, sessionID string) error {
@@ -619,6 +637,21 @@ SET turn_count = agg.turn_count,
     output_tokens = agg.output_tokens,
     total_tokens = agg.total_tokens,
     actual_cost = agg.actual_cost,
+    quality_status = CASE
+        WHEN agg.rejected_count > 0 THEN 'rejected'
+        WHEN agg.review_count > 0 OR agg.unchecked_count > 0 THEN 'needs_review'
+        ELSE 'clean'
+    END,
+    quality_errors = COALESCE(errors.items, '[]'::jsonb),
+    exportable = CASE
+        WHEN agg.turn_count > 0
+          AND agg.rejected_count = 0
+          AND agg.review_count = 0
+          AND agg.unchecked_count = 0
+          AND agg.non_exportable_count = 0
+        THEN TRUE
+        ELSE FALSE
+    END,
     started_at = agg.started_at,
     ended_at = agg.ended_at,
     retention_until = agg.retention_until,
@@ -640,11 +673,28 @@ FROM (
            MAX(created_at) AS ended_at,
            MAX(retention_until) AS retention_until,
            COUNT(*) FILTER (WHERE truncated) AS truncated_count,
-           COUNT(*) FILTER (WHERE parse_status <> 'success') AS failed_count
+           COUNT(*) FILTER (WHERE parse_status <> 'success') AS failed_count,
+           COUNT(*) FILTER (WHERE quality_status = 'rejected') AS rejected_count,
+           COUNT(*) FILTER (WHERE quality_status = 'needs_review') AS review_count,
+           COUNT(*) FILTER (WHERE quality_status IS NULL OR quality_status NOT IN ('clean','needs_review','rejected')) AS unchecked_count,
+           COUNT(*) FILTER (WHERE exportable = FALSE) AS non_exportable_count
     FROM conversation_turns
     WHERE session_id = $1
     GROUP BY session_id
 ) agg
+LEFT JOIN LATERAL (
+    SELECT jsonb_agg(jsonb_build_object('code', code, 'message', message, 'source', source) ORDER BY code, message, source) AS items
+    FROM (
+        SELECT DISTINCT
+               COALESCE(err.item->>'code', '') AS code,
+               COALESCE(err.item->>'message', '') AS message,
+               COALESCE(err.item->>'source', '') AS source
+        FROM conversation_turns et
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(et.quality_errors, '[]'::jsonb)) AS err(item)
+        WHERE et.session_id = agg.session_id
+          AND COALESCE(err.item->>'code', '') <> ''
+    ) deduped_errors
+) errors ON TRUE
 WHERE s.session_id = agg.session_id`, sessionID, now)
 	return err
 }

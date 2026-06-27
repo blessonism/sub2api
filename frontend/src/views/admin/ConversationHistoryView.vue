@@ -6,172 +6,149 @@
           <Icon name="refresh" size="sm" />
           {{ t('common.refresh') }}
         </button>
-        <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="exporting" @click="exportJSONL">
-          <Icon name="download" size="sm" />
-          {{ exporting ? t('admin.conversations.exporting') : t('admin.conversations.exportJsonl') }}
-        </button>
       </div>
 
       <section class="card p-4">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-end">
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input v-model="configForm.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.conversations.enabled') }}
-          </label>
-          <label class="min-w-32 space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.samplePercent') }}</span>
-            <input v-model.number="configForm.sample_percent" class="input w-full" min="0" max="100" type="number" />
-          </label>
-          <label class="min-w-40 space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.maxPayload') }}</span>
-            <input v-model.number="configForm.max_turn_payload_bytes" class="input w-full" min="1" type="number" />
-          </label>
-          <label class="min-w-36 space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.previewChars') }}</span>
-            <input v-model.number="configForm.payload_preview_chars" class="input w-full" min="1" type="number" />
-          </label>
-          <label class="min-w-36 space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.sessionWindow') }}</span>
-            <input v-model.number="configForm.session_window_minutes" class="input w-full" min="1" type="number" />
-          </label>
-          <label class="min-w-32 space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
-            <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
-          </label>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input v-model="configForm.export_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.conversations.exportEnabled') }}
-          </label>
-          <button class="btn btn-primary" type="button" :disabled="savingConfig" @click="saveConfig">
-            {{ savingConfig ? t('common.saving') : t('common.save') }}
-          </button>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="pillClass(configForm.enabled ? 'success' : 'muted')" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                {{ captureStatusLabel }}
+              </span>
+              <span v-if="savingConfig" class="text-xs text-primary-600 dark:text-primary-300">{{ t('common.saving') }}</span>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ captureStatusDescription }}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.conversations.enabled') }}</span>
+            <Toggle :model-value="configForm.enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('enabled', value)" />
+          </div>
         </div>
-        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedUsers') }}</span>
-            <input v-model="excludedUserIDsText" class="input w-full" placeholder="1,2,3" />
-          </label>
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedApiKeys') }}</span>
-            <input v-model="excludedAPIKeyIDsText" class="input w-full" placeholder="10,11,12" />
-          </label>
+        <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div v-for="item in captureSummaryItems" :key="item.label" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
+            <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.value }}</div>
+          </div>
         </div>
       </section>
 
-      <section class="card p-4">
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-6">
-          <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
-          <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
-          <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
-          <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
-          <select v-model="filters.exportable" class="input">
-            <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
-            <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
-            <option value="false">{{ t('admin.conversations.notExportable') }}</option>
-          </select>
-          <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-4 text-sm text-gray-700 dark:text-gray-300">
-          <label class="inline-flex items-center gap-2">
-            <input v-model="exportOptions.redaction_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.conversations.redactionEnabled') }}
-          </label>
-          <label class="inline-flex items-center gap-2">
-            <input v-model="exportOptions.include_duplicates" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.conversations.includeDuplicates') }}
-          </label>
-          <label class="inline-flex items-center gap-2">
-            <input v-model="exportOptions.include_heuristic" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-            {{ t('admin.conversations.includeHeuristic') }}
-          </label>
-        </div>
-      </section>
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+        <section class="card p-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.captureRules') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureRulesDescription') }}</p>
+            </div>
+            <button class="btn btn-primary shrink-0" type="button" :disabled="savingConfig" @click="saveConfig">
+              {{ savingConfig ? t('common.saving') : t('common.save') }}
+            </button>
+          </div>
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.samplePercent') }}</span>
+              <input v-model.number="configForm.sample_percent" class="input w-full" min="0" max="100" type="number" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.maxPayload') }}</span>
+              <input v-model.number="configForm.max_turn_payload_bytes" class="input w-full" min="1" type="number" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.previewChars') }}</span>
+              <input v-model.number="configForm.payload_preview_chars" class="input w-full" min="1" type="number" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.sessionWindow') }}</span>
+              <input v-model.number="configForm.session_window_minutes" class="input w-full" min="1" type="number" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
+              <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedUsers') }}</span>
+              <input v-model="excludedUserIDsText" class="input w-full" placeholder="1,2,3" />
+            </label>
+            <label class="space-y-1 xl:col-span-3">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedApiKeys') }}</span>
+              <input v-model="excludedAPIKeyIDsText" class="input w-full" placeholder="10,11,12" />
+            </label>
+          </div>
+        </section>
 
-      <section class="card p-4">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <section class="card p-4">
           <div>
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.exportJobs') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportJobsDescription') }}</p>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.exportSettings') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportSettingsDescription') }}</p>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="jobsLoading" @click="loadExportJobs">
-              <Icon name="refresh" size="sm" />
-              {{ t('common.refresh') }}
-            </button>
-            <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="creatingJob" @click="createBackgroundExportJob">
-              <Icon name="download" size="sm" />
-              {{ creatingJob ? t('admin.conversations.creatingJob') : t('admin.conversations.createJob') }}
-            </button>
+          <div class="mt-4 space-y-4">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.conversations.exportEnabled') }}</div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportEnabledHint') }}</div>
+              </div>
+              <Toggle :model-value="configForm.export_enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('export_enabled', value)" />
+            </div>
+            <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="exportOptions.redaction_enabled" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span>{{ t('admin.conversations.redactionEnabled') }}</span>
+            </label>
+            <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="exportOptions.include_duplicates" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span>{{ t('admin.conversations.includeDuplicates') }}</span>
+            </label>
+            <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="exportOptions.include_heuristic" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span>{{ t('admin.conversations.includeHeuristic') }}</span>
+            </label>
           </div>
-        </div>
-        <div v-if="jobsLoading" class="mt-4 flex min-h-24 items-center justify-center">
-          <LoadingSpinner />
-        </div>
-        <EmptyState
-          v-else-if="exportJobs.length === 0"
-          class="mt-4 min-h-24"
-          :title="t('admin.conversations.noJobs')"
-          :description="t('admin.conversations.noJobsDescription')"
-        />
-        <div v-else class="mt-4 overflow-x-auto">
-          <table class="w-full min-w-[920px] text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
-              <tr>
-                <th class="px-4 py-3 text-left">{{ t('admin.conversations.job') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.conversations.status') }}</th>
-                <th class="px-4 py-3 text-right">{{ t('admin.conversations.turns') }}</th>
-                <th class="px-4 py-3 text-right">{{ t('admin.conversations.fileSize') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.conversations.expiresAt') }}</th>
-                <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="job in exportJobs" :key="job.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
-                <td class="px-4 py-3">
-                  <div class="font-medium text-gray-900 dark:text-white">#{{ job.id }} · {{ job.format }}</div>
-                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ job.encoding }} · limit {{ job.filters.limit || 1000 }}
-                    <span v-if="job.filters.redaction_enabled"> · {{ t('admin.conversations.redacted') }}</span>
-                    <span v-if="job.filters.include_duplicates"> · {{ t('admin.conversations.duplicatesIncluded') }}</span>
-                  </div>
-                </td>
-                <td class="px-4 py-3">
-                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                    {{ job.status }}
-                  </span>
-                  <div v-if="job.error_message" class="mt-1 max-w-sm truncate text-xs text-rose-600 dark:text-rose-300">
-                    {{ job.error_message }}
-                  </div>
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(job.turn_count) }}</td>
-                <td class="px-4 py-3 text-right tabular-nums">{{ formatBytes(job.file_size) }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(job.expires_at) }}</td>
-                <td class="px-4 py-3">
-                  <div class="flex justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status !== 'completed'" @click="downloadExportJob(job.id)">
-                      {{ t('admin.conversations.downloadJob') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status === 'running'" @click="deleteExportJob(job.id)">
-                      {{ t('common.delete') }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section class="card overflow-hidden">
+          <div class="border-b border-gray-100 p-4 dark:border-dark-700">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.dataBrowser') }}</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ hasActiveFilters ? t('admin.conversations.filteredResultSummary', { count: pagination.total }) : t('admin.conversations.resultSummary', { count: pagination.total }) }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="exporting || !configForm.export_enabled" @click="exportJSONL">
+                  <Icon name="download" size="sm" />
+                  {{ exporting ? t('admin.conversations.exporting') : t('admin.conversations.exportCurrentFilters') }}
+                </button>
+              </div>
+            </div>
+            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-7">
+              <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
+              <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
+              <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
+              <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
+              <select v-model="filters.quality_status" class="input">
+                <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
+                <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
+                <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
+                <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
+                <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
+              </select>
+              <select v-model="filters.exportable" class="input">
+                <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
+                <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
+                <option value="false">{{ t('admin.conversations.notExportable') }}</option>
+              </select>
+              <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
+            </div>
+          </div>
           <div v-if="loading" class="flex min-h-64 items-center justify-center">
             <LoadingSpinner />
           </div>
           <EmptyState
             v-else-if="sessions.length === 0"
             class="min-h-64"
-            :title="t('admin.conversations.emptyTitle')"
-            :description="t('admin.conversations.emptyDescription')"
+            :title="emptyStateTitle"
+            :description="emptyStateDescription"
           />
           <div v-else class="overflow-x-auto">
             <table class="w-full min-w-[1080px] text-sm">
@@ -213,6 +190,9 @@
                     <span :class="pillClass(qualityKind(session.quality_status))" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
                       {{ session.quality_status }}
                     </span>
+                    <div v-if="formatQualityErrors(session.quality_errors)" class="mt-1 max-w-xs truncate text-xs text-amber-700 dark:text-amber-300">
+                      {{ formatQualityErrors(session.quality_errors) }}
+                    </div>
                   </td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(session.ended_at) }}</td>
                   <td class="px-4 py-3">
@@ -243,7 +223,7 @@
           />
         </section>
 
-        <aside class="card min-h-[360px] p-4">
+        <aside class="card min-h-[360px] self-start p-4">
           <div v-if="!selectedSession" class="flex h-full min-h-[320px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
             {{ t('admin.conversations.selectHint') }}
           </div>
@@ -321,8 +301,11 @@
                   <span :class="pillClass(turn.truncated ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.truncated ? 'truncated' : 'complete' }}</span>
                   <span :class="pillClass(turn.client_disconnect ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.client_disconnect ? 'disconnect' : 'connected' }}</span>
                   <span :class="pillClass(qualityKind(turn.quality_status))" class="rounded-md px-2 py-1">{{ turn.quality_status }}</span>
+                  <span v-if="formatQualityErrors(turn.quality_errors)" class="rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    {{ formatQualityErrors(turn.quality_errors) }}
+                  </span>
                   <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="loadTurnDetail(turn.id)">
-                    {{ selectedTurnDetails[turn.id] ? t('admin.conversations.detailLoaded') : t('admin.conversations.loadDetail') }}
+                    {{ selectedTurnDetails[turn.id] ? t('admin.conversations.hideDetail') : t('admin.conversations.loadDetail') }}
                   </button>
                   <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="splitFromTurn(turn.id)">
                     {{ t('admin.conversations.splitHere') }}
@@ -339,6 +322,81 @@
           </div>
         </aside>
       </div>
+
+      <section class="card p-4">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.exportJobs') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportJobsDescription') }}</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="jobsLoading" @click="loadExportJobs">
+              <Icon name="refresh" size="sm" />
+              {{ t('common.refresh') }}
+            </button>
+            <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="creatingJob || !configForm.export_enabled" @click="createBackgroundExportJob">
+              <Icon name="download" size="sm" />
+              {{ creatingJob ? t('admin.conversations.creatingJob') : t('admin.conversations.createJob') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="jobsLoading" class="mt-4 flex min-h-24 items-center justify-center">
+          <LoadingSpinner />
+        </div>
+        <EmptyState
+          v-else-if="exportJobs.length === 0"
+          class="mt-4 min-h-24"
+          :title="t('admin.conversations.noJobs')"
+          :description="t('admin.conversations.noJobsDescription')"
+        />
+        <div v-else class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[920px] text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+              <tr>
+                <th class="px-4 py-3 text-left">{{ t('admin.conversations.job') }}</th>
+                <th class="px-4 py-3 text-left">{{ t('admin.conversations.status') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('admin.conversations.turns') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('admin.conversations.fileSize') }}</th>
+                <th class="px-4 py-3 text-left">{{ t('admin.conversations.expiresAt') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="job in exportJobs" :key="job.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                <td class="px-4 py-3">
+                  <div class="font-medium text-gray-900 dark:text-white">#{{ job.id }} · {{ job.format }}</div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ job.encoding }} · limit {{ job.filters.limit || 1000 }}
+                    <span v-if="job.filters.redaction_enabled"> · {{ t('admin.conversations.redacted') }}</span>
+                    <span v-if="job.filters.include_duplicates"> · {{ t('admin.conversations.duplicatesIncluded') }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-3">
+                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                    {{ job.status }}
+                  </span>
+                  <div v-if="job.error_message" class="mt-1 max-w-sm truncate text-xs text-rose-600 dark:text-rose-300">
+                    {{ job.error_message }}
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(job.turn_count) }}</td>
+                <td class="px-4 py-3 text-right tabular-nums">{{ formatBytes(job.file_size) }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(job.expires_at) }}</td>
+                <td class="px-4 py-3">
+                  <div class="flex justify-end gap-2">
+                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status !== 'completed'" @click="downloadExportJob(job.id)">
+                      {{ t('admin.conversations.downloadJob') }}
+                    </button>
+                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status === 'running'" @click="deleteExportJob(job.id)">
+                      {{ t('common.delete') }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </AppLayout>
 </template>
@@ -350,7 +408,8 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import Icon from '@/components/common/Icon.vue'
+import Toggle from '@/components/common/Toggle.vue'
+import Icon from '@/components/icons/Icon.vue'
 import conversationsAPI, {
   type ConversationCaptureConfig,
   type ConversationExportJob,
@@ -400,6 +459,7 @@ const filters = reactive({
   api_key_id: null as number | null,
   model: '',
   request_id: '',
+  quality_status: '',
   exportable: '',
 })
 const exportOptions = reactive({
@@ -411,6 +471,35 @@ const pagination = reactive({ total: 0, page: 1, page_size: 20 })
 
 const parsedExcludedUserIDs = computed(() => parseIDs(excludedUserIDsText.value))
 const parsedExcludedAPIKeyIDs = computed(() => parseIDs(excludedAPIKeyIDsText.value))
+const captureStatusLabel = computed(() => (
+  configForm.enabled ? t('admin.conversations.captureOn') : t('admin.conversations.captureOff')
+))
+const captureStatusDescription = computed(() => (
+  configForm.enabled
+    ? t('admin.conversations.captureOnDescription')
+    : t('admin.conversations.captureOffDescription')
+))
+const hasActiveFilters = computed(() => Boolean(
+  (filters.user_id && filters.user_id > 0)
+  || (filters.api_key_id && filters.api_key_id > 0)
+  || filters.model
+  || filters.request_id
+  || filters.quality_status
+  || filters.exportable
+))
+const captureSummaryItems = computed(() => [
+  { label: t('admin.conversations.samplePercent'), value: `${configForm.sample_percent}%` },
+  { label: t('admin.conversations.retentionDays'), value: formatDays(configForm.retention_days) },
+  { label: t('admin.conversations.exportEnabled'), value: configForm.export_enabled ? t('common.enabled') : t('common.disabled') },
+  { label: t('admin.conversations.sessionsListed'), value: formatNumber(pagination.total) },
+  { label: t('admin.conversations.sessionWindow'), value: formatMinutes(configForm.session_window_minutes) },
+])
+const emptyStateTitle = computed(() => (
+  configForm.enabled ? t('admin.conversations.emptyEnabledTitle') : t('admin.conversations.emptyDisabledTitle')
+))
+const emptyStateDescription = computed(() => (
+  configForm.enabled ? t('admin.conversations.emptyEnabledDescription') : t('admin.conversations.emptyDisabledDescription')
+))
 
 onMounted(loadAll)
 
@@ -436,8 +525,20 @@ async function saveConfig() {
     Object.assign(configForm, updated)
     excludedUserIDsText.value = updated.excluded_user_ids.join(',')
     excludedAPIKeyIDsText.value = updated.excluded_api_key_ids.join(',')
+  } catch (error) {
+    await loadConfig()
+    throw error
   } finally {
     savingConfig.value = false
+  }
+}
+
+async function updateConfigFlag(field: 'enabled' | 'export_enabled', value: boolean) {
+  configForm[field] = value
+  try {
+    await saveConfig()
+  } catch {
+    // saveConfig 已重新拉取后端配置，避免开关点击产生未处理异常。
   }
 }
 
@@ -472,6 +573,7 @@ function buildFilters(): ConversationSessionFilters {
     api_key_id: filters.api_key_id && filters.api_key_id > 0 ? filters.api_key_id : undefined,
     model: filters.model || undefined,
     request_id: filters.request_id || undefined,
+    quality_status: filters.quality_status || undefined,
     exportable: filters.exportable === '' ? undefined : filters.exportable === 'true',
   }
 }
@@ -583,7 +685,10 @@ async function moveTurnToSession(turnId: number) {
 }
 
 async function loadTurnDetail(id: number) {
-  if (selectedTurnDetails[id]) return
+  if (selectedTurnDetails[id]) {
+    delete selectedTurnDetails[id]
+    return
+  }
   selectedTurnDetails[id] = await conversationsAPI.getTurn(id)
 }
 
@@ -696,6 +801,14 @@ function formatBytes(value: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MiB`
 }
 
+function formatDays(value: number): string {
+  return t('admin.conversations.daysValue', { count: value || 0 })
+}
+
+function formatMinutes(value: number): string {
+  return t('admin.conversations.minutesValue', { count: value || 0 })
+}
+
 function formatDate(value: string): string {
   if (!value) return '-'
   return new Date(value).toLocaleString()
@@ -710,6 +823,14 @@ function renderMessages(messages: Array<Record<string, unknown>>): string {
       return `${role}: ${content}`
     })
     .join('\n\n')
+}
+
+function formatQualityErrors(errors: Array<{ code?: string; message?: string }> | undefined): string {
+  if (!errors?.length) return ''
+  return errors
+    .map((error) => error.message || error.code || '')
+    .filter(Boolean)
+    .join('; ')
 }
 
 function pillClass(kind: 'success' | 'warn' | 'muted'): string {

@@ -75,6 +75,9 @@ func TestConversationExportMessagesJSONLRedactsSensitiveText(t *testing.T) {
 				Meta:             map[string]any{"user_id": float64(1), "api_key_id": float64(2)},
 				Model:            "gpt-5",
 				DedupeHash:       "hash-1",
+				Exportable:       true,
+				ParseStatus:      ConversationParseStatusSuccess,
+				QualityStatus:    ConversationQualityStatusClean,
 			},
 		},
 	}
@@ -95,6 +98,120 @@ func TestConversationExportMessagesJSONLRedactsSensitiveText(t *testing.T) {
 	require.NotContains(t, text, "sk-test-secret-token")
 }
 
+func TestConversationExportMessagesJSONLRechecksQualityGate(t *testing.T) {
+	rejected := conversationExportTurn("req-rejected", "hash-rejected")
+	rejected.Truncated = true
+	rejected.QualityStatus = ConversationQualityStatusClean
+	rejected.Exportable = true
+	clean := conversationExportTurn("req-clean", "hash-clean")
+	repo := &conversationCaptureExportRepo{turns: []ConversationTurn{rejected, clean}}
+	svc := NewConversationCaptureService(repo, nil, nil, nil)
+
+	data, err := svc.ExportMessagesJSONL(context.Background(), ConversationExportMessagesJSONLRequest{
+		IncludeDuplicates: true,
+		Limit:             10,
+	})
+
+	require.NoError(t, err)
+	text := string(data)
+	require.Contains(t, text, "req-clean")
+	require.NotContains(t, text, "req-rejected")
+}
+
+func TestConversationExportMessagesJSONLCleanSessionFilterStillUsesTurnQualityGate(t *testing.T) {
+	unsafe := conversationExportTurn("req-unsafe", "hash-unsafe")
+	unsafe.ResponseMessages = []json.RawMessage{json.RawMessage(`{"role":"assistant","content":""}`)}
+	unsafe.QualityStatus = ConversationQualityStatusClean
+	unsafe.Exportable = true
+	clean := conversationExportTurn("req-clean", "hash-clean")
+	repo := &conversationCaptureExportRepo{turns: []ConversationTurn{unsafe, clean}}
+	svc := NewConversationCaptureService(repo, nil, nil, nil)
+
+	data, err := svc.ExportMessagesJSONL(context.Background(), ConversationExportMessagesJSONLRequest{
+		ConversationSessionFilters: ConversationSessionFilters{
+			QualityStatus: ConversationQualityStatusClean,
+		},
+		IncludeDuplicates: true,
+		Limit:             10,
+	})
+
+	require.NoError(t, err)
+	text := string(data)
+	require.Contains(t, text, "req-clean")
+	require.NotContains(t, text, "req-unsafe")
+}
+
+func TestConversationExportMessagesJSONLHeuristicRequiresExplicitIncludeAndCleanQuality(t *testing.T) {
+	heuristicNeedsReview := conversationExportTurn("req-review", "hash-review")
+	heuristicNeedsReview.Meta["session_source"] = ConversationSessionSourceHeuristic
+	heuristicNeedsReview.QualityStatus = ConversationQualityStatusNeedsReview
+	heuristicNeedsReview.Exportable = true
+	heuristicClean := conversationExportTurn("req-clean-heuristic", "hash-clean-heuristic")
+	heuristicClean.Meta["session_source"] = ConversationSessionSourceHeuristic
+	repo := &conversationCaptureExportRepo{turns: []ConversationTurn{heuristicNeedsReview, heuristicClean}}
+	svc := NewConversationCaptureService(repo, nil, nil, nil)
+
+	data, err := svc.ExportMessagesJSONL(context.Background(), ConversationExportMessagesJSONLRequest{
+		IncludeDuplicates: true,
+		Limit:             10,
+	})
+	require.NoError(t, err)
+	require.Empty(t, nonEmptyJSONLLines(t, data))
+
+	data, err = svc.ExportMessagesJSONL(context.Background(), ConversationExportMessagesJSONLRequest{
+		IncludeHeuristic:  true,
+		IncludeDuplicates: true,
+		Limit:             10,
+	})
+	require.NoError(t, err)
+	text := string(data)
+	require.Contains(t, text, "req-clean-heuristic")
+	require.NotContains(t, text, "req-review")
+}
+
+func TestConversationCaptureBulkSetQualityNormalizesNeedsReviewExportable(t *testing.T) {
+	repo := &conversationCaptureExportRepo{}
+	svc := NewConversationCaptureService(repo, nil, nil, nil)
+	exportable := true
+
+	err := svc.BulkSetQuality(context.Background(), ConversationBulkQualityUpdateRequest{
+		SessionIDs:    []int64{7},
+		QualityStatus: ConversationQualityStatusNeedsReview,
+		QualityErrors: []QualityError{{Code: "manual_review", Message: "needs review"}},
+		Exportable:    &exportable,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, repo.bulkQualityReq.Exportable)
+	require.False(t, *repo.bulkQualityReq.Exportable)
+	require.Equal(t, ConversationQualityStatusNeedsReview, repo.bulkQualityReq.QualityStatus)
+}
+
+func TestConversationCaptureConfigPersistsEnabled(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+
+	updated, err := svc.UpdateConfig(context.Background(), ConversationCaptureConfig{
+		Enabled:                true,
+		SamplePercent:          100,
+		CaptureChatCompletions: true,
+		CaptureResponses:       false,
+		RawArchiveEnabled:      false,
+		MaxTurnPayloadBytes:    1048576,
+		PayloadPreviewChars:    8000,
+		SessionWindowMinutes:   30,
+		RetentionDays:          30,
+		ExportEnabled:          true,
+	})
+	require.NoError(t, err)
+	require.True(t, updated.Enabled)
+
+	loaded, err := svc.GetConfig(context.Background())
+	require.NoError(t, err)
+	require.True(t, loaded.Enabled)
+	require.Equal(t, 100, loaded.SamplePercent)
+}
+
 func conversationExportTurn(requestID, hash string) ConversationTurn {
 	return ConversationTurn{
 		SessionID:        "s1",
@@ -104,6 +221,9 @@ func conversationExportTurn(requestID, hash string) ConversationTurn {
 		Meta:             map[string]any{"user_id": float64(1), "api_key_id": float64(2)},
 		Model:            "gpt-5",
 		DedupeHash:       hash,
+		Exportable:       true,
+		ParseStatus:      ConversationParseStatusSuccess,
+		QualityStatus:    ConversationQualityStatusClean,
 	}
 }
 
@@ -134,7 +254,8 @@ func splitJSONLLines(s string) []string {
 }
 
 type conversationCaptureExportRepo struct {
-	turns []ConversationTurn
+	turns          []ConversationTurn
+	bulkQualityReq ConversationBulkQualityUpdateRequest
 }
 
 func (r *conversationCaptureExportRepo) UpsertTurn(context.Context, ConversationTurnRecord) error {
@@ -164,7 +285,8 @@ func (r *conversationCaptureExportRepo) SetSessionQuality(context.Context, int64
 func (r *conversationCaptureExportRepo) SetTurnQuality(context.Context, int64, string, []QualityError, *bool) error {
 	return nil
 }
-func (r *conversationCaptureExportRepo) BulkSetQuality(context.Context, ConversationBulkQualityUpdateRequest) error {
+func (r *conversationCaptureExportRepo) BulkSetQuality(_ context.Context, req ConversationBulkQualityUpdateRequest) error {
+	r.bulkQualityReq = req
 	return nil
 }
 func (r *conversationCaptureExportRepo) MergeSessions(context.Context, int64, []int64) error {

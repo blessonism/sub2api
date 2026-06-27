@@ -255,6 +255,78 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 
 ---
 
+### Scenario: Conversation capture export quality gate
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing conversation capture, conversation history filtering, or training JSONL export behavior.
+- This flow crosses capture parsing, service quality assessment, repository session summaries, admin handlers, and frontend filters. It needs code-spec depth because an unsafe export can leak malformed or structurally incomplete training data.
+
+#### 2. Signatures
+- Service quality gate: `AssessConversationTurnQuality(record ConversationTurnRecord) ConversationQualityAssessment`.
+- Service export gate: `CanExportConversationTurn(turn ConversationTurn, req ConversationExportMessagesJSONLRequest) bool`.
+- Repository export query: `ListExportableTurns(ctx, req)` may pre-filter candidates, but service-level `CanExportConversationTurn` remains the final gate.
+- Session summary recalculation must aggregate turn-level `quality_status`, `quality_errors`, and `exportable` after turn writes or manual move/split/merge operations.
+
+#### 3. Contracts
+- Only `quality_status = clean` turns may default to `exportable = true`.
+- `needs_review` and `rejected` turns must default to `exportable = false`.
+- Hard export blockers are: `exportable=false`, `parse_status != success`, `truncated=true`, `client_disconnect=true`, or non-clean turn quality.
+- Heuristic sessions are excluded by default; `include_heuristic=true` only allows them to continue through the remaining turn-level gate.
+- `Tools` is not equivalent to a valid tool result. Empty assistant output may be exempted only when the tool chain contains a matching non-empty tool result.
+- Session-level quality is a filter and summary contract, not the export authority. Export authority stays turn-level.
+- Session quality aggregation priority is `rejected > needs_review > clean`; unknown or unchecked turn quality is conservative and must not make a session clean.
+- Turn-level manual quality or exportable updates must recalculate the parent session summary in the same transaction.
+- Bulk quality updates must normalize `needs_review` and `rejected` the same way as single quality updates; they must not leave those statuses exportable.
+- Session-level export enablement may only cascade `exportable=true` to clean turns that also pass hard structural gates. Disabling session export may clear all child turns.
+
+#### 4. Validation & Error Matrix
+- Parse failure -> `rejected` with `parse_failed`.
+- Truncated payload -> `rejected` with `truncated_payload`.
+- Client disconnect -> `rejected` with `client_disconnect`.
+- Missing request messages -> `rejected` with `missing_request_messages`.
+- Missing response messages -> `rejected` with `missing_response_messages`.
+- Heuristic session -> `needs_review` with `heuristic_session`.
+- Tool call without matching result -> `needs_review` with `incomplete_tool_call_chain`.
+- Tool result without matching call -> `needs_review` with `orphan_tool_result`.
+- Empty assistant output without a complete valid tool-result chain -> `needs_review` with `empty_assistant_output`.
+
+#### 5. Good/Base/Bad Cases
+- Good: a parsed, complete user/assistant text turn in an explicit or responses session becomes `clean` and exportable.
+- Good: a Responses turn with `function_call` plus matching non-empty `function_call_output` can pass the empty-assistant check when all other gates pass.
+- Base: a heuristic session remains `needs_review` until manual action; export still requires `include_heuristic=true` and all other gates.
+- Bad: treating any item in `Tools` as proof of valid tool output.
+- Bad: using only session `quality_status=clean` to export turns without rechecking each turn.
+
+#### 6. Tests Required
+- Unit test `AssessConversationTurnQuality` for clean text, hard rejects, heuristic review, missing messages, empty assistant output, tool call without result, orphan tool result, and complete tool chains.
+- Export tests for both synchronous JSONL and background export payload builders proving hard blockers still fail after manual `exportable=true`.
+- Repository tests proving session summaries aggregate turn quality and clean filters still leave turn-level hard gates in place.
+- Frontend tests proving `quality_status` filter is sent and `quality_errors` are visible.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+if len(input.Tools) > 0 { skipEmptyAssistantReview() }
+```
+
+Correct:
+```go
+if toolChain.Complete && toolChain.HasNonEmptyResult { skipEmptyAssistantReview() }
+```
+
+Wrong:
+```go
+turns := repo.ListExportableTurns(ctx, req) // trusted as final export set
+```
+
+Correct:
+```go
+turns := FilterConversationExportableTurns(repoTurns, req) // final service gate
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->
