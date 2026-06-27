@@ -382,6 +382,7 @@ export default {
     tokenUsagePolicies: 'Token Auto Policies',
     conversations: 'Conversations',
     upstreamCostCalibrations: 'Cost Calibration',
+    upstreamRelayGroupMonitoring: 'Relay Rate Monitor',
     balanceRedemption: 'Balance & Redeem',
     balanceSummary: 'Balance Summary',
     leaderboard: 'Leaderboard',
@@ -2029,6 +2030,11 @@ export default {
         success: 'Success',
         failed: 'Failed'
       }
+    },
+
+    upstreamRelayGroupMonitoring: {
+      title: 'Upstream Relay Group Monitoring',
+      description: 'Configure upstream sessions, sync group rates, probe candidate health, and apply priority suggestions after confirmation'
     },
 
     balanceRedemption: {

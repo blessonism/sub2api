@@ -382,6 +382,7 @@ export default {
     tokenUsagePolicies: 'Token 自动策略',
     conversations: '对话历史',
     upstreamCostCalibrations: '成本校准',
+    upstreamRelayGroupMonitoring: '上游倍率监控',
     balanceRedemption: '余额与兑换',
     balanceSummary: '余额汇总',
     leaderboard: '排行榜',
@@ -2050,6 +2051,11 @@ export default {
         success: '成功',
         failed: '失败'
       }
+    },
+
+    upstreamRelayGroupMonitoring: {
+      title: '上游分组倍率监控',
+      description: '配置上游登录态、同步分组倍率、探测候选健康状态，并在确认后应用 priority 建议'
     },
 
     balanceRedemption: {

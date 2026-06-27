@@ -83,6 +83,9 @@ func RegisterAdminRoutes(
 		// 上游渠道真实成本校准
 		registerUpstreamCostCalibrationRoutes(admin, h)
 
+		// 上游中转站分组倍率监控
+		registerUpstreamRelayGroupMonitoringRoutes(admin, h)
+
 		// OpenAI 对话历史
 		registerConversationRoutes(admin, h)
 
@@ -169,6 +172,29 @@ func registerUpstreamCostCalibrationRoutes(admin *gin.RouterGroup, h *handler.Ha
 		calibrations.GET("/:id/runs", h.Admin.UpstreamCostCalibration.ListRuns)
 		calibrations.GET("/:id/runs/:run_id", h.Admin.UpstreamCostCalibration.GetRun)
 		calibrations.POST("/:id/runs/:run_id/apply", h.Admin.UpstreamCostCalibration.ApplyRun)
+	}
+}
+
+func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	relay := admin.Group("/upstream-relay-group-monitors")
+	{
+		relay.GET("/connectors", h.Admin.UpstreamRelayMonitoring.ListConnectors)
+		relay.POST("/connectors", h.Admin.UpstreamRelayMonitoring.CreateConnector)
+		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
+		relay.DELETE("/connectors/:id", h.Admin.UpstreamRelayMonitoring.DeleteConnector)
+		relay.POST("/connectors/:id/sync", h.Admin.UpstreamRelayMonitoring.SyncConnector)
+		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
+
+		relay.GET("/candidates", h.Admin.UpstreamRelayMonitoring.ListCandidates)
+		relay.POST("/candidates", h.Admin.UpstreamRelayMonitoring.CreateCandidate)
+		relay.PUT("/candidates/:id", h.Admin.UpstreamRelayMonitoring.UpdateCandidate)
+		relay.DELETE("/candidates/:id", h.Admin.UpstreamRelayMonitoring.DeleteCandidate)
+		relay.POST("/candidates/:id/probe", h.Admin.UpstreamRelayMonitoring.ProbeCandidate)
+
+		relay.POST("/recommendations", h.Admin.UpstreamRelayMonitoring.GenerateRecommendations)
+		relay.GET("/recommendations", h.Admin.UpstreamRelayMonitoring.ListRecommendationRuns)
+		relay.GET("/recommendations/:id", h.Admin.UpstreamRelayMonitoring.GetRecommendationRun)
+		relay.POST("/recommendations/:id/apply", h.Admin.UpstreamRelayMonitoring.ApplyRecommendationRun)
 	}
 }
 
