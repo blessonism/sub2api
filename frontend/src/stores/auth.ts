@@ -15,6 +15,11 @@ const TOKEN_EXPIRES_AT_KEY = 'token_expires_at' // 存储过期时间戳而非�
 const PENDING_AUTH_SESSION_KEY = 'pending_auth_session'
 const AUTO_REFRESH_INTERVAL = 60 * 1000 // 60 seconds for user data refresh
 const TOKEN_REFRESH_BUFFER = 120 * 1000 // 120 seconds before expiry to refresh token
+const ACTIVITY_HEARTBEAT_INTERVAL = 5 * 60 * 1000
+const RECENT_USER_INTERACTION_WINDOW = 2 * 60 * 1000
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
+
+let stopActiveActivityListeners: (() => void) | null = null
 
 type PendingAuthTokenField = 'pending_auth_token' | 'pending_oauth_token'
 
@@ -79,6 +84,11 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
+  let activityHeartbeatIntervalId: ReturnType<typeof setInterval> | null = null
+  let lastUserInteractionAt = 0
+  let lastActivityReportAttemptAt: number | null = null
+  let activityReportInFlight = false
+  let activityListenersStarted = false
 
   // ==================== Computed ====================
 
@@ -121,6 +131,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Start auto-refresh interval for user data
         startAutoRefresh()
+        startActivityHeartbeat()
 
         // Start proactive token refresh if we have refresh token and expiry info
         // Note: use !== null to handle case when tokenExpiresAt.value is 0 (expired)
@@ -159,6 +170,94 @@ export const useAuthStore = defineStore('auth', () => {
       clearInterval(refreshIntervalId)
       refreshIntervalId = null
     }
+  }
+
+  function isDocumentVisible(): boolean {
+    return typeof document === 'undefined' || document.visibilityState === 'visible'
+  }
+
+  function hasRecentUserInteraction(now = Date.now()): boolean {
+    return lastUserInteractionAt > 0 && now - lastUserInteractionAt <= RECENT_USER_INTERACTION_WINDOW
+  }
+
+  function markUserInteraction(): void {
+    if (!isDocumentVisible()) {
+      return
+    }
+    lastUserInteractionAt = Date.now()
+    void reportForegroundActivity()
+  }
+
+  function handleVisibilityChange(): void {
+    if (isDocumentVisible()) {
+      void reportForegroundActivity()
+    }
+  }
+
+  async function reportForegroundActivity(): Promise<void> {
+    const now = Date.now()
+    if (!token.value || !user.value || !isDocumentVisible() || !hasRecentUserInteraction(now)) {
+      return
+    }
+    if (lastActivityReportAttemptAt !== null && now - lastActivityReportAttemptAt < ACTIVITY_HEARTBEAT_INTERVAL) {
+      return
+    }
+    if (activityReportInFlight) {
+      return
+    }
+
+    activityReportInFlight = true
+    lastActivityReportAttemptAt = now
+    try {
+      await authAPI.reportActivity()
+    } catch (error) {
+      console.debug('Foreground activity report failed:', error)
+    } finally {
+      activityReportInFlight = false
+    }
+  }
+
+  function startActivityHeartbeat(): void {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+    stopActivityHeartbeat()
+    if (stopActiveActivityListeners && stopActiveActivityListeners !== stopActivityHeartbeat) {
+      stopActiveActivityListeners()
+    }
+
+    if (!activityListenersStarted) {
+      ACTIVITY_EVENTS.forEach((eventName) => {
+        window.addEventListener(eventName, markUserInteraction, { passive: true })
+      })
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+      activityListenersStarted = true
+      stopActiveActivityListeners = stopActivityHeartbeat
+    }
+
+    activityHeartbeatIntervalId = setInterval(() => {
+      void reportForegroundActivity()
+    }, ACTIVITY_HEARTBEAT_INTERVAL)
+  }
+
+  function stopActivityHeartbeat(): void {
+    if (activityHeartbeatIntervalId) {
+      clearInterval(activityHeartbeatIntervalId)
+      activityHeartbeatIntervalId = null
+    }
+    if (activityListenersStarted && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      ACTIVITY_EVENTS.forEach((eventName) => {
+        window.removeEventListener(eventName, markUserInteraction)
+      })
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      activityListenersStarted = false
+    }
+    if (stopActiveActivityListeners === stopActivityHeartbeat) {
+      stopActiveActivityListeners = null
+    }
+    lastUserInteractionAt = 0
+    lastActivityReportAttemptAt = null
+    activityReportInFlight = false
   }
 
   /**
@@ -303,6 +402,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Start auto-refresh interval for user data
     startAutoRefresh()
+    startActivityHeartbeat()
 
     // Start proactive token refresh if we have refresh token and expiry info
     // scheduleTokenRefresh will also store the expiry timestamp
@@ -362,6 +462,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const userData = await refreshUser()
       startAutoRefresh()
+      startActivityHeartbeat()
 
       // Start proactive token refresh if we have refresh token and expiry info
       // Note: use !== null to handle case when tokenExpiresAt.value is 0 (expired)
@@ -443,6 +544,8 @@ export const useAuthStore = defineStore('auth', () => {
   function clearAuth(options?: { preservePendingAuthSession?: boolean }): void {
     // Stop auto-refresh
     stopAutoRefresh()
+    // Stop foreground activity heartbeat
+    stopActivityHeartbeat()
     // Stop token refresh
     stopTokenRefresh()
 

@@ -12,7 +12,7 @@ import (
 
 // NewJWTAuthMiddleware 创建 JWT 认证中间件
 func NewJWTAuthMiddleware(authService *service.AuthService, userService *service.UserService) JWTAuthMiddleware {
-	return JWTAuthMiddleware(jwtAuth(authService, userService, userService))
+	return JWTAuthMiddleware(jwtAuth(authService, userService, nil))
 }
 
 type jwtUserReader interface {
@@ -82,9 +82,6 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 			Concurrency: user.Concurrency,
 		})
 		c.Set(string(ContextKeyUserRole), user.Role)
-		if activityToucher != nil {
-			activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
-		}
 
 		c.Next()
 	}

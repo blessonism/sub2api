@@ -209,7 +209,20 @@ func TestAPIContracts(t *testing.T) {
 					},
 					"run_mode": "standard"
 				}
-			}`,
+				}`,
+		},
+		{
+			name:       "POST /api/v1/user/activity",
+			method:     http.MethodPost,
+			path:       "/api/v1/user/activity",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+					"code": 0,
+					"message": "success",
+					"data": {
+						"reported": true
+					}
+				}`,
 		},
 		{
 			name:   "POST /api/v1/keys",
@@ -1302,6 +1315,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
+	userHandler := handler.NewUserHandler(userService, nil, nil, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
@@ -1331,6 +1345,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Auth := v1.Group("")
 	v1Auth.Use(jwtAuth)
 	v1Auth.GET("/auth/me", authHandler.GetCurrentUser)
+	v1Auth.POST("/user/activity", userHandler.ReportActivity)
 
 	v1Keys := v1.Group("")
 	v1Keys.Use(jwtAuth)
@@ -1959,6 +1974,10 @@ func (r *stubRedeemCodeRepo) ListByUser(ctx context.Context, userID int64, limit
 }
 
 func (stubRedeemCodeRepo) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (stubRedeemCodeRepo) ListUsedPaginated(ctx context.Context, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }
 

@@ -9,6 +9,7 @@ const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
 const mockRefreshToken = vi.fn()
+const mockReportActivity = vi.fn()
 
 vi.mock('@/api', () => ({
   authAPI: {
@@ -18,6 +19,7 @@ vi.mock('@/api', () => ({
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
     register: (...args: any[]) => mockRegister(...args),
     refreshToken: (...args: any[]) => mockRefreshToken(...args),
+    reportActivity: (...args: any[]) => mockReportActivity(...args),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
 }))
@@ -57,9 +59,18 @@ describe('useAuthStore', () => {
     localStorage.clear()
     vi.useFakeTimers()
     vi.clearAllMocks()
+    mockReportActivity.mockResolvedValue(undefined)
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    const store = useAuthStore()
+    if (store.isAuthenticated) {
+      await store.logout().catch(() => undefined)
+    }
     vi.useRealTimers()
   })
 
@@ -363,6 +374,93 @@ describe('useAuthStore', () => {
     it('未认证时抛出错误', async () => {
       const store = useAuthStore()
       await expect(store.refreshUser()).rejects.toThrow('Not authenticated')
+    })
+  })
+
+  describe('foreground activity heartbeat', () => {
+    it('仅在登录后页面可见且有近期交互时上报活跃', async () => {
+      vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      expect(mockReportActivity).not.toHaveBeenCalled()
+
+      window.dispatchEvent(new Event('pointerdown'))
+      await Promise.resolve()
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+    })
+
+    it('持续前台交互时按心跳间隔再次上报活跃', async () => {
+      vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      window.dispatchEvent(new Event('pointerdown'))
+      await Promise.resolve()
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+      window.dispatchEvent(new Event('scroll'))
+      await Promise.resolve()
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(60 * 1000)
+      expect(mockReportActivity).toHaveBeenCalledTimes(2)
+    })
+
+    it('页面隐藏时不上报活跃，恢复可见后可按近期交互上报', async () => {
+      vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'hidden',
+      })
+      window.dispatchEvent(new Event('keydown'))
+      await Promise.resolve()
+      expect(mockReportActivity).not.toHaveBeenCalled()
+
+      vi.setSystemTime(new Date('2026-06-27T00:01:00Z'))
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+      await Promise.resolve()
+
+      expect(mockReportActivity).not.toHaveBeenCalled()
+
+      window.dispatchEvent(new Event('pointerdown'))
+      await Promise.resolve()
+
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+    })
+
+    it('注销后停止活跃心跳和交互监听', async () => {
+      vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      mockLogout.mockResolvedValue(undefined)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+      await store.logout()
+
+      window.dispatchEvent(new Event('pointerdown'))
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+
+      expect(mockReportActivity).not.toHaveBeenCalled()
     })
   })
 

@@ -69,6 +69,18 @@ func (h *UserHandler) GetMyPlatformQuotas(c *gin.Context) {
 	response.Success(c, map[string]any{"platform_quotas": out})
 }
 
+// ReportActivity 由前端在页面前台可见且近期有用户交互时上报活跃。
+// POST /api/v1/user/activity
+func (h *UserHandler) ReportActivity(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	h.userService.TouchLastActive(c.Request.Context(), subject.UserID)
+	response.Success(c, gin.H{"reported": true})
+}
+
 // ChangePasswordRequest represents the change password request payload
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required"`
