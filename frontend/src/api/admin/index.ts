@@ -34,6 +34,7 @@ import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import tokenUsagePoliciesAPI from './tokenUsagePolicies'
 import upstreamCostCalibrationsAPI from './upstreamCostCalibrations'
+import conversationsAPI from './conversations'
 
 /**
  * Unified admin API object for convenient access
@@ -69,7 +70,8 @@ export const adminAPI = {
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
   tokenUsagePolicies: tokenUsagePoliciesAPI,
-  upstreamCostCalibrations: upstreamCostCalibrationsAPI
+  upstreamCostCalibrations: upstreamCostCalibrationsAPI,
+  conversations: conversationsAPI
 }
 
 export {
@@ -103,7 +105,8 @@ export {
   riskControlAPI,
   adminComplianceAPI,
   tokenUsagePoliciesAPI,
-  upstreamCostCalibrationsAPI
+  upstreamCostCalibrationsAPI,
+  conversationsAPI
 }
 
 export default adminAPI
