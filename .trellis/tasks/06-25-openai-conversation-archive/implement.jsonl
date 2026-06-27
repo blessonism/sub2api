@@ -1,0 +1,31 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游二开分支与实现边界；本任务会修改代码、迁移、配置与前端，必须遵守 custom/main -> feature/* 规则"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/prd.md", "reason": "本任务的 Phase 1 需求、覆盖范围与验收标准：只覆盖 OpenAI chat/completions，主路径为 conversation_sessions / conversation_turns"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/execute.md", "reason": "P0-P8 执行步骤；重点约束 capture writer、usage 成功点、worker 深拷贝、管理 API 与 messages_jsonl 导出"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/design-conversation-history-training-export.md", "reason": "结构化会话存储、session 归并、导出过滤与 Phase 2 边界的设计依据"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/research/tokenrouter-data-sharing-reference.md", "reason": "TokenRouter 参考仅用于借鉴 fail-open worker、元数据快照与 settings 覆盖；不得照搬用户授权、多角色审批或旧 raw archive 主路径"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/review-phase1-fix-plan.md", "reason": "Phase 1 code review 后的修复方案：exportable 导出语义、显式 session 并发创建、turn 列表轻量化和前端配置补齐"}
+{"file": "backend/internal/server/routes/gateway.go", "reason": "OpenAI chat/completions HTTP 入口与别名路由注册点；只在 service.PlatformOpenAI 分支包裹 capture，responses/embeddings/images/WebSocket 不应命中"}
+{"file": "backend/internal/handler/openai_chat_completions.go", "reason": "chat/completions handler 成功路径；capture meta 必须在 usage 成功提交后发布，并携带 request、usage、cost、会话 ID 等快照"}
+{"file": "backend/internal/handler/conversation_capture_middleware.go", "reason": "capture writer 与状态协调器；关闭/未采样/排除名单不替换 writer，worker 不持有 gin.Context 或 ResponseWriter"}
+{"file": "backend/internal/service/conversation_capture_models.go", "reason": "采集配置、输入快照、session/turn DTO、导出请求与仓储接口契约"}
+{"file": "backend/internal/service/conversation_capture_service.go", "reason": "Decide/Submit、payload 上限、session 归并、dedupe 与 messages_jsonl 导出主逻辑"}
+{"file": "backend/internal/service/conversation_capture_parser.go", "reason": "OpenAI chat/completions request messages、non-stream assistant message 与 stream SSE delta 聚合解析"}
+{"file": "backend/internal/service/conversation_capture_worker_pool.go", "reason": "独立 bounded worker，队列满 drop、panic recover、后台 task 不持有请求态"}
+{"file": "backend/internal/service/conversation_capture_cleanup.go", "reason": "retention_days 定时清理入口；清理日志不得包含正文"}
+{"file": "backend/internal/repository/conversation_capture_repo.go", "reason": "conversation_sessions / conversation_turns 事务写入、列表过滤、exportable、导出过滤和 retention 清理 SQL"}
+{"file": "backend/ent/schema/conversation_session.go", "reason": "conversation_sessions ent schema 与索引"}
+{"file": "backend/ent/schema/conversation_turn.go", "reason": "conversation_turns ent schema 与索引"}
+{"file": "backend/migrations/161_conversation_capture.sql", "reason": "结构化 session/turn 迁移；Phase 1 不新增 conversation_export_jobs 或 raw archive 表"}
+{"file": "backend/internal/handler/admin/conversation_handler.go", "reason": "管理员配置、session/turn 列表详情、exportable 更新与 messages_jsonl 下载接口"}
+{"file": "backend/internal/server/routes/admin.go", "reason": "admin conversations 路由注册，必须位于管理员鉴权路由下"}
+{"file": "backend/internal/config/config.go", "reason": "Gateway.ConversationCapture 默认配置，采集默认关闭，responses/raw archive 默认 false"}
+{"file": "backend/internal/service/wire.go", "reason": "service 依赖注入与 worker/cleanup 生命周期"}
+{"file": "backend/internal/handler/wire.go", "reason": "handler 依赖注入"}
+{"file": "backend/internal/repository/wire.go", "reason": "conversation repository 依赖注入"}
+{"file": "frontend/src/api/admin/conversations.ts", "reason": "前端 admin conversations API 类型与后端 JSON 字段保持 snake_case 对齐"}
+{"file": "frontend/src/views/admin/ConversationHistoryView.vue", "reason": "管理员对话历史页面：配置、筛选、分页、详情、exportable 与 JSONL 导出"}
+{"file": "frontend/src/api/admin/index.ts", "reason": "admin API 聚合导出位置"}
+{"file": "frontend/src/router/index.ts", "reason": "admin conversations 路由注册与管理员权限 meta"}
+{"file": "frontend/src/components/layout/AppSidebar.vue", "reason": "管理员侧栏入口"}
+{"file": "frontend/src/i18n/locales/zh.ts", "reason": "中文文案"}
+{"file": "frontend/src/i18n/locales/en.ts", "reason": "英文文案"}

@@ -16,6 +16,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/conversationexportjob"
+	"github.com/Wei-Shaw/sub2api/ent/conversationsession"
+	"github.com/Wei-Shaw/sub2api/ent/conversationturn"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -696,6 +699,346 @@ func init() {
 	channelmonitorrequesttemplate.DefaultBodyOverrideMode = channelmonitorrequesttemplateDescBodyOverrideMode.Default.(string)
 	// channelmonitorrequesttemplate.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitorrequesttemplate.BodyOverrideModeValidator = channelmonitorrequesttemplateDescBodyOverrideMode.Validators[0].(func(string) error)
+	conversationexportjobFields := schema.ConversationExportJob{}.Fields()
+	_ = conversationexportjobFields
+	// conversationexportjobDescStatus is the schema descriptor for status field.
+	conversationexportjobDescStatus := conversationexportjobFields[0].Descriptor()
+	// conversationexportjob.DefaultStatus holds the default value on creation for the status field.
+	conversationexportjob.DefaultStatus = conversationexportjobDescStatus.Default.(string)
+	// conversationexportjob.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	conversationexportjob.StatusValidator = conversationexportjobDescStatus.Validators[0].(func(string) error)
+	// conversationexportjobDescFormat is the schema descriptor for format field.
+	conversationexportjobDescFormat := conversationexportjobFields[2].Descriptor()
+	// conversationexportjob.DefaultFormat holds the default value on creation for the format field.
+	conversationexportjob.DefaultFormat = conversationexportjobDescFormat.Default.(string)
+	// conversationexportjob.FormatValidator is a validator for the "format" field. It is called by the builders before save.
+	conversationexportjob.FormatValidator = conversationexportjobDescFormat.Validators[0].(func(string) error)
+	// conversationexportjobDescEncoding is the schema descriptor for encoding field.
+	conversationexportjobDescEncoding := conversationexportjobFields[3].Descriptor()
+	// conversationexportjob.DefaultEncoding holds the default value on creation for the encoding field.
+	conversationexportjob.DefaultEncoding = conversationexportjobDescEncoding.Default.(string)
+	// conversationexportjob.EncodingValidator is a validator for the "encoding" field. It is called by the builders before save.
+	conversationexportjob.EncodingValidator = conversationexportjobDescEncoding.Validators[0].(func(string) error)
+	// conversationexportjobDescSessionCount is the schema descriptor for session_count field.
+	conversationexportjobDescSessionCount := conversationexportjobFields[4].Descriptor()
+	// conversationexportjob.DefaultSessionCount holds the default value on creation for the session_count field.
+	conversationexportjob.DefaultSessionCount = conversationexportjobDescSessionCount.Default.(int64)
+	// conversationexportjobDescTurnCount is the schema descriptor for turn_count field.
+	conversationexportjobDescTurnCount := conversationexportjobFields[5].Descriptor()
+	// conversationexportjob.DefaultTurnCount holds the default value on creation for the turn_count field.
+	conversationexportjob.DefaultTurnCount = conversationexportjobDescTurnCount.Default.(int64)
+	// conversationexportjobDescFileSize is the schema descriptor for file_size field.
+	conversationexportjobDescFileSize := conversationexportjobFields[6].Descriptor()
+	// conversationexportjob.DefaultFileSize holds the default value on creation for the file_size field.
+	conversationexportjob.DefaultFileSize = conversationexportjobDescFileSize.Default.(int64)
+	// conversationexportjobDescS3Key is the schema descriptor for s3_key field.
+	conversationexportjobDescS3Key := conversationexportjobFields[7].Descriptor()
+	// conversationexportjob.S3KeyValidator is a validator for the "s3_key" field. It is called by the builders before save.
+	conversationexportjob.S3KeyValidator = conversationexportjobDescS3Key.Validators[0].(func(string) error)
+	// conversationexportjobDescErrorMessage is the schema descriptor for error_message field.
+	conversationexportjobDescErrorMessage := conversationexportjobFields[10].Descriptor()
+	// conversationexportjob.ErrorMessageValidator is a validator for the "error_message" field. It is called by the builders before save.
+	conversationexportjob.ErrorMessageValidator = conversationexportjobDescErrorMessage.Validators[0].(func(string) error)
+	// conversationexportjobDescCreatedAt is the schema descriptor for created_at field.
+	conversationexportjobDescCreatedAt := conversationexportjobFields[12].Descriptor()
+	// conversationexportjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	conversationexportjob.DefaultCreatedAt = conversationexportjobDescCreatedAt.Default.(func() time.Time)
+	// conversationexportjobDescUpdatedAt is the schema descriptor for updated_at field.
+	conversationexportjobDescUpdatedAt := conversationexportjobFields[13].Descriptor()
+	// conversationexportjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	conversationexportjob.DefaultUpdatedAt = conversationexportjobDescUpdatedAt.Default.(func() time.Time)
+	// conversationexportjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	conversationexportjob.UpdateDefaultUpdatedAt = conversationexportjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	conversationsessionFields := schema.ConversationSession{}.Fields()
+	_ = conversationsessionFields
+	// conversationsessionDescSessionID is the schema descriptor for session_id field.
+	conversationsessionDescSessionID := conversationsessionFields[0].Descriptor()
+	// conversationsession.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	conversationsession.SessionIDValidator = func() func(string) error {
+		validators := conversationsessionDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationsessionDescTrajectoryID is the schema descriptor for trajectory_id field.
+	conversationsessionDescTrajectoryID := conversationsessionFields[1].Descriptor()
+	// conversationsession.TrajectoryIDValidator is a validator for the "trajectory_id" field. It is called by the builders before save.
+	conversationsession.TrajectoryIDValidator = conversationsessionDescTrajectoryID.Validators[0].(func(string) error)
+	// conversationsessionDescProvider is the schema descriptor for provider field.
+	conversationsessionDescProvider := conversationsessionFields[5].Descriptor()
+	// conversationsession.DefaultProvider holds the default value on creation for the provider field.
+	conversationsession.DefaultProvider = conversationsessionDescProvider.Default.(string)
+	// conversationsession.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	conversationsession.ProviderValidator = conversationsessionDescProvider.Validators[0].(func(string) error)
+	// conversationsessionDescModel is the schema descriptor for model field.
+	conversationsessionDescModel := conversationsessionFields[6].Descriptor()
+	// conversationsession.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	conversationsession.ModelValidator = func() func(string) error {
+		validators := conversationsessionDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationsessionDescRequestPath is the schema descriptor for request_path field.
+	conversationsessionDescRequestPath := conversationsessionFields[7].Descriptor()
+	// conversationsession.RequestPathValidator is a validator for the "request_path" field. It is called by the builders before save.
+	conversationsession.RequestPathValidator = func() func(string) error {
+		validators := conversationsessionDescRequestPath.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_path string) error {
+			for _, fn := range fns {
+				if err := fn(request_path); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationsessionDescStatus is the schema descriptor for status field.
+	conversationsessionDescStatus := conversationsessionFields[8].Descriptor()
+	// conversationsession.DefaultStatus holds the default value on creation for the status field.
+	conversationsession.DefaultStatus = conversationsessionDescStatus.Default.(string)
+	// conversationsession.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	conversationsession.StatusValidator = conversationsessionDescStatus.Validators[0].(func(string) error)
+	// conversationsessionDescTurnCount is the schema descriptor for turn_count field.
+	conversationsessionDescTurnCount := conversationsessionFields[9].Descriptor()
+	// conversationsession.DefaultTurnCount holds the default value on creation for the turn_count field.
+	conversationsession.DefaultTurnCount = conversationsessionDescTurnCount.Default.(int)
+	// conversationsessionDescSourceRequestCount is the schema descriptor for source_request_count field.
+	conversationsessionDescSourceRequestCount := conversationsessionFields[10].Descriptor()
+	// conversationsession.DefaultSourceRequestCount holds the default value on creation for the source_request_count field.
+	conversationsession.DefaultSourceRequestCount = conversationsessionDescSourceRequestCount.Default.(int)
+	// conversationsessionDescInputTokens is the schema descriptor for input_tokens field.
+	conversationsessionDescInputTokens := conversationsessionFields[11].Descriptor()
+	// conversationsession.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	conversationsession.DefaultInputTokens = conversationsessionDescInputTokens.Default.(int64)
+	// conversationsessionDescOutputTokens is the schema descriptor for output_tokens field.
+	conversationsessionDescOutputTokens := conversationsessionFields[12].Descriptor()
+	// conversationsession.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	conversationsession.DefaultOutputTokens = conversationsessionDescOutputTokens.Default.(int64)
+	// conversationsessionDescTotalTokens is the schema descriptor for total_tokens field.
+	conversationsessionDescTotalTokens := conversationsessionFields[13].Descriptor()
+	// conversationsession.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	conversationsession.DefaultTotalTokens = conversationsessionDescTotalTokens.Default.(int64)
+	// conversationsessionDescActualCost is the schema descriptor for actual_cost field.
+	conversationsessionDescActualCost := conversationsessionFields[14].Descriptor()
+	// conversationsession.DefaultActualCost holds the default value on creation for the actual_cost field.
+	conversationsession.DefaultActualCost = conversationsessionDescActualCost.Default.(float64)
+	// conversationsessionDescQualityStatus is the schema descriptor for quality_status field.
+	conversationsessionDescQualityStatus := conversationsessionFields[15].Descriptor()
+	// conversationsession.DefaultQualityStatus holds the default value on creation for the quality_status field.
+	conversationsession.DefaultQualityStatus = conversationsessionDescQualityStatus.Default.(string)
+	// conversationsession.QualityStatusValidator is a validator for the "quality_status" field. It is called by the builders before save.
+	conversationsession.QualityStatusValidator = conversationsessionDescQualityStatus.Validators[0].(func(string) error)
+	// conversationsessionDescExportable is the schema descriptor for exportable field.
+	conversationsessionDescExportable := conversationsessionFields[17].Descriptor()
+	// conversationsession.DefaultExportable holds the default value on creation for the exportable field.
+	conversationsession.DefaultExportable = conversationsessionDescExportable.Default.(bool)
+	// conversationsessionDescCaptureStatus is the schema descriptor for capture_status field.
+	conversationsessionDescCaptureStatus := conversationsessionFields[18].Descriptor()
+	// conversationsession.DefaultCaptureStatus holds the default value on creation for the capture_status field.
+	conversationsession.DefaultCaptureStatus = conversationsessionDescCaptureStatus.Default.(string)
+	// conversationsession.CaptureStatusValidator is a validator for the "capture_status" field. It is called by the builders before save.
+	conversationsession.CaptureStatusValidator = conversationsessionDescCaptureStatus.Validators[0].(func(string) error)
+	// conversationsessionDescSessionSource is the schema descriptor for session_source field.
+	conversationsessionDescSessionSource := conversationsessionFields[19].Descriptor()
+	// conversationsession.DefaultSessionSource holds the default value on creation for the session_source field.
+	conversationsession.DefaultSessionSource = conversationsessionDescSessionSource.Default.(string)
+	// conversationsession.SessionSourceValidator is a validator for the "session_source" field. It is called by the builders before save.
+	conversationsession.SessionSourceValidator = conversationsessionDescSessionSource.Validators[0].(func(string) error)
+	// conversationsessionDescCreatedAt is the schema descriptor for created_at field.
+	conversationsessionDescCreatedAt := conversationsessionFields[23].Descriptor()
+	// conversationsession.DefaultCreatedAt holds the default value on creation for the created_at field.
+	conversationsession.DefaultCreatedAt = conversationsessionDescCreatedAt.Default.(func() time.Time)
+	// conversationsessionDescUpdatedAt is the schema descriptor for updated_at field.
+	conversationsessionDescUpdatedAt := conversationsessionFields[24].Descriptor()
+	// conversationsession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	conversationsession.DefaultUpdatedAt = conversationsessionDescUpdatedAt.Default.(func() time.Time)
+	// conversationsession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	conversationsession.UpdateDefaultUpdatedAt = conversationsessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	conversationturnFields := schema.ConversationTurn{}.Fields()
+	_ = conversationturnFields
+	// conversationturnDescSessionID is the schema descriptor for session_id field.
+	conversationturnDescSessionID := conversationturnFields[0].Descriptor()
+	// conversationturn.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	conversationturn.SessionIDValidator = func() func(string) error {
+		validators := conversationturnDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationturnDescRequestID is the schema descriptor for request_id field.
+	conversationturnDescRequestID := conversationturnFields[1].Descriptor()
+	// conversationturn.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	conversationturn.RequestIDValidator = func() func(string) error {
+		validators := conversationturnDescRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_id string) error {
+			for _, fn := range fns {
+				if err := fn(request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationturnDescUpstreamRequestID is the schema descriptor for upstream_request_id field.
+	conversationturnDescUpstreamRequestID := conversationturnFields[2].Descriptor()
+	// conversationturn.UpstreamRequestIDValidator is a validator for the "upstream_request_id" field. It is called by the builders before save.
+	conversationturn.UpstreamRequestIDValidator = conversationturnDescUpstreamRequestID.Validators[0].(func(string) error)
+	// conversationturnDescClientRequestID is the schema descriptor for client_request_id field.
+	conversationturnDescClientRequestID := conversationturnFields[3].Descriptor()
+	// conversationturn.ClientRequestIDValidator is a validator for the "client_request_id" field. It is called by the builders before save.
+	conversationturn.ClientRequestIDValidator = conversationturnDescClientRequestID.Validators[0].(func(string) error)
+	// conversationturnDescProvider is the schema descriptor for provider field.
+	conversationturnDescProvider := conversationturnFields[5].Descriptor()
+	// conversationturn.DefaultProvider holds the default value on creation for the provider field.
+	conversationturn.DefaultProvider = conversationturnDescProvider.Default.(string)
+	// conversationturn.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	conversationturn.ProviderValidator = conversationturnDescProvider.Validators[0].(func(string) error)
+	// conversationturnDescModel is the schema descriptor for model field.
+	conversationturnDescModel := conversationturnFields[6].Descriptor()
+	// conversationturn.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	conversationturn.ModelValidator = func() func(string) error {
+		validators := conversationturnDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationturnDescRequestPath is the schema descriptor for request_path field.
+	conversationturnDescRequestPath := conversationturnFields[7].Descriptor()
+	// conversationturn.RequestPathValidator is a validator for the "request_path" field. It is called by the builders before save.
+	conversationturn.RequestPathValidator = func() func(string) error {
+		validators := conversationturnDescRequestPath.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_path string) error {
+			for _, fn := range fns {
+				if err := fn(request_path); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationturnDescInputTokens is the schema descriptor for input_tokens field.
+	conversationturnDescInputTokens := conversationturnFields[13].Descriptor()
+	// conversationturn.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	conversationturn.DefaultInputTokens = conversationturnDescInputTokens.Default.(int64)
+	// conversationturnDescOutputTokens is the schema descriptor for output_tokens field.
+	conversationturnDescOutputTokens := conversationturnFields[14].Descriptor()
+	// conversationturn.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	conversationturn.DefaultOutputTokens = conversationturnDescOutputTokens.Default.(int64)
+	// conversationturnDescTotalTokens is the schema descriptor for total_tokens field.
+	conversationturnDescTotalTokens := conversationturnFields[15].Descriptor()
+	// conversationturn.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	conversationturn.DefaultTotalTokens = conversationturnDescTotalTokens.Default.(int64)
+	// conversationturnDescActualCost is the schema descriptor for actual_cost field.
+	conversationturnDescActualCost := conversationturnFields[16].Descriptor()
+	// conversationturn.DefaultActualCost holds the default value on creation for the actual_cost field.
+	conversationturn.DefaultActualCost = conversationturnDescActualCost.Default.(float64)
+	// conversationturnDescStream is the schema descriptor for stream field.
+	conversationturnDescStream := conversationturnFields[17].Descriptor()
+	// conversationturn.DefaultStream holds the default value on creation for the stream field.
+	conversationturn.DefaultStream = conversationturnDescStream.Default.(bool)
+	// conversationturnDescClientDisconnect is the schema descriptor for client_disconnect field.
+	conversationturnDescClientDisconnect := conversationturnFields[18].Descriptor()
+	// conversationturn.DefaultClientDisconnect holds the default value on creation for the client_disconnect field.
+	conversationturn.DefaultClientDisconnect = conversationturnDescClientDisconnect.Default.(bool)
+	// conversationturnDescTruncated is the schema descriptor for truncated field.
+	conversationturnDescTruncated := conversationturnFields[19].Descriptor()
+	// conversationturn.DefaultTruncated holds the default value on creation for the truncated field.
+	conversationturn.DefaultTruncated = conversationturnDescTruncated.Default.(bool)
+	// conversationturnDescQualityStatus is the schema descriptor for quality_status field.
+	conversationturnDescQualityStatus := conversationturnFields[20].Descriptor()
+	// conversationturn.DefaultQualityStatus holds the default value on creation for the quality_status field.
+	conversationturn.DefaultQualityStatus = conversationturnDescQualityStatus.Default.(string)
+	// conversationturn.QualityStatusValidator is a validator for the "quality_status" field. It is called by the builders before save.
+	conversationturn.QualityStatusValidator = conversationturnDescQualityStatus.Validators[0].(func(string) error)
+	// conversationturnDescExportable is the schema descriptor for exportable field.
+	conversationturnDescExportable := conversationturnFields[22].Descriptor()
+	// conversationturn.DefaultExportable holds the default value on creation for the exportable field.
+	conversationturn.DefaultExportable = conversationturnDescExportable.Default.(bool)
+	// conversationturnDescParseStatus is the schema descriptor for parse_status field.
+	conversationturnDescParseStatus := conversationturnFields[23].Descriptor()
+	// conversationturn.DefaultParseStatus holds the default value on creation for the parse_status field.
+	conversationturn.DefaultParseStatus = conversationturnDescParseStatus.Default.(string)
+	// conversationturn.ParseStatusValidator is a validator for the "parse_status" field. It is called by the builders before save.
+	conversationturn.ParseStatusValidator = conversationturnDescParseStatus.Validators[0].(func(string) error)
+	// conversationturnDescParseError is the schema descriptor for parse_error field.
+	conversationturnDescParseError := conversationturnFields[24].Descriptor()
+	// conversationturn.ParseErrorValidator is a validator for the "parse_error" field. It is called by the builders before save.
+	conversationturn.ParseErrorValidator = conversationturnDescParseError.Validators[0].(func(string) error)
+	// conversationturnDescDedupeHash is the schema descriptor for dedupe_hash field.
+	conversationturnDescDedupeHash := conversationturnFields[25].Descriptor()
+	// conversationturn.DedupeHashValidator is a validator for the "dedupe_hash" field. It is called by the builders before save.
+	conversationturn.DedupeHashValidator = func() func(string) error {
+		validators := conversationturnDescDedupeHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(dedupe_hash string) error {
+			for _, fn := range fns {
+				if err := fn(dedupe_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationturnDescRawArchiveKey is the schema descriptor for raw_archive_key field.
+	conversationturnDescRawArchiveKey := conversationturnFields[26].Descriptor()
+	// conversationturn.RawArchiveKeyValidator is a validator for the "raw_archive_key" field. It is called by the builders before save.
+	conversationturn.RawArchiveKeyValidator = conversationturnDescRawArchiveKey.Validators[0].(func(string) error)
+	// conversationturnDescCreatedAt is the schema descriptor for created_at field.
+	conversationturnDescCreatedAt := conversationturnFields[30].Descriptor()
+	// conversationturn.DefaultCreatedAt holds the default value on creation for the created_at field.
+	conversationturn.DefaultCreatedAt = conversationturnDescCreatedAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

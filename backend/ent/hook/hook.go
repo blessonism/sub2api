@@ -141,6 +141,42 @@ func (f ChannelMonitorRequestTemplateFunc) Mutate(ctx context.Context, m ent.Mut
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorRequestTemplateMutation", m)
 }
 
+// The ConversationExportJobFunc type is an adapter to allow the use of ordinary
+// function as ConversationExportJob mutator.
+type ConversationExportJobFunc func(context.Context, *ent.ConversationExportJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConversationExportJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConversationExportJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConversationExportJobMutation", m)
+}
+
+// The ConversationSessionFunc type is an adapter to allow the use of ordinary
+// function as ConversationSession mutator.
+type ConversationSessionFunc func(context.Context, *ent.ConversationSessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConversationSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConversationSessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConversationSessionMutation", m)
+}
+
+// The ConversationTurnFunc type is an adapter to allow the use of ordinary
+// function as ConversationTurn mutator.
+type ConversationTurnFunc func(context.Context, *ent.ConversationTurnMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConversationTurnFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConversationTurnMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConversationTurnMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
