@@ -63,7 +63,8 @@ interface MockAuthState {
 function simulateGuard(
   toPath: string,
   toMeta: Record<string, any>,
-  authState: MockAuthState
+  authState: MockAuthState,
+  toQuery: Record<string, unknown> = {}
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
@@ -120,11 +121,13 @@ function simulateGuard(
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
-      '/admin/redeem-records',
       '/subscriptions',
       '/redeem',
     ]
-    if (restrictedPaths.some((path) => toPath.startsWith(path))) {
+    const restrictedBalanceRedemptionTab =
+      toPath === '/admin/balance-redemption' && toQuery.tab === 'redeem-records'
+
+    if (restrictedBalanceRedemptionTab || restrictedPaths.some((path) => toPath.startsWith(path))) {
       return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
     }
   }
@@ -311,7 +314,7 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBe('/admin/dashboard')
     })
 
-    it('管理员简易模式访问 /admin/redeem-records 重定向', () => {
+    it('管理员简易模式访问余额与兑换的兑换记录标签重定向', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
@@ -320,9 +323,10 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard(
-        '/admin/redeem-records',
+        '/admin/balance-redemption',
         { requiresAdmin: true },
-        authState
+        authState,
+        { tab: 'redeem-records' }
       )
       expect(redirect).toBe('/admin/dashboard')
     })

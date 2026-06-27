@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <component :is="layoutComponent">
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
@@ -75,7 +75,7 @@
         />
       </template>
     </TablePageLayout>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -93,6 +93,14 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+
+const props = withDefaults(defineProps<{
+  embedded?: boolean
+}>(), {
+  embedded: false
+})
+
+const layoutComponent = computed(() => props.embedded ? 'div' : AppLayout)
 
 const { t } = useI18n()
 const appStore = useAppStore()

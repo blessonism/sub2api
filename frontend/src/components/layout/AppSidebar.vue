@@ -828,7 +828,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/token-usage-policies', label: t('nav.tokenUsagePolicies'), icon: PolicyIcon },
     { path: '/admin/conversations', label: t('nav.conversations'), icon: UsageIcon },
     { path: '/admin/upstream-cost-calibrations', label: t('nav.upstreamCostCalibrations'), icon: ChartIcon },
-    { path: '/admin/balance-summary', label: t('nav.balanceSummary'), icon: WalletIcon },
+    { path: '/admin/balance-redemption', label: t('nav.balanceRedemption'), icon: WalletIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ActivityIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
@@ -848,7 +848,6 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
-    { path: '/admin/redeem-records', label: t('nav.redeemRecords'), icon: ActivityIcon, hideInSimpleMode: true },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: CouponIcon, hideInSimpleMode: true },
     {
