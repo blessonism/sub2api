@@ -33,7 +33,6 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import tokenUsagePoliciesAPI from './tokenUsagePolicies'
-import upstreamCostCalibrationsAPI from './upstreamCostCalibrations'
 import upstreamRelayGroupMonitorsAPI from './upstreamRelayGroupMonitors'
 import conversationsAPI from './conversations'
 
@@ -71,7 +70,6 @@ export const adminAPI = {
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
   tokenUsagePolicies: tokenUsagePoliciesAPI,
-  upstreamCostCalibrations: upstreamCostCalibrationsAPI,
   upstreamRelayGroupMonitors: upstreamRelayGroupMonitorsAPI,
   conversations: conversationsAPI
 }
@@ -107,7 +105,6 @@ export {
   riskControlAPI,
   adminComplianceAPI,
   tokenUsagePoliciesAPI,
-  upstreamCostCalibrationsAPI,
   upstreamRelayGroupMonitorsAPI,
   conversationsAPI
 }
@@ -128,13 +125,6 @@ export type {
   TokenUsagePolicyTier,
   TokenUsagePolicyChange
 } from './tokenUsagePolicies'
-export type {
-  UpstreamCostCalibrationTask,
-  UpstreamCostCalibrationTaskInput,
-  UpstreamCostCalibrationRun,
-  UpstreamCostCalibrationResult,
-  UpstreamCostCalibrationSuggestion
-} from './upstreamCostCalibrations'
 export type {
   UpstreamRelayConnector,
   UpstreamRelayCandidate,

@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "已废弃：旧成本校准方向已被上游倍率监控替代，保留任务记录用于追溯。",
   "meta": {}
 }

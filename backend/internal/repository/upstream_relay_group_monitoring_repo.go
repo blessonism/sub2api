@@ -748,3 +748,17 @@ func translateRelayWriteError(err error) error {
 	}
 	return err
 }
+
+func nullableIntValue(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func nullStringIfEmpty(v string) any {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return v
+}
