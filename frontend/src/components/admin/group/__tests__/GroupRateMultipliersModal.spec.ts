@@ -183,4 +183,27 @@ describe('GroupRateMultipliersModal', () => {
       { user_id: 2 }
     ])
   })
+
+  it('专属可见倍率为空时用专属真实倍率作为占位且不自动提交', async () => {
+    apiMocks.getGroupRateMultipliers.mockResolvedValueOnce([
+      { user_id: 1, user_name: 'alice', user_email: 'alice@example.com', user_notes: '', user_status: 'active', rate_multiplier: 0.72, visible_rate_multiplier: null, rpm_override: null }
+    ])
+    const wrapper = await mountModal()
+
+    const visibleRateInput = wrapper.findAll('tbody input[type="number"]')[1]
+    expect(visibleRateInput.attributes('placeholder')).toBe('0.72')
+
+    const rateInput = wrapper.findAll('tbody input[type="number"]')[0]
+    await rateInput.setValue('0.75')
+    await rateInput.trigger('change')
+
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'common.save')
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
+      { user_id: 1, rate_multiplier: 0.75 }
+    ])
+  })
 })

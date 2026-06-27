@@ -159,11 +159,25 @@ func TestUserGroupRateResolverResolveVisible_PrecedenceAndFallbacks(t *testing.T
 
 	got := resolver.ResolveVisible(context.Background(), 101, 202, &groupVisible, 1.8)
 	require.Equal(t, userVisible, got)
+	require.Equal(t, 0, repo.calls)
 	require.Equal(t, 1, repo.visibleCalls)
 
 	cached, ok := cache.Get(userGroupVisibleRateCacheKey(101, 202))
 	require.True(t, ok)
 	require.Equal(t, userVisible, cached)
+}
+
+func TestUserGroupRateResolverResolveVisible_FallsBackToUserRateBeforeGroupVisible(t *testing.T) {
+	groupVisible := 1.25
+	userRate := 0.72
+	repo := &userGroupRateResolverRepoStub{rate: &userRate}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got := resolver.ResolveVisible(context.Background(), 101, 202, &groupVisible, 1.8)
+
+	require.Equal(t, userRate, got)
+	require.Equal(t, 1, repo.visibleCalls)
+	require.Equal(t, 1, repo.calls)
 }
 
 func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolver(t *testing.T) {
