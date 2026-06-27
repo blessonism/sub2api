@@ -1,0 +1,24 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查阶段确认未误改 main/upstream 同步相关内容，并记录本轮用户明确要求暂不切分支的例外"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/prd.md", "reason": "对照 Phase 1 验收标准检查实现完整性与范围边界"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/execute.md", "reason": "对照 P0-P8 执行约束检查实现是否遗漏关键风险点"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/design-conversation-history-training-export.md", "reason": "检查结构化 session/turn 主路径、导出过滤、session 归并和 Phase 2 边界是否一致"}
+{"file": ".trellis/tasks/06-25-openai-conversation-archive/review-phase1-fix-plan.md", "reason": "检查 Phase 1 review 发现是否已修复：turn 级 exportable 硬门槛、并发 session 创建、轻量 turn 列表和 session window 前端配置"}
+{"file": "backend/internal/server/routes/gateway.go", "reason": "检查只覆盖 /v1/chat/completions 与 /chat/completions，且只在 OpenAI 分支替换 writer"}
+{"file": "backend/internal/handler/openai_chat_completions.go", "reason": "检查 capture meta 是否只在 RecordUsage 成功后发布，失败、failover、cyber/policy 不采集"}
+{"file": "backend/internal/handler/conversation_capture_middleware.go", "reason": "检查 enabled=false、采样未命中、排除名单不替换 writer；writer 只重写 Write/WriteString；worker task 不持有请求态"}
+{"file": "backend/internal/service/conversation_capture_service.go", "reason": "检查配置默认值、采样、排除名单、payload 截断、session 归并、dedupe 与导出构造"}
+{"file": "backend/internal/service/conversation_capture_parser.go", "reason": "检查 non-stream assistant message 与 stream SSE delta 聚合，失败标记 parse_status=failed"}
+{"file": "backend/internal/repository/conversation_capture_repo.go", "reason": "检查列表不读取大正文、exportable 语义、导出过滤和 retention 清理不会留下不一致 session/turn"}
+{"file": "backend/ent/schema/conversation_session.go", "reason": "检查 ent schema 与迁移字段/索引一致"}
+{"file": "backend/ent/schema/conversation_turn.go", "reason": "检查 ent schema 与迁移字段/索引一致"}
+{"file": "backend/migrations/161_conversation_capture.sql", "reason": "检查迁移幂等且不包含 raw archive、conversation_export_jobs、JSONL.zst 相关表"}
+{"file": "backend/internal/handler/admin/conversation_handler.go", "reason": "检查配置/列表/详情/exportable/export API 参数校验、分页与错误响应不泄露正文"}
+{"file": "backend/internal/service/wire.go", "reason": "检查 service provider、worker 和 cleanup 生命周期"}
+{"file": "backend/internal/handler/wire.go", "reason": "检查 handler 注入"}
+{"file": "backend/internal/repository/wire.go", "reason": "检查 repository 注入"}
+{"file": "frontend/src/api/admin/conversations.ts", "reason": "检查前端 API 类型与后端 JSON 字段一致，dedupe 显式 false 可表达"}
+{"file": "frontend/src/views/admin/ConversationHistoryView.vue", "reason": "检查页面分页、筛选、配置、详情和导出行为"}
+{"file": "frontend/src/router/index.ts", "reason": "检查 admin 路由权限 meta"}
+{"file": "frontend/src/components/layout/AppSidebar.vue", "reason": "检查侧栏入口不影响已有菜单"}
+{"file": "frontend/src/i18n/locales/zh.ts", "reason": "检查中文文案完整"}
+{"file": "frontend/src/i18n/locales/en.ts", "reason": "检查英文文案完整"}

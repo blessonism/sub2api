@@ -599,6 +599,214 @@ var (
 			},
 		},
 	}
+	// ConversationExportJobsColumns holds the columns for the "conversation_export_jobs" table.
+	ConversationExportJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "filters", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "format", Type: field.TypeString, Size: 32, Default: "messages_jsonl"},
+		{Name: "encoding", Type: field.TypeString, Size: 32, Default: "zstd"},
+		{Name: "session_count", Type: field.TypeInt64, Default: 0},
+		{Name: "turn_count", Type: field.TypeInt64, Default: 0},
+		{Name: "file_size", Type: field.TypeInt64, Default: 0},
+		{Name: "s3_key", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "download_url_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "created_by", Type: field.TypeInt64},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ConversationExportJobsTable holds the schema information for the "conversation_export_jobs" table.
+	ConversationExportJobsTable = &schema.Table{
+		Name:       "conversation_export_jobs",
+		Columns:    ConversationExportJobsColumns,
+		PrimaryKey: []*schema.Column{ConversationExportJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "conversationexportjob_status",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationExportJobsColumns[1]},
+			},
+			{
+				Name:    "conversationexportjob_created_by",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationExportJobsColumns[12]},
+			},
+			{
+				Name:    "conversationexportjob_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationExportJobsColumns[13]},
+			},
+			{
+				Name:    "conversationexportjob_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationExportJobsColumns[10]},
+			},
+		},
+	}
+	// ConversationSessionsColumns holds the columns for the "conversation_sessions" table.
+	ConversationSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "session_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "trajectory_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "provider", Type: field.TypeString, Size: 32, Default: "openai"},
+		{Name: "model", Type: field.TypeString, Size: 200},
+		{Name: "request_path", Type: field.TypeString, Size: 200},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "active"},
+		{Name: "turn_count", Type: field.TypeInt, Default: 0},
+		{Name: "source_request_count", Type: field.TypeInt, Default: 0},
+		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "output_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "actual_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "quality_status", Type: field.TypeString, Size: 32, Default: "unchecked"},
+		{Name: "quality_errors", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "exportable", Type: field.TypeBool, Default: false},
+		{Name: "capture_status", Type: field.TypeString, Size: 32, Default: "captured"},
+		{Name: "session_source", Type: field.TypeString, Size: 32, Default: "single_turn"},
+		{Name: "retention_until", Type: field.TypeTime},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "ended_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ConversationSessionsTable holds the schema information for the "conversation_sessions" table.
+	ConversationSessionsTable = &schema.Table{
+		Name:       "conversation_sessions",
+		Columns:    ConversationSessionsColumns,
+		PrimaryKey: []*schema.Column{ConversationSessionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "conversationsession_session_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[1]},
+			},
+			{
+				Name:    "conversationsession_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[3]},
+			},
+			{
+				Name:    "conversationsession_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[4]},
+			},
+			{
+				Name:    "conversationsession_model",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[7]},
+			},
+			{
+				Name:    "conversationsession_quality_status",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[16]},
+			},
+			{
+				Name:    "conversationsession_exportable",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[18]},
+			},
+			{
+				Name:    "conversationsession_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[22]},
+			},
+			{
+				Name:    "conversationsession_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[24]},
+			},
+			{
+				Name:    "conversationsession_user_id_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[3], ConversationSessionsColumns[22]},
+			},
+			{
+				Name:    "conversationsession_api_key_id_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationSessionsColumns[4], ConversationSessionsColumns[22]},
+			},
+		},
+	}
+	// ConversationTurnsColumns holds the columns for the "conversation_turns" table.
+	ConversationTurnsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "session_id", Type: field.TypeString, Size: 128},
+		{Name: "request_id", Type: field.TypeString, Size: 128},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "client_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "turn_index", Type: field.TypeInt},
+		{Name: "provider", Type: field.TypeString, Size: 32, Default: "openai"},
+		{Name: "model", Type: field.TypeString, Size: 200},
+		{Name: "request_path", Type: field.TypeString, Size: 200},
+		{Name: "request_messages", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "response_messages", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "tools", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "usage", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "meta", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "output_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "actual_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "stream", Type: field.TypeBool, Default: false},
+		{Name: "client_disconnect", Type: field.TypeBool, Default: false},
+		{Name: "truncated", Type: field.TypeBool, Default: false},
+		{Name: "quality_status", Type: field.TypeString, Size: 32, Default: "unchecked"},
+		{Name: "quality_errors", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "exportable", Type: field.TypeBool, Default: false},
+		{Name: "parse_status", Type: field.TypeString, Size: 32, Default: "failed"},
+		{Name: "parse_error", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "dedupe_hash", Type: field.TypeString, Size: 128},
+		{Name: "raw_archive_key", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "payload_preview", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload_compressed", Type: field.TypeBytes, Nullable: true},
+		{Name: "retention_until", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ConversationTurnsTable holds the schema information for the "conversation_turns" table.
+	ConversationTurnsTable = &schema.Table{
+		Name:       "conversation_turns",
+		Columns:    ConversationTurnsColumns,
+		PrimaryKey: []*schema.Column{ConversationTurnsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "conversationturn_session_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationTurnsColumns[1]},
+			},
+			{
+				Name:    "conversationturn_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationTurnsColumns[2]},
+			},
+			{
+				Name:    "conversationturn_client_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationTurnsColumns[4]},
+			},
+			{
+				Name:    "conversationturn_dedupe_hash",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationTurnsColumns[26]},
+			},
+			{
+				Name:    "conversationturn_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConversationTurnsColumns[31]},
+			},
+			{
+				Name:    "conversationturn_session_id_turn_index",
+				Unique:  true,
+				Columns: []*schema.Column{ConversationTurnsColumns[1], ConversationTurnsColumns[5]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1789,6 +1997,9 @@ var (
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
+		ConversationExportJobsTable,
+		ConversationSessionsTable,
+		ConversationTurnsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1861,6 +2072,15 @@ func init() {
 	}
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
+	}
+	ConversationExportJobsTable.Annotation = &entsql.Annotation{
+		Table: "conversation_export_jobs",
+	}
+	ConversationSessionsTable.Annotation = &entsql.Annotation{
+		Table: "conversation_sessions",
+	}
+	ConversationTurnsTable.Annotation = &entsql.Annotation{
+		Table: "conversation_turns",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

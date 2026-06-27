@@ -26,6 +26,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/conversationexportjob"
+	"github.com/Wei-Shaw/sub2api/ent/conversationsession"
+	"github.com/Wei-Shaw/sub2api/ent/conversationturn"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -81,6 +84,12 @@ type Client struct {
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
+	// ConversationExportJob is the client for interacting with the ConversationExportJob builders.
+	ConversationExportJob *ConversationExportJobClient
+	// ConversationSession is the client for interacting with the ConversationSession builders.
+	ConversationSession *ConversationSessionClient
+	// ConversationTurn is the client for interacting with the ConversationTurn builders.
+	ConversationTurn *ConversationTurnClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -151,6 +160,9 @@ func (c *Client) init() {
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
 	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
+	c.ConversationExportJob = NewConversationExportJobClient(c.config)
+	c.ConversationSession = NewConversationSessionClient(c.config)
+	c.ConversationTurn = NewConversationTurnClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
@@ -278,6 +290,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
+		ConversationExportJob:         NewConversationExportJobClient(cfg),
+		ConversationSession:           NewConversationSessionClient(cfg),
+		ConversationTurn:              NewConversationTurnClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
@@ -332,6 +347,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
+		ConversationExportJob:         NewConversationExportJobClient(cfg),
+		ConversationSession:           NewConversationSessionClient(cfg),
+		ConversationTurn:              NewConversationTurnClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
@@ -388,7 +406,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
+		c.ChannelMonitorRequestTemplate, c.ConversationExportJob,
+		c.ConversationSession, c.ConversationTurn, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
@@ -407,7 +426,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
+		c.ChannelMonitorRequestTemplate, c.ConversationExportJob,
+		c.ConversationSession, c.ConversationTurn, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
@@ -444,6 +464,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ChannelMonitorHistory.mutate(ctx, m)
 	case *ChannelMonitorRequestTemplateMutation:
 		return c.ChannelMonitorRequestTemplate.mutate(ctx, m)
+	case *ConversationExportJobMutation:
+		return c.ConversationExportJob.mutate(ctx, m)
+	case *ConversationSessionMutation:
+		return c.ConversationSession.mutate(ctx, m)
+	case *ConversationTurnMutation:
+		return c.ConversationTurn.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
 	case *GroupMutation:
@@ -2264,6 +2290,405 @@ func (c *ChannelMonitorRequestTemplateClient) mutate(ctx context.Context, m *Cha
 		return (&ChannelMonitorRequestTemplateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ChannelMonitorRequestTemplate mutation op: %q", m.Op())
+	}
+}
+
+// ConversationExportJobClient is a client for the ConversationExportJob schema.
+type ConversationExportJobClient struct {
+	config
+}
+
+// NewConversationExportJobClient returns a client for the ConversationExportJob from the given config.
+func NewConversationExportJobClient(c config) *ConversationExportJobClient {
+	return &ConversationExportJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `conversationexportjob.Hooks(f(g(h())))`.
+func (c *ConversationExportJobClient) Use(hooks ...Hook) {
+	c.hooks.ConversationExportJob = append(c.hooks.ConversationExportJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `conversationexportjob.Intercept(f(g(h())))`.
+func (c *ConversationExportJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConversationExportJob = append(c.inters.ConversationExportJob, interceptors...)
+}
+
+// Create returns a builder for creating a ConversationExportJob entity.
+func (c *ConversationExportJobClient) Create() *ConversationExportJobCreate {
+	mutation := newConversationExportJobMutation(c.config, OpCreate)
+	return &ConversationExportJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConversationExportJob entities.
+func (c *ConversationExportJobClient) CreateBulk(builders ...*ConversationExportJobCreate) *ConversationExportJobCreateBulk {
+	return &ConversationExportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConversationExportJobClient) MapCreateBulk(slice any, setFunc func(*ConversationExportJobCreate, int)) *ConversationExportJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConversationExportJobCreateBulk{err: fmt.Errorf("calling to ConversationExportJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConversationExportJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConversationExportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConversationExportJob.
+func (c *ConversationExportJobClient) Update() *ConversationExportJobUpdate {
+	mutation := newConversationExportJobMutation(c.config, OpUpdate)
+	return &ConversationExportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConversationExportJobClient) UpdateOne(_m *ConversationExportJob) *ConversationExportJobUpdateOne {
+	mutation := newConversationExportJobMutation(c.config, OpUpdateOne, withConversationExportJob(_m))
+	return &ConversationExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConversationExportJobClient) UpdateOneID(id int64) *ConversationExportJobUpdateOne {
+	mutation := newConversationExportJobMutation(c.config, OpUpdateOne, withConversationExportJobID(id))
+	return &ConversationExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConversationExportJob.
+func (c *ConversationExportJobClient) Delete() *ConversationExportJobDelete {
+	mutation := newConversationExportJobMutation(c.config, OpDelete)
+	return &ConversationExportJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConversationExportJobClient) DeleteOne(_m *ConversationExportJob) *ConversationExportJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConversationExportJobClient) DeleteOneID(id int64) *ConversationExportJobDeleteOne {
+	builder := c.Delete().Where(conversationexportjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConversationExportJobDeleteOne{builder}
+}
+
+// Query returns a query builder for ConversationExportJob.
+func (c *ConversationExportJobClient) Query() *ConversationExportJobQuery {
+	return &ConversationExportJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConversationExportJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConversationExportJob entity by its id.
+func (c *ConversationExportJobClient) Get(ctx context.Context, id int64) (*ConversationExportJob, error) {
+	return c.Query().Where(conversationexportjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConversationExportJobClient) GetX(ctx context.Context, id int64) *ConversationExportJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConversationExportJobClient) Hooks() []Hook {
+	return c.hooks.ConversationExportJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConversationExportJobClient) Interceptors() []Interceptor {
+	return c.inters.ConversationExportJob
+}
+
+func (c *ConversationExportJobClient) mutate(ctx context.Context, m *ConversationExportJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConversationExportJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConversationExportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConversationExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConversationExportJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConversationExportJob mutation op: %q", m.Op())
+	}
+}
+
+// ConversationSessionClient is a client for the ConversationSession schema.
+type ConversationSessionClient struct {
+	config
+}
+
+// NewConversationSessionClient returns a client for the ConversationSession from the given config.
+func NewConversationSessionClient(c config) *ConversationSessionClient {
+	return &ConversationSessionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `conversationsession.Hooks(f(g(h())))`.
+func (c *ConversationSessionClient) Use(hooks ...Hook) {
+	c.hooks.ConversationSession = append(c.hooks.ConversationSession, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `conversationsession.Intercept(f(g(h())))`.
+func (c *ConversationSessionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConversationSession = append(c.inters.ConversationSession, interceptors...)
+}
+
+// Create returns a builder for creating a ConversationSession entity.
+func (c *ConversationSessionClient) Create() *ConversationSessionCreate {
+	mutation := newConversationSessionMutation(c.config, OpCreate)
+	return &ConversationSessionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConversationSession entities.
+func (c *ConversationSessionClient) CreateBulk(builders ...*ConversationSessionCreate) *ConversationSessionCreateBulk {
+	return &ConversationSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConversationSessionClient) MapCreateBulk(slice any, setFunc func(*ConversationSessionCreate, int)) *ConversationSessionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConversationSessionCreateBulk{err: fmt.Errorf("calling to ConversationSessionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConversationSessionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConversationSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConversationSession.
+func (c *ConversationSessionClient) Update() *ConversationSessionUpdate {
+	mutation := newConversationSessionMutation(c.config, OpUpdate)
+	return &ConversationSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConversationSessionClient) UpdateOne(_m *ConversationSession) *ConversationSessionUpdateOne {
+	mutation := newConversationSessionMutation(c.config, OpUpdateOne, withConversationSession(_m))
+	return &ConversationSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConversationSessionClient) UpdateOneID(id int64) *ConversationSessionUpdateOne {
+	mutation := newConversationSessionMutation(c.config, OpUpdateOne, withConversationSessionID(id))
+	return &ConversationSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConversationSession.
+func (c *ConversationSessionClient) Delete() *ConversationSessionDelete {
+	mutation := newConversationSessionMutation(c.config, OpDelete)
+	return &ConversationSessionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConversationSessionClient) DeleteOne(_m *ConversationSession) *ConversationSessionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConversationSessionClient) DeleteOneID(id int64) *ConversationSessionDeleteOne {
+	builder := c.Delete().Where(conversationsession.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConversationSessionDeleteOne{builder}
+}
+
+// Query returns a query builder for ConversationSession.
+func (c *ConversationSessionClient) Query() *ConversationSessionQuery {
+	return &ConversationSessionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConversationSession},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConversationSession entity by its id.
+func (c *ConversationSessionClient) Get(ctx context.Context, id int64) (*ConversationSession, error) {
+	return c.Query().Where(conversationsession.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConversationSessionClient) GetX(ctx context.Context, id int64) *ConversationSession {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConversationSessionClient) Hooks() []Hook {
+	return c.hooks.ConversationSession
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConversationSessionClient) Interceptors() []Interceptor {
+	return c.inters.ConversationSession
+}
+
+func (c *ConversationSessionClient) mutate(ctx context.Context, m *ConversationSessionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConversationSessionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConversationSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConversationSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConversationSessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConversationSession mutation op: %q", m.Op())
+	}
+}
+
+// ConversationTurnClient is a client for the ConversationTurn schema.
+type ConversationTurnClient struct {
+	config
+}
+
+// NewConversationTurnClient returns a client for the ConversationTurn from the given config.
+func NewConversationTurnClient(c config) *ConversationTurnClient {
+	return &ConversationTurnClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `conversationturn.Hooks(f(g(h())))`.
+func (c *ConversationTurnClient) Use(hooks ...Hook) {
+	c.hooks.ConversationTurn = append(c.hooks.ConversationTurn, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `conversationturn.Intercept(f(g(h())))`.
+func (c *ConversationTurnClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConversationTurn = append(c.inters.ConversationTurn, interceptors...)
+}
+
+// Create returns a builder for creating a ConversationTurn entity.
+func (c *ConversationTurnClient) Create() *ConversationTurnCreate {
+	mutation := newConversationTurnMutation(c.config, OpCreate)
+	return &ConversationTurnCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConversationTurn entities.
+func (c *ConversationTurnClient) CreateBulk(builders ...*ConversationTurnCreate) *ConversationTurnCreateBulk {
+	return &ConversationTurnCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConversationTurnClient) MapCreateBulk(slice any, setFunc func(*ConversationTurnCreate, int)) *ConversationTurnCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConversationTurnCreateBulk{err: fmt.Errorf("calling to ConversationTurnClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConversationTurnCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConversationTurnCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConversationTurn.
+func (c *ConversationTurnClient) Update() *ConversationTurnUpdate {
+	mutation := newConversationTurnMutation(c.config, OpUpdate)
+	return &ConversationTurnUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConversationTurnClient) UpdateOne(_m *ConversationTurn) *ConversationTurnUpdateOne {
+	mutation := newConversationTurnMutation(c.config, OpUpdateOne, withConversationTurn(_m))
+	return &ConversationTurnUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConversationTurnClient) UpdateOneID(id int64) *ConversationTurnUpdateOne {
+	mutation := newConversationTurnMutation(c.config, OpUpdateOne, withConversationTurnID(id))
+	return &ConversationTurnUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConversationTurn.
+func (c *ConversationTurnClient) Delete() *ConversationTurnDelete {
+	mutation := newConversationTurnMutation(c.config, OpDelete)
+	return &ConversationTurnDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConversationTurnClient) DeleteOne(_m *ConversationTurn) *ConversationTurnDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConversationTurnClient) DeleteOneID(id int64) *ConversationTurnDeleteOne {
+	builder := c.Delete().Where(conversationturn.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConversationTurnDeleteOne{builder}
+}
+
+// Query returns a query builder for ConversationTurn.
+func (c *ConversationTurnClient) Query() *ConversationTurnQuery {
+	return &ConversationTurnQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConversationTurn},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConversationTurn entity by its id.
+func (c *ConversationTurnClient) Get(ctx context.Context, id int64) (*ConversationTurn, error) {
+	return c.Query().Where(conversationturn.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConversationTurnClient) GetX(ctx context.Context, id int64) *ConversationTurn {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConversationTurnClient) Hooks() []Hook {
+	return c.hooks.ConversationTurn
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConversationTurnClient) Interceptors() []Interceptor {
+	return c.inters.ConversationTurn
+}
+
+func (c *ConversationTurnClient) mutate(ctx context.Context, m *ConversationTurnMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConversationTurnCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConversationTurnUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConversationTurnUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConversationTurnDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConversationTurn mutation op: %q", m.Op())
 	}
 }
 
@@ -6211,24 +6636,24 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ConversationExportJob,
+		ConversationSession, ConversationTurn, ErrorPassthroughRule, Group,
+		IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ConversationExportJob,
+		ConversationSession, ConversationTurn, ErrorPassthroughRule, Group,
+		IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 
