@@ -64,7 +64,7 @@
     </div>
 
     <div v-else class="p-5">
-      <div v-if="comparisonSeries.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div v-if="comparisonSeries.length" data-test="gpt-intelligence-overview-cards" :class="overviewCardsGridClass">
         <div
           v-for="series in comparisonSeries"
           :key="series.key"
@@ -631,6 +631,18 @@ const comparisonSeries = computed<PreparedSeries[]>(() => {
       chartData: buildSingleSeriesChartData(series, palette),
     }
   })
+})
+
+const overviewCardsGridClass = computed(() => {
+  const columns = Math.min(Math.max(comparisonSeries.value.length, 1), 5)
+  const xlColumnClassByCount: Record<number, string> = {
+    1: 'xl:grid-cols-1',
+    2: 'xl:grid-cols-2',
+    3: 'xl:grid-cols-3',
+    4: 'xl:grid-cols-4',
+    5: 'xl:grid-cols-5',
+  }
+  return ['grid gap-3 sm:grid-cols-2', xlColumnClassByCount[columns]]
 })
 
 const statusLabel = computed(() => {

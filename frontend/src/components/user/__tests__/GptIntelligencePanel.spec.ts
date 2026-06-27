@@ -265,6 +265,59 @@ describe('GptIntelligencePanel', () => {
     expect(highChartData.datasets[0].data).toEqual([87.5, 100, 87.5])
   })
 
+  it('adapts overview card columns to available intelligence series', async () => {
+    const snapshotWithFourSeries: GptIntelligenceSnapshot = {
+      ...snapshot,
+      comparisons: [
+        ...snapshot.comparisons,
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_54_high',
+          label: 'GPT-5.4 high',
+        },
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_53_high',
+          label: 'GPT-5.3 high',
+        },
+      ],
+    }
+    const snapshotWithFiveSeries: GptIntelligenceSnapshot = {
+      ...snapshotWithFourSeries,
+      comparisons: [
+        ...snapshotWithFourSeries.comparisons,
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_52_high',
+          label: 'GPT-5.2 high',
+        },
+      ],
+    }
+
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot: snapshotWithFourSeries,
+        loading: false,
+        error: null,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    const overviewGrid = () => wrapper.get('[data-test="gpt-intelligence-overview-cards"]')
+    const overviewCards = () => overviewGrid().findAll('.rounded-xl.border.p-4')
+    expect(overviewCards()).toHaveLength(4)
+    expect(overviewGrid().classes()).toContain('xl:grid-cols-4')
+
+    await wrapper.setProps({ snapshot: snapshotWithFiveSeries })
+
+    expect(overviewCards()).toHaveLength(5)
+    expect(overviewGrid().classes()).toContain('xl:grid-cols-5')
+  })
+
   it('opens intelligence check templates as read-only for regular users', async () => {
     const wrapper = mount(GptIntelligencePanel, {
       props: {
