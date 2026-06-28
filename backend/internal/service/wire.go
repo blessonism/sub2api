@@ -406,6 +406,14 @@ func ProvideTokenUsageAutoPolicyRunner(
 	return runner
 }
 
+// ProvideUpstreamRelayMonitoringRunner 创建并启动上游中继自动监控调度器。
+func ProvideUpstreamRelayMonitoringRunner(svc *UpstreamRelayGroupMonitoringService, lockCache LeaderLockCache, db *sql.DB) *UpstreamRelayMonitoringRunner {
+	runner := NewUpstreamRelayMonitoringRunner(svc)
+	runner.SetLeaderLock(lockCache, db)
+	runner.Start()
+	return runner
+}
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -655,6 +663,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenUsageAutoPolicyService,
 	ProvideTokenUsageAutoPolicyRunner,
 	NewUpstreamRelayGroupMonitoringService,
+	ProvideUpstreamRelayMonitoringRunner,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,

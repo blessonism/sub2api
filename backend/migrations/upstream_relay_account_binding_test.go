@@ -29,3 +29,18 @@ func TestUpstreamRelayAccountBindingMigrationHandlesDuplicateActiveCandidates(t 
 	require.NotEqual(t, -1, uniqueIndex)
 	require.Less(t, softDeleteIndex, uniqueIndex, "重复活跃候选必须在创建账号维度唯一索引前软删除")
 }
+
+func TestUpstreamRelayUsageHistoryMigrationUsesDailyConnectorGroupUniqueness(t *testing.T) {
+	content, err := FS.ReadFile("177_upstream_relay_group_usage_history.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS upstream_relay_group_usage_history")
+	require.Contains(t, sql, "usage_date DATE NOT NULL")
+	require.Contains(t, sql, "connector_id BIGINT NOT NULL REFERENCES upstream_relay_connectors(id) ON DELETE CASCADE")
+	require.Contains(t, sql, "upstream_group_id VARCHAR(120) NOT NULL")
+	require.Contains(t, sql, "actual_cost NUMERIC(20, 8) NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "total_tokens BIGINT NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "UNIQUE (usage_date, connector_id, upstream_group_id)")
+	require.Contains(t, sql, "idx_upstream_relay_group_usage_history_connector_date")
+}

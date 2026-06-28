@@ -33,6 +33,9 @@ type upstreamRelayHandlerRepo struct {
 	snapshots             []service.UpstreamRelayGroupRateSnapshot
 	snapshotChangeFilters service.UpstreamRelaySnapshotChangeListFilters
 	snapshotChangeParams  pagination.PaginationParams
+	usageHistoryFilters   service.UpstreamRelayUsageHistoryListFilters
+	usageHistoryParams    pagination.PaginationParams
+	usageHistoryRows      []service.UpstreamRelayGroupUsageHistory
 	syncStatus            string
 	usageByGroup          map[string]service.UpstreamRelayGroupTodayUsage
 	usageCheckedAt        *time.Time
@@ -98,6 +101,33 @@ func (r *upstreamRelayHandlerRepo) ListSnapshotChanges(_ context.Context, params
 			ChangedAt:              time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC),
 		},
 	}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
+}
+
+func (r *upstreamRelayHandlerRepo) UpsertUsageHistory(context.Context, []service.UpstreamRelayGroupUsageHistoryUpsert) error {
+	return nil
+}
+
+func (r *upstreamRelayHandlerRepo) ListUsageHistory(_ context.Context, params pagination.PaginationParams, filters service.UpstreamRelayUsageHistoryListFilters) ([]service.UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error) {
+	r.usageHistoryParams = params
+	r.usageHistoryFilters = filters
+	items := append([]service.UpstreamRelayGroupUsageHistory{}, r.usageHistoryRows...)
+	if len(items) == 0 {
+		items = []service.UpstreamRelayGroupUsageHistory{
+			{
+				ID:              10,
+				UsageDate:       filters.StartDate,
+				ConnectorID:     filters.ConnectorID,
+				ConnectorName:   "relay-a",
+				UpstreamGroupID: filters.UpstreamGroupID,
+				GroupName:       "GPT Pro",
+				Platform:        "openai",
+				ActualCost:      1.25,
+				TotalTokens:     1200,
+				CheckedAt:       time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC),
+			},
+		}
+	}
+	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
 }
 
 func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, _ string) error {
@@ -346,4 +376,38 @@ func TestUpstreamRelayHandlerListSnapshotChangesReturnsPaginatedShape(t *testing
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
 	require.Equal(t, service.UpstreamRelaySnapshotChangeRateChanged, envelope.Data.Items[0].ChangeType)
+}
+
+func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/upstream-relay-group-monitors/usage-history?page=3&page_size=10&start_date=2026-06-28&end_date=2026-06-29&connector_id=42&upstream_group_id=gpt-pro&search=relay", nil)
+
+	handler.ListUsageHistory(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 3, repo.usageHistoryParams.Page)
+	require.Equal(t, 10, repo.usageHistoryParams.PageSize)
+	require.Equal(t, "2026-06-28", repo.usageHistoryFilters.StartDate)
+	require.Equal(t, "2026-06-29", repo.usageHistoryFilters.EndDate)
+	require.Equal(t, int64(42), repo.usageHistoryFilters.ConnectorID)
+	require.Equal(t, "gpt-pro", repo.usageHistoryFilters.UpstreamGroupID)
+	require.Equal(t, "relay", repo.usageHistoryFilters.Search)
+	var envelope struct {
+		Data struct {
+			Items []service.UpstreamRelayGroupUsageHistory `json:"items"`
+			Total int64                                    `json:"total"`
+			Page  int                                      `json:"page"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(1), envelope.Data.Total)
+	require.Equal(t, 3, envelope.Data.Page)
+	require.Len(t, envelope.Data.Items, 1)
+	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
+	require.Equal(t, 1.25, envelope.Data.Items[0].ActualCost)
 }
