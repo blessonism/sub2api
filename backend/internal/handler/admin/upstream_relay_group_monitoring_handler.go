@@ -162,6 +162,30 @@ func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshotChanges(c *gin.Context
 	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
 }
 
+func (h *UpstreamRelayGroupMonitoringHandler) ListUsageHistory(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filters := service.UpstreamRelayUsageHistoryListFilters{
+		StartDate:       c.Query("start_date"),
+		EndDate:         c.Query("end_date"),
+		UpstreamGroupID: c.Query("upstream_group_id"),
+		Search:          c.Query("search"),
+	}
+	if connectorID := c.Query("connector_id"); connectorID != "" {
+		v, err := strconv.ParseInt(connectorID, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "invalid connector_id")
+			return
+		}
+		filters.ConnectorID = v
+	}
+	items, pageResult, err := h.svc.ListUsageHistory(c.Request.Context(), page, pageSize, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
 func (h *UpstreamRelayGroupMonitoringHandler) ListCandidates(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	filters := service.UpstreamRelayCandidateListFilters{}

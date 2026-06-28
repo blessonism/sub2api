@@ -106,6 +106,35 @@ func TestRelayCandidateSelectUsesRemoteSnapshotUsage(t *testing.T) {
 	require.Contains(t, query, "LEFT JOIN upstream_relay_group_rate_snapshots s ON s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id")
 }
 
+func TestUpstreamRelayRepositoryUpsertUsageHistoryUsesDailyConnectorGroupConflict(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	checkedAt := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("ON CONFLICT \\(usage_date, connector_id, upstream_group_id\\) DO UPDATE SET").
+		WithArgs("2026-06-29", int64(7), "team-a", "Team A", "openai", 0.0, int64(0), checkedAt).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err := repo.UpsertUsageHistory(ctx, []service.UpstreamRelayGroupUsageHistoryUpsert{
+		{
+			UsageDate:       "2026-06-29",
+			ConnectorID:     7,
+			UpstreamGroupID: "team-a",
+			GroupName:       "Team A",
+			Platform:        "openai",
+			ActualCost:      0,
+			TotalTokens:     0,
+			CheckedAt:       checkedAt,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpstreamRelayRepositoryListCandidatesScansRemoteTodayUsage(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUpstreamRelayRepository(db)
@@ -454,30 +483,47 @@ func TestUpstreamRelayRepositoryUpsertsMonitoringPolicy(t *testing.T) {
 	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectExec("INSERT INTO upstream_relay_monitoring_policy").
-		WithArgs(true, 60, true, 15, 5, 3, 4, int64(88)).
+		WithArgs(true, 60, true, 15, true, 30, true, 8, 40, "high", true, 5, 3, 4, int64(88)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT auto_sync_enabled").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"auto_sync_enabled", "sync_interval_minutes", "auto_probe_enabled", "probe_interval_minutes",
+			"auto_recommendation_enabled", "recommendation_interval_minutes", "auto_apply_recommendations_enabled",
+			"max_auto_apply_suggestions", "max_auto_apply_priority_delta", "min_auto_apply_confidence",
+			"allow_auto_apply_degraded_health",
 			"failure_retry_interval_minutes", "sync_concurrency", "probe_concurrency",
 			"updated_by", "created_at", "updated_at",
-		}).AddRow(true, 60, true, 15, 5, 3, 4, int64(88), now, now))
+		}).AddRow(true, 60, true, 15, true, 30, true, 8, 40, "high", true, 5, 3, 4, int64(88), now, now))
 
 	policy, err := repo.UpsertMonitoringPolicy(ctx, service.UpstreamRelayMonitoringPolicy{
-		AutoSyncEnabled:             true,
-		SyncIntervalMinutes:         60,
-		AutoProbeEnabled:            true,
-		ProbeIntervalMinutes:        15,
-		FailureRetryIntervalMinutes: 5,
-		SyncConcurrency:             3,
-		ProbeConcurrency:            4,
+		AutoSyncEnabled:                 true,
+		SyncIntervalMinutes:             60,
+		AutoProbeEnabled:                true,
+		ProbeIntervalMinutes:            15,
+		AutoRecommendationEnabled:       true,
+		RecommendationIntervalMinutes:   30,
+		AutoApplyRecommendationsEnabled: true,
+		MaxAutoApplySuggestions:         8,
+		MaxAutoApplyPriorityDelta:       40,
+		MinAutoApplyConfidence:          "high",
+		AllowAutoApplyDegradedHealth:    true,
+		FailureRetryIntervalMinutes:     5,
+		SyncConcurrency:                 3,
+		ProbeConcurrency:                4,
 	}, 88)
 
 	require.NoError(t, err)
 	require.True(t, policy.AutoSyncEnabled)
 	require.True(t, policy.AutoProbeEnabled)
+	require.True(t, policy.AutoRecommendationEnabled)
+	require.True(t, policy.AutoApplyRecommendationsEnabled)
 	require.Equal(t, 60, policy.SyncIntervalMinutes)
 	require.Equal(t, 15, policy.ProbeIntervalMinutes)
+	require.Equal(t, 30, policy.RecommendationIntervalMinutes)
+	require.Equal(t, 8, policy.MaxAutoApplySuggestions)
+	require.Equal(t, 40, policy.MaxAutoApplyPriorityDelta)
+	require.Equal(t, "high", policy.MinAutoApplyConfidence)
+	require.True(t, policy.AllowAutoApplyDegradedHealth)
 	require.Equal(t, int64(88), policy.UpdatedBy)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -583,6 +629,9 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStalePriority(t *te
 	mock.ExpectExec("UPDATE accounts").
 		WithArgs(int64(101), 10, int64(50)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT priority FROM accounts").
+		WithArgs(int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"priority"}).AddRow(80))
 	mock.ExpectRollback()
 
 	_, err := repo.ApplyRecommendationRun(ctx, 44, 99)
@@ -590,6 +639,8 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStalePriority(t *te
 	require.Error(t, err)
 	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
 	require.Equal(t, "UPSTREAM_RELAY_RECOMMENDATION_STALE", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "账号 #101 的 priority 已变化")
+	require.Contains(t, err.Error(), "生成建议时为 50，当前为 80，建议值为 10")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

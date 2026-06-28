@@ -353,6 +353,95 @@ func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, 
 	return tx.Commit()
 }
 
+func (r *upstreamRelayRepository) UpsertUsageHistory(ctx context.Context, items []service.UpstreamRelayGroupUsageHistoryUpsert) error {
+	if len(items) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range items {
+		if strings.TrimSpace(item.UsageDate) == "" || item.ConnectorID <= 0 || strings.TrimSpace(item.UpstreamGroupID) == "" || item.CheckedAt.IsZero() {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO upstream_relay_group_usage_history (
+				usage_date, connector_id, upstream_group_id, group_name, platform,
+				actual_cost, total_tokens, checked_at, created_at, updated_at
+			)
+			VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+			ON CONFLICT (usage_date, connector_id, upstream_group_id) DO UPDATE SET
+				group_name=EXCLUDED.group_name,
+				platform=EXCLUDED.platform,
+				actual_cost=EXCLUDED.actual_cost,
+				total_tokens=EXCLUDED.total_tokens,
+				checked_at=EXCLUDED.checked_at,
+				updated_at=NOW()
+		`, item.UsageDate, item.ConnectorID, item.UpstreamGroupID, item.GroupName, item.Platform, item.ActualCost, item.TotalTokens, item.CheckedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayUsageHistoryListFilters) ([]service.UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error) {
+	page, pageSize := normalizePolicyPagination(params)
+	conditions := []string{"1=1"}
+	args := []any{}
+	if filters.StartDate != "" {
+		args = append(args, filters.StartDate)
+		conditions = append(conditions, fmt.Sprintf("h.usage_date >= $%d::date", len(args)))
+	}
+	if filters.EndDate != "" {
+		args = append(args, filters.EndDate)
+		conditions = append(conditions, fmt.Sprintf("h.usage_date <= $%d::date", len(args)))
+	}
+	if filters.ConnectorID > 0 {
+		args = append(args, filters.ConnectorID)
+		conditions = append(conditions, fmt.Sprintf("h.connector_id = $%d", len(args)))
+	}
+	if strings.TrimSpace(filters.UpstreamGroupID) != "" {
+		args = append(args, strings.TrimSpace(filters.UpstreamGroupID))
+		conditions = append(conditions, fmt.Sprintf("h.upstream_group_id = $%d", len(args)))
+	}
+	if strings.TrimSpace(filters.Search) != "" {
+		args = append(args, "%"+strings.ToLower(strings.TrimSpace(filters.Search))+"%")
+		conditions = append(conditions, fmt.Sprintf("(LOWER(COALESCE(c.name, '')) LIKE $%d OR LOWER(h.upstream_group_id) LIKE $%d OR LOWER(h.group_name) LIKE $%d OR LOWER(h.platform) LIKE $%d)", len(args), len(args), len(args), len(args)))
+	}
+	where := strings.Join(conditions, " AND ")
+	var total int64
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT COUNT(*)
+		FROM upstream_relay_group_usage_history h
+		LEFT JOIN upstream_relay_connectors c ON c.id = h.connector_id
+		WHERE `+where, args, &total); err != nil {
+		return nil, nil, err
+	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT h.id, h.usage_date::text, h.connector_id, COALESCE(c.name, ''),
+		       h.upstream_group_id, h.group_name, h.platform,
+		       h.actual_cost, h.total_tokens, h.checked_at, h.created_at, h.updated_at
+		FROM upstream_relay_group_usage_history h
+		LEFT JOIN upstream_relay_connectors c ON c.id = h.connector_id
+		WHERE `+where+`
+		ORDER BY h.usage_date DESC, h.checked_at DESC, h.id DESC
+		LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs))+`
+	`, queryArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items, err := scanRelayUsageHistory(rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, relayPage(total, page, pageSize), nil
+}
+
 func (r *upstreamRelayRepository) ListCandidateUsageBindings(ctx context.Context, connectorID int64) ([]service.UpstreamRelayCandidateUsageBinding, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, connector_id, account_id, upstream_group_id,
@@ -651,7 +740,9 @@ func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) 
 func (r *upstreamRelayRepository) GetMonitoringPolicy(ctx context.Context) (*service.UpstreamRelayMonitoringPolicy, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT auto_sync_enabled, sync_interval_minutes, auto_probe_enabled, probe_interval_minutes,
-		       failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
+		       auto_recommendation_enabled, recommendation_interval_minutes, auto_apply_recommendations_enabled,
+		       max_auto_apply_suggestions, max_auto_apply_priority_delta, min_auto_apply_confidence,
+		       allow_auto_apply_degraded_health, failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
 		       COALESCE(updated_by, 0), created_at, updated_at
 		FROM upstream_relay_monitoring_policy
 		WHERE id = 1
@@ -674,22 +765,34 @@ func (r *upstreamRelayRepository) UpsertMonitoringPolicy(ctx context.Context, po
 	if _, err := r.db.ExecContext(ctx, `
 		INSERT INTO upstream_relay_monitoring_policy (
 			id, auto_sync_enabled, sync_interval_minutes, auto_probe_enabled, probe_interval_minutes,
-			failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
+			auto_recommendation_enabled, recommendation_interval_minutes, auto_apply_recommendations_enabled,
+			max_auto_apply_suggestions, max_auto_apply_priority_delta, min_auto_apply_confidence,
+			allow_auto_apply_degraded_health, failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
 			updated_by, created_at, updated_at
 		)
-		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			auto_sync_enabled=EXCLUDED.auto_sync_enabled,
 			sync_interval_minutes=EXCLUDED.sync_interval_minutes,
 			auto_probe_enabled=EXCLUDED.auto_probe_enabled,
 			probe_interval_minutes=EXCLUDED.probe_interval_minutes,
+			auto_recommendation_enabled=EXCLUDED.auto_recommendation_enabled,
+			recommendation_interval_minutes=EXCLUDED.recommendation_interval_minutes,
+			auto_apply_recommendations_enabled=EXCLUDED.auto_apply_recommendations_enabled,
+			max_auto_apply_suggestions=EXCLUDED.max_auto_apply_suggestions,
+			max_auto_apply_priority_delta=EXCLUDED.max_auto_apply_priority_delta,
+			min_auto_apply_confidence=EXCLUDED.min_auto_apply_confidence,
+			allow_auto_apply_degraded_health=EXCLUDED.allow_auto_apply_degraded_health,
 			failure_retry_interval_minutes=EXCLUDED.failure_retry_interval_minutes,
 			sync_concurrency=EXCLUDED.sync_concurrency,
 			probe_concurrency=EXCLUDED.probe_concurrency,
 			updated_by=EXCLUDED.updated_by,
 			updated_at=NOW()
 	`, policy.AutoSyncEnabled, policy.SyncIntervalMinutes, policy.AutoProbeEnabled, policy.ProbeIntervalMinutes,
-		policy.FailureRetryIntervalMinutes, policy.SyncConcurrency, policy.ProbeConcurrency, operatorID); err != nil {
+		policy.AutoRecommendationEnabled, policy.RecommendationIntervalMinutes, policy.AutoApplyRecommendationsEnabled,
+		policy.MaxAutoApplySuggestions, policy.MaxAutoApplyPriorityDelta, policy.MinAutoApplyConfidence,
+		policy.AllowAutoApplyDegradedHealth, policy.FailureRetryIntervalMinutes, policy.SyncConcurrency,
+		policy.ProbeConcurrency, operatorID); err != nil {
 		return nil, err
 	}
 	return r.GetMonitoringPolicy(ctx)
@@ -896,7 +999,7 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 			return nil, err
 		}
 		if affected, _ := res.RowsAffected(); affected == 0 {
-			return nil, infraerrors.Conflict("UPSTREAM_RELAY_RECOMMENDATION_STALE", "recommendation target changed after this run")
+			return nil, r.buildRelayRecommendationStaleError(ctx, tx, suggestion.accountID, oldPriority, suggestion.newPriority)
 		}
 		affectedAccounts[suggestion.accountID] = struct{}{}
 	}
@@ -923,6 +1026,47 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 		return nil, err
 	}
 	return r.GetRecommendationRun(ctx, runID)
+}
+
+func (r *upstreamRelayRepository) buildRelayRecommendationStaleError(ctx context.Context, q sqlQueryer, accountID int64, expectedPriority any, newPriority int) error {
+	var currentPriority sql.NullInt64
+	if err := scanSingleRow(ctx, q, `SELECT priority FROM accounts WHERE id=$1`, []any{accountID}, &currentPriority); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return infraerrors.Conflict("UPSTREAM_RELAY_RECOMMENDATION_STALE", fmt.Sprintf("账号 #%d 已不存在，无法应用建议 priority=%d", accountID, newPriority))
+		}
+		return err
+	}
+	return infraerrors.Conflict(
+		"UPSTREAM_RELAY_RECOMMENDATION_STALE",
+		fmt.Sprintf("账号 #%d 的 priority 已变化：生成建议时为 %s，当前为 %s，建议值为 %d；请重新生成建议后再应用",
+			accountID,
+			formatRelayNullablePriority(expectedPriority),
+			formatRelaySQLPriority(currentPriority),
+			newPriority,
+		),
+	)
+}
+
+func formatRelayNullablePriority(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return "未设置"
+	case int:
+		return fmt.Sprintf("%d", v)
+	case int64:
+		return fmt.Sprintf("%d", v)
+	case sql.NullInt64:
+		return formatRelaySQLPriority(v)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func formatRelaySQLPriority(value sql.NullInt64) string {
+	if !value.Valid {
+		return "未设置"
+	}
+	return fmt.Sprintf("%d", value.Int64)
 }
 
 func (r *upstreamRelayRepository) DeleteRecommendationRun(ctx context.Context, runID int64) error {
@@ -1043,6 +1187,22 @@ func scanRelaySnapshotChanges(rows *sql.Rows) ([]service.UpstreamRelayGroupRateS
 	return items, rows.Err()
 }
 
+func scanRelayUsageHistory(rows *sql.Rows) ([]service.UpstreamRelayGroupUsageHistory, error) {
+	items := []service.UpstreamRelayGroupUsageHistory{}
+	for rows.Next() {
+		var item service.UpstreamRelayGroupUsageHistory
+		if err := rows.Scan(
+			&item.ID, &item.UsageDate, &item.ConnectorID, &item.ConnectorName,
+			&item.UpstreamGroupID, &item.GroupName, &item.Platform,
+			&item.ActualCost, &item.TotalTokens, &item.CheckedAt, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, error) {
 	items := []service.UpstreamRelayCandidate{}
 	for rows.Next() {
@@ -1129,6 +1289,13 @@ func scanRelayMonitoringPolicy(rows *sql.Rows) (service.UpstreamRelayMonitoringP
 		&policy.SyncIntervalMinutes,
 		&policy.AutoProbeEnabled,
 		&policy.ProbeIntervalMinutes,
+		&policy.AutoRecommendationEnabled,
+		&policy.RecommendationIntervalMinutes,
+		&policy.AutoApplyRecommendationsEnabled,
+		&policy.MaxAutoApplySuggestions,
+		&policy.MaxAutoApplyPriorityDelta,
+		&policy.MinAutoApplyConfidence,
+		&policy.AllowAutoApplyDegradedHealth,
 		&policy.FailureRetryIntervalMinutes,
 		&policy.SyncConcurrency,
 		&policy.ProbeConcurrency,

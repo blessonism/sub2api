@@ -29,6 +29,8 @@ type upstreamRelayRecommendationServiceRepo struct {
 	policy      *UpstreamRelayRecommendationPolicy
 	monitoring  *UpstreamRelayMonitoringPolicy
 	createdRuns int
+	appliedRuns int
+	applyErr    error
 }
 
 func (r *upstreamRelayRecommendationServiceRepo) ListRecommendationInputs(context.Context) ([]UpstreamRelayCandidate, error) {
@@ -72,6 +74,19 @@ func (r *upstreamRelayRecommendationServiceRepo) CreateRecommendationRun(_ conte
 	return &run, nil
 }
 
+func (r *upstreamRelayRecommendationServiceRepo) ApplyRecommendationRun(_ context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
+	r.appliedRuns++
+	if r.applyErr != nil {
+		return nil, r.applyErr
+	}
+	return &UpstreamRelayRecommendationRun{
+		ID:        runID,
+		Status:    UpstreamRelayRunStatusSuccess,
+		Applied:   true,
+		AppliedBy: &operatorID,
+	}, nil
+}
+
 type upstreamRelayMetricsRefreshRepo struct {
 	UpstreamRelayRepository
 
@@ -83,6 +98,7 @@ type upstreamRelayMetricsRefreshRepo struct {
 	updatedBalanceAt     *time.Time
 	usageByGroup         map[string]UpstreamRelayGroupTodayUsage
 	usageCheckedAt       *time.Time
+	usageHistoryRows     []UpstreamRelayGroupUsageHistoryUpsert
 }
 
 func (r *upstreamRelayMetricsRefreshRepo) GetConnector(context.Context, int64) (*UpstreamRelayConnector, error) {
@@ -138,6 +154,11 @@ func (r *upstreamRelayMetricsRefreshRepo) ListSnapshots(context.Context, int64) 
 	out := make([]UpstreamRelayGroupRateSnapshot, len(r.snapshots))
 	copy(out, r.snapshots)
 	return out, nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) UpsertUsageHistory(_ context.Context, rows []UpstreamRelayGroupUsageHistoryUpsert) error {
+	r.usageHistoryRows = append([]UpstreamRelayGroupUsageHistoryUpsert{}, rows...)
+	return nil
 }
 
 type upstreamRelayMetricsRefreshAccountRepo struct {
@@ -373,6 +394,13 @@ func TestUpstreamRelayRefreshConnectorMetricsUpdatesUsageFromBoundAPIKeyStats(t 
 	require.Equal(t, 5.75, repo.usageByGroup["g1"].ActualCost)
 	require.Equal(t, int64(1327), repo.usageByGroup["g1"].TotalTokens)
 	require.Equal(t, 0.0, repo.usageByGroup["g2"].ActualCost)
+	require.Len(t, repo.usageHistoryRows, 2)
+	require.Equal(t, "g1", repo.usageHistoryRows[0].UpstreamGroupID)
+	require.Equal(t, 5.75, repo.usageHistoryRows[0].ActualCost)
+	require.Equal(t, int64(1327), repo.usageHistoryRows[0].TotalTokens)
+	require.Equal(t, "g2", repo.usageHistoryRows[1].UpstreamGroupID)
+	require.Equal(t, 0.0, repo.usageHistoryRows[1].ActualCost)
+	require.Equal(t, int64(0), repo.usageHistoryRows[1].TotalTokens)
 	require.Len(t, result.Snapshots, 2)
 	require.NotNil(t, result.Snapshots[0].TodayActualCost)
 	require.Equal(t, 5.75, *result.Snapshots[0].TodayActualCost)
@@ -516,6 +544,7 @@ func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFa
 	require.Equal(t, "usage_refresh_failed", result.UsageDetail.MissingGroups[0].Reason)
 	require.Nil(t, repo.usageByGroup)
 	require.Nil(t, repo.usageCheckedAt)
+	require.Empty(t, repo.usageHistoryRows)
 	require.Len(t, result.Snapshots, 1)
 	require.NotNil(t, result.Snapshots[0].TodayActualCost)
 	require.Equal(t, 9.9, *result.Snapshots[0].TodayActualCost)
@@ -1463,6 +1492,185 @@ func TestUpstreamRelayGenerateRecommendationsFreshnessIsDerivedFromMonitoringPol
 	require.Equal(t, 1, repo.createdRuns)
 	require.Empty(t, run.Suggestions)
 	require.Equal(t, 0, run.SuggestionCount)
+}
+
+func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsGenerateOnly(t *testing.T) {
+	now := time.Now()
+	currentPriority := 50
+	repo := &upstreamRelayRecommendationServiceRepo{
+		monitoring: &UpstreamRelayMonitoringPolicy{
+			SyncIntervalMinutes:             5,
+			ProbeIntervalMinutes:            2,
+			RecommendationIntervalMinutes:   30,
+			AutoApplyRecommendationsEnabled: false,
+			MaxAutoApplySuggestions:         20,
+			MaxAutoApplyPriorityDelta:       100,
+			MinAutoApplyConfidence:          upstreamRelayConfidenceMedium,
+			FailureRetryIntervalMinutes:     1,
+			SyncConcurrency:                 1,
+			ProbeConcurrency:                1,
+		},
+		candidates: []UpstreamRelayCandidate{
+			{
+				ID:              10,
+				ConnectorID:     20,
+				ConnectorStatus: UpstreamRelayConnectorStatusActive,
+				AccountID:       101,
+				UpstreamGroupID: "cheap",
+				CurrentPriority: &currentPriority,
+				Enabled:         true,
+				LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+				LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+			},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+
+	result, err := svc.GenerateAndMaybeApplyRecommendations(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Run)
+	require.Equal(t, 1, repo.createdRuns)
+	require.Zero(t, repo.appliedRuns)
+	require.False(t, result.Applied)
+	require.Equal(t, "auto_apply_disabled", result.SkippedReason)
+}
+
+func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsAppliesWhenGatePasses(t *testing.T) {
+	now := time.Now()
+	currentPriority := 50
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PriorityStart = 40
+	repo := &upstreamRelayRecommendationServiceRepo{
+		policy: &policy,
+		monitoring: &UpstreamRelayMonitoringPolicy{
+			SyncIntervalMinutes:             5,
+			ProbeIntervalMinutes:            2,
+			RecommendationIntervalMinutes:   30,
+			AutoApplyRecommendationsEnabled: true,
+			MaxAutoApplySuggestions:         20,
+			MaxAutoApplyPriorityDelta:       100,
+			MinAutoApplyConfidence:          upstreamRelayConfidenceMedium,
+			FailureRetryIntervalMinutes:     1,
+			SyncConcurrency:                 1,
+			ProbeConcurrency:                1,
+		},
+		candidates: []UpstreamRelayCandidate{
+			{
+				ID:              10,
+				ConnectorID:     20,
+				ConnectorStatus: UpstreamRelayConnectorStatusActive,
+				AccountID:       101,
+				UpstreamGroupID: "cheap",
+				CurrentPriority: &currentPriority,
+				Enabled:         true,
+				LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+				LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+			},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+
+	result, err := svc.GenerateAndMaybeApplyRecommendations(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.createdRuns)
+	require.Equal(t, 1, repo.appliedRuns)
+	require.True(t, result.Applied)
+	require.Empty(t, result.SkippedReason)
+	require.True(t, result.Run.Applied)
+}
+
+func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *testing.T) {
+	oldPriority := 10
+	cases := []struct {
+		name        string
+		policy      UpstreamRelayMonitoringPolicy
+		suggestions []UpstreamRelayRecommendationSuggestion
+		wantReason  string
+	}{
+		{
+			name: "too many suggestions",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      1,
+				MaxAutoApplyPriorityDelta:    100,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceLow,
+				AllowAutoApplyDegradedHealth: true,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: 30, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+			},
+			wantReason: "too_many_suggestions",
+		},
+		{
+			name: "priority delta exceeded",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      5,
+				MaxAutoApplyPriorityDelta:    5,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceLow,
+				AllowAutoApplyDegradedHealth: true,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+			},
+			wantReason: "priority_delta_exceeded",
+		},
+		{
+			name: "zero priority delta rejects any change",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      5,
+				MaxAutoApplyPriorityDelta:    0,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceLow,
+				AllowAutoApplyDegradedHealth: true,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{OldPriority: &oldPriority, NewPriority: 11, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+			},
+			wantReason: "priority_delta_exceeded",
+		},
+		{
+			name: "confidence below threshold",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      5,
+				MaxAutoApplyPriorityDelta:    100,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceMedium,
+				AllowAutoApplyDegradedHealth: true,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceLow, HealthStatus: "healthy"},
+			},
+			wantReason: "confidence_below_threshold",
+		},
+		{
+			name: "degraded health",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      5,
+				MaxAutoApplyPriorityDelta:    100,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceLow,
+				AllowAutoApplyDegradedHealth: false,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: upstreamRelayHealthDegraded},
+			},
+			wantReason: "degraded_health",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := tc.policy
+			policy.AutoApplyRecommendationsEnabled = true
+			run := &UpstreamRelayRecommendationRun{
+				Status:      UpstreamRelayRunStatusSuccess,
+				Suggestions: tc.suggestions,
+			}
+
+			reason := validateUpstreamRelayAutoApplyRun(run, policy)
+
+			require.Equal(t, tc.wantReason, reason)
+		})
+	}
 }
 
 func TestUpstreamRelayUsageDeltaSampleReliability(t *testing.T) {

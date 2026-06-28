@@ -170,6 +170,7 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.GET("/connectors/:id/api-keys", h.Admin.UpstreamRelayMonitoring.ListConnectorAPIKeys)
 		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
 		relay.GET("/snapshot-changes", h.Admin.UpstreamRelayMonitoring.ListSnapshotChanges)
+		relay.GET("/usage-history", h.Admin.UpstreamRelayMonitoring.ListUsageHistory)
 
 		relay.GET("/candidates", h.Admin.UpstreamRelayMonitoring.ListCandidates)
 		relay.POST("/candidates", h.Admin.UpstreamRelayMonitoring.CreateCandidate)
