@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -37,6 +38,11 @@ const (
 
 	upstreamRelayDefaultPriorityStart = 10
 	upstreamRelayPriorityStep         = 10
+	upstreamRelayDefaultSyncInterval  = 480
+	upstreamRelayDefaultProbeInterval = 10
+	upstreamRelayDefaultRetryInterval = 15
+	upstreamRelayDefaultSyncLimit     = 2
+	upstreamRelayDefaultProbeLimit    = 5
 	upstreamRelayHTTPTimeout          = 20 * time.Second
 	upstreamRelaySnapshotFreshness    = 24 * time.Hour
 	upstreamRelayUsageDeltaFreshness  = 24 * time.Hour
@@ -155,6 +161,15 @@ type UpstreamRelayGroupTodayUsage struct {
 	TotalTokens int64
 }
 
+type UpstreamRelayCandidateUsageBinding struct {
+	CandidateID        int64
+	ConnectorID        int64
+	AccountID          int64
+	UpstreamGroupID    string
+	UpstreamAPIKeyID   int64
+	UpstreamAPIKeyName string
+}
+
 type UpstreamRelayConnectorMetricsRefreshResult struct {
 	Connector        *UpstreamRelayConnector          `json:"connector"`
 	Snapshots        []UpstreamRelayGroupRateSnapshot `json:"snapshots"`
@@ -188,44 +203,53 @@ type UpstreamRelayGroupRateSnapshotChange struct {
 }
 
 type UpstreamRelayCandidate struct {
-	ID                  int64                           `json:"id"`
-	ConnectorID         int64                           `json:"connector_id"`
-	ConnectorName       string                          `json:"connector_name,omitempty"`
-	ConnectorStatus     string                          `json:"connector_status,omitempty"`
-	TodayActualCost     *float64                        `json:"today_actual_cost,omitempty"`
-	TodayTotalTokens    *int64                          `json:"today_total_tokens,omitempty"`
-	TodayUsageCheckedAt *time.Time                      `json:"today_usage_checked_at,omitempty"`
-	AccountID           int64                           `json:"account_id"`
-	AccountName         string                          `json:"account_name,omitempty"`
-	AccountPlatform     string                          `json:"account_platform,omitempty"`
-	UpstreamGroupID     string                          `json:"upstream_group_id"`
-	UpstreamGroupName   string                          `json:"upstream_group_name,omitempty"`
-	ProbeModel          string                          `json:"probe_model"`
-	ProbeProtocol       string                          `json:"probe_protocol"`
-	TargetGroupID       int64                           `json:"target_group_id"`
-	TargetGroupName     string                          `json:"target_group_name,omitempty"`
-	CurrentPriority     *int                            `json:"current_priority,omitempty"`
-	Enabled             bool                            `json:"enabled"`
-	Notes               string                          `json:"notes"`
-	LastProbeResultID   *int64                          `json:"last_probe_result_id,omitempty"`
-	LatestProbe         *UpstreamRelayProbeResult       `json:"latest_probe,omitempty"`
-	LatestSnapshot      *UpstreamRelayGroupRateSnapshot `json:"latest_snapshot,omitempty"`
-	Health              *UpstreamRelayCandidateHealth   `json:"health,omitempty"`
-	LatestUsageDelta    *UpstreamRelayUsageDeltaSample  `json:"latest_usage_delta,omitempty"`
-	CreatedBy           int64                           `json:"created_by,omitempty"`
-	CreatedAt           time.Time                       `json:"created_at"`
-	UpdatedAt           time.Time                       `json:"updated_at"`
+	ID                   int64                           `json:"id"`
+	ConnectorID          int64                           `json:"connector_id"`
+	ConnectorName        string                          `json:"connector_name,omitempty"`
+	ConnectorStatus      string                          `json:"connector_status,omitempty"`
+	TodayActualCost      *float64                        `json:"today_actual_cost,omitempty"`
+	TodayTotalTokens     *int64                          `json:"today_total_tokens,omitempty"`
+	TodayUsageCheckedAt  *time.Time                      `json:"today_usage_checked_at,omitempty"`
+	AccountID            int64                           `json:"account_id"`
+	AccountName          string                          `json:"account_name,omitempty"`
+	AccountPlatform      string                          `json:"account_platform,omitempty"`
+	UpstreamGroupID      string                          `json:"upstream_group_id"`
+	UpstreamGroupName    string                          `json:"upstream_group_name,omitempty"`
+	UpstreamAPIKeyID     *int64                          `json:"upstream_api_key_id,omitempty"`
+	UpstreamAPIKeyName   string                          `json:"upstream_api_key_name,omitempty"`
+	UpstreamAPIKeyMasked string                          `json:"upstream_api_key_masked,omitempty"`
+	ProbeModel           string                          `json:"probe_model"`
+	ProbeProtocol        string                          `json:"probe_protocol"`
+	CurrentPriority      *int                            `json:"current_priority,omitempty"`
+	Enabled              bool                            `json:"enabled"`
+	Notes                string                          `json:"notes"`
+	LastProbeResultID    *int64                          `json:"last_probe_result_id,omitempty"`
+	LatestProbe          *UpstreamRelayProbeResult       `json:"latest_probe,omitempty"`
+	LatestSnapshot       *UpstreamRelayGroupRateSnapshot `json:"latest_snapshot,omitempty"`
+	Health               *UpstreamRelayCandidateHealth   `json:"health,omitempty"`
+	LatestUsageDelta     *UpstreamRelayUsageDeltaSample  `json:"latest_usage_delta,omitempty"`
+	CreatedBy            int64                           `json:"created_by,omitempty"`
+	CreatedAt            time.Time                       `json:"created_at"`
+	UpdatedAt            time.Time                       `json:"updated_at"`
 }
 
 type UpstreamRelayCandidateInput struct {
-	ConnectorID     int64  `json:"connector_id"`
-	AccountID       int64  `json:"account_id"`
-	UpstreamGroupID string `json:"upstream_group_id"`
-	ProbeModel      string `json:"probe_model"`
-	ProbeProtocol   string `json:"probe_protocol"`
-	TargetGroupID   int64  `json:"target_group_id"`
-	Enabled         *bool  `json:"enabled,omitempty"`
-	Notes           string `json:"notes"`
+	ConnectorID          int64  `json:"connector_id"`
+	AccountID            int64  `json:"account_id"`
+	UpstreamGroupID      string `json:"upstream_group_id"`
+	UpstreamAPIKeyID     *int64 `json:"upstream_api_key_id,omitempty"`
+	UpstreamAPIKeyName   string `json:"upstream_api_key_name"`
+	UpstreamAPIKeyMasked string `json:"upstream_api_key_masked"`
+	ProbeModel           string `json:"probe_model"`
+	ProbeProtocol        string `json:"probe_protocol"`
+	Enabled              *bool  `json:"enabled,omitempty"`
+	Notes                string `json:"notes"`
+}
+
+type UpstreamRelayAPIKeyOption struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name,omitempty"`
+	MaskedKey string `json:"masked_key,omitempty"`
 }
 
 type UpstreamRelayProbeResult struct {
@@ -251,6 +275,8 @@ type UpstreamRelayCandidateHealth struct {
 	LastSuccessAt        *time.Time `json:"last_success_at,omitempty"`
 	WindowMinutes        int        `json:"window_minutes"`
 	SampleSize           int        `json:"sample_size"`
+	CalculatedAt         time.Time  `json:"calculated_at,omitempty"`
+	Stale                bool       `json:"stale"`
 }
 
 type UpstreamRelayUsageDeltaSample struct {
@@ -294,8 +320,6 @@ type UpstreamRelayRecommendationSuggestion struct {
 	AccountName         string     `json:"account_name,omitempty"`
 	UpstreamGroupID     string     `json:"upstream_group_id"`
 	UpstreamGroupName   string     `json:"upstream_group_name,omitempty"`
-	TargetGroupID       int64      `json:"target_group_id"`
-	TargetGroupName     string     `json:"target_group_name,omitempty"`
 	OldPriority         *int       `json:"old_priority,omitempty"`
 	NewPriority         int        `json:"new_priority"`
 	FinalRateMultiplier float64    `json:"final_rate_multiplier"`
@@ -326,6 +350,41 @@ type UpstreamRelayRecommendationPolicy struct {
 	UpdatedAt                  time.Time `json:"updated_at,omitempty"`
 }
 
+type UpstreamRelayMonitoringPolicy struct {
+	AutoSyncEnabled             bool      `json:"auto_sync_enabled"`
+	SyncIntervalMinutes         int       `json:"sync_interval_minutes"`
+	AutoProbeEnabled            bool      `json:"auto_probe_enabled"`
+	ProbeIntervalMinutes        int       `json:"probe_interval_minutes"`
+	FailureRetryIntervalMinutes int       `json:"failure_retry_interval_minutes"`
+	SyncConcurrency             int       `json:"sync_concurrency"`
+	ProbeConcurrency            int       `json:"probe_concurrency"`
+	SnapshotStaleAfterMinutes   int       `json:"snapshot_stale_after_minutes"`
+	UsageDeltaStaleAfterMinutes int       `json:"usage_delta_stale_after_minutes"`
+	ProbeStaleAfterMinutes      int       `json:"probe_stale_after_minutes"`
+	UpdatedBy                   int64     `json:"updated_by,omitempty"`
+	CreatedAt                   time.Time `json:"created_at,omitempty"`
+	UpdatedAt                   time.Time `json:"updated_at,omitempty"`
+}
+
+type UpstreamRelayBulkOperationResult struct {
+	Total   int                              `json:"total"`
+	Success int                              `json:"success"`
+	Failed  int                              `json:"failed"`
+	Items   []UpstreamRelayBulkOperationItem `json:"items"`
+}
+
+type UpstreamRelayBulkOperationItem struct {
+	ID            int64  `json:"id"`
+	ConnectorID   int64  `json:"connector_id,omitempty"`
+	ConnectorName string `json:"connector_name,omitempty"`
+	CandidateID   int64  `json:"candidate_id,omitempty"`
+	AccountID     int64  `json:"account_id,omitempty"`
+	AccountName   string `json:"account_name,omitempty"`
+	Success       bool   `json:"success"`
+	Count         int    `json:"count,omitempty"`
+	ErrorReason   string `json:"error_reason,omitempty"`
+}
+
 type UpstreamRelayRecommendationPreview struct {
 	Policy          UpstreamRelayRecommendationPolicy       `json:"policy"`
 	TotalCandidates int                                     `json:"total_candidates"`
@@ -343,8 +402,6 @@ type UpstreamRelayRecommendationExclusion struct {
 	AccountName         string   `json:"account_name,omitempty"`
 	UpstreamGroupID     string   `json:"upstream_group_id"`
 	UpstreamGroupName   string   `json:"upstream_group_name,omitempty"`
-	TargetGroupID       int64    `json:"target_group_id"`
-	TargetGroupName     string   `json:"target_group_name,omitempty"`
 	OldPriority         *int     `json:"old_priority,omitempty"`
 	ExpectedPriority    *int     `json:"expected_priority,omitempty"`
 	FinalRateMultiplier *float64 `json:"final_rate_multiplier,omitempty"`
@@ -384,6 +441,7 @@ type UpstreamRelayRepository interface {
 	MarkConnectorSync(ctx context.Context, connectorID int64, status string, errMessage string) error
 	UpdateConnectorAccountBalance(ctx context.Context, connectorID int64, balance *float64, checkedAt *time.Time) error
 	UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error
+	ListCandidateUsageBindings(ctx context.Context, connectorID int64) ([]UpstreamRelayCandidateUsageBinding, error)
 
 	ListCandidates(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelayCandidateListFilters) ([]UpstreamRelayCandidate, *pagination.PaginationResult, error)
 	GetCandidate(ctx context.Context, id int64) (*UpstreamRelayCandidate, error)
@@ -394,6 +452,8 @@ type UpstreamRelayRepository interface {
 	InsertUsageDeltaSample(ctx context.Context, sample UpstreamRelayUsageDeltaSample) (*UpstreamRelayUsageDeltaSample, error)
 
 	ListRecommendationInputs(ctx context.Context) ([]UpstreamRelayCandidate, error)
+	GetMonitoringPolicy(ctx context.Context) (*UpstreamRelayMonitoringPolicy, error)
+	UpsertMonitoringPolicy(ctx context.Context, policy UpstreamRelayMonitoringPolicy, operatorID int64) (*UpstreamRelayMonitoringPolicy, error)
 	GetRecommendationPolicy(ctx context.Context) (*UpstreamRelayRecommendationPolicy, error)
 	UpsertRecommendationPolicy(ctx context.Context, policy UpstreamRelayRecommendationPolicy, operatorID int64) (*UpstreamRelayRecommendationPolicy, error)
 	CreateRecommendationRun(ctx context.Context, run UpstreamRelayRecommendationRun, suggestions []UpstreamRelayRecommendationSuggestion) (*UpstreamRelayRecommendationRun, error)
@@ -510,6 +570,40 @@ func (s *UpstreamRelayGroupMonitoringService) SyncConnector(ctx context.Context,
 	return s.repo.ListSnapshots(ctx, id)
 }
 
+func (s *UpstreamRelayGroupMonitoringService) SyncAllConnectors(ctx context.Context) (*UpstreamRelayBulkOperationResult, error) {
+	policy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	connectors, err := s.listAllConnectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := &UpstreamRelayBulkOperationResult{
+		Total: len(connectors),
+		Items: make([]UpstreamRelayBulkOperationItem, len(connectors)),
+	}
+	limit := positiveOrDefault(policy.SyncConcurrency, upstreamRelayDefaultSyncLimit)
+	s.runLimited(len(connectors), limit, func(index int) {
+		connector := connectors[index]
+		item := UpstreamRelayBulkOperationItem{
+			ID:            connector.ID,
+			ConnectorID:   connector.ID,
+			ConnectorName: connector.Name,
+		}
+		snapshots, err := s.SyncConnector(ctx, connector.ID)
+		if err != nil {
+			item.ErrorReason = sanitizeUpstreamRelayError(err.Error())
+		} else {
+			item.Success = true
+			item.Count = len(snapshots)
+		}
+		result.Items[index] = item
+	})
+	result.summarize()
+	return result, nil
+}
+
 func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx context.Context, id int64) (*UpstreamRelayConnectorMetricsRefreshResult, error) {
 	connector, err := s.repo.GetConnector(ctx, id)
 	if err != nil {
@@ -535,12 +629,9 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 		}
 	}
 
-	usageByGroup, usageCheckedAt, usageErr := s.fetchUpstreamGroupTodayUsage(ctx, connector, time.Now())
+	usageByGroup, usageCheckedAt, usageErr := s.fetchUpstreamGroupTodayUsage(ctx, connector, result.RefreshedAt)
 	if usageErr != nil {
 		result.UsageError = sanitizeUpstreamRelayError(usageErr.Error())
-		if err := s.repo.UpdateSnapshotTodayUsage(ctx, connector.ID, nil, nil); err != nil {
-			return nil, err
-		}
 	} else {
 		result.UsageAvailable = true
 		if err := s.repo.UpdateSnapshotTodayUsage(ctx, connector.ID, usageByGroup, usageCheckedAt); err != nil {
@@ -570,7 +661,31 @@ func (s *UpstreamRelayGroupMonitoringService) ListSnapshotChanges(ctx context.Co
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ListCandidates(ctx context.Context, page, pageSize int, filters UpstreamRelayCandidateListFilters) ([]UpstreamRelayCandidate, *pagination.PaginationResult, error) {
-	return s.repo.ListCandidates(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	items, pageResult, err := s.repo.ListCandidates(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.decorateCandidateHealthFreshness(ctx, items); err != nil {
+		return nil, nil, err
+	}
+	sanitizeUpstreamRelayCandidateAPIKeyDisplays(items)
+	return items, pageResult, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) ListConnectorAPIKeys(ctx context.Context, connectorID int64) ([]UpstreamRelayAPIKeyOption, error) {
+	connector, err := s.repo.GetConnector(ctx, connectorID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.decryptConnector(connector); err != nil {
+		_ = s.repo.MarkConnectorSync(ctx, connectorID, UpstreamRelayConnectorStatusNeedsReauth, err.Error())
+		return nil, err
+	}
+	items, err := s.fetchUpstreamAPIKeyOptions(ctx, connector)
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) CreateCandidate(ctx context.Context, input UpstreamRelayCandidateInput, operatorID int64) (*UpstreamRelayCandidate, error) {
@@ -578,7 +693,17 @@ func (s *UpstreamRelayGroupMonitoringService) CreateCandidate(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.CreateCandidate(ctx, candidate)
+	created, err := s.repo.CreateCandidate(ctx, candidate)
+	if err != nil {
+		return nil, err
+	}
+	createdItems := []UpstreamRelayCandidate{*created}
+	if err := s.decorateCandidateHealthFreshness(ctx, createdItems); err != nil {
+		return nil, err
+	}
+	*created = createdItems[0]
+	sanitizeUpstreamRelayCandidateAPIKeyDisplay(created)
+	return created, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) UpdateCandidate(ctx context.Context, id int64, input UpstreamRelayCandidateInput) (*UpstreamRelayCandidate, error) {
@@ -590,7 +715,36 @@ func (s *UpstreamRelayGroupMonitoringService) UpdateCandidate(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.UpdateCandidate(ctx, candidate)
+	updated, err := s.repo.UpdateCandidate(ctx, candidate)
+	if err != nil {
+		return nil, err
+	}
+	updatedItems := []UpstreamRelayCandidate{*updated}
+	if err := s.decorateCandidateHealthFreshness(ctx, updatedItems); err != nil {
+		return nil, err
+	}
+	*updated = updatedItems[0]
+	sanitizeUpstreamRelayCandidateAPIKeyDisplay(updated)
+	return updated, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) decorateCandidateHealthFreshness(ctx context.Context, items []UpstreamRelayCandidate) error {
+	if len(items) == 0 {
+		return nil
+	}
+	policy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	staleAfter := time.Duration(policy.ProbeStaleAfterMinutes) * time.Minute
+	for i := range items {
+		if items[i].Health == nil {
+			continue
+		}
+		items[i].Health.Stale = items[i].Health.CalculatedAt.IsZero() || now.Sub(items[i].Health.CalculatedAt) > staleAfter
+	}
+	return nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) DeleteCandidate(ctx context.Context, id int64) error {
@@ -627,6 +781,144 @@ func (s *UpstreamRelayGroupMonitoringService) ProbeCandidate(ctx context.Context
 	return inserted, nil
 }
 
+func (s *UpstreamRelayGroupMonitoringService) ProbeAllCandidates(ctx context.Context) (*UpstreamRelayBulkOperationResult, error) {
+	policy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := s.listAllEnabledCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := &UpstreamRelayBulkOperationResult{
+		Total: len(candidates),
+		Items: make([]UpstreamRelayBulkOperationItem, len(candidates)),
+	}
+	limit := positiveOrDefault(policy.ProbeConcurrency, upstreamRelayDefaultProbeLimit)
+	s.runLimited(len(candidates), limit, func(index int) {
+		candidate := candidates[index]
+		item := UpstreamRelayBulkOperationItem{
+			ID:            candidate.ID,
+			ConnectorID:   candidate.ConnectorID,
+			ConnectorName: candidate.ConnectorName,
+			CandidateID:   candidate.ID,
+			AccountID:     candidate.AccountID,
+			AccountName:   candidate.AccountName,
+		}
+		probe, err := s.ProbeCandidate(ctx, candidate.ID)
+		if err != nil {
+			item.ErrorReason = sanitizeUpstreamRelayError(err.Error())
+		} else if probe == nil || !probe.Success {
+			if probe != nil {
+				item.ErrorReason = strings.TrimSpace(probe.ErrorMessage)
+				if item.ErrorReason == "" {
+					item.ErrorReason = strings.TrimSpace(probe.ErrorClass)
+				}
+			}
+			if item.ErrorReason == "" {
+				item.ErrorReason = "probe failed"
+			}
+		} else {
+			item.Success = true
+			item.Count = 1
+		}
+		result.Items[index] = item
+	})
+	result.summarize()
+	return result, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) listAllConnectors(ctx context.Context) ([]UpstreamRelayConnector, error) {
+	const pageSize = 100
+	out := []UpstreamRelayConnector{}
+	for page := 1; ; page++ {
+		items, pageResult, err := s.ListConnectors(ctx, page, pageSize, UpstreamRelayConnectorListFilters{})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, items...)
+		if pageResult == nil || page >= pageResult.Pages {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) listAllEnabledCandidates(ctx context.Context) ([]UpstreamRelayCandidate, error) {
+	const pageSize = 100
+	enabled := true
+	out := []UpstreamRelayCandidate{}
+	for page := 1; ; page++ {
+		items, pageResult, err := s.ListCandidates(ctx, page, pageSize, UpstreamRelayCandidateListFilters{Enabled: &enabled})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, items...)
+		if pageResult == nil || page >= pageResult.Pages {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) runLimited(total int, limit int, fn func(index int)) {
+	if total <= 0 {
+		return
+	}
+	limit = positiveOrDefault(limit, 1)
+	if limit > total {
+		limit = total
+	}
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for i := 0; i < total; i++ {
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(index)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func (r *UpstreamRelayBulkOperationResult) summarize() {
+	if r == nil {
+		return
+	}
+	r.Success = 0
+	r.Failed = 0
+	for _, item := range r.Items {
+		if item.Success {
+			r.Success++
+		} else {
+			r.Failed++
+		}
+	}
+}
+
+func positiveOrDefault(value int, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return 1
+}
+
+func (s *UpstreamRelayGroupMonitoringService) applyMonitoringPolicyFreshness(ctx context.Context, policy UpstreamRelayRecommendationPolicy) (UpstreamRelayRecommendationPolicy, error) {
+	monitoringPolicy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return policy, err
+	}
+	policy.SnapshotFreshnessMinutes = monitoringPolicy.SnapshotStaleAfterMinutes
+	policy.UsageDeltaFreshnessMinutes = monitoringPolicy.UsageDeltaStaleAfterMinutes
+	policy.ProbeFreshnessMinutes = monitoringPolicy.ProbeStaleAfterMinutes
+	return policy, nil
+}
+
 func (s *UpstreamRelayGroupMonitoringService) GenerateRecommendations(ctx context.Context, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
 	candidates, err := s.repo.ListRecommendationInputs(ctx)
 	if err != nil {
@@ -646,6 +938,34 @@ func (s *UpstreamRelayGroupMonitoringService) GenerateRecommendations(ctx contex
 	return s.repo.CreateRecommendationRun(ctx, run, preview.Suggestions)
 }
 
+func (s *UpstreamRelayGroupMonitoringService) GetMonitoringPolicy(ctx context.Context) (*UpstreamRelayMonitoringPolicy, error) {
+	policy, err := s.repo.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := normalizeUpstreamRelayMonitoringPolicy(monitoringPolicyOrDefault(policy))
+	if err != nil {
+		return nil, err
+	}
+	return &normalized, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) UpdateMonitoringPolicy(ctx context.Context, input UpstreamRelayMonitoringPolicy, operatorID int64) (*UpstreamRelayMonitoringPolicy, error) {
+	policy, err := normalizeUpstreamRelayMonitoringPolicy(input)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := s.repo.UpsertMonitoringPolicy(ctx, policy, operatorID)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := normalizeUpstreamRelayMonitoringPolicy(monitoringPolicyOrDefault(saved))
+	if err != nil {
+		return nil, err
+	}
+	return &normalized, nil
+}
+
 func (s *UpstreamRelayGroupMonitoringService) GetRecommendationPolicy(ctx context.Context) (*UpstreamRelayRecommendationPolicy, error) {
 	policy, err := s.repo.GetRecommendationPolicy(ctx)
 	if err != nil {
@@ -655,11 +975,19 @@ func (s *UpstreamRelayGroupMonitoringService) GetRecommendationPolicy(ctx contex
 	if err != nil {
 		return nil, err
 	}
+	normalized, err = s.applyMonitoringPolicyFreshness(ctx, normalized)
+	if err != nil {
+		return nil, err
+	}
 	return &normalized, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) UpdateRecommendationPolicy(ctx context.Context, input UpstreamRelayRecommendationPolicy, operatorID int64) (*UpstreamRelayRecommendationPolicy, error) {
 	policy, err := normalizeUpstreamRelayRecommendationPolicy(input)
+	if err != nil {
+		return nil, err
+	}
+	policy, err = s.applyMonitoringPolicyFreshness(ctx, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -681,6 +1009,10 @@ func (s *UpstreamRelayGroupMonitoringService) PreviewRecommendations(ctx context
 		if err != nil {
 			return nil, err
 		}
+	}
+	policy, err = s.applyMonitoringPolicyFreshness(ctx, policy)
+	if err != nil {
+		return nil, err
 	}
 	candidates, err := s.repo.ListRecommendationInputs(ctx)
 	if err != nil {
@@ -1042,37 +1374,98 @@ func (s *UpstreamRelayGroupMonitoringService) fetchGroupSnapshots(ctx context.Co
 }
 
 func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx context.Context, connector *UpstreamRelayConnector, now time.Time) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, error) {
-	today := now.Format("2006-01-02")
+	if s == nil || s.repo == nil {
+		return nil, nil, fmt.Errorf("usage refresh requires repository")
+	}
+	if connector == nil {
+		return nil, nil, fmt.Errorf("connector not found")
+	}
+	today := upstreamRelayUsageDate(now)
 	checkedAt := time.Now()
 	out := map[string]UpstreamRelayGroupTodayUsage{}
+	bindings, err := s.repo.ListCandidateUsageBindings(ctx, connector.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(bindings) == 0 {
+		return nil, nil, fmt.Errorf("connector has no local account bindings")
+	}
+	seenKeys := map[string]struct{}{}
+	for _, binding := range bindings {
+		if binding.UpstreamGroupID == "" {
+			continue
+		}
+		if binding.UpstreamAPIKeyID <= 0 {
+			return nil, nil, fmt.Errorf("candidate %d for bound account %d has no upstream api key binding", binding.CandidateID, binding.AccountID)
+		}
+		upstreamKeyID := binding.UpstreamAPIKeyID
+		dedupeKey := fmt.Sprintf("id:%d", upstreamKeyID)
+		if _, ok := seenKeys[dedupeKey]; ok {
+			continue
+		}
+		seenKeys[dedupeKey] = struct{}{}
+		usage, err := s.fetchUpstreamAPIKeyUsageStats(ctx, connector, upstreamKeyID, today)
+		if err != nil {
+			return nil, nil, fmt.Errorf("fetch upstream api key %d usage stats: %w", upstreamKeyID, err)
+		}
+		groupUsage := out[binding.UpstreamGroupID]
+		groupUsage.ActualCost += usage.ActualCost
+		groupUsage.TotalTokens += usage.TotalTokens
+		out[binding.UpstreamGroupID] = groupUsage
+	}
+	return out, &checkedAt, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAPIKeyOptions(ctx context.Context, connector *UpstreamRelayConnector) ([]UpstreamRelayAPIKeyOption, error) {
+	out := []UpstreamRelayAPIKeyOption{}
 	for page := 1; page <= upstreamRelayUsageFetchMaxPages; page++ {
 		query := url.Values{}
-		query.Set("start_date", today)
-		query.Set("end_date", today)
 		query.Set("page", strconv.Itoa(page))
 		query.Set("page_size", strconv.Itoa(upstreamRelayUsageFetchPageSize))
-		body, err := s.getUpstreamJSON(ctx, connector, "/api/v1/usage?"+query.Encode())
+		body, err := s.getUpstreamJSON(ctx, connector, "/api/v1/keys?"+query.Encode())
 		if err != nil {
-			return nil, nil, fmt.Errorf("fetch upstream usage page %d: %w", page, err)
+			return nil, fmt.Errorf("fetch upstream keys page %d: %w", page, err)
 		}
-		items, pages, err := parseUpstreamUsagePage(body)
+		items, pages, err := parseUpstreamAPIKeyPage(body)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		for _, item := range items {
-			if item.GroupID == "" {
+			if item.ID <= 0 {
 				continue
 			}
-			usage := out[item.GroupID]
-			usage.ActualCost += item.ActualCost
-			usage.TotalTokens += item.TotalTokens
-			out[item.GroupID] = usage
+			out = append(out, UpstreamRelayAPIKeyOption{
+				ID:        item.ID,
+				Name:      item.Name,
+				MaskedKey: maskUpstreamRelayAPIKeyForDisplay(item.Key),
+			})
 		}
 		if pages <= page {
-			return out, &checkedAt, nil
+			return out, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("upstream usage pagination exceeds safety limit %d", upstreamRelayUsageFetchMaxPages)
+	return nil, fmt.Errorf("upstream api key pagination exceeds safety limit %d", upstreamRelayUsageFetchMaxPages)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAPIKeyUsageStats(ctx context.Context, connector *UpstreamRelayConnector, apiKeyID int64, date string) (UpstreamRelayGroupTodayUsage, error) {
+	query := url.Values{}
+	query.Set("start_date", date)
+	query.Set("end_date", date)
+	query.Set("api_key_id", strconv.FormatInt(apiKeyID, 10))
+	query.Set("timezone", "Asia/Shanghai")
+	body, err := s.getUpstreamJSON(ctx, connector, "/api/v1/usage/stats?"+query.Encode())
+	if err != nil {
+		return UpstreamRelayGroupTodayUsage{}, err
+	}
+	return parseUpstreamUsageStats(body)
+}
+
+func upstreamRelayUsageDate(t time.Time) string {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return t.Format("2006-01-02")
+	}
+	return t.In(loc).Format("2006-01-02")
 }
 
 func (s *UpstreamRelayGroupMonitoringService) refreshConnectorAccountBalance(ctx context.Context, connector *UpstreamRelayConnector) {
@@ -1131,10 +1524,7 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 		result.ErrorMessage = "account not found"
 		return result
 	}
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if apiKey == "" && account.IsOpenAI() {
-		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
-	}
+	apiKey := upstreamRelayAPIKeyFromAccount(account)
 	if apiKey == "" {
 		result.ErrorClass = "missing_api_key"
 		result.ErrorMessage = "bound account has no usable api key"
@@ -1176,6 +1566,17 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 	return result
 }
 
+func upstreamRelayAPIKeyFromAccount(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" && account.IsOpenAI() {
+		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
+	}
+	return apiKey
+}
+
 func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id int64, operatorID int64) (*UpstreamRelayCandidate, error) {
 	upstreamGroupID := strings.TrimSpace(input.UpstreamGroupID)
 	probeModel := strings.TrimSpace(input.ProbeModel)
@@ -1183,8 +1584,8 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 	if protocol == "" {
 		protocol = MonitorAPIModeChatCompletions
 	}
-	if input.ConnectorID <= 0 || input.AccountID <= 0 || input.TargetGroupID <= 0 || upstreamGroupID == "" || probeModel == "" {
-		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_CANDIDATE", "connector_id, account_id, upstream_group_id, probe_model and target_group_id are required")
+	if input.ConnectorID <= 0 || input.AccountID <= 0 || upstreamGroupID == "" || probeModel == "" {
+		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_CANDIDATE", "connector_id, account_id, upstream_group_id and probe_model are required")
 	}
 	if protocol != MonitorAPIModeChatCompletions && protocol != MonitorAPIModeResponses {
 		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_PROBE_PROTOCOL", "probe_protocol must be chat_completions or responses")
@@ -1193,17 +1594,24 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 	if input.Enabled != nil {
 		enabled = *input.Enabled
 	}
+	var upstreamAPIKeyID *int64
+	if input.UpstreamAPIKeyID != nil && *input.UpstreamAPIKeyID > 0 {
+		keyID := *input.UpstreamAPIKeyID
+		upstreamAPIKeyID = &keyID
+	}
 	return &UpstreamRelayCandidate{
-		ID:              id,
-		ConnectorID:     input.ConnectorID,
-		AccountID:       input.AccountID,
-		UpstreamGroupID: upstreamGroupID,
-		ProbeModel:      probeModel,
-		ProbeProtocol:   protocol,
-		TargetGroupID:   input.TargetGroupID,
-		Enabled:         enabled,
-		Notes:           strings.TrimSpace(input.Notes),
-		CreatedBy:       operatorID,
+		ID:                   id,
+		ConnectorID:          input.ConnectorID,
+		AccountID:            input.AccountID,
+		UpstreamGroupID:      upstreamGroupID,
+		UpstreamAPIKeyID:     upstreamAPIKeyID,
+		UpstreamAPIKeyName:   strings.TrimSpace(input.UpstreamAPIKeyName),
+		UpstreamAPIKeyMasked: maskUpstreamRelayAPIKeyForDisplay(input.UpstreamAPIKeyMasked),
+		ProbeModel:           probeModel,
+		ProbeProtocol:        protocol,
+		Enabled:              enabled,
+		Notes:                strings.TrimSpace(input.Notes),
+		CreatedBy:            operatorID,
 	}, nil
 }
 
@@ -1225,11 +1633,64 @@ func defaultUpstreamRelayRecommendationPolicy() UpstreamRelayRecommendationPolic
 	}
 }
 
+func defaultUpstreamRelayMonitoringPolicy() UpstreamRelayMonitoringPolicy {
+	return withMonitoringPolicyDerivedFreshness(UpstreamRelayMonitoringPolicy{
+		AutoSyncEnabled:             false,
+		SyncIntervalMinutes:         upstreamRelayDefaultSyncInterval,
+		AutoProbeEnabled:            false,
+		ProbeIntervalMinutes:        upstreamRelayDefaultProbeInterval,
+		FailureRetryIntervalMinutes: upstreamRelayDefaultRetryInterval,
+		SyncConcurrency:             upstreamRelayDefaultSyncLimit,
+		ProbeConcurrency:            upstreamRelayDefaultProbeLimit,
+	})
+}
+
+func monitoringPolicyOrDefault(policy *UpstreamRelayMonitoringPolicy) UpstreamRelayMonitoringPolicy {
+	if policy == nil {
+		return defaultUpstreamRelayMonitoringPolicy()
+	}
+	return *policy
+}
+
 func policyOrDefault(policy *UpstreamRelayRecommendationPolicy) UpstreamRelayRecommendationPolicy {
 	if policy == nil {
 		return defaultUpstreamRelayRecommendationPolicy()
 	}
 	return *policy
+}
+
+func normalizeUpstreamRelayMonitoringPolicy(input UpstreamRelayMonitoringPolicy) (UpstreamRelayMonitoringPolicy, error) {
+	defaults := defaultUpstreamRelayMonitoringPolicy()
+	policy := input
+	if policy.SyncIntervalMinutes == 0 {
+		policy.SyncIntervalMinutes = defaults.SyncIntervalMinutes
+	}
+	if policy.ProbeIntervalMinutes == 0 {
+		policy.ProbeIntervalMinutes = defaults.ProbeIntervalMinutes
+	}
+	if policy.FailureRetryIntervalMinutes == 0 {
+		policy.FailureRetryIntervalMinutes = defaults.FailureRetryIntervalMinutes
+	}
+	if policy.SyncConcurrency == 0 {
+		policy.SyncConcurrency = defaults.SyncConcurrency
+	}
+	if policy.ProbeConcurrency == 0 {
+		policy.ProbeConcurrency = defaults.ProbeConcurrency
+	}
+	if policy.SyncIntervalMinutes < 1 || policy.ProbeIntervalMinutes < 1 || policy.FailureRetryIntervalMinutes < 1 {
+		return UpstreamRelayMonitoringPolicy{}, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_MONITORING_INTERVAL", "monitoring intervals must be positive minutes")
+	}
+	if policy.SyncConcurrency < 1 || policy.ProbeConcurrency < 1 {
+		return UpstreamRelayMonitoringPolicy{}, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_MONITORING_CONCURRENCY", "monitoring concurrency limits must be positive")
+	}
+	return withMonitoringPolicyDerivedFreshness(policy), nil
+}
+
+func withMonitoringPolicyDerivedFreshness(policy UpstreamRelayMonitoringPolicy) UpstreamRelayMonitoringPolicy {
+	policy.SnapshotStaleAfterMinutes = policy.SyncIntervalMinutes * 3
+	policy.UsageDeltaStaleAfterMinutes = policy.SyncIntervalMinutes * 3
+	policy.ProbeStaleAfterMinutes = policy.ProbeIntervalMinutes * 3
+	return policy
 }
 
 func normalizeUpstreamRelayRecommendationPolicy(input UpstreamRelayRecommendationPolicy) (UpstreamRelayRecommendationPolicy, error) {
@@ -1301,8 +1762,23 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 	}
 	sortRelayCandidatesWithPolicy(eligible, normalized, now)
 	suggestions := make([]UpstreamRelayRecommendationSuggestion, 0, len(eligible))
-	for i, candidate := range eligible {
-		newPriority := normalized.PriorityStart + i*normalized.PriorityStep
+	seenAccounts := make(map[int64]struct{}, len(eligible))
+	uniqueRank := 0
+	for _, candidate := range eligible {
+		if _, ok := seenAccounts[candidate.AccountID]; ok {
+			exclusions = append(exclusions, buildUpstreamRelayExclusion(
+				candidate,
+				now,
+				normalized,
+				"duplicate_account_candidate",
+				"同一账号已有排序更优的候选生成 priority 建议，避免对同一账号生成多条 priority 建议",
+				nil,
+			))
+			continue
+		}
+		seenAccounts[candidate.AccountID] = struct{}{}
+		newPriority := normalized.PriorityStart + uniqueRank*normalized.PriorityStep
+		uniqueRank++
 		if candidate.CurrentPriority != nil && *candidate.CurrentPriority == newPriority {
 			expected := newPriority
 			exclusions = append(exclusions, buildUpstreamRelayExclusion(candidate, now, normalized, "priority_unchanged", fmt.Sprintf("当前 priority 已是策略建议值 %d，无需调整", newPriority), &expected))
@@ -1318,8 +1794,6 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 			AccountName:         candidate.AccountName,
 			UpstreamGroupID:     candidate.UpstreamGroupID,
 			UpstreamGroupName:   candidate.UpstreamGroupName,
-			TargetGroupID:       candidate.TargetGroupID,
-			TargetGroupName:     candidate.TargetGroupName,
 			OldPriority:         candidate.CurrentPriority,
 			NewPriority:         newPriority,
 			FinalRateMultiplier: rate,
@@ -1384,8 +1858,6 @@ func buildUpstreamRelayExclusion(candidate UpstreamRelayCandidate, now time.Time
 		AccountName:         candidate.AccountName,
 		UpstreamGroupID:     candidate.UpstreamGroupID,
 		UpstreamGroupName:   candidate.UpstreamGroupName,
-		TargetGroupID:       candidate.TargetGroupID,
-		TargetGroupName:     candidate.TargetGroupName,
 		OldPriority:         candidate.CurrentPriority,
 		ExpectedPriority:    expectedPriority,
 		FinalRateMultiplier: ratePtr,
@@ -1635,6 +2107,106 @@ type upstreamRelayUsagePageItem struct {
 	TotalTokens int64
 }
 
+type upstreamRelayAPIKeyPageItem struct {
+	ID   int64
+	Name string
+	Key  string
+}
+
+func maskUpstreamRelayAPIKeyForDisplay(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if strings.Contains(key, "***") {
+		return key
+	}
+	runes := []rune(key)
+	if len(runes) <= 8 {
+		return "***"
+	}
+	head := 4
+	tail := 4
+	if strings.HasPrefix(key, "sk-") && len(runes) > 10 {
+		head = 6
+	}
+	if len(runes) <= head+tail {
+		return string(runes[:head]) + "***"
+	}
+	return string(runes[:head]) + "***" + string(runes[len(runes)-tail:])
+}
+
+func sanitizeUpstreamRelayCandidateAPIKeyDisplays(items []UpstreamRelayCandidate) {
+	for i := range items {
+		sanitizeUpstreamRelayCandidateAPIKeyDisplay(&items[i])
+	}
+}
+
+func sanitizeUpstreamRelayCandidateAPIKeyDisplay(candidate *UpstreamRelayCandidate) {
+	if candidate == nil {
+		return
+	}
+	candidate.UpstreamAPIKeyMasked = maskUpstreamRelayAPIKeyForDisplay(candidate.UpstreamAPIKeyMasked)
+}
+
+func parseUpstreamAPIKeyPage(body []byte) ([]upstreamRelayAPIKeyPageItem, int, error) {
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, 0, fmt.Errorf("parse upstream api keys page: %w", err)
+	}
+	root, _ := raw.(map[string]any)
+	if root == nil {
+		return nil, 0, fmt.Errorf("upstream api keys response is not an object")
+	}
+	if data, ok := root["data"].(map[string]any); ok {
+		root = data
+	}
+	pages := int(relayFloat(firstPresent(root, "pages", "total_pages"), 1))
+	rawItems := extractRelayArray(root)
+	out := make([]upstreamRelayAPIKeyPageItem, 0, len(rawItems))
+	for _, rawItem := range rawItems {
+		m, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := relayInt64(m["id"])
+		name := strings.TrimSpace(relayString(firstPresent(m, "name", "key_name", "label")))
+		key := strings.TrimSpace(relayString(m["key"]))
+		if id <= 0 || (key == "" && name == "") {
+			continue
+		}
+		out = append(out, upstreamRelayAPIKeyPageItem{ID: id, Name: name, Key: key})
+	}
+	return out, pages, nil
+}
+
+func parseUpstreamUsageStats(body []byte) (UpstreamRelayGroupTodayUsage, error) {
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return UpstreamRelayGroupTodayUsage{}, fmt.Errorf("parse upstream usage stats: %w", err)
+	}
+	root, _ := raw.(map[string]any)
+	if root == nil {
+		return UpstreamRelayGroupTodayUsage{}, fmt.Errorf("upstream usage stats response is not an object")
+	}
+	if data, ok := root["data"].(map[string]any); ok {
+		root = data
+	}
+	actualCost, ok := relayFloatOK(firstPresent(root, "total_actual_cost", "actual_cost"))
+	if !ok {
+		return UpstreamRelayGroupTodayUsage{}, fmt.Errorf("upstream usage stats missing total_actual_cost")
+	}
+	totalTokens, ok := relayInt64OK(firstPresent(root, "total_tokens"))
+	if !ok {
+		inputTokens := relayInt64(firstPresent(root, "total_input_tokens", "input_tokens"))
+		outputTokens := relayInt64(firstPresent(root, "total_output_tokens", "output_tokens"))
+		cacheCreationTokens := relayInt64(firstPresent(root, "total_cache_creation_tokens", "cache_creation_tokens"))
+		cacheReadTokens := relayInt64(firstPresent(root, "total_cache_read_tokens", "cache_read_tokens"))
+		totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
+	}
+	return UpstreamRelayGroupTodayUsage{ActualCost: actualCost, TotalTokens: totalTokens}, nil
+}
+
 func parseUpstreamUsagePage(body []byte) ([]upstreamRelayUsagePageItem, int, error) {
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -1688,10 +2260,7 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUsageSnapshotForAccount(ctx c
 	if account == nil {
 		return nil, fmt.Errorf("account not found")
 	}
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if apiKey == "" && account.IsOpenAI() {
-		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
-	}
+	apiKey := upstreamRelayAPIKeyFromAccount(account)
 	if apiKey == "" {
 		return nil, fmt.Errorf("bound account has no usable api key")
 	}
@@ -1946,6 +2515,11 @@ func relayInt64OK(value any) (int64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func relayInt64(value any) int64 {
+	out, _ := relayInt64OK(value)
+	return out
 }
 
 func normalizeBearerToken(raw string) string {

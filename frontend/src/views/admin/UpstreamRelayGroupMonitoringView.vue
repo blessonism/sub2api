@@ -24,6 +24,10 @@
             <Icon name="refresh" size="sm" />
             {{ tM('refresh') }}
           </button>
+          <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="refreshingMetrics || activeConnectors.length === 0" @click="() => refreshMetricsForAllConnectors()">
+            <Icon name="refresh" size="sm" />
+            {{ refreshingMetrics ? tM('refreshingMetrics') : tM('refreshMetrics') }}
+          </button>
           <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="generating" @click="generateRun">
             <Icon name="chart" size="sm" />
             {{ generating ? tM('generating') : tM('generateSuggestions') }}
@@ -35,7 +39,7 @@
         {{ error }}
       </div>
 
-      <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <button
           v-for="item in overviewCards"
           :key="item.key"
@@ -44,7 +48,7 @@
           @click="activeSection = item.section"
         >
           <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ item.label }}</div>
-          <div class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.value }}</div>
+          <div class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-white" :data-testid="`overview-card-value-${item.key}`">{{ item.value }}</div>
           <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ item.hint }}</div>
         </button>
       </section>
@@ -55,11 +59,18 @@
             v-for="section in sections"
             :key="section.key"
             type="button"
-            class="rounded-t-lg px-4 py-2 text-sm font-medium transition"
+            class="inline-flex items-center gap-2 rounded-t-lg px-4 py-2 text-sm font-medium transition"
             :class="activeSection === section.key ? 'border-b-2 border-primary-500 text-primary-600 dark:text-primary-300' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
             @click="activeSection = section.key"
           >
-            {{ section.label }}
+            <span>{{ section.label }}</span>
+            <span
+              v-if="section.badge !== undefined"
+              class="inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-4 tabular-nums"
+              :class="activeSection === section.key ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-200' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'"
+            >
+              {{ section.badge }}
+            </span>
           </button>
         </div>
         <div class="flex flex-wrap gap-2 pb-3 lg:pb-2">
@@ -74,6 +85,10 @@
           <button v-if="activeSection === 'connectors'" class="btn btn-primary inline-flex items-center gap-2" type="button" @click="openCreateConnector">
             <Icon name="plus" size="sm" />
             {{ tM('connectors.newConnector') }}
+          </button>
+          <button v-if="activeSection === 'monitoring'" class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="savingMonitoringPolicy" @click="saveMonitoringPolicy">
+            <Icon name="save" size="sm" />
+            {{ savingMonitoringPolicy ? tM('monitoring.saving') : tM('monitoring.save') }}
           </button>
           <button v-if="activeSection === 'policy'" class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="previewLoading" @click="previewPolicy">
             <Icon name="chart" size="sm" />
@@ -123,7 +138,7 @@
                 </td>
                 <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                   <div>{{ candidate.connector_name || `Connector #${candidate.connector_id}` }}</div>
-                  <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ candidateUpstreamGroupLabel(candidate) }} → {{ candidateTargetGroupLabel(candidate) }}</div>
+                  <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ candidateMappingLabel(candidate) }}</div>
                   <div class="mt-0.5 font-mono text-gray-400 dark:text-gray-500">{{ candidate.upstream_group_id }}</div>
                 </td>
                 <td class="px-4 py-3 text-right">
@@ -132,7 +147,6 @@
                 </td>
                 <td class="px-4 py-3 text-right">
                   <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateRateLabel(candidate) }}</div>
-                  <div class="mt-1 flex justify-end"><RateSourceTag :source="candidateRateSourceKey(candidate)" /></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
@@ -184,7 +198,15 @@
           <LoadingSpinner />
         </div>
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[1120px] text-sm">
+          <table class="w-full min-w-[1120px] table-fixed text-sm">
+            <colgroup>
+              <col class="w-[26%]" />
+              <col class="w-[12%]" />
+              <col class="w-[20%]" />
+              <col class="w-[16%]" />
+              <col class="w-[13%]" />
+              <col class="w-[13%]" />
+            </colgroup>
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="px-4 py-3 text-left">{{ tM('connectors.colName') }}</th>
@@ -196,10 +218,24 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="connector in connectors" :key="connector.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+              <template v-for="connector in connectors" :key="connector.id">
+              <tr class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
                 <td class="px-4 py-3">
-                  <div class="font-medium text-gray-900 dark:text-white">{{ connector.name }}</div>
-                  <div class="mt-1 max-w-[360px] truncate text-xs text-gray-500 dark:text-gray-400">{{ connector.base_url }}</div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition hover:border-primary-200 hover:text-primary-600 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-800 dark:hover:text-primary-300"
+                      :aria-expanded="isConnectorExpanded(connector.id)"
+                      :aria-label="isConnectorExpanded(connector.id) ? tM('connectors.collapseGroups') : tM('connectors.expandGroups')"
+                      @click="toggleConnectorExpanded(connector.id)"
+                    >
+                      <Icon :name="isConnectorExpanded(connector.id) ? 'chevronDown' : 'chevronRight'" size="sm" />
+                    </button>
+                    <div class="min-w-0">
+                      <div class="font-medium text-gray-900 dark:text-white">{{ connector.name }}</div>
+                      <div class="mt-1 max-w-[360px] truncate text-xs text-gray-500 dark:text-gray-400">{{ connector.base_url }}</div>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-4 py-3">
                   <span :class="statusClass(connector.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
@@ -218,22 +254,63 @@
                 </td>
                 <td class="px-4 py-3 text-right">
                   <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatAccountBalance(connector.upstream_account_balance) }}</div>
-                  <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ accountBalanceCheckedLabel(connector, 'connectors') }}</div>
+                  <div class="mt-1 whitespace-normal break-words text-xs leading-4 text-gray-400 dark:text-gray-500">{{ accountBalanceCheckedLabel(connector, 'connectors') }}</div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="flex flex-nowrap justify-end gap-2">
+                  <div class="flex flex-wrap justify-end gap-2">
                     <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" @click="editConnector(connector)">{{ tM('connectors.edit') }}</button>
-                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="syncingId === connector.id || refreshingMetricsId === connector.id" @click="sync(connector)">
+                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="syncingId === connector.id || refreshingMetrics" @click="sync(connector)">
                       {{ syncingId === connector.id ? tM('connectors.syncing') : tM('connectors.syncAction') }}
-                    </button>
-                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="syncingId === connector.id || refreshingMetricsId === connector.id" @click="refreshMetrics(connector)">
-                      {{ refreshingMetricsId === connector.id ? tM('connectors.refreshingMetrics') : tM('connectors.refreshMetrics') }}
                     </button>
                     <button class="btn btn-secondary whitespace-nowrap px-3 py-1 text-xs" type="button" @click="openSnapshotDialog(connector)">{{ tM('connectors.snapshots') }}</button>
                     <button class="btn btn-danger whitespace-nowrap px-2 py-1 text-xs" type="button" @click="removeConnector(connector)">{{ tM('connectors.delete') }}</button>
                   </div>
                 </td>
               </tr>
+              <tr class="bg-gray-50/70 dark:bg-dark-800/50">
+                <td colspan="6" class="p-0">
+                  <div
+                    class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+                    :class="isConnectorExpanded(connector.id) ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'"
+                    :aria-hidden="!isConnectorExpanded(connector.id)"
+                  >
+                    <div class="overflow-hidden">
+                      <div class="px-4 py-3">
+                        <div
+                          v-if="connectorGroupItems(connector).length > 0"
+                          data-testid="connector-group-expansion"
+                          class="grid gap-1.5"
+                        >
+                          <div
+                            v-for="candidate in connectorGroupItems(connector)"
+                            :key="candidate.id"
+                            data-testid="connector-group-item"
+                            class="grid gap-1 rounded border border-gray-100 bg-white px-2.5 py-1.5 text-xs leading-5 dark:border-dark-700 dark:bg-dark-900 md:grid-cols-[minmax(140px,1.8fr)_minmax(88px,0.7fr)_minmax(64px,0.55fr)_minmax(120px,0.9fr)_minmax(72px,0.65fr)] md:items-center"
+                          >
+                            <div class="min-w-0">
+                              <div class="truncate font-medium text-gray-900 dark:text-white">{{ candidateUpstreamGroupLabel(candidate) }}</div>
+                              <div class="truncate font-mono text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidate.upstream_group_id }}</div>
+                            </div>
+                            <div>
+                              <span :class="candidateHealthClass(candidate)" class="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium leading-4">{{ candidateHealthLabel(candidate) }}</span>
+                            </div>
+                            <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateRateLabel(candidate) }}</div>
+                            <div class="min-w-0 text-right md:text-left">
+                              <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateTodayUsageCostLabel(candidate) }}</div>
+                              <div class="truncate text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidateTodayUsageCompactMetaLabel(candidate) }}</div>
+                            </div>
+                            <div class="tabular-nums text-gray-700 dark:text-gray-200">Priority {{ candidate.current_priority ?? '-' }}</div>
+                          </div>
+                        </div>
+                        <div v-else class="rounded-md border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
+                          {{ tM('connectors.noGroups') }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              </template>
               <tr v-if="connectors.length === 0">
                 <td colspan="6" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">{{ tM('connectors.empty') }}</td>
               </tr>
@@ -376,6 +453,99 @@
         </div>
       </section>
 
+      <section v-if="activeSection === 'monitoring'" class="space-y-4">
+        <div class="card overflow-hidden">
+          <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ tM('monitoring.title') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.description') }}</p>
+            </div>
+            <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.updatedAt', { time: formatDate(monitoringPolicyForm.updated_at) }) }}</span>
+          </div>
+          <div class="grid gap-4 p-4 lg:grid-cols-4">
+            <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+              <input v-model="monitoringPolicyForm.auto_sync_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+              {{ tM('monitoring.autoSyncEnabled') }}
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.syncInterval') }}</span>
+              <input v-model.number="monitoringPolicyForm.sync_interval_minutes" class="input w-full" type="number" min="1" />
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+              <input v-model="monitoringPolicyForm.auto_probe_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+              {{ tM('monitoring.autoProbeEnabled') }}
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.probeInterval') }}</span>
+              <input v-model.number="monitoringPolicyForm.probe_interval_minutes" class="input w-full" type="number" min="1" />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.failureRetryInterval') }}</span>
+              <input v-model.number="monitoringPolicyForm.failure_retry_interval_minutes" class="input w-full" type="number" min="1" />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.syncConcurrency') }}</span>
+              <input v-model.number="monitoringPolicyForm.sync_concurrency" class="input w-full" type="number" min="1" />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.probeConcurrency') }}</span>
+              <input v-model.number="monitoringPolicyForm.probe_concurrency" class="input w-full" type="number" min="1" />
+            </label>
+          </div>
+          <div class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
+            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ tM('monitoring.derivedTitle') }}</div>
+            <div class="mt-2 grid gap-3 text-sm text-gray-600 dark:text-gray-300 md:grid-cols-3">
+              <div>{{ tM('monitoring.snapshotStaleDerived', { interval: normalizedMonitoringSyncInterval, stale: monitoringSnapshotStaleAfterMinutes }) }}</div>
+              <div>{{ tM('monitoring.usageStaleDerived', { interval: normalizedMonitoringSyncInterval, stale: monitoringUsageDeltaStaleAfterMinutes }) }}</div>
+              <div>{{ tM('monitoring.probeStaleDerived', { interval: normalizedMonitoringProbeInterval, stale: monitoringProbeStaleAfterMinutes }) }}</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+            <div class="text-sm text-gray-500 dark:text-gray-400">
+              <span v-if="monitoringPolicySavedAt">{{ tM('monitoring.savedAt', { time: formatDate(monitoringPolicySavedAt) }) }}</span>
+              <span v-else>{{ tM('monitoring.saveHint') }}</span>
+            </div>
+            <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="savingMonitoringPolicy" @click="saveMonitoringPolicy">
+              <Icon name="save" size="sm" />
+              {{ savingMonitoringPolicy ? tM('monitoring.saving') : tM('monitoring.save') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="card overflow-hidden">
+          <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+            <h3 class="font-semibold text-gray-900 dark:text-white">{{ tM('monitoring.manualActionsTitle') }}</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.manualActionsDescription') }}</p>
+          </div>
+          <div class="grid gap-3 p-4 md:grid-cols-2">
+            <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="bulkSyncing || connectors.length === 0" @click="syncAllConnectors">
+              <Icon name="refresh" size="sm" />
+              {{ bulkSyncing ? tM('monitoring.syncAllRunning') : tM('monitoring.syncAll') }}
+            </button>
+            <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="bulkProbing || enabledCandidateCount === 0" @click="probeAllCandidates">
+              <Icon name="play" size="sm" />
+              {{ bulkProbing ? tM('monitoring.probeAllRunning') : tM('monitoring.probeAll') }}
+            </button>
+          </div>
+          <div v-if="bulkOperationResult" class="border-t border-gray-100 px-4 py-3 text-sm dark:border-dark-700">
+            <div class="font-medium text-gray-900 dark:text-white">
+              {{ tM(`monitoring.${bulkOperationResult.kind}ResultTitle`) }}
+              <span class="ml-2 text-gray-500 dark:text-gray-400">{{ formatDate(bulkOperationResult.updatedAt) }}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-3 text-gray-600 dark:text-gray-300">
+              <span>{{ tM('monitoring.resultTotal', { n: bulkOperationResult.result.total }) }}</span>
+              <span class="text-emerald-600 dark:text-emerald-300">{{ tM('monitoring.resultSuccess', { n: bulkOperationResult.result.success }) }}</span>
+              <span :class="bulkOperationResult.result.failed > 0 ? 'text-red-600 dark:text-red-300' : ''">{{ tM('monitoring.resultFailed', { n: bulkOperationResult.result.failed }) }}</span>
+            </div>
+            <ul v-if="bulkFailedItems.length > 0" class="mt-3 space-y-1 text-xs text-red-600 dark:text-red-300">
+              <li v-for="item in bulkFailedItems" :key="bulkOperationItemKey(item)">
+                {{ bulkOperationItemLabel(item) }}: {{ item.error_reason || tM('monitoring.unknownFailure') }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <section v-if="activeSection === 'policy'" class="space-y-4">
         <div class="card overflow-hidden">
           <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
@@ -386,18 +556,6 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('policy.updatedAt', { time: formatDate(policyForm.updated_at) }) }}</span>
           </div>
           <div class="grid gap-4 p-4 lg:grid-cols-4">
-            <label class="block space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('policy.snapshotFreshness') }}</span>
-              <input v-model.number="policyForm.snapshot_freshness_minutes" class="input w-full" type="number" min="1" />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('policy.usageFreshness') }}</span>
-              <input v-model.number="policyForm.usage_delta_freshness_minutes" class="input w-full" type="number" min="1" />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('policy.probeFreshness') }}</span>
-              <input v-model.number="policyForm.probe_freshness_minutes" class="input w-full" type="number" min="1" />
-            </label>
             <label class="block space-y-1">
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('policy.minSuccessRate') }}</span>
               <input v-model.number="policyMinSuccessRatePercent" class="input w-full" type="number" min="0" max="100" step="1" />
@@ -425,6 +583,14 @@
               <select v-for="(_, index) in policyForm.sort_fields" :key="index" v-model="policyForm.sort_fields[index]" class="input w-full">
                 <option v-for="option in sortFieldOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
               </select>
+            </div>
+          </div>
+          <div class="border-t border-gray-100 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:text-gray-300">
+            <div class="font-medium text-gray-900 dark:text-white">{{ tM('policy.derivedFreshnessTitle') }}</div>
+            <div class="mt-2 grid gap-3 md:grid-cols-3">
+              <div>{{ tM('policy.derivedSnapshotFreshness', { minutes: monitoringSnapshotStaleAfterMinutes }) }}</div>
+              <div>{{ tM('policy.derivedUsageFreshness', { minutes: monitoringUsageDeltaStaleAfterMinutes }) }}</div>
+              <div>{{ tM('policy.derivedProbeFreshness', { minutes: monitoringProbeStaleAfterMinutes }) }}</div>
             </div>
           </div>
         </div>
@@ -457,7 +623,7 @@
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
-                  <th class="px-4 py-3 text-left">{{ tM('applyDialog.colTargetGroup') }}</th>
+                  <th class="px-4 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
                   <th class="px-4 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
                   <th class="px-4 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ tM('policy.colReason') }}</th>
@@ -466,7 +632,7 @@
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                 <tr v-for="suggestion in policyPreview.suggestions" :key="suggestion.candidate_id">
                   <td class="px-4 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
-                  <td class="px-4 py-3">{{ suggestionTargetGroupLabel(suggestion) }}</td>
+                  <td class="px-4 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
                   <td class="px-4 py-3 text-right">{{ suggestion.old_priority ?? '-' }} → {{ suggestion.new_priority }}</td>
                   <td class="px-4 py-3 text-right">{{ formatRate(suggestion.final_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ suggestion.reason }}</td>
@@ -496,7 +662,7 @@
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                 <tr v-for="item in policyPreview.exclusions" :key="item.candidate_id">
                   <td class="px-4 py-3">#{{ item.account_id }} {{ item.account_name || '-' }}</td>
-                  <td class="px-4 py-3">{{ item.upstream_group_name || item.upstream_group_id }} → {{ item.target_group_name || `Group #${item.target_group_id}` }}</td>
+                  <td class="px-4 py-3">{{ suggestionMappingLabel(item) }}</td>
                   <td class="px-4 py-3 text-right">{{ formatNullableRate(item.final_rate_multiplier) }}</td>
                   <td class="px-4 py-3">
                     <div class="font-medium text-gray-900 dark:text-white">{{ exclusionReasonLabel(item.reason_code) }}</div>
@@ -599,23 +765,23 @@
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelAccount') }}</span>
         <select v-model.number="candidateForm.account_id" class="input w-full">
           <option :value="0">{{ tM('candidateForm.placeholderSelect') }}</option>
-          <option v-for="account in accounts" :key="account.id" :value="account.id">#{{ account.id }} {{ account.name }} · {{ account.platform }}</option>
+          <option v-for="account in accounts" :key="account.id" :value="account.id">{{ accountOptionLabel(account) }}</option>
         </select>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamGroupId') }}</span>
         <input v-model.trim="candidateForm.upstream_group_id" class="input w-full" type="text" />
       </label>
-      <div v-if="duplicateCandidate" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-        已存在相同连接器、账号和上游 Group ID 的候选 #{{ duplicateCandidate.id }}，目标分组为 {{ candidateTargetGroupLabel(duplicateCandidate) }}。当前仅提示，不阻断保存。
-      </div>
       <label class="block space-y-1">
-        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelTargetGroup') }}</span>
-        <select v-model.number="candidateForm.target_group_id" class="input w-full">
-          <option :value="0">{{ tM('candidateForm.placeholderSelect') }}</option>
-          <option v-for="group in groups" :key="group.id" :value="group.id">{{ adminGroupOptionLabel(group) }}</option>
+        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamApiKey') }}</span>
+        <select v-model.number="candidateForm.upstream_api_key_id" class="input w-full" :disabled="!candidateForm.connector_id || loadingConnectorAPIKeys" @change="syncSelectedCandidateAPIKey">
+          <option :value="null">{{ loadingConnectorAPIKeys ? tM('candidateForm.loadingApiKeys') : tM('candidateForm.placeholderApiKey') }}</option>
+          <option v-for="apiKey in connectorAPIKeys" :key="apiKey.id" :value="apiKey.id">{{ apiKeyOptionLabel(apiKey) }}</option>
         </select>
       </label>
+      <div v-if="duplicateCandidate" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+        {{ tM('candidateForm.duplicateAccountBinding', { id: duplicateCandidate.id }) }}
+      </div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelProbeModel') }}</span>
@@ -704,7 +870,7 @@
           <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
             <tr>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
-              <th class="px-3 py-3 text-left">{{ tM('applyDialog.colTargetGroup') }}</th>
+              <th class="px-3 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
               <th class="px-3 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
               <th class="px-3 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colConfidence') }}</th>
@@ -714,7 +880,7 @@
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-for="suggestion in applyRun?.suggestions || []" :key="suggestion.id || suggestion.candidate_id">
               <td class="px-3 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
-              <td class="px-3 py-3">{{ suggestionTargetGroupLabel(suggestion) }}</td>
+              <td class="px-3 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
               <td class="px-3 py-3 text-right">
                 <div class="inline-flex items-center gap-1 tabular-nums">
                   <span class="text-gray-400 dark:text-gray-500">{{ suggestion.old_priority ?? '-' }}</span>
@@ -724,7 +890,7 @@
               </td>
               <td class="px-3 py-3 text-right">
                 <div class="tabular-nums">{{ formatRate(suggestion.final_rate_multiplier) }}</div>
-                <div class="mt-1 flex justify-end"><RateSourceTag :source="suggestion.rate_source" /></div>
+                <div class="mt-1 flex justify-end"><RateSourceTag :source="suggestion.rate_source" :show-tip="false" /></div>
               </td>
               <td class="px-3 py-3">
                 <span :class="confidenceClass(suggestion.confidence)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ confidenceLabel(suggestion.confidence) }}</span>
@@ -791,12 +957,17 @@ import HealthRateBar from '@/components/admin/upstreamRelay/HealthRateBar.vue'
 import RateSourceTag from '@/components/admin/upstreamRelay/RateSourceTag.vue'
 import CandidateHealthDialog from '@/components/admin/upstreamRelay/CandidateHealthDialog.vue'
 import accountsAPI from '@/api/admin/accounts'
-import groupsAPI from '@/api/admin/groups'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import upstreamRelayAPI, {
   type UpstreamRelayCandidate,
   type UpstreamRelayConnector,
+  type UpstreamRelayAPIKeyOption,
+  type UpstreamRelayBulkOperationItem,
+  type UpstreamRelayBulkOperationResult,
   type UpstreamRelayGroupRateSnapshot,
   type UpstreamRelayGroupRateSnapshotChange,
+  type UpstreamRelayMonitoringPolicy,
+  type UpstreamRelayMonitoringPolicyInput,
   type UpstreamRelayProbeProtocol,
   type UpstreamRelayRecommendationPolicy,
   type UpstreamRelayRecommendationPreview,
@@ -805,25 +976,27 @@ import upstreamRelayAPI, {
   type UpstreamRelayRecommendationSortField,
   type UpstreamRelaySnapshotChangeType
 } from '@/api/admin/upstreamRelayGroupMonitors'
-import type { Account, AdminGroup } from '@/types'
+import type { Account } from '@/types'
 
-type SectionKey = 'candidates' | 'connectors' | 'snapshotChanges' | 'recommendations' | 'policy'
-type RateSourceKey = 'login_user_group_rates' | 'login_available_groups' | 'usage_cost_delta' | 'none' | string
+type SectionKey = 'candidates' | 'connectors' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
+type BulkOperationKind = 'sync' | 'probe'
 
 const loading = ref(false)
 const error = ref('')
 const connectors = ref<UpstreamRelayConnector[]>([])
 const snapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
+const overviewSnapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
 const snapshotChanges = ref<UpstreamRelayGroupRateSnapshotChange[]>([])
 const candidates = ref<UpstreamRelayCandidate[]>([])
 const recommendationRuns = ref<UpstreamRelayRecommendationRun[]>([])
 const accounts = ref<Account[]>([])
-const groups = ref<AdminGroup[]>([])
+const connectorAPIKeys = ref<UpstreamRelayAPIKeyOption[]>([])
 const selectedConnectorId = ref(0)
 const syncingId = ref<number | null>(null)
-const refreshingMetricsId = ref<number | null>(null)
+const refreshingMetrics = ref(false)
 const probingId = ref<number | null>(null)
 const togglingCandidateId = ref<number | null>(null)
+const bulkSyncing = ref(false)
 const bulkProbing = ref(false)
 const generating = ref(false)
 const applying = ref(false)
@@ -831,6 +1004,8 @@ const snapshotLoading = ref(false)
 const snapshotChangesLoading = ref(false)
 const savingConnector = ref(false)
 const savingCandidate = ref(false)
+const loadingConnectorAPIKeys = ref(false)
+const savingMonitoringPolicy = ref(false)
 const savingPolicy = ref(false)
 const previewLoading = ref(false)
 const applyDialogOpen = ref(false)
@@ -838,6 +1013,8 @@ const applyRun = ref<UpstreamRelayRecommendationRun | null>(null)
 const policyPreview = ref<UpstreamRelayRecommendationPreview | null>(null)
 const policyPreviewLastUpdatedAt = ref<string | null>(null)
 const policyPreviewResultRef = ref<HTMLElement | null>(null)
+const monitoringPolicySavedAt = ref<string | null>(null)
+const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
 const activeSection = ref<SectionKey>('candidates')
 const connectorDialogOpen = ref(false)
 const candidateDialogOpen = ref(false)
@@ -850,6 +1027,7 @@ const pendingDeleteCandidate = ref<UpstreamRelayCandidate | null>(null)
 const pendingDeleteRecommendationRun = ref<UpstreamRelayRecommendationRun | null>(null)
 const deletingRecommendationRunId = ref<number | null>(null)
 const candidateSourceSnapshot = ref<UpstreamRelayGroupRateSnapshot | null>(null)
+const expandedConnectorIds = ref<Set<number>>(new Set())
 const snapshotChangeConnectorId = ref(0)
 const snapshotChangeType = ref<UpstreamRelaySnapshotChangeType | ''>('')
 const snapshotChangeSearch = ref('')
@@ -886,9 +1064,11 @@ const candidateForm = reactive({
   connector_id: 0,
   account_id: 0,
   upstream_group_id: '',
+  upstream_api_key_id: null as number | null,
+  upstream_api_key_name: '',
+  upstream_api_key_masked: '',
   probe_model: '',
   probe_protocol: 'chat_completions' as 'chat_completions' | 'responses',
-  target_group_id: 0,
   enabled: true,
   notes: ''
 })
@@ -903,6 +1083,19 @@ const policyForm = reactive<UpstreamRelayRecommendationPolicy>({
   priority_start: 10,
   priority_step: 10,
   sort_fields: [...DEFAULT_POLICY_SORT_FIELDS]
+})
+
+const monitoringPolicyForm = reactive<UpstreamRelayMonitoringPolicy>({
+  auto_sync_enabled: false,
+  sync_interval_minutes: 60,
+  auto_probe_enabled: false,
+  probe_interval_minutes: 30,
+  failure_retry_interval_minutes: 10,
+  sync_concurrency: 2,
+  probe_concurrency: 5,
+  snapshot_stale_after_minutes: 180,
+  usage_delta_stale_after_minutes: 180,
+  probe_stale_after_minutes: 90
 })
 
 const activeConnectors = computed(() => connectors.value.filter((item) => item.status === 'active'))
@@ -928,14 +1121,51 @@ const duplicateCandidate = computed(() => {
       && item.upstream_group_id.trim() === upstreamGroupId
   }) || null
 })
+const selectedCandidateAPIKey = computed(() => {
+  const id = Number(candidateForm.upstream_api_key_id || 0)
+  if (!id) return null
+  return connectorAPIKeys.value.find((item) => item.id === id) || null
+})
+const candidateCurrentAPIKeyOption = computed<UpstreamRelayAPIKeyOption | null>(() => {
+  const id = Number(candidateForm.upstream_api_key_id || 0)
+  if (!id) return null
+  return {
+    id,
+    name: candidateForm.upstream_api_key_name || `Key #${id}`,
+    masked_key: candidateForm.upstream_api_key_masked || undefined
+  }
+})
 
-const sections = computed((): Array<{ key: SectionKey; label: string }> => [
+const sections = computed((): Array<{ key: SectionKey; label: string; badge?: number }> => [
   { key: 'candidates', label: tM('tabs.candidates') },
   { key: 'connectors', label: tM('tabs.connectors') },
   { key: 'snapshotChanges', label: tM('tabs.snapshotChanges') },
-  { key: 'recommendations', label: tM('tabs.recommendations') },
+  { key: 'monitoring', label: tM('tabs.monitoring') },
+  { key: 'recommendations', label: tM('tabs.recommendations'), badge: pendingSuggestionCount.value },
   { key: 'policy', label: tM('tabs.policy') }
 ])
+
+watch(() => candidateForm.connector_id, async (connectorId, previousConnectorId) => {
+  if (!candidateDialogOpen.value) return
+  if (connectorId !== previousConnectorId) {
+    candidateForm.upstream_api_key_id = null
+    candidateForm.upstream_api_key_name = ''
+    candidateForm.upstream_api_key_masked = ''
+  }
+  await loadConnectorAPIKeys(connectorId)
+})
+
+const normalizedMonitoringSyncInterval = computed(() => positiveInteger(monitoringPolicyForm.sync_interval_minutes, 1))
+const normalizedMonitoringProbeInterval = computed(() => positiveInteger(monitoringPolicyForm.probe_interval_minutes, 1))
+const monitoringSnapshotStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
+const monitoringUsageDeltaStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
+const monitoringProbeStaleAfterMinutes = computed(() => normalizedMonitoringProbeInterval.value * 3)
+
+const bulkFailedItems = computed(() => {
+  return (bulkOperationResult.value?.result.items || [])
+    .filter((item) => !item.success)
+    .slice(0, 5)
+})
 
 const policyMinSuccessRatePercent = computed({
   get: () => Math.round((policyForm.min_success_rate || 0) * 100),
@@ -970,6 +1200,19 @@ const snapshotChangeGroups = computed(() => {
   return Array.from(groups.values())
 })
 
+const overviewTodayUsage = computed(() => {
+  return overviewSnapshots.value.reduce(
+    (total, snapshot) => {
+      const tokens = Number(snapshot.today_total_tokens ?? 0)
+      const cost = Number(snapshot.today_actual_cost ?? 0)
+      if (Number.isFinite(tokens)) total.tokens += tokens
+      if (Number.isFinite(cost)) total.cost += cost
+      return total
+    },
+    { tokens: 0, cost: 0 }
+  )
+})
+
 const overviewStats = computed(() => {
   const needsReauth = connectors.value.filter((item) => item.status === 'needs_reauth').length
   const latestSyncedAt = connectors.value
@@ -979,49 +1222,39 @@ const overviewStats = computed(() => {
 
   return {
     activeConnectors: activeConnectors.value.length,
+    totalConnectors: connectors.value.length,
     needsReauth,
     enabledCandidates: enabledCandidateCount.value,
+    totalCandidates: candidates.value.length,
     failedCandidates: failedCandidateCount.value,
     pendingSuggestions: pendingSuggestionCount.value,
+    todayUsageTokens: formatUsageTokenMillions(overviewTodayUsage.value.tokens),
+    todayUsageCost: formatUsageCost(overviewTodayUsage.value.cost),
     latestSyncedAt: formatDate(latestSyncedAt)
   }
 })
 
 const overviewCards = computed(() => [
   {
-    key: 'active-connectors',
-    label: tM('overview.activeConnectors'),
-    value: overviewStats.value.activeConnectors,
-    hint: tM('overview.totalLoaded', { n: connectors.value.length }),
+    key: 'connector-status',
+    label: tM('overview.connectorStatus'),
+    value: `${overviewStats.value.activeConnectors} / ${overviewStats.value.totalConnectors}`,
+    hint: tM('overview.connectorStatusHint', { n: overviewStats.value.needsReauth }),
     section: 'connectors' as SectionKey
   },
   {
-    key: 'reauth-connectors',
-    label: tM('overview.needsReauth'),
-    value: overviewStats.value.needsReauth,
-    hint: tM('overview.needsReauthHint'),
+    key: 'candidate-status',
+    label: tM('overview.candidateStatus'),
+    value: `${overviewStats.value.enabledCandidates} / ${overviewStats.value.totalCandidates}`,
+    hint: tM('overview.candidateStatusHint', { n: overviewStats.value.failedCandidates }),
+    section: 'candidates' as SectionKey
+  },
+  {
+    key: 'today-usage',
+    label: tM('overview.todayUsage'),
+    value: overviewStats.value.todayUsageCost,
+    hint: tM('overview.todayUsageHint', { tokens: overviewStats.value.todayUsageTokens }),
     section: 'connectors' as SectionKey
-  },
-  {
-    key: 'enabled-candidates',
-    label: tM('overview.enabledCandidates'),
-    value: overviewStats.value.enabledCandidates,
-    hint: tM('overview.totalLoaded', { n: candidates.value.length }),
-    section: 'candidates' as SectionKey
-  },
-  {
-    key: 'failed-candidates',
-    label: tM('overview.failedCandidates'),
-    value: overviewStats.value.failedCandidates,
-    hint: tM('overview.failedCandidatesHint'),
-    section: 'candidates' as SectionKey
-  },
-  {
-    key: 'pending-suggestions',
-    label: tM('overview.pendingSuggestions'),
-    value: overviewStats.value.pendingSuggestions,
-    hint: tM('overview.pendingSuggestionsHint'),
-    section: 'recommendations' as SectionKey
   },
   {
     key: 'latest-sync',
@@ -1096,23 +1329,24 @@ async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [connectorRes, candidateRes, runRes, accountRes, groupRes, policy] = await Promise.all([
+    const [connectorRes, candidateRes, runRes, accountRes, policy, monitoringPolicy] = await Promise.all([
       upstreamRelayAPI.listConnectors({ page: 1, page_size: 100 }),
       upstreamRelayAPI.listCandidates({ page: 1, page_size: 100 }),
       upstreamRelayAPI.listRecommendationRuns({ page: 1, page_size: 20 }),
       accountsAPI.list(1, 200, { status: 'active' }),
-      groupsAPI.getAllIncludingInactive(),
-      upstreamRelayAPI.getRecommendationPolicy()
+      upstreamRelayAPI.getRecommendationPolicy(),
+      upstreamRelayAPI.getMonitoringPolicy()
     ])
     connectors.value = connectorRes.items
     candidates.value = candidateRes.items
     recommendationRuns.value = runRes.items
     accounts.value = accountRes.items
-    groups.value = groupRes
     assignPolicyForm(policy)
+    assignMonitoringPolicyForm(monitoringPolicy)
     if (!selectedConnectorId.value && connectors.value.length > 0) {
       selectedConnectorId.value = connectors.value[0].id
     }
+    await loadOverviewSnapshots(connectors.value)
     lastLoadedAt.value = new Date().toISOString()
     await hydrateLatestPendingRun()
   } catch (err) {
@@ -1138,7 +1372,11 @@ function startAutoRefresh() {
     autoRefreshCountdown.value--
     if (autoRefreshCountdown.value <= 0) {
       autoRefreshCountdown.value = autoRefreshInterval.value
-      refreshCandidatesSilent()
+      if (activeConnectors.value.length > 0) {
+        refreshMetricsForAllConnectors({ silent: true })
+      } else {
+        refreshCandidatesSilent()
+      }
     }
   }, 1000)
 }
@@ -1154,6 +1392,45 @@ async function loadSnapshots() {
     return
   }
   snapshots.value = await upstreamRelayAPI.listSnapshots(selectedConnectorId.value)
+}
+
+async function loadConnectorAPIKeys(connectorId: number) {
+  connectorAPIKeys.value = []
+  if (!connectorId) return
+  loadingConnectorAPIKeys.value = true
+  try {
+    connectorAPIKeys.value = mergeCurrentCandidateAPIKeyOption(await upstreamRelayAPI.listConnectorAPIKeys(connectorId))
+    syncSelectedCandidateAPIKey()
+  } catch (err) {
+    connectorAPIKeys.value = mergeCurrentCandidateAPIKeyOption([])
+    error.value = extractApiErrorMessage(err, tM('errors.loadApiKeysFailed'))
+  } finally {
+    loadingConnectorAPIKeys.value = false
+  }
+}
+
+function mergeCurrentCandidateAPIKeyOption(items: UpstreamRelayAPIKeyOption[]) {
+  const current = candidateCurrentAPIKeyOption.value
+  if (!current || items.some((item) => item.id === current.id)) {
+    return items
+  }
+  return [current, ...items]
+}
+
+async function loadOverviewSnapshots(connectorItems: UpstreamRelayConnector[]) {
+  if (connectorItems.length === 0) {
+    overviewSnapshots.value = []
+    return
+  }
+  const snapshotGroups = await Promise.all(connectorItems.map((connector) => upstreamRelayAPI.listSnapshots(connector.id)))
+  overviewSnapshots.value = snapshotGroups.flat()
+}
+
+function replaceOverviewSnapshotsForConnector(connectorId: number, nextSnapshots: UpstreamRelayGroupRateSnapshot[]) {
+  overviewSnapshots.value = [
+    ...overviewSnapshots.value.filter((snapshot) => snapshot.connector_id !== connectorId),
+    ...nextSnapshots
+  ]
 }
 
 async function loadSnapshotChanges() {
@@ -1262,6 +1539,7 @@ async function sync(connector: UpstreamRelayConnector) {
   error.value = ''
   try {
     snapshots.value = await upstreamRelayAPI.syncConnector(connector.id)
+    replaceOverviewSnapshotsForConnector(connector.id, snapshots.value)
     selectedConnectorId.value = connector.id
     snapshotConnector.value = connector
     snapshotDialogOpen.value = true
@@ -1278,28 +1556,68 @@ async function sync(connector: UpstreamRelayConnector) {
   }
 }
 
-async function refreshMetrics(connector: UpstreamRelayConnector) {
-  refreshingMetricsId.value = connector.id
+async function syncAllConnectors() {
+  if (connectors.value.length === 0) return
+  bulkSyncing.value = true
   error.value = ''
   try {
-    const result = await upstreamRelayAPI.refreshConnectorMetrics(connector.id)
-    connectors.value = connectors.value.map((item) => (item.id === connector.id ? result.connector : item))
-    if (selectedConnectorId.value === connector.id) {
-      snapshots.value = result.snapshots
-      snapshotConnector.value = result.connector
+    const result = await upstreamRelayAPI.syncAllConnectors()
+    bulkOperationResult.value = { kind: 'sync', result, updatedAt: new Date().toISOString() }
+    await loadAll()
+    if (activeSection.value === 'snapshotChanges') {
+      await loadSnapshotChanges()
     }
-    await refreshCandidatesSilent()
-    if (result.snapshots.length === 0) {
-      error.value = tM('errors.metricsRefreshNeedsFullSync')
-    } else if (!result.usage_available) {
-      error.value = result.usage_error
-        ? tM('errors.metricsUsageUnavailableWithReason', { reason: result.usage_error })
-        : tM('errors.metricsUsageUnavailable')
+    if (result.failed > 0) {
+      error.value = tM('errors.syncAllPartialFailed', { count: result.failed })
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+    error.value = err instanceof Error ? err.message : tM('errors.syncAllFailed')
   } finally {
-    refreshingMetricsId.value = null
+    bulkSyncing.value = false
+  }
+}
+
+async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Promise<string | null> {
+  const result = await upstreamRelayAPI.refreshConnectorMetrics(connector.id)
+  connectors.value = connectors.value.map((item) => (item.id === connector.id ? result.connector : item))
+  replaceOverviewSnapshotsForConnector(connector.id, result.snapshots)
+  if (selectedConnectorId.value === connector.id) {
+    snapshots.value = result.snapshots
+    snapshotConnector.value = result.connector
+  }
+  if (result.snapshots.length === 0) {
+    return tM('errors.metricsRefreshNeedsFullSync')
+  }
+  if (!result.usage_available) {
+    return result.usage_error
+      ? tM('errors.metricsUsageUnavailableWithReason', { reason: result.usage_error })
+      : tM('errors.metricsUsageUnavailable')
+  }
+  return null
+}
+
+async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}) {
+  if (refreshingMetrics.value) return
+  const targets = activeConnectors.value.length > 0 ? activeConnectors.value : connectors.value
+  if (targets.length === 0) return
+  refreshingMetrics.value = true
+  if (!options.silent) error.value = ''
+  const warnings: string[] = []
+  try {
+    for (const connector of targets) {
+      const warning = await refreshMetricsForConnector(connector)
+      if (warning) warnings.push(warning)
+    }
+    await refreshCandidatesSilent()
+    if (warnings.length > 0 && !options.silent) {
+      error.value = warnings[0]
+    }
+  } catch (err) {
+    if (!options.silent) {
+      error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+    }
+  } finally {
+    refreshingMetrics.value = false
   }
 }
 
@@ -1330,13 +1648,27 @@ async function confirmDeleteConnector() {
 }
 
 function resetCandidateForm() {
-  Object.assign(candidateForm, { id: 0, connector_id: activeConnectors.value[0]?.id || 0, account_id: 0, upstream_group_id: '', probe_model: '', probe_protocol: 'chat_completions', target_group_id: 0, enabled: true, notes: '' })
+  Object.assign(candidateForm, {
+    id: 0,
+    connector_id: activeConnectors.value[0]?.id || 0,
+    account_id: 0,
+    upstream_group_id: '',
+    upstream_api_key_id: null,
+    upstream_api_key_name: '',
+    upstream_api_key_masked: '',
+    probe_model: '',
+    probe_protocol: 'chat_completions',
+    enabled: true,
+    notes: ''
+  })
+  connectorAPIKeys.value = []
   candidateSourceSnapshot.value = null
 }
 
-function openCreateCandidate() {
+async function openCreateCandidate() {
   resetCandidateForm()
   candidateDialogOpen.value = true
+  await loadConnectorAPIKeys(candidateForm.connector_id)
 }
 
 function closeCandidateDialog() {
@@ -1344,39 +1676,45 @@ function closeCandidateDialog() {
   resetCandidateForm()
 }
 
-function editCandidate(candidate: UpstreamRelayCandidate) {
+async function editCandidate(candidate: UpstreamRelayCandidate) {
   candidateSourceSnapshot.value = null
   Object.assign(candidateForm, {
     id: candidate.id,
     connector_id: candidate.connector_id,
     account_id: candidate.account_id,
     upstream_group_id: candidate.upstream_group_id,
+    upstream_api_key_id: candidate.upstream_api_key_id || null,
+    upstream_api_key_name: candidate.upstream_api_key_name || '',
+    upstream_api_key_masked: candidate.upstream_api_key_masked || '',
     probe_model: candidate.probe_model,
     probe_protocol: candidate.probe_protocol,
-    target_group_id: candidate.target_group_id,
     enabled: candidate.enabled,
     notes: candidate.notes || ''
   })
   candidateDialogOpen.value = true
+  await loadConnectorAPIKeys(candidate.connector_id)
 }
 
-function reuseCandidateAccount(candidate: UpstreamRelayCandidate) {
+async function reuseCandidateAccount(candidate: UpstreamRelayCandidate) {
   candidateSourceSnapshot.value = null
   Object.assign(candidateForm, {
     id: 0,
     connector_id: candidate.connector_id,
     account_id: candidate.account_id,
     upstream_group_id: '',
+    upstream_api_key_id: null,
+    upstream_api_key_name: '',
+    upstream_api_key_masked: '',
     probe_model: candidate.probe_model,
     probe_protocol: candidate.probe_protocol,
-    target_group_id: 0,
     enabled: candidate.enabled,
     notes: ''
   })
   candidateDialogOpen.value = true
+  await loadConnectorAPIKeys(candidate.connector_id)
 }
 
-function createCandidateFromSnapshot(snapshot: UpstreamRelayGroupRateSnapshot) {
+async function createCandidateFromSnapshot(snapshot: UpstreamRelayGroupRateSnapshot) {
   const defaults = candidateDefaultsForConnector(snapshot.connector_id || selectedConnectorId.value)
   candidateSourceSnapshot.value = snapshot
   activeSection.value = 'candidates'
@@ -1385,14 +1723,17 @@ function createCandidateFromSnapshot(snapshot: UpstreamRelayGroupRateSnapshot) {
     connector_id: snapshot.connector_id || selectedConnectorId.value,
     account_id: 0,
     upstream_group_id: snapshot.upstream_group_id,
+    upstream_api_key_id: null,
+    upstream_api_key_name: '',
+    upstream_api_key_masked: '',
     probe_model: defaults.probe_model,
     probe_protocol: defaults.probe_protocol,
-    target_group_id: 0,
     enabled: true,
     notes: ''
   })
   snapshotDialogOpen.value = false
   candidateDialogOpen.value = true
+  await loadConnectorAPIKeys(candidateForm.connector_id)
 }
 
 function candidateDefaultsForConnector(connectorId: number): { probe_model: string; probe_protocol: UpstreamRelayProbeProtocol } {
@@ -1407,13 +1748,16 @@ async function submitCandidate(options: { continueAdding?: boolean } = {}) {
   savingCandidate.value = true
   error.value = ''
   try {
+    syncSelectedCandidateAPIKey()
     const payload = {
       connector_id: candidateForm.connector_id,
       account_id: candidateForm.account_id,
       upstream_group_id: candidateForm.upstream_group_id,
+      upstream_api_key_id: candidateForm.upstream_api_key_id || null,
+      upstream_api_key_name: candidateForm.upstream_api_key_name,
+      upstream_api_key_masked: candidateForm.upstream_api_key_masked,
       probe_model: candidateForm.probe_model,
       probe_protocol: candidateForm.probe_protocol,
-      target_group_id: candidateForm.target_group_id,
       enabled: candidateForm.enabled,
       notes: candidateForm.notes
     }
@@ -1425,7 +1769,9 @@ async function submitCandidate(options: { continueAdding?: boolean } = {}) {
     if (options.continueAdding && !candidateForm.id) {
       Object.assign(candidateForm, {
         upstream_group_id: '',
-        target_group_id: 0,
+        upstream_api_key_id: null,
+        upstream_api_key_name: '',
+        upstream_api_key_masked: '',
         notes: ''
       })
       candidateSourceSnapshot.value = null
@@ -1435,9 +1781,18 @@ async function submitCandidate(options: { continueAdding?: boolean } = {}) {
     }
     await loadAll()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.saveCandidateFailed')
+    error.value = extractApiErrorMessage(err, tM('errors.saveCandidateFailed'))
   } finally {
     savingCandidate.value = false
+  }
+}
+
+function syncSelectedCandidateAPIKey() {
+  const selected = selectedCandidateAPIKey.value
+  candidateForm.upstream_api_key_name = selected?.name || ''
+  candidateForm.upstream_api_key_masked = selected?.masked_key || ''
+  if (!selected) {
+    candidateForm.upstream_api_key_id = null
   }
 }
 
@@ -1460,27 +1815,18 @@ async function probe(candidate: UpstreamRelayCandidate) {
 }
 
 async function probeAllCandidates() {
-  const enabledCandidates = candidates.value.filter((candidate) => candidate.enabled)
-  if (enabledCandidates.length === 0) return
+  if (enabledCandidateCount.value === 0) return
   bulkProbing.value = true
   error.value = ''
-  let failedCount = 0
   try {
-    for (const candidate of enabledCandidates) {
-      probingId.value = candidate.id
-      try {
-        const result = await upstreamRelayAPI.probeCandidate(candidate.id)
-        candidates.value = candidates.value.map((item) =>
-          item.id === candidate.id ? { ...item, latest_probe: result } : item
-        )
-      } catch {
-        failedCount++
-      }
-    }
+    const result = await upstreamRelayAPI.probeAllCandidates()
+    bulkOperationResult.value = { kind: 'probe', result, updatedAt: new Date().toISOString() }
     await refreshCandidatesSilent()
-    if (failedCount > 0) {
-      error.value = tM('errors.probeAllPartialFailed', { count: failedCount })
+    if (result.failed > 0) {
+      error.value = tM('errors.probeAllPartialFailed', { count: result.failed })
     }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.probeAllFailed')
   } finally {
     probingId.value = null
     bulkProbing.value = false
@@ -1497,7 +1843,6 @@ async function toggleCandidateEnabled(candidate: UpstreamRelayCandidate) {
       upstream_group_id: candidate.upstream_group_id,
       probe_model: candidate.probe_model,
       probe_protocol: candidate.probe_protocol,
-      target_group_id: candidate.target_group_id,
       enabled: !candidate.enabled,
       notes: candidate.notes || ''
     })
@@ -1550,6 +1895,16 @@ function assignPolicyForm(policy: UpstreamRelayRecommendationPolicy) {
   })
 }
 
+function assignMonitoringPolicyForm(policy: UpstreamRelayMonitoringPolicy) {
+  Object.assign(monitoringPolicyForm, policy)
+}
+
+function positiveInteger(value: unknown, fallback: number) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 1) return fallback
+  return Math.floor(numeric)
+}
+
 function normalizePolicySortFields(fields: UpstreamRelayRecommendationSortField[] = []): UpstreamRelayRecommendationSortField[] {
   const allowed = new Set<UpstreamRelayRecommendationSortField>(DEFAULT_POLICY_SORT_FIELDS)
   const normalized: UpstreamRelayRecommendationSortField[] = []
@@ -1569,15 +1924,41 @@ function normalizePolicySortFields(fields: UpstreamRelayRecommendationSortField[
 function normalizedPolicyPayload(): UpstreamRelayRecommendationPolicy {
   const sortFields = normalizePolicySortFields(policyForm.sort_fields)
   return {
-    snapshot_freshness_minutes: Number(policyForm.snapshot_freshness_minutes) || 1,
-    usage_delta_freshness_minutes: Number(policyForm.usage_delta_freshness_minutes) || 1,
-    probe_freshness_minutes: Number(policyForm.probe_freshness_minutes) || 1,
+    snapshot_freshness_minutes: monitoringSnapshotStaleAfterMinutes.value,
+    usage_delta_freshness_minutes: monitoringUsageDeltaStaleAfterMinutes.value,
+    probe_freshness_minutes: monitoringProbeStaleAfterMinutes.value,
     min_success_rate: Math.max(0, Math.min(1, Number(policyForm.min_success_rate) || 0)),
-    min_sample_size: Number(policyForm.min_sample_size) || 1,
+    min_sample_size: positiveInteger(policyForm.min_sample_size, 1),
     exclude_consecutive_failures: Boolean(policyForm.exclude_consecutive_failures),
     priority_start: Number(policyForm.priority_start) || 0,
-    priority_step: Number(policyForm.priority_step) || 1,
+    priority_step: positiveInteger(policyForm.priority_step, 1),
     sort_fields: sortFields
+  }
+}
+
+function normalizedMonitoringPolicyPayload(): UpstreamRelayMonitoringPolicyInput {
+  return {
+    auto_sync_enabled: Boolean(monitoringPolicyForm.auto_sync_enabled),
+    sync_interval_minutes: normalizedMonitoringSyncInterval.value,
+    auto_probe_enabled: Boolean(monitoringPolicyForm.auto_probe_enabled),
+    probe_interval_minutes: normalizedMonitoringProbeInterval.value,
+    failure_retry_interval_minutes: positiveInteger(monitoringPolicyForm.failure_retry_interval_minutes, 1),
+    sync_concurrency: positiveInteger(monitoringPolicyForm.sync_concurrency, 1),
+    probe_concurrency: positiveInteger(monitoringPolicyForm.probe_concurrency, 1)
+  }
+}
+
+async function saveMonitoringPolicy() {
+  savingMonitoringPolicy.value = true
+  error.value = ''
+  try {
+    const saved = await upstreamRelayAPI.updateMonitoringPolicy(normalizedMonitoringPolicyPayload())
+    assignMonitoringPolicyForm(saved)
+    monitoringPolicySavedAt.value = saved.updated_at || new Date().toISOString()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.saveMonitoringPolicyFailed')
+  } finally {
+    savingMonitoringPolicy.value = false
   }
 }
 
@@ -1701,6 +2082,18 @@ function formatNullableRate(value?: number | null) {
   return value === null || value === undefined ? '-' : formatRate(value)
 }
 
+function bulkOperationItemKey(item: UpstreamRelayBulkOperationItem) {
+  return `${item.id}-${item.connector_id ?? 'connector'}-${item.candidate_id ?? 'candidate'}`
+}
+
+function bulkOperationItemLabel(item: UpstreamRelayBulkOperationItem) {
+  if (item.connector_name) return item.connector_name
+  if (item.account_name) return `#${item.account_id || item.id} ${item.account_name}`
+  if (item.candidate_id) return `Candidate #${item.candidate_id}`
+  if (item.connector_id) return `Connector #${item.connector_id}`
+  return `#${item.id}`
+}
+
 function snapshotChangeTypeLabel(change: UpstreamRelayGroupRateSnapshotChange) {
   if (change.change_type === 'added') return tM('snapshotChanges.typeAdded')
   if (change.change_type === 'removed') return tM('snapshotChanges.typeRemoved')
@@ -1756,8 +2149,9 @@ function formatUsageCost(value?: number | null) {
   }).format(value)}`
 }
 
-function formatUsageTokens(value?: number | null) {
-  return new Intl.NumberFormat('en-US').format(value ?? 0)
+function formatUsageTokenMillions(value?: number | null) {
+  const numeric = Number(value ?? 0)
+  return `${(Number.isFinite(numeric) ? numeric / 1_000_000 : 0).toFixed(2)}M`
 }
 
 function candidateTodayUsageCostLabel(candidate: UpstreamRelayCandidate) {
@@ -1769,12 +2163,15 @@ function candidateTodayUsageMetaLabel(candidate: UpstreamRelayCandidate) {
   if (candidate.today_actual_cost === null || candidate.today_actual_cost === undefined || candidate.today_total_tokens === null || candidate.today_total_tokens === undefined) {
     return tM('candidates.todayUsageSourceMissing')
   }
-  const tokens = formatUsageTokens(candidate.today_total_tokens)
-  if (!candidate.today_usage_checked_at) return tM('candidates.todayUsageTokens', { tokens })
-  return tM('candidates.todayUsageTokensSynced', {
-    tokens,
-    time: formatDate(candidate.today_usage_checked_at)
-  })
+  const tokens = formatUsageTokenMillions(candidate.today_total_tokens)
+  return tM('candidates.todayUsageTokens', { tokens })
+}
+
+function candidateTodayUsageCompactMetaLabel(candidate: UpstreamRelayCandidate) {
+  if (candidate.today_total_tokens === null || candidate.today_total_tokens === undefined) {
+    return tM('candidates.todayUsageSourceMissing')
+  }
+  return formatUsageTokenMillions(candidate.today_total_tokens)
 }
 
 function accountBalanceCheckedLabel(
@@ -1792,12 +2189,6 @@ function candidateRateLabel(candidate: UpstreamRelayCandidate) {
     return formatRate(candidate.latest_snapshot.final_rate_multiplier)
   }
   return formatNullableRate(candidate.latest_usage_delta?.derived_rate_multiplier)
-}
-
-function candidateRateSourceKey(candidate: UpstreamRelayCandidate): RateSourceKey {
-  if (candidate.latest_snapshot?.source) return candidate.latest_snapshot.source
-  if (candidate.latest_usage_delta?.status === 'reliable') return 'usage_cost_delta'
-  return '无可用倍率'
 }
 
 function candidateHealthSeverity(candidate: UpstreamRelayCandidate) {
@@ -1829,16 +2220,43 @@ function candidatePendingSuggestion(candidate: UpstreamRelayCandidate) {
   return pendingSuggestionMap.value.get(candidate.id)
 }
 
+function isConnectorExpanded(connectorID: number) {
+  return expandedConnectorIds.value.has(connectorID)
+}
+
+function toggleConnectorExpanded(connectorID: number) {
+  const next = new Set(expandedConnectorIds.value)
+  if (next.has(connectorID)) next.delete(connectorID)
+  else next.add(connectorID)
+  expandedConnectorIds.value = next
+}
+
+function connectorGroupItems(connector: UpstreamRelayConnector) {
+  return candidates.value
+    .filter((candidate) => candidate.connector_id === connector.id)
+    .slice()
+    .sort((a, b) => {
+      const priorityA = a.current_priority ?? Number.MAX_SAFE_INTEGER
+      const priorityB = b.current_priority ?? Number.MAX_SAFE_INTEGER
+      if (priorityA !== priorityB) return priorityA - priorityB
+      return candidateUpstreamGroupLabel(a).localeCompare(candidateUpstreamGroupLabel(b))
+    })
+}
+
 function candidateUpstreamGroupLabel(candidate: UpstreamRelayCandidate) {
   return candidate.upstream_group_name || candidate.upstream_group_id
 }
 
-function candidateTargetGroupLabel(candidate: UpstreamRelayCandidate) {
-  return candidate.target_group_name || `Group #${candidate.target_group_id}`
+function candidateAccountLabel(candidate: Pick<UpstreamRelayCandidate, 'account_id' | 'account_name'>) {
+  return `#${candidate.account_id} ${candidate.account_name || '-'}`
 }
 
-function suggestionTargetGroupLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
-  return suggestion.target_group_name || `Group #${suggestion.target_group_id}`
+function candidateMappingLabel(candidate: UpstreamRelayCandidate) {
+  return `${candidateUpstreamGroupLabel(candidate)} → ${candidateAccountLabel(candidate)}`
+}
+
+function suggestionMappingLabel(suggestion: Pick<UpstreamRelayRecommendationSuggestion, 'account_id' | 'account_name' | 'upstream_group_id' | 'upstream_group_name'>) {
+  return `${suggestion.upstream_group_name || suggestion.upstream_group_id} → ${candidateAccountLabel(suggestion)}`
 }
 
 function exclusionReasonLabel(reasonCode: string) {
@@ -1846,8 +2264,13 @@ function exclusionReasonLabel(reasonCode: string) {
   return tM(`policy.reasonCodes.${key}`)
 }
 
-function adminGroupOptionLabel(group: AdminGroup) {
-  return group.platform ? `${group.name} · ${group.platform}` : group.name
+function accountOptionLabel(account: Account) {
+  return `#${account.id} ${account.name} · ${account.platform} · Priority ${account.priority}`
+}
+
+function apiKeyOptionLabel(apiKey: UpstreamRelayAPIKeyOption) {
+  const name = apiKey.name || `Key #${apiKey.id}`
+  return apiKey.masked_key ? `${name} · ${apiKey.masked_key}` : name
 }
 
 function priorityDeltaLabel(suggestion: UpstreamRelayRecommendationSuggestion) {

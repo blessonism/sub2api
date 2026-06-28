@@ -129,6 +129,10 @@ func (r *upstreamRelayHandlerRepo) UpdateSnapshotTodayUsage(_ context.Context, _
 	return nil
 }
 
+func (r *upstreamRelayHandlerRepo) ListCandidateUsageBindings(context.Context, int64) ([]service.UpstreamRelayCandidateUsageBinding, error) {
+	return nil, nil
+}
+
 func (r *upstreamRelayHandlerRepo) ListCandidates(context.Context, pagination.PaginationParams, service.UpstreamRelayCandidateListFilters) ([]service.UpstreamRelayCandidate, *pagination.PaginationResult, error) {
 	return nil, &pagination.PaginationResult{Total: 0, Page: 1, PageSize: 20, Pages: 1}, nil
 }
@@ -159,6 +163,15 @@ func (r *upstreamRelayHandlerRepo) InsertUsageDeltaSample(context.Context, servi
 
 func (r *upstreamRelayHandlerRepo) ListRecommendationInputs(context.Context) ([]service.UpstreamRelayCandidate, error) {
 	return nil, nil
+}
+
+func (r *upstreamRelayHandlerRepo) GetMonitoringPolicy(context.Context) (*service.UpstreamRelayMonitoringPolicy, error) {
+	return nil, nil
+}
+
+func (r *upstreamRelayHandlerRepo) UpsertMonitoringPolicy(_ context.Context, policy service.UpstreamRelayMonitoringPolicy, operatorID int64) (*service.UpstreamRelayMonitoringPolicy, error) {
+	policy.UpdatedBy = operatorID
+	return &policy, nil
 }
 
 func (r *upstreamRelayHandlerRepo) GetRecommendationPolicy(context.Context) (*service.UpstreamRelayRecommendationPolicy, error) {

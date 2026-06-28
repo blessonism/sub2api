@@ -92,6 +92,15 @@ func (h *UpstreamRelayGroupMonitoringHandler) SyncConnector(c *gin.Context) {
 	response.Success(c, snapshots)
 }
 
+func (h *UpstreamRelayGroupMonitoringHandler) SyncAllConnectors(c *gin.Context) {
+	result, err := h.svc.SyncAllConnectors(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *UpstreamRelayGroupMonitoringHandler) RefreshConnectorMetrics(c *gin.Context) {
 	id, ok := parseRelayID(c, "id")
 	if !ok {
@@ -116,6 +125,19 @@ func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshots(c *gin.Context) {
 		return
 	}
 	response.Success(c, snapshots)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) ListConnectorAPIKeys(c *gin.Context) {
+	id, ok := parseRelayID(c, "id")
+	if !ok {
+		return
+	}
+	items, err := h.svc.ListConnectorAPIKeys(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
 }
 
 func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshotChanges(c *gin.Context) {
@@ -227,6 +249,43 @@ func (h *UpstreamRelayGroupMonitoringHandler) ProbeCandidate(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) ProbeAllCandidates(c *gin.Context) {
+	result, err := h.svc.ProbeAllCandidates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) GetMonitoringPolicy(c *gin.Context) {
+	policy, err := h.svc.GetMonitoringPolicy(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) UpdateMonitoringPolicy(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req service.UpstreamRelayMonitoringPolicy
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+	policy, err := h.svc.UpdateMonitoringPolicy(c.Request.Context(), req, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
 }
 
 func (h *UpstreamRelayGroupMonitoringHandler) GetRecommendationPolicy(c *gin.Context) {

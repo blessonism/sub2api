@@ -1,5 +1,5 @@
 <template>
-  <HelpTooltip v-if="tip" :content="tip">
+  <HelpTooltip v-if="showTip && tip" :content="tip">
     <span :class="cls" class="inline-flex cursor-default rounded-md px-2 py-1 text-xs font-medium">{{ label }}</span>
   </HelpTooltip>
   <span v-else :class="cls" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ label }}</span>
@@ -9,7 +9,9 @@
 import { computed } from 'vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
-const props = defineProps<{ source?: string | null }>()
+const props = withDefaults(defineProps<{ source?: string | null; showTip?: boolean }>(), {
+  showTip: true
+})
 
 const CONFIG: Record<string, { label: string; cls: string; tip: string }> = {
   login_user_group_rates: {
@@ -33,4 +35,5 @@ const entry = computed(() => (props.source ? CONFIG[props.source] : null))
 const label = computed(() => entry.value?.label ?? props.source ?? '-')
 const cls = computed(() => entry.value?.cls ?? 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300')
 const tip = computed(() => entry.value?.tip ?? '')
+const showTip = computed(() => props.showTip)
 </script>
