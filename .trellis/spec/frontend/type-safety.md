@@ -73,13 +73,17 @@ When updating `frontend/src/api/admin/upstreamRelayGroupMonitors.ts`:
 - Treat metrics refresh detail collections from backend Go slices, such as `usage_detail.missing_groups`, as nullable or optional at the API boundary; normalize them to arrays before calling `.length`, `.slice`, `.some`, or rendering loops.
 - Keep recommendation preview and persisted generation as separate methods: `previewRecommendations()` must call `/recommendations/preview`; `generateRecommendations()` must call `/recommendations`.
 - Normalize recommendation policy `sort_fields` before submit so duplicate fields are removed and missing default sort fields are appended.
+- When showing "auto monitoring running" state, read from the last loaded/saved monitoring policy snapshot, not the editable form, so unsaved checkbox changes are not presented as active backend runner state.
+- Add daily usage history through `listUsageHistory()`, targeting `/usage-history`, with `UpstreamRelayGroupUsageHistory` fields aligned to backend JSON: `usage_date`, `connector_id`, `connector_name`, `upstream_group_id`, `group_name`, `platform`, `actual_cost`, `total_tokens`, and `checked_at`.
+- Keep usage-history filters typed as query params: `start_date`, `end_date`, `connector_id`, `upstream_group_id`, `search`, `page`, and `page_size`.
 - Add zh/en i18n keys for every table column introduced in `UpstreamRelayGroupMonitoringView.vue`.
 
 Required checks:
 
 - `pnpm typecheck` passes.
 - A targeted key scan confirms every `tM('candidates.*')` and `tM('connectors.*')` key used by the view exists in both locale files.
-- API tests cover both preview and persisted generate endpoint paths, plus the connector metrics refresh endpoint path.
+- API tests cover both preview and persisted generate endpoint paths, the connector metrics refresh endpoint path, and the usage-history endpoint path.
+- View tests cover the usage-history tab loading/rendering path and required zh/en i18n keys.
 
 ---
 

@@ -265,6 +265,8 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 - Connector DTO: `UpstreamRelayConnector` may expose `upstream_account_balance` and `upstream_account_balance_checked_at`.
 - Candidate DTO: `UpstreamRelayCandidate` must expose nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at`, and must not expose connector account balance fields.
 - Candidate list SQL: read today's usage snapshot from `upstream_relay_group_rate_snapshots` by `connector_id = candidate.connector_id` and `upstream_group_id = candidate.upstream_group_id`; it must not aggregate `usage_logs` inline while listing candidates.
+- Usage history endpoint: `GET /api/v1/admin/upstream-relay-group-monitors/usage-history`.
+- Usage history table: `upstream_relay_group_usage_history` with one row per `usage_date + connector_id + upstream_group_id`.
 - Full connector sync may aggregate upstream real usage from the upstream Sub2API ordinary-user usage records endpoint (`GET /api/v1/usage`) using the connector's upstream login/session. Lightweight metrics refresh may refresh connector balance and candidate usage only when each candidate has an explicit upstream API key binding.
 - Lightweight metrics refresh endpoint: `POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh`.
 - Token usage expression: `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`.
@@ -280,6 +282,8 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 - When lightweight usage refresh succeeds, existing snapshots with no matching usage record for today should get zero usage; when usage refresh fails or a candidate lacks explicit upstream API key binding, preserve existing snapshot usage values and report a sanitized `usage_error`.
 - If no snapshot exists for a connector/group, lightweight refresh cannot create it; an admin must run one full sync first.
 - Missing, incomplete, unauthorized, or too-large upstream usage pagination during full sync must leave `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` null. Lightweight metrics refresh must preserve existing snapshot usage values when usage refresh is unavailable. Unknown usage must not be coerced to zero.
+- Successful usage refresh must upsert daily history for existing snapshots with known usage. A successful refresh with no usage for an existing snapshot records `actual_cost=0` and `total_tokens=0`; failed or unavailable usage refresh must not create zero history rows.
+- Same-day usage history refreshes must update the existing `usage_date + connector_id + upstream_group_id` row, not append per-refresh samples.
 - Frontend field names must stay aligned with backend JSON: `today_actual_cost`, `today_total_tokens`, `today_usage_checked_at`, `upstream_account_balance`, `upstream_account_balance_checked_at`, `upstream_api_key_id`, `upstream_api_key_name`, `upstream_api_key_masked`.
 
 #### 4. Validation & Error Matrix
@@ -289,12 +293,17 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 - Remote upstream profile failure during sync -> do not fail rate snapshot sync solely because balance refresh failed.
 - Lightweight metrics refresh account-scoped usage limitation -> return a successful refresh result when balance refresh succeeds, include a sanitized `usage_error`, and preserve candidate usage fields for that connector.
 - Lightweight metrics refresh on a connector with no snapshots -> balance may refresh, but candidate usage remains unavailable until a full sync creates snapshots.
+- Invalid usage history date format -> `400 UPSTREAM_RELAY_INVALID_USAGE_DATE`.
+- Usage history `start_date > end_date` -> `400 UPSTREAM_RELAY_INVALID_USAGE_DATE_RANGE`.
 
 #### 5. Good/Base/Bad Cases
 - Good: the connector tab shows `$12.34` synced at a timestamp for the upstream relay account.
 - Good: the candidate tab shows today's locally aggregated `actual_cost` and four-token total for `connector_id + upstream_group_id`.
 - Good: clicking "Refresh Usage / Balance" refreshes connector balance without changing group-rate snapshots, candidate usage, or producing rate-change history.
+- Good: refreshing the same connector twice on the same local date updates one usage-history row per group.
+- Base: a known group with no successful usage on a successful refresh stores zero in daily history.
 - Base: a candidate with unavailable upstream usage displays a clear not-synced state.
+- Bad: persisting a failed usage refresh as `actual_cost=0`, which makes unknown usage look like real zero usage.
 - Bad: returning `upstream_account_balance` from `UpstreamRelayCandidate`.
 - Bad: aggregating `usage_logs` directly in the candidate list query instead of refreshing snapshot fields first.
 - Bad: calling upstream admin dashboard APIs for candidate usage when only ordinary upstream user credentials are available.
@@ -309,8 +318,11 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 - Service test: incomplete usage records and pagination overflow clear today usage and report usage unavailable.
 - Repository scan test: nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` map to the candidate DTO in the correct scan order.
 - Repository test: lightweight today-usage update sets zero for existing snapshots absent from a successful upstream usage page, and sets null on unavailable usage.
+- Migration/repository test: usage history table has the daily connector/group unique key and upsert overwrites same-day rows.
+- Service test: successful usage refresh persists daily history, zero known usage persists as zero, and failed/unknown usage does not persist zero rows.
+- Handler/routes test: `GET /usage-history` is registered and validates date filters.
 - Frontend check: candidate API type excludes connector balance fields and includes today's usage fields; connector API type includes balance fields.
-- Frontend check: candidate table renders the usage column, connector table renders account balance, and connector row exposes a lightweight refresh button.
+- Frontend check: candidate table renders the usage column, connector table renders account balance, connector row exposes a lightweight refresh button, and usage-history tab calls `listUsageHistory()`.
 
 #### 7. Wrong vs Correct
 
@@ -340,6 +352,19 @@ Correct:
 SELECT s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at
 FROM upstream_relay_group_rate_snapshots s
 WHERE s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id
+```
+
+Wrong:
+```sql
+INSERT INTO upstream_relay_group_usage_history (usage_date, connector_id, upstream_group_id, actual_cost)
+VALUES ($1, $2, $3, 0) -- used after an unavailable usage refresh
+```
+
+Correct:
+```sql
+INSERT INTO upstream_relay_group_usage_history (...)
+VALUES (...)
+ON CONFLICT (usage_date, connector_id, upstream_group_id) DO UPDATE SET actual_cost=EXCLUDED.actual_cost
 ```
 
 ---
