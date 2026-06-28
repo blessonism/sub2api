@@ -47,6 +47,7 @@ func (r *upstreamRelayRepository) ListConnectors(ctx context.Context, params pag
 		SELECT id, name, base_url, auth_mode, COALESCE(bearer_token_encrypted, ''),
 		       COALESCE(refresh_token_encrypted, ''), COALESCE(login_email_encrypted, ''),
 		       COALESCE(cookie_encrypted, ''), COALESCE(user_agent_encrypted, ''),
+		       upstream_account_balance, upstream_account_balance_checked_at,
 		       status, credential_version, last_verified_at, last_synced_at, COALESCE(last_error, ''),
 		       COALESCE(created_by, 0), created_at, updated_at
 		FROM upstream_relay_connectors
@@ -70,6 +71,7 @@ func (r *upstreamRelayRepository) GetConnector(ctx context.Context, id int64) (*
 		SELECT id, name, base_url, auth_mode, COALESCE(bearer_token_encrypted, ''),
 		       COALESCE(refresh_token_encrypted, ''), COALESCE(login_email_encrypted, ''),
 		       COALESCE(cookie_encrypted, ''), COALESCE(user_agent_encrypted, ''),
+		       upstream_account_balance, upstream_account_balance_checked_at,
 		       status, credential_version, last_verified_at, last_synced_at, COALESCE(last_error, ''),
 		       COALESCE(created_by, 0), created_at, updated_at
 		FROM upstream_relay_connectors
@@ -152,29 +154,54 @@ func (r *upstreamRelayRepository) UpsertSnapshots(ctx context.Context, connector
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	previous, err := listRelaySnapshotsTx(ctx, tx, connectorID)
+	if err != nil {
+		return err
+	}
+	changes := buildRelaySnapshotChanges(connectorID, previous, snapshots)
+	for _, change := range changes {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO upstream_relay_group_rate_snapshot_changes (
+				connector_id, upstream_group_id, group_name, platform, change_type,
+				old_final_rate_multiplier, new_final_rate_multiplier,
+				old_status, new_status, source, changed_at
+			)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+		`, change.ConnectorID, change.UpstreamGroupID, change.GroupName, change.Platform, change.ChangeType,
+			nullableFloat64Value(change.OldFinalRateMultiplier), nullableFloat64Value(change.NewFinalRateMultiplier),
+			change.OldStatus, change.NewStatus, change.Source); err != nil {
+			return err
+		}
+	}
 	seenGroupIDs := make([]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		seenGroupIDs = append(seenGroupIDs, snapshot.UpstreamGroupID)
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO upstream_relay_group_rate_snapshots (
-				connector_id, upstream_group_id, name, platform, status,
-				default_rate_multiplier, override_rate_multiplier, final_rate_multiplier,
-				source, last_seen_at, created_at, updated_at
-			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
-			ON CONFLICT (connector_id, upstream_group_id) DO UPDATE SET
-				name=EXCLUDED.name,
-				platform=EXCLUDED.platform,
-				status=EXCLUDED.status,
-				default_rate_multiplier=EXCLUDED.default_rate_multiplier,
-				override_rate_multiplier=EXCLUDED.override_rate_multiplier,
-				final_rate_multiplier=EXCLUDED.final_rate_multiplier,
-				source=EXCLUDED.source,
-				last_seen_at=EXCLUDED.last_seen_at,
-				updated_at=NOW()
-		`, connectorID, snapshot.UpstreamGroupID, snapshot.Name, snapshot.Platform, snapshot.Status,
+				INSERT INTO upstream_relay_group_rate_snapshots (
+					connector_id, upstream_group_id, name, platform, status,
+					default_rate_multiplier, override_rate_multiplier, final_rate_multiplier,
+					today_actual_cost, today_total_tokens, today_usage_checked_at,
+					source, last_seen_at, created_at, updated_at
+				)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())
+				ON CONFLICT (connector_id, upstream_group_id) DO UPDATE SET
+					name=EXCLUDED.name,
+					platform=EXCLUDED.platform,
+					status=EXCLUDED.status,
+					default_rate_multiplier=EXCLUDED.default_rate_multiplier,
+					override_rate_multiplier=EXCLUDED.override_rate_multiplier,
+					final_rate_multiplier=EXCLUDED.final_rate_multiplier,
+					today_actual_cost=EXCLUDED.today_actual_cost,
+					today_total_tokens=EXCLUDED.today_total_tokens,
+					today_usage_checked_at=EXCLUDED.today_usage_checked_at,
+					source=EXCLUDED.source,
+					last_seen_at=EXCLUDED.last_seen_at,
+					updated_at=NOW()
+			`, connectorID, snapshot.UpstreamGroupID, snapshot.Name, snapshot.Platform, snapshot.Status,
 			snapshot.DefaultRateMultiplier, nullableFloat64Value(snapshot.OverrideRateMultiplier),
-			snapshot.FinalRateMultiplier, snapshot.Source, snapshot.LastSeenAt); err != nil {
+			snapshot.FinalRateMultiplier, nullableFloat64Value(snapshot.TodayActualCost),
+			nullableInt64Value(snapshot.TodayTotalTokens), snapshot.TodayUsageCheckedAt,
+			snapshot.Source, snapshot.LastSeenAt); err != nil {
 			return err
 		}
 	}
@@ -191,18 +218,68 @@ func (r *upstreamRelayRepository) UpsertSnapshots(ctx context.Context, connector
 
 func (r *upstreamRelayRepository) ListSnapshots(ctx context.Context, connectorID int64) ([]service.UpstreamRelayGroupRateSnapshot, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, connector_id, upstream_group_id, name, platform, status,
-		       default_rate_multiplier, override_rate_multiplier, final_rate_multiplier,
-		       source, last_seen_at, created_at, updated_at
-		FROM upstream_relay_group_rate_snapshots
-		WHERE connector_id = $1
-		ORDER BY platform ASC, name ASC, upstream_group_id ASC
+			SELECT id, connector_id, upstream_group_id, name, platform, status,
+			       default_rate_multiplier, override_rate_multiplier, final_rate_multiplier,
+			       today_actual_cost, today_total_tokens, today_usage_checked_at,
+			       source, last_seen_at, created_at, updated_at
+			FROM upstream_relay_group_rate_snapshots
+			WHERE connector_id = $1
+			ORDER BY platform ASC, name ASC, upstream_group_id ASC
 	`, connectorID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	return scanRelaySnapshots(rows)
+}
+
+func (r *upstreamRelayRepository) ListSnapshotChanges(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelaySnapshotChangeListFilters) ([]service.UpstreamRelayGroupRateSnapshotChange, *pagination.PaginationResult, error) {
+	page, pageSize := normalizePolicyPagination(params)
+	conditions := []string{"1=1"}
+	args := []any{}
+	if filters.ConnectorID > 0 {
+		args = append(args, filters.ConnectorID)
+		conditions = append(conditions, fmt.Sprintf("ch.connector_id = $%d", len(args)))
+	}
+	if filters.ChangeType != "" {
+		args = append(args, filters.ChangeType)
+		conditions = append(conditions, fmt.Sprintf("ch.change_type = $%d", len(args)))
+	}
+	if strings.TrimSpace(filters.Search) != "" {
+		args = append(args, "%"+strings.ToLower(strings.TrimSpace(filters.Search))+"%")
+		conditions = append(conditions, fmt.Sprintf("(LOWER(COALESCE(c.name, '')) LIKE $%d OR LOWER(ch.upstream_group_id) LIKE $%d OR LOWER(ch.group_name) LIKE $%d OR LOWER(ch.platform) LIKE $%d)", len(args), len(args), len(args), len(args)))
+	}
+	where := strings.Join(conditions, " AND ")
+	var total int64
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT COUNT(*)
+		FROM upstream_relay_group_rate_snapshot_changes ch
+		LEFT JOIN upstream_relay_connectors c ON c.id = ch.connector_id
+		WHERE `+where, args, &total); err != nil {
+		return nil, nil, err
+	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT ch.id, ch.connector_id, COALESCE(c.name, ''), ch.upstream_group_id,
+		       ch.group_name, ch.platform, ch.change_type,
+		       ch.old_final_rate_multiplier, ch.new_final_rate_multiplier,
+		       ch.old_status, ch.new_status, ch.source, ch.changed_at
+		FROM upstream_relay_group_rate_snapshot_changes ch
+		LEFT JOIN upstream_relay_connectors c ON c.id = ch.connector_id
+		WHERE `+where+`
+		ORDER BY ch.changed_at DESC, ch.id DESC
+		LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs))+`
+	`, queryArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items, err := scanRelaySnapshotChanges(rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, relayPage(total, page, pageSize), nil
 }
 
 func (r *upstreamRelayRepository) MarkConnectorSync(ctx context.Context, connectorID int64, status string, errMessage string) error {
@@ -214,6 +291,61 @@ func (r *upstreamRelayRepository) MarkConnectorSync(ctx context.Context, connect
 		WHERE id=$1 AND deleted_at IS NULL
 	`, connectorID, status, errMessage)
 	return err
+}
+
+func (r *upstreamRelayRepository) UpdateConnectorAccountBalance(ctx context.Context, connectorID int64, balance *float64, checkedAt *time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE upstream_relay_connectors
+		SET upstream_account_balance=$2,
+		    upstream_account_balance_checked_at=$3,
+		    updated_at=NOW()
+		WHERE id=$1 AND deleted_at IS NULL
+	`, connectorID, nullableFloat64Value(balance), checkedAt)
+	return err
+}
+
+func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if usageByGroup == nil || checkedAt == nil {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE upstream_relay_group_rate_snapshots
+			SET today_actual_cost=NULL,
+			    today_total_tokens=NULL,
+			    today_usage_checked_at=NULL,
+			    updated_at=NOW()
+			WHERE connector_id=$1
+		`, connectorID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE upstream_relay_group_rate_snapshots
+		SET today_actual_cost=0,
+		    today_total_tokens=0,
+		    today_usage_checked_at=$2,
+		    updated_at=NOW()
+		WHERE connector_id=$1
+	`, connectorID, checkedAt); err != nil {
+		return err
+	}
+	for groupID, usage := range usageByGroup {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE upstream_relay_group_rate_snapshots
+			SET today_actual_cost=$3,
+			    today_total_tokens=$4,
+			    today_usage_checked_at=$5,
+			    updated_at=NOW()
+			WHERE connector_id=$1 AND upstream_group_id=$2
+		`, connectorID, groupID, usage.ActualCost, usage.TotalTokens, checkedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *upstreamRelayRepository) ListCandidates(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayCandidateListFilters) ([]service.UpstreamRelayCandidate, *pagination.PaginationResult, error) {
@@ -406,6 +538,57 @@ func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) 
 	return items, nil
 }
 
+func (r *upstreamRelayRepository) GetRecommendationPolicy(ctx context.Context) (*service.UpstreamRelayRecommendationPolicy, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT snapshot_freshness_minutes, usage_delta_freshness_minutes, probe_freshness_minutes,
+		       min_success_rate, min_sample_size, exclude_consecutive_failures,
+		       priority_start, priority_step, sort_fields, COALESCE(updated_by, 0),
+		       created_at, updated_at
+		FROM upstream_relay_recommendation_policy
+		WHERE id = 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return nil, nil
+	}
+	policy, err := scanRelayRecommendationPolicy(rows)
+	if err != nil {
+		return nil, err
+	}
+	return &policy, rows.Err()
+}
+
+func (r *upstreamRelayRepository) UpsertRecommendationPolicy(ctx context.Context, policy service.UpstreamRelayRecommendationPolicy, operatorID int64) (*service.UpstreamRelayRecommendationPolicy, error) {
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO upstream_relay_recommendation_policy (
+			id, snapshot_freshness_minutes, usage_delta_freshness_minutes, probe_freshness_minutes,
+			min_success_rate, min_sample_size, exclude_consecutive_failures,
+			priority_start, priority_step, sort_fields, updated_by, created_at, updated_at
+		)
+		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			snapshot_freshness_minutes=EXCLUDED.snapshot_freshness_minutes,
+			usage_delta_freshness_minutes=EXCLUDED.usage_delta_freshness_minutes,
+			probe_freshness_minutes=EXCLUDED.probe_freshness_minutes,
+			min_success_rate=EXCLUDED.min_success_rate,
+			min_sample_size=EXCLUDED.min_sample_size,
+			exclude_consecutive_failures=EXCLUDED.exclude_consecutive_failures,
+			priority_start=EXCLUDED.priority_start,
+			priority_step=EXCLUDED.priority_step,
+			sort_fields=EXCLUDED.sort_fields,
+			updated_by=EXCLUDED.updated_by,
+			updated_at=NOW()
+	`, policy.SnapshotFreshnessMinutes, policy.UsageDeltaFreshnessMinutes, policy.ProbeFreshnessMinutes,
+		policy.MinSuccessRate, policy.MinSampleSize, policy.ExcludeConsecutiveFailures,
+		policy.PriorityStart, policy.PriorityStep, pq.Array(policy.SortFields), operatorID); err != nil {
+		return nil, err
+	}
+	return r.GetRecommendationPolicy(ctx)
+}
+
 func (r *upstreamRelayRepository) CreateRecommendationRun(ctx context.Context, run service.UpstreamRelayRecommendationRun, suggestions []service.UpstreamRelayRecommendationSuggestion) (*service.UpstreamRelayRecommendationRun, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -587,9 +770,41 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	return r.GetRecommendationRun(ctx, runID)
 }
 
+func (r *upstreamRelayRepository) DeleteRecommendationRun(ctx context.Context, runID int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var applied bool
+	if err := scanSingleRow(ctx, tx, `
+		SELECT applied FROM upstream_relay_recommendation_runs WHERE id=$1 FOR UPDATE
+	`, []any{runID}, &applied); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return service.ErrUpstreamRelayRunNotFound
+		}
+		return err
+	}
+	if applied {
+		return service.ErrUpstreamRelayAppliedRunDelete
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM upstream_relay_recommendation_suggestions WHERE run_id=$1
+	`, runID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM upstream_relay_recommendation_runs WHERE id=$1
+	`, runID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func relayCandidateSelect() string {
 	return `
 		SELECT c.id, c.connector_id, COALESCE(rc.name, ''), rc.status, c.account_id,
+		       s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at,
 		       COALESCE(a.name, ''), COALESCE(a.platform, ''), c.upstream_group_id,
 		       COALESCE(s.name, ''), c.probe_model, c.probe_protocol, c.target_group_id,
 		       COALESCE(g.name, ''), ag.priority, c.enabled, c.notes,
@@ -597,6 +812,7 @@ func relayCandidateSelect() string {
 		       pr.id, pr.success, pr.latency_ms, pr.http_status, COALESCE(pr.error_class, ''),
 		       COALESCE(pr.error_message, ''), pr.probed_at,
 		       s.id, s.default_rate_multiplier, s.override_rate_multiplier, s.final_rate_multiplier,
+		       s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at,
 		       COALESCE(s.platform, ''), COALESCE(s.status, ''), COALESCE(s.source, ''), s.last_seen_at
 		FROM upstream_relay_candidates c
 		JOIN upstream_relay_connectors rc ON rc.id = c.connector_id AND rc.deleted_at IS NULL
@@ -612,11 +828,18 @@ func scanRelayConnectors(rows *sql.Rows) ([]service.UpstreamRelayConnector, erro
 	items := []service.UpstreamRelayConnector{}
 	for rows.Next() {
 		var item service.UpstreamRelayConnector
+		var upstreamBalance sql.NullFloat64
+		var upstreamBalanceCheckedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.AuthMode, &item.BearerTokenEncrypted,
 			&item.RefreshTokenEncrypted, &item.LoginEmailEncrypted, &item.CookieEncrypted, &item.UserAgentEncrypted,
+			&upstreamBalance, &upstreamBalanceCheckedAt,
 			&item.Status, &item.CredentialVersion,
 			&item.LastVerifiedAt, &item.LastSyncedAt, &item.LastError, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
+		}
+		item.UpstreamAccountBalance = nullableFloat64Ptr(upstreamBalance)
+		if upstreamBalanceCheckedAt.Valid {
+			item.UpstreamAccountBalanceCheckedAt = &upstreamBalanceCheckedAt.Time
 		}
 		items = append(items, item)
 	}
@@ -628,12 +851,38 @@ func scanRelaySnapshots(rows *sql.Rows) ([]service.UpstreamRelayGroupRateSnapsho
 	for rows.Next() {
 		var item service.UpstreamRelayGroupRateSnapshot
 		var override sql.NullFloat64
+		var todayActualCost sql.NullFloat64
+		var todayTotalTokens sql.NullInt64
+		var todayUsageCheckedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.ConnectorID, &item.UpstreamGroupID, &item.Name, &item.Platform,
-			&item.Status, &item.DefaultRateMultiplier, &override, &item.FinalRateMultiplier, &item.Source,
-			&item.LastSeenAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.Status, &item.DefaultRateMultiplier, &override, &item.FinalRateMultiplier,
+			&todayActualCost, &todayTotalTokens, &todayUsageCheckedAt,
+			&item.Source, &item.LastSeenAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		item.OverrideRateMultiplier = nullableFloat64Ptr(override)
+		item.TodayActualCost = nullableFloat64Ptr(todayActualCost)
+		item.TodayTotalTokens = nullInt64Ptr(todayTotalTokens)
+		if todayUsageCheckedAt.Valid {
+			item.TodayUsageCheckedAt = &todayUsageCheckedAt.Time
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanRelaySnapshotChanges(rows *sql.Rows) ([]service.UpstreamRelayGroupRateSnapshotChange, error) {
+	items := []service.UpstreamRelayGroupRateSnapshotChange{}
+	for rows.Next() {
+		var item service.UpstreamRelayGroupRateSnapshotChange
+		var oldRate, newRate sql.NullFloat64
+		if err := rows.Scan(&item.ID, &item.ConnectorID, &item.ConnectorName, &item.UpstreamGroupID,
+			&item.GroupName, &item.Platform, &item.ChangeType, &oldRate, &newRate,
+			&item.OldStatus, &item.NewStatus, &item.Source, &item.ChangedAt); err != nil {
+			return nil, err
+		}
+		item.OldFinalRateMultiplier = nullableFloat64Ptr(oldRate)
+		item.NewFinalRateMultiplier = nullableFloat64Ptr(newRate)
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -650,10 +899,14 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 		var probeAt sql.NullTime
 		var snapshotID sql.NullInt64
 		var defaultRate, overrideRate, finalRate sql.NullFloat64
+		var todayActualCost, snapshotTodayActualCost sql.NullFloat64
+		var todayTotalTokens, snapshotTodayTotalTokens sql.NullInt64
+		var todayUsageCheckedAt, snapshotTodayUsageCheckedAt sql.NullTime
 		var snapshotPlatform, snapshotStatus, snapshotSource sql.NullString
 		var snapshotSeen sql.NullTime
 		if err := rows.Scan(
 			&item.ID, &item.ConnectorID, &item.ConnectorName, &item.ConnectorStatus, &item.AccountID,
+			&todayActualCost, &todayTotalTokens, &todayUsageCheckedAt,
 			&item.AccountName, &item.AccountPlatform, &item.UpstreamGroupID,
 			&item.UpstreamGroupName, &item.ProbeModel, &item.ProbeProtocol, &item.TargetGroupID,
 			&item.TargetGroupName, &priority, &item.Enabled, &item.Notes,
@@ -661,9 +914,15 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 			&probeID, &probeSuccess, &probeLatency, &probeHTTP, &probeErrorClass,
 			&probeErrorMessage, &probeAt,
 			&snapshotID, &defaultRate, &overrideRate, &finalRate,
+			&snapshotTodayActualCost, &snapshotTodayTotalTokens, &snapshotTodayUsageCheckedAt,
 			&snapshotPlatform, &snapshotStatus, &snapshotSource, &snapshotSeen,
 		); err != nil {
 			return nil, err
+		}
+		item.TodayActualCost = nullableFloat64Ptr(todayActualCost)
+		item.TodayTotalTokens = nullInt64Ptr(todayTotalTokens)
+		if todayUsageCheckedAt.Valid {
+			item.TodayUsageCheckedAt = &todayUsageCheckedAt.Time
 		}
 		item.CurrentPriority = nullableIntFromSQL(priority)
 		if probeID.Valid {
@@ -691,13 +950,41 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 				DefaultRateMultiplier:  defaultRate.Float64,
 				OverrideRateMultiplier: nullableFloat64Ptr(overrideRate),
 				FinalRateMultiplier:    finalRate.Float64,
+				TodayActualCost:        nullableFloat64Ptr(snapshotTodayActualCost),
+				TodayTotalTokens:       nullInt64Ptr(snapshotTodayTotalTokens),
 				Source:                 snapshotSource.String,
 				LastSeenAt:             snapshotSeen.Time,
+			}
+			if snapshotTodayUsageCheckedAt.Valid {
+				item.LatestSnapshot.TodayUsageCheckedAt = &snapshotTodayUsageCheckedAt.Time
 			}
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func scanRelayRecommendationPolicy(rows *sql.Rows) (service.UpstreamRelayRecommendationPolicy, error) {
+	var policy service.UpstreamRelayRecommendationPolicy
+	sortFields := []string{}
+	if err := rows.Scan(
+		&policy.SnapshotFreshnessMinutes,
+		&policy.UsageDeltaFreshnessMinutes,
+		&policy.ProbeFreshnessMinutes,
+		&policy.MinSuccessRate,
+		&policy.MinSampleSize,
+		&policy.ExcludeConsecutiveFailures,
+		&policy.PriorityStart,
+		&policy.PriorityStep,
+		pq.Array(&sortFields),
+		&policy.UpdatedBy,
+		&policy.CreatedAt,
+		&policy.UpdatedAt,
+	); err != nil {
+		return policy, err
+	}
+	policy.SortFields = sortFields
+	return policy, nil
 }
 
 func (r *upstreamRelayRepository) getRelayRunSummary(ctx context.Context, q sqlQueryer, id int64) (*service.UpstreamRelayRecommendationRun, error) {
@@ -951,6 +1238,111 @@ func scanUsageDeltaSample(rows *sql.Rows) (*service.UpstreamRelayUsageDeltaSampl
 	item.ActualCostDelta = nullableFloat64Ptr(actualCostDelta)
 	item.DerivedRateMultiplier = nullableFloat64Ptr(derived)
 	return &item, nil
+}
+
+func listRelaySnapshotsTx(ctx context.Context, tx *sql.Tx, connectorID int64) ([]service.UpstreamRelayGroupRateSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, connector_id, upstream_group_id, name, platform, status,
+		       default_rate_multiplier, override_rate_multiplier, final_rate_multiplier,
+		       today_actual_cost, today_total_tokens, today_usage_checked_at,
+		       source, last_seen_at, created_at, updated_at
+		FROM upstream_relay_group_rate_snapshots
+		WHERE connector_id = $1
+	`, connectorID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanRelaySnapshots(rows)
+}
+
+func buildRelaySnapshotChanges(connectorID int64, previous, next []service.UpstreamRelayGroupRateSnapshot) []service.UpstreamRelayGroupRateSnapshotChange {
+	if len(previous) == 0 {
+		return nil
+	}
+	previousByGroup := make(map[string]service.UpstreamRelayGroupRateSnapshot, len(previous))
+	for _, snapshot := range previous {
+		previousByGroup[snapshot.UpstreamGroupID] = snapshot
+	}
+	nextByGroup := make(map[string]service.UpstreamRelayGroupRateSnapshot, len(next))
+	for _, snapshot := range next {
+		nextByGroup[snapshot.UpstreamGroupID] = snapshot
+	}
+	changes := []service.UpstreamRelayGroupRateSnapshotChange{}
+	for _, snapshot := range next {
+		old, exists := previousByGroup[snapshot.UpstreamGroupID]
+		if !exists {
+			newRate := roundRelayRate(snapshot.FinalRateMultiplier)
+			changes = append(changes, service.UpstreamRelayGroupRateSnapshotChange{
+				ConnectorID:            connectorID,
+				UpstreamGroupID:        snapshot.UpstreamGroupID,
+				GroupName:              snapshot.Name,
+				Platform:               snapshot.Platform,
+				ChangeType:             service.UpstreamRelaySnapshotChangeAdded,
+				NewFinalRateMultiplier: &newRate,
+				NewStatus:              snapshot.Status,
+				Source:                 snapshot.Source,
+			})
+			continue
+		}
+		oldRate := roundRelayRate(old.FinalRateMultiplier)
+		newRate := roundRelayRate(snapshot.FinalRateMultiplier)
+		if old.Status == "stale" {
+			changes = append(changes, service.UpstreamRelayGroupRateSnapshotChange{
+				ConnectorID:            connectorID,
+				UpstreamGroupID:        snapshot.UpstreamGroupID,
+				GroupName:              snapshot.Name,
+				Platform:               snapshot.Platform,
+				ChangeType:             service.UpstreamRelaySnapshotChangeAdded,
+				OldFinalRateMultiplier: &oldRate,
+				NewFinalRateMultiplier: &newRate,
+				OldStatus:              old.Status,
+				NewStatus:              snapshot.Status,
+				Source:                 snapshot.Source,
+			})
+			continue
+		}
+		if oldRate == newRate {
+			continue
+		}
+		changes = append(changes, service.UpstreamRelayGroupRateSnapshotChange{
+			ConnectorID:            connectorID,
+			UpstreamGroupID:        snapshot.UpstreamGroupID,
+			GroupName:              snapshot.Name,
+			Platform:               snapshot.Platform,
+			ChangeType:             service.UpstreamRelaySnapshotChangeRateChanged,
+			OldFinalRateMultiplier: &oldRate,
+			NewFinalRateMultiplier: &newRate,
+			OldStatus:              old.Status,
+			NewStatus:              snapshot.Status,
+			Source:                 snapshot.Source,
+		})
+	}
+	for _, snapshot := range previous {
+		if snapshot.Status == "stale" {
+			continue
+		}
+		if _, exists := nextByGroup[snapshot.UpstreamGroupID]; exists {
+			continue
+		}
+		oldRate := roundRelayRate(snapshot.FinalRateMultiplier)
+		changes = append(changes, service.UpstreamRelayGroupRateSnapshotChange{
+			ConnectorID:            connectorID,
+			UpstreamGroupID:        snapshot.UpstreamGroupID,
+			GroupName:              snapshot.Name,
+			Platform:               snapshot.Platform,
+			ChangeType:             service.UpstreamRelaySnapshotChangeRemoved,
+			OldFinalRateMultiplier: &oldRate,
+			OldStatus:              snapshot.Status,
+			NewStatus:              "stale",
+			Source:                 snapshot.Source,
+		})
+	}
+	return changes
+}
+
+func roundRelayRate(v float64) float64 {
+	return math.Round(v*1e8) / 1e8
 }
 
 func nullableIntFromSQL(v sql.NullInt64) *int {
