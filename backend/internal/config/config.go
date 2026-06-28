@@ -842,19 +842,24 @@ type UserMessageQueueConfig struct {
 
 // GatewayConversationCaptureConfig 控制轻量结构化对话采集。
 type GatewayConversationCaptureConfig struct {
-	Enabled                bool `mapstructure:"enabled"`
-	SamplePercent          int  `mapstructure:"sample_percent"`
-	CaptureChatCompletions bool `mapstructure:"capture_chat_completions"`
-	CaptureResponses       bool `mapstructure:"capture_responses"`
-	RawArchiveEnabled      bool `mapstructure:"raw_archive_enabled"`
-	MaxTurnPayloadBytes    int  `mapstructure:"max_turn_payload_bytes"`
-	PayloadPreviewChars    int  `mapstructure:"payload_preview_chars"`
-	SessionWindowMinutes   int  `mapstructure:"session_window_minutes"`
-	RetentionDays          int  `mapstructure:"retention_days"`
-	ExportEnabled          bool `mapstructure:"export_enabled"`
-	WorkerCount            int  `mapstructure:"worker_count"`
-	QueueSize              int  `mapstructure:"queue_size"`
-	TaskTimeoutSeconds     int  `mapstructure:"task_timeout_seconds"`
+	Enabled                bool    `mapstructure:"enabled"`
+	SamplePercent          int     `mapstructure:"sample_percent"`
+	CaptureChatCompletions bool    `mapstructure:"capture_chat_completions"`
+	CaptureResponses       bool    `mapstructure:"capture_responses"`
+	RawArchiveEnabled      bool    `mapstructure:"raw_archive_enabled"`
+	MaxTurnPayloadBytes    int     `mapstructure:"max_turn_payload_bytes"`
+	PayloadPreviewChars    int     `mapstructure:"payload_preview_chars"`
+	SessionWindowMinutes   int     `mapstructure:"session_window_minutes"`
+	RetentionDays          int     `mapstructure:"retention_days"`
+	ExportEnabled          bool    `mapstructure:"export_enabled"`
+	SubjectFilterMode      string  `mapstructure:"subject_filter_mode"`
+	ExcludedUserIDs        []int64 `mapstructure:"excluded_user_ids"`
+	ExcludedAPIKeyIDs      []int64 `mapstructure:"excluded_api_key_ids"`
+	IncludedUserIDs        []int64 `mapstructure:"included_user_ids"`
+	IncludedAPIKeyIDs      []int64 `mapstructure:"included_api_key_ids"`
+	WorkerCount            int     `mapstructure:"worker_count"`
+	QueueSize              int     `mapstructure:"queue_size"`
+	TaskTimeoutSeconds     int     `mapstructure:"task_timeout_seconds"`
 }
 
 // WaitTimeout 返回等待超时的 time.Duration
@@ -1910,6 +1915,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.conversation_capture.session_window_minutes", 30)
 	viper.SetDefault("gateway.conversation_capture.retention_days", 30)
 	viper.SetDefault("gateway.conversation_capture.export_enabled", true)
+	viper.SetDefault("gateway.conversation_capture.subject_filter_mode", "blacklist")
 	viper.SetDefault("gateway.conversation_capture.worker_count", 2)
 	viper.SetDefault("gateway.conversation_capture.queue_size", 256)
 	viper.SetDefault("gateway.conversation_capture.task_timeout_seconds", 10)

@@ -69,7 +69,7 @@ func (s *ConversationCaptureService) DecideForEndpoint(ctx context.Context, subj
 	if endpointKind == ConversationCaptureEndpointResponses && !cfg.CaptureResponses {
 		return ConversationCaptureDecision{}
 	}
-	if conversationCaptureContainsInt64(cfg.ExcludedUserIDs, subject.UserID) || conversationCaptureContainsInt64(cfg.ExcludedAPIKeyIDs, subject.APIKeyID) {
+	if !conversationCaptureSubjectAllowed(cfg, subject) {
 		return ConversationCaptureDecision{}
 	}
 	if cfg.SamplePercent <= 0 || (cfg.SamplePercent < 100 && rand.Intn(100) >= cfg.SamplePercent) {
@@ -402,6 +402,7 @@ func (s *ConversationCaptureService) defaultConfig() ConversationCaptureConfig {
 		SessionWindowMinutes:   30,
 		RetentionDays:          30,
 		ExportEnabled:          true,
+		SubjectFilterMode:      ConversationCaptureSubjectFilterModeBlacklist,
 	}
 	if s != nil && s.cfg != nil {
 		cc := s.cfg.Gateway.ConversationCapture
@@ -415,12 +416,21 @@ func (s *ConversationCaptureService) defaultConfig() ConversationCaptureConfig {
 		cfg.SessionWindowMinutes = cc.SessionWindowMinutes
 		cfg.RetentionDays = cc.RetentionDays
 		cfg.ExportEnabled = cc.ExportEnabled
+		cfg.SubjectFilterMode = cc.SubjectFilterMode
+		cfg.ExcludedUserIDs = cc.ExcludedUserIDs
+		cfg.ExcludedAPIKeyIDs = cc.ExcludedAPIKeyIDs
+		cfg.IncludedUserIDs = cc.IncludedUserIDs
+		cfg.IncludedAPIKeyIDs = cc.IncludedAPIKeyIDs
 	}
 	normalizeConversationCaptureConfig(&cfg, cfg)
 	return cfg
 }
 
 func validateConversationCaptureConfig(cfg ConversationCaptureConfig) error {
+	mode := strings.TrimSpace(cfg.SubjectFilterMode)
+	if mode != "" && mode != ConversationCaptureSubjectFilterModeBlacklist && mode != ConversationCaptureSubjectFilterModeWhitelist {
+		return infraerrors.BadRequest("INVALID_SUBJECT_FILTER_MODE", "subject_filter_mode must be blacklist or whitelist")
+	}
 	if cfg.SamplePercent < 0 || cfg.SamplePercent > 100 {
 		return infraerrors.BadRequest("INVALID_SAMPLE_PERCENT", "sample_percent must be between 0 and 100")
 	}
@@ -446,10 +456,27 @@ func validateConversationCaptureConfig(cfg ConversationCaptureConfig) error {
 			return infraerrors.BadRequest("INVALID_EXCLUDED_API_KEY_ID", "excluded_api_key_ids must contain positive ids")
 		}
 	}
+	for _, id := range cfg.IncludedUserIDs {
+		if id <= 0 {
+			return infraerrors.BadRequest("INVALID_INCLUDED_USER_ID", "included_user_ids must contain positive ids")
+		}
+	}
+	for _, id := range cfg.IncludedAPIKeyIDs {
+		if id <= 0 {
+			return infraerrors.BadRequest("INVALID_INCLUDED_API_KEY_ID", "included_api_key_ids must contain positive ids")
+		}
+	}
 	return nil
 }
 
 func normalizeConversationCaptureConfig(cfg *ConversationCaptureConfig, defaults ConversationCaptureConfig) {
+	cfg.SubjectFilterMode = strings.TrimSpace(cfg.SubjectFilterMode)
+	if cfg.SubjectFilterMode == "" {
+		cfg.SubjectFilterMode = defaults.SubjectFilterMode
+	}
+	if cfg.SubjectFilterMode != ConversationCaptureSubjectFilterModeBlacklist && cfg.SubjectFilterMode != ConversationCaptureSubjectFilterModeWhitelist {
+		cfg.SubjectFilterMode = ConversationCaptureSubjectFilterModeBlacklist
+	}
 	if cfg.SamplePercent < 0 || cfg.SamplePercent > 100 {
 		cfg.SamplePercent = defaults.SamplePercent
 	}
@@ -467,6 +494,17 @@ func normalizeConversationCaptureConfig(cfg *ConversationCaptureConfig, defaults
 	}
 	cfg.ExcludedUserIDs = positiveUniqueInt64s(cfg.ExcludedUserIDs)
 	cfg.ExcludedAPIKeyIDs = positiveUniqueInt64s(cfg.ExcludedAPIKeyIDs)
+	cfg.IncludedUserIDs = positiveUniqueInt64s(cfg.IncludedUserIDs)
+	cfg.IncludedAPIKeyIDs = positiveUniqueInt64s(cfg.IncludedAPIKeyIDs)
+}
+
+func conversationCaptureSubjectAllowed(cfg ConversationCaptureConfig, subject ConversationCaptureSubject) bool {
+	if cfg.SubjectFilterMode == ConversationCaptureSubjectFilterModeWhitelist {
+		return conversationCaptureContainsInt64(cfg.IncludedUserIDs, subject.UserID) ||
+			conversationCaptureContainsInt64(cfg.IncludedAPIKeyIDs, subject.APIKeyID)
+	}
+	return !conversationCaptureContainsInt64(cfg.ExcludedUserIDs, subject.UserID) &&
+		!conversationCaptureContainsInt64(cfg.ExcludedAPIKeyIDs, subject.APIKeyID)
 }
 
 func cloneConversationCaptureInput(input ConversationCaptureInput) ConversationCaptureInput {

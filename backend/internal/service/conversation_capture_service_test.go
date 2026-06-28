@@ -212,6 +212,107 @@ func TestConversationCaptureConfigPersistsEnabled(t *testing.T) {
 	require.Equal(t, 100, loaded.SamplePercent)
 }
 
+func TestConversationCaptureConfigDefaultsOldSettingsToBlacklist(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{values: map[string]string{
+		SettingKeyConversationCaptureConfig: `{"enabled":true,"sample_percent":100,"capture_chat_completions":true,"max_turn_payload_bytes":1048576,"payload_preview_chars":8000,"session_window_minutes":30,"retention_days":30,"export_enabled":true,"excluded_user_ids":[7,7,9],"excluded_api_key_ids":[11]}`,
+	}}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+
+	loaded, err := svc.GetConfig(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, ConversationCaptureSubjectFilterModeBlacklist, loaded.SubjectFilterMode)
+	require.Equal(t, []int64{7, 9}, loaded.ExcludedUserIDs)
+	require.Equal(t, []int64{11}, loaded.ExcludedAPIKeyIDs)
+	require.Empty(t, loaded.IncludedUserIDs)
+	require.Empty(t, loaded.IncludedAPIKeyIDs)
+}
+
+func TestConversationCaptureDecisionUsesBlacklistBeforeSampling(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+	_, err := svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig(ConversationCaptureSubjectFilterModeBlacklist, []int64{7}, []int64{11}, nil, nil))
+	require.NoError(t, err)
+
+	require.False(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 7, APIKeyID: 99}, ConversationCaptureEndpointChatCompletions).Capture)
+	require.False(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 99, APIKeyID: 11}, ConversationCaptureEndpointChatCompletions).Capture)
+	require.True(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 99, APIKeyID: 12}, ConversationCaptureEndpointChatCompletions).Capture)
+}
+
+func TestConversationCaptureDecisionWhitelistAllowsAnyMatchingSubject(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+	_, err := svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig(ConversationCaptureSubjectFilterModeWhitelist, nil, nil, []int64{7}, []int64{11}))
+	require.NoError(t, err)
+
+	require.True(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 7, APIKeyID: 99}, ConversationCaptureEndpointChatCompletions).Capture)
+	require.True(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 99, APIKeyID: 11}, ConversationCaptureEndpointChatCompletions).Capture)
+	require.False(t, svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 99, APIKeyID: 12}, ConversationCaptureEndpointChatCompletions).Capture)
+}
+
+func TestConversationCaptureDecisionEmptyWhitelistCapturesNothing(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+	_, err := svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig(ConversationCaptureSubjectFilterModeWhitelist, nil, nil, nil, nil))
+	require.NoError(t, err)
+
+	decision := svc.DecideForEndpoint(context.Background(), ConversationCaptureSubject{UserID: 7, APIKeyID: 11}, ConversationCaptureEndpointChatCompletions)
+
+	require.False(t, decision.Capture)
+}
+
+func TestConversationCaptureConfigRejectsInvalidSubjectFilterModeAndIDs(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+
+	_, err := svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig("invalid", nil, nil, nil, nil))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_SUBJECT_FILTER_MODE")
+
+	_, err = svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig(ConversationCaptureSubjectFilterModeWhitelist, nil, nil, []int64{0}, nil))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_INCLUDED_USER_ID")
+}
+
+func TestConversationCaptureConfigPersistsWhitelistFields(t *testing.T) {
+	settingRepo := &conversationExportJobSettingRepo{}
+	svc := NewConversationCaptureService(nil, settingRepo, nil, nil)
+
+	updated, err := svc.UpdateConfig(context.Background(), conversationCaptureDecisionConfig(ConversationCaptureSubjectFilterModeWhitelist, []int64{7}, []int64{11}, []int64{13, 13}, []int64{17}))
+	require.NoError(t, err)
+	require.Equal(t, ConversationCaptureSubjectFilterModeWhitelist, updated.SubjectFilterMode)
+	require.Equal(t, []int64{13}, updated.IncludedUserIDs)
+	require.Equal(t, []int64{17}, updated.IncludedAPIKeyIDs)
+
+	loaded, err := svc.GetConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, ConversationCaptureSubjectFilterModeWhitelist, loaded.SubjectFilterMode)
+	require.Equal(t, []int64{7}, loaded.ExcludedUserIDs)
+	require.Equal(t, []int64{11}, loaded.ExcludedAPIKeyIDs)
+	require.Equal(t, []int64{13}, loaded.IncludedUserIDs)
+	require.Equal(t, []int64{17}, loaded.IncludedAPIKeyIDs)
+}
+
+func conversationCaptureDecisionConfig(mode string, excludedUserIDs, excludedAPIKeyIDs, includedUserIDs, includedAPIKeyIDs []int64) ConversationCaptureConfig {
+	return ConversationCaptureConfig{
+		Enabled:                true,
+		SamplePercent:          100,
+		CaptureChatCompletions: true,
+		CaptureResponses:       false,
+		RawArchiveEnabled:      false,
+		MaxTurnPayloadBytes:    1048576,
+		PayloadPreviewChars:    8000,
+		SessionWindowMinutes:   30,
+		RetentionDays:          30,
+		ExportEnabled:          true,
+		SubjectFilterMode:      mode,
+		ExcludedUserIDs:        excludedUserIDs,
+		ExcludedAPIKeyIDs:      excludedAPIKeyIDs,
+		IncludedUserIDs:        includedUserIDs,
+		IncludedAPIKeyIDs:      includedAPIKeyIDs,
+	}
+}
+
 func conversationExportTurn(requestID, hash string) ConversationTurn {
 	return ConversationTurn{
 		SessionID:        "s1",

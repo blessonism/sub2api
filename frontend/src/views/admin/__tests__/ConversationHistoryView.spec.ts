@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import ConversationHistoryView from '../ConversationHistoryView.vue'
@@ -77,8 +77,11 @@ const baseConfig = (overrides: Partial<ConversationCaptureConfig> = {}): Convers
   session_window_minutes: 30,
   retention_days: 30,
   export_enabled: true,
+  subject_filter_mode: 'blacklist',
   excluded_user_ids: [],
   excluded_api_key_ids: [],
+  included_user_ids: [],
+  included_api_key_ids: [],
   ...overrides,
 })
 
@@ -257,6 +260,61 @@ describe('ConversationHistoryView', () => {
     expect(getConfig).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('admin.conversations.captureOff')
     expect(wrapper.text()).toContain('admin.conversations.emptyDisabledTitle')
+  })
+
+  it('saves whitelist mode with pasted and deduped included subject IDs', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="conversation-mode-whitelist"]').trigger('click')
+    await wrapper.find('[data-test="conversation-id-input-included_user_ids"]').trigger('paste', {
+      clipboardData: { getData: () => '7, 7 9\n10' },
+    })
+    await nextTick()
+    await wrapper.find('[data-test="conversation-id-input-included_api_key_ids"]').trigger('paste', {
+      clipboardData: { getData: () => '11 11' },
+    })
+    await nextTick()
+    await wrapper.findAll('button').find((button) => button.text() === 'common.save')!.trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      subject_filter_mode: 'whitelist',
+      included_user_ids: [7, 9, 10],
+      included_api_key_ids: [11],
+      excluded_user_ids: [],
+      excluded_api_key_ids: [],
+    }))
+  })
+
+  it('removes a loaded whitelist subject ID chip before saving', async () => {
+    getConfig.mockResolvedValueOnce(baseConfig({
+      subject_filter_mode: 'whitelist',
+      included_user_ids: [7, 9],
+      included_api_key_ids: [11],
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="conversation-id-chip-included_user_ids-9"] button').trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === 'common.save')!.trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      subject_filter_mode: 'whitelist',
+      included_user_ids: [7],
+      included_api_key_ids: [11],
+    }))
+  })
+
+  it('warns when whitelist mode has no included subject IDs', async () => {
+    getConfig.mockResolvedValueOnce(baseConfig({ subject_filter_mode: 'whitelist' }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="conversation-empty-whitelist-warning"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.conversations.emptyWhitelistWarning')
   })
 
   it('passes data browser filters to session loading', async () => {
