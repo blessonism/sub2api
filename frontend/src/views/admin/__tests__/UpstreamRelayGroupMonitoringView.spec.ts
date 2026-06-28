@@ -362,6 +362,14 @@ describe('UpstreamRelayGroupMonitoringView', () => {
         updated_at: '2026-06-28T12:05:00Z',
       },
       snapshots: [],
+      status: 'partial',
+      balance_detail: { status: 'success', value: 12.34, checked_at: '2026-06-28T12:05:00Z' },
+      usage_detail: {
+        status: 'skipped',
+        total_groups: 1,
+        updated_groups: 0,
+        missing_groups: [{ upstream_group_id: 'team-alpha', reason: 'no_snapshot', message: 'full sync required' }],
+      },
       balance_available: true,
       usage_available: true,
       refreshed_at: '2026-06-28T12:05:00Z',
@@ -374,7 +382,301 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
-    expect(wrapper.text()).toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+  })
+
+  it('轻量刷新接口失败时优先展示真实失败原因', async () => {
+    refreshConnectorMetrics.mockRejectedValueOnce(new Error('network failed'))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
+    expect(summary.exists()).toBe(true)
+    expect(wrapper.find('[data-testid="metrics-refresh-details"]').exists()).toBe(true)
+    expect(summary.text()).toContain('relay-a')
+    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('network failed')
+    expect(wrapper.text()).toContain('network failed')
+    expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+  })
+
+  it('手动刷新用量余额后展示摘要和连接器详情', async () => {
+    listConnectors.mockResolvedValue({
+      items: [
+        {
+          id: 7,
+          name: 'relay-a',
+          base_url: 'https://relay.example.com',
+          auth_mode: 'manual_session',
+          status: 'active',
+          credential_version: 1,
+          has_bearer_token: true,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        },
+        {
+          id: 8,
+          name: 'relay-b',
+          base_url: 'https://relay-b.example.com',
+          auth_mode: 'manual_session',
+          status: 'active',
+          credential_version: 1,
+          has_bearer_token: true,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+    refreshConnectorMetrics
+      .mockResolvedValueOnce({
+        connector: {
+          id: 7,
+          name: 'relay-a',
+          base_url: 'https://relay.example.com',
+          auth_mode: 'manual_session',
+          status: 'active',
+          credential_version: 1,
+          upstream_account_balance: 12.34,
+          upstream_account_balance_checked_at: '2026-06-28T12:05:00Z',
+          has_bearer_token: true,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:05:00Z',
+        },
+        snapshots: [{ id: 1, connector_id: 7, upstream_group_id: 'team-a', name: 'Team A', platform: 'claude', status: 'active', default_rate_multiplier: 1, final_rate_multiplier: 1, source: 'login_available_groups', last_seen_at: '2026-06-28T12:00:00Z' }],
+        status: 'success',
+        balance_detail: { status: 'success', value: 12.34, checked_at: '2026-06-28T12:05:00Z' },
+        usage_detail: { status: 'success', total_groups: 1, updated_groups: 1, missing_groups: [] },
+        balance_available: true,
+        usage_available: true,
+        refreshed_at: '2026-06-28T12:05:00Z',
+      })
+      .mockResolvedValueOnce({
+        connector: {
+          id: 8,
+          name: 'relay-b',
+          base_url: 'https://relay-b.example.com',
+          auth_mode: 'manual_session',
+          status: 'active',
+          credential_version: 1,
+          upstream_account_balance: 1.23,
+          upstream_account_balance_checked_at: '2026-06-28T12:05:00Z',
+          has_bearer_token: true,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:05:00Z',
+        },
+        snapshots: [{ id: 2, connector_id: 8, upstream_group_id: 'team-b', name: 'Team B', platform: 'claude', status: 'active', default_rate_multiplier: 1, final_rate_multiplier: 1, source: 'login_available_groups', last_seen_at: '2026-06-28T12:00:00Z' }],
+        status: 'partial',
+        balance_detail: { status: 'success', value: 1.23, checked_at: '2026-06-28T12:05:00Z' },
+        usage_detail: {
+          status: 'failed',
+          total_groups: 1,
+          updated_groups: 0,
+          missing_groups: [{ upstream_group_id: 'team-b', name: 'Team B', reason: 'usage_refresh_failed', message: 'connector has no local account bindings' }],
+          error: 'connector has no local account bindings',
+        },
+        balance_available: true,
+        usage_available: false,
+        usage_error: 'connector has no local account bindings',
+        refreshed_at: '2026-06-28T12:05:00Z',
+      })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    expect(summary.exists()).toBe(true)
+    expect(summary.text()).toContain('metricsRefresh.summaryTitle')
+    expect(summary.text()).toContain('1 1 0')
+    expect(summary.text()).toContain('2 2 1')
+    expect(wrapper.find('[data-testid="metrics-refresh-details"]').exists()).toBe(true)
+    expect(summary.text()).toContain('relay-a')
+    expect(summary.text()).toContain('relay-b')
+    expect(summary.text()).toContain('Team B')
+    expect(summary.text()).toContain('connector has no local account bindings')
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('metricsRefresh.inlineUsagePartial')
+  })
+
+  it('余额成功但 usage 无本地绑定时即使没有快照也不显示顶部错误', async () => {
+    refreshConnectorMetrics.mockResolvedValue({
+      connector: {
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        upstream_account_balance: 12.34,
+        upstream_account_balance_checked_at: '2026-06-28T12:05:00Z',
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [],
+      status: 'partial',
+      balance_detail: { status: 'success', value: 12.34, checked_at: '2026-06-28T12:05:00Z' },
+      usage_detail: {
+        status: 'skipped',
+        total_groups: 0,
+        updated_groups: 0,
+        missing_groups: [],
+        error: 'connector has no local account bindings',
+      },
+      balance_available: true,
+      usage_available: false,
+      usage_error: 'connector has no local account bindings',
+      refreshed_at: '2026-06-28T12:05:00Z',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    expect(summary.exists()).toBe(true)
+    expect(summary.text()).toContain('connector has no local account bindings')
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+  })
+
+  it('轻量刷新返回 null missing_groups 时不崩溃且保留 usage 错误详情', async () => {
+    refreshConnectorMetrics.mockResolvedValue({
+      connector: {
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        upstream_account_balance: 12.34,
+        upstream_account_balance_checked_at: '2026-06-28T12:05:00Z',
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [],
+      status: 'partial',
+      balance_detail: { status: 'success', value: 12.34, checked_at: '2026-06-28T12:05:00Z' },
+      usage_detail: {
+        status: 'skipped',
+        total_groups: 0,
+        updated_groups: 0,
+        missing_groups: null,
+        error: 'connector has no local account bindings',
+      },
+      balance_available: true,
+      usage_available: false,
+      usage_error: 'connector has no local account bindings',
+      refreshed_at: '2026-06-28T12:05:00Z',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    expect(summary.exists()).toBe(true)
+    expect(wrapper.find('[data-testid="metrics-refresh-details"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('connector has no local account bindings')
+    expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+  })
+
+  it('轻量刷新返回 undefined missing_groups 且仅本地绑定缺失时不显示顶部错误', async () => {
+    refreshConnectorMetrics.mockResolvedValue({
+      connector: {
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        upstream_account_balance: null,
+        upstream_account_balance_checked_at: null,
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [],
+      status: 'failed',
+      balance_detail: { status: 'failed', error: 'connector has no local account bindings' },
+      usage_detail: {
+        status: 'failed',
+        total_groups: 0,
+        updated_groups: 0,
+        error: 'connector has no local account bindings',
+      },
+      balance_available: false,
+      balance_error: 'connector has no local account bindings',
+      usage_available: false,
+      usage_error: 'connector has no local account bindings',
+      refreshed_at: '2026-06-28T12:05:00Z',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    expect(summary.exists()).toBe(true)
+    expect(wrapper.find('[data-testid="metrics-refresh-details"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('connector has no local account bindings')
   })
 
   it('连接器展开区以无表头只读数据展示分组概览', async () => {

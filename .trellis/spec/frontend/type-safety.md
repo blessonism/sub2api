@@ -70,6 +70,7 @@ When updating `frontend/src/api/admin/upstreamRelayGroupMonitors.ts`:
 - Treat missing candidate usage as unknown / not synced, not as zero usage.
 - Add lightweight connector metrics refresh through `refreshConnectorMetrics(id)`, targeting `/connectors/:id/metrics/refresh`; do not reuse the full connector `sync` action for a balance/usage-only refresh.
 - After metrics refresh succeeds, refresh connector and candidate state in the view so connector balance and candidate today usage update together.
+- Treat metrics refresh detail collections from backend Go slices, such as `usage_detail.missing_groups`, as nullable or optional at the API boundary; normalize them to arrays before calling `.length`, `.slice`, `.some`, or rendering loops.
 - Keep recommendation preview and persisted generation as separate methods: `previewRecommendations()` must call `/recommendations/preview`; `generateRecommendations()` must call `/recommendations`.
 - Normalize recommendation policy `sort_fields` before submit so duplicate fields are removed and missing default sort fields are appended.
 - Add zh/en i18n keys for every table column introduced in `UpstreamRelayGroupMonitoringView.vue`.

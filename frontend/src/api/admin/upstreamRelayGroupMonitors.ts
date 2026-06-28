@@ -7,6 +7,7 @@ export type UpstreamRelayProbeProtocol = 'chat_completions' | 'responses'
 export type UpstreamRelayRunStatus = 'success' | 'failed'
 export type UpstreamRelaySnapshotChangeType = 'added' | 'removed' | 'rate_changed'
 export type UpstreamRelayRecommendationSortField = 'rate_asc' | 'success_rate_desc' | 'latency_asc'
+export type UpstreamRelayMetricsRefreshStatus = 'success' | 'partial' | 'failed' | 'skipped'
 
 export interface UpstreamRelayConnector {
   id: number
@@ -82,11 +83,37 @@ export interface UpstreamRelayGroupRateSnapshotChange {
 export interface UpstreamRelayConnectorMetricsRefreshResult {
   connector: UpstreamRelayConnector
   snapshots: UpstreamRelayGroupRateSnapshot[]
+  status: Exclude<UpstreamRelayMetricsRefreshStatus, 'skipped'>
+  balance_detail: UpstreamRelayMetricsBalanceDetail
+  usage_detail: UpstreamRelayMetricsUsageDetail
   balance_available: boolean
   balance_error?: string
   usage_available: boolean
   usage_error?: string
   refreshed_at: string
+}
+
+export interface UpstreamRelayMetricsBalanceDetail {
+  status: UpstreamRelayMetricsRefreshStatus
+  value?: number | null
+  checked_at?: string | null
+  error?: string
+}
+
+export interface UpstreamRelayMetricsUsageDetail {
+  status: UpstreamRelayMetricsRefreshStatus
+  total_groups: number
+  updated_groups: number
+  missing_groups?: UpstreamRelayMetricsMissingGroupDetail[] | null
+  error?: string
+  checked_at?: string | null
+}
+
+export interface UpstreamRelayMetricsMissingGroupDetail {
+  upstream_group_id: string
+  name?: string
+  reason: string
+  message: string
 }
 
 export interface UpstreamRelayMonitoringPolicy {

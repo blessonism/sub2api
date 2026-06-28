@@ -118,6 +118,14 @@ describe('admin upstream relay group monitors api', () => {
     const response = {
       connector: { id: 7, name: 'relay' },
       snapshots: [],
+      status: 'partial',
+      balance_detail: { status: 'success', value: 12.34, checked_at: '2026-06-28T12:00:00Z' },
+      usage_detail: {
+        status: 'skipped',
+        total_groups: 1,
+        updated_groups: 0,
+        missing_groups: [{ upstream_group_id: 'team-a', reason: 'no_snapshot', message: 'full sync required' }]
+      },
       balance_available: true,
       usage_available: true,
       refreshed_at: '2026-06-28T12:00:00Z'
