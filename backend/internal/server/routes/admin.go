@@ -162,10 +162,12 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 	{
 		relay.GET("/connectors", h.Admin.UpstreamRelayMonitoring.ListConnectors)
 		relay.POST("/connectors", h.Admin.UpstreamRelayMonitoring.CreateConnector)
+		relay.POST("/connectors/sync-all", h.Admin.UpstreamRelayMonitoring.SyncAllConnectors)
 		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
 		relay.DELETE("/connectors/:id", h.Admin.UpstreamRelayMonitoring.DeleteConnector)
 		relay.POST("/connectors/:id/sync", h.Admin.UpstreamRelayMonitoring.SyncConnector)
 		relay.POST("/connectors/:id/metrics/refresh", h.Admin.UpstreamRelayMonitoring.RefreshConnectorMetrics)
+		relay.GET("/connectors/:id/api-keys", h.Admin.UpstreamRelayMonitoring.ListConnectorAPIKeys)
 		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
 		relay.GET("/snapshot-changes", h.Admin.UpstreamRelayMonitoring.ListSnapshotChanges)
 
@@ -173,8 +175,11 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.POST("/candidates", h.Admin.UpstreamRelayMonitoring.CreateCandidate)
 		relay.PUT("/candidates/:id", h.Admin.UpstreamRelayMonitoring.UpdateCandidate)
 		relay.DELETE("/candidates/:id", h.Admin.UpstreamRelayMonitoring.DeleteCandidate)
+		relay.POST("/candidates/probe-all", h.Admin.UpstreamRelayMonitoring.ProbeAllCandidates)
 		relay.POST("/candidates/:id/probe", h.Admin.UpstreamRelayMonitoring.ProbeCandidate)
 
+		relay.GET("/monitoring-policy", h.Admin.UpstreamRelayMonitoring.GetMonitoringPolicy)
+		relay.PUT("/monitoring-policy", h.Admin.UpstreamRelayMonitoring.UpdateMonitoringPolicy)
 		relay.GET("/recommendation-policy", h.Admin.UpstreamRelayMonitoring.GetRecommendationPolicy)
 		relay.PUT("/recommendation-policy", h.Admin.UpstreamRelayMonitoring.UpdateRecommendationPolicy)
 		relay.POST("/recommendations/preview", h.Admin.UpstreamRelayMonitoring.PreviewRecommendations)

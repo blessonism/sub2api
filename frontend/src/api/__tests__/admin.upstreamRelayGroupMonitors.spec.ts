@@ -16,10 +16,16 @@ vi.mock('@/api/client', () => ({
 
 import {
   generateRecommendations,
+  getMonitoringPolicy,
   getRecommendationPolicy,
+  listConnectorAPIKeys,
+  probeAllCandidates,
   previewRecommendations,
   refreshConnectorMetrics,
+  syncAllConnectors,
+  updateMonitoringPolicy,
   updateRecommendationPolicy,
+  type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayRecommendationPolicy
 } from '@/api/admin/upstreamRelayGroupMonitors'
 
@@ -34,6 +40,18 @@ describe('admin upstream relay group monitors api', () => {
     priority_start: 10,
     priority_step: 10,
     sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc']
+  }
+  const monitoringPolicy: UpstreamRelayMonitoringPolicy = {
+    auto_sync_enabled: true,
+    sync_interval_minutes: 60,
+    auto_probe_enabled: true,
+    probe_interval_minutes: 15,
+    failure_retry_interval_minutes: 5,
+    sync_concurrency: 2,
+    probe_concurrency: 5,
+    snapshot_stale_after_minutes: 180,
+    usage_delta_stale_after_minutes: 180,
+    probe_stale_after_minutes: 45
   }
 
   beforeEach(() => {
@@ -54,6 +72,16 @@ describe('admin upstream relay group monitors api', () => {
 
     await expect(updateRecommendationPolicy(policy)).resolves.toEqual(policy)
     expect(put).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/recommendation-policy', policy)
+  })
+
+  it('loads and saves the monitoring policy', async () => {
+    get.mockResolvedValueOnce({ data: monitoringPolicy })
+    put.mockResolvedValueOnce({ data: monitoringPolicy })
+
+    await expect(getMonitoringPolicy()).resolves.toEqual(monitoringPolicy)
+    await expect(updateMonitoringPolicy(monitoringPolicy)).resolves.toEqual(monitoringPolicy)
+    expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/monitoring-policy')
+    expect(put).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/monitoring-policy', monitoringPolicy)
   })
 
   it('previews recommendations without creating a run', async () => {
@@ -98,5 +126,24 @@ describe('admin upstream relay group monitors api', () => {
 
     await expect(refreshConnectorMetrics(7)).resolves.toEqual(response)
     expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/metrics/refresh')
+  })
+
+  it('loads connector-visible upstream api keys for candidate binding', async () => {
+    const keys = [{ id: 855, name: 'cheap', masked_key: 'sk-***' }]
+    get.mockResolvedValue({ data: keys })
+
+    await expect(listConnectorAPIKeys(7)).resolves.toEqual(keys)
+    expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/api-keys')
+  })
+
+  it('runs bulk manual sync and probe endpoints', async () => {
+    const result = { total: 2, success: 1, failed: 1, items: [] }
+    post.mockResolvedValue({ data: result })
+
+    await expect(syncAllConnectors()).resolves.toEqual(result)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/sync-all')
+
+    await expect(probeAllCandidates()).resolves.toEqual(result)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/candidates/probe-all')
   })
 })

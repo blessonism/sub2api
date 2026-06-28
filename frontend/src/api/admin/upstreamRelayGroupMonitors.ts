@@ -89,6 +89,52 @@ export interface UpstreamRelayConnectorMetricsRefreshResult {
   refreshed_at: string
 }
 
+export interface UpstreamRelayMonitoringPolicy {
+  auto_sync_enabled: boolean
+  sync_interval_minutes: number
+  auto_probe_enabled: boolean
+  probe_interval_minutes: number
+  failure_retry_interval_minutes: number
+  sync_concurrency: number
+  probe_concurrency: number
+  snapshot_stale_after_minutes: number
+  usage_delta_stale_after_minutes: number
+  probe_stale_after_minutes: number
+  updated_by?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export type UpstreamRelayMonitoringPolicyInput = Pick<
+  UpstreamRelayMonitoringPolicy,
+  | 'auto_sync_enabled'
+  | 'sync_interval_minutes'
+  | 'auto_probe_enabled'
+  | 'probe_interval_minutes'
+  | 'failure_retry_interval_minutes'
+  | 'sync_concurrency'
+  | 'probe_concurrency'
+>
+
+export interface UpstreamRelayBulkOperationItem {
+  id: number
+  connector_id?: number
+  connector_name?: string
+  candidate_id?: number
+  account_id?: number
+  account_name?: string
+  success: boolean
+  count?: number
+  error_reason?: string
+}
+
+export interface UpstreamRelayBulkOperationResult {
+  total: number
+  success: number
+  failed: number
+  items: UpstreamRelayBulkOperationItem[]
+}
+
 export interface UpstreamRelayProbeResult {
   id: number
   candidate_id: number
@@ -112,6 +158,8 @@ export interface UpstreamRelayCandidateHealth {
   last_success_at?: string | null
   window_minutes: number
   sample_size: number
+  calculated_at?: string
+  stale: boolean
 }
 
 export interface UpstreamRelayUsageDeltaSample {
@@ -144,10 +192,11 @@ export interface UpstreamRelayCandidate {
   account_platform?: string
   upstream_group_id: string
   upstream_group_name?: string
+  upstream_api_key_id?: number | null
+  upstream_api_key_name?: string
+  upstream_api_key_masked?: string
   probe_model: string
   probe_protocol: UpstreamRelayProbeProtocol
-  target_group_id: number
-  target_group_name?: string
   current_priority?: number | null
   enabled: boolean
   notes: string
@@ -164,11 +213,19 @@ export interface UpstreamRelayCandidateInput {
   connector_id: number
   account_id: number
   upstream_group_id: string
+  upstream_api_key_id?: number | null
+  upstream_api_key_name?: string
+  upstream_api_key_masked?: string
   probe_model: string
   probe_protocol?: UpstreamRelayProbeProtocol
-  target_group_id: number
   enabled?: boolean
   notes?: string
+}
+
+export interface UpstreamRelayAPIKeyOption {
+  id: number
+  name?: string
+  masked_key?: string
 }
 
 export interface UpstreamRelayRecommendationSuggestion {
@@ -181,8 +238,6 @@ export interface UpstreamRelayRecommendationSuggestion {
   account_name?: string
   upstream_group_id: string
   upstream_group_name?: string
-  target_group_id: number
-  target_group_name?: string
   old_priority?: number | null
   new_priority: number
   final_rate_multiplier: number
@@ -235,8 +290,6 @@ export interface UpstreamRelayRecommendationExclusion {
   account_name?: string
   upstream_group_id: string
   upstream_group_name?: string
-  target_group_id: number
-  target_group_name?: string
   old_priority?: number | null
   expected_priority?: number | null
   final_rate_multiplier?: number | null
@@ -289,6 +342,11 @@ export async function syncConnector(id: number): Promise<UpstreamRelayGroupRateS
   return data
 }
 
+export async function syncAllConnectors(): Promise<UpstreamRelayBulkOperationResult> {
+  const { data } = await apiClient.post<UpstreamRelayBulkOperationResult>(`${base}/connectors/sync-all`)
+  return data
+}
+
 export async function refreshConnectorMetrics(id: number): Promise<UpstreamRelayConnectorMetricsRefreshResult> {
   const { data } = await apiClient.post<UpstreamRelayConnectorMetricsRefreshResult>(`${base}/connectors/${id}/metrics/refresh`)
   return data
@@ -296,6 +354,11 @@ export async function refreshConnectorMetrics(id: number): Promise<UpstreamRelay
 
 export async function listSnapshots(id: number): Promise<UpstreamRelayGroupRateSnapshot[]> {
   const { data } = await apiClient.get<UpstreamRelayGroupRateSnapshot[]>(`${base}/connectors/${id}/snapshots`)
+  return data
+}
+
+export async function listConnectorAPIKeys(id: number): Promise<UpstreamRelayAPIKeyOption[]> {
+  const { data } = await apiClient.get<UpstreamRelayAPIKeyOption[]>(`${base}/connectors/${id}/api-keys`)
   return data
 }
 
@@ -337,6 +400,21 @@ export async function deleteCandidate(id: number): Promise<{ message: string }> 
 
 export async function probeCandidate(id: number): Promise<UpstreamRelayProbeResult> {
   const { data } = await apiClient.post<UpstreamRelayProbeResult>(`${base}/candidates/${id}/probe`)
+  return data
+}
+
+export async function probeAllCandidates(): Promise<UpstreamRelayBulkOperationResult> {
+  const { data } = await apiClient.post<UpstreamRelayBulkOperationResult>(`${base}/candidates/probe-all`)
+  return data
+}
+
+export async function getMonitoringPolicy(): Promise<UpstreamRelayMonitoringPolicy> {
+  const { data } = await apiClient.get<UpstreamRelayMonitoringPolicy>(`${base}/monitoring-policy`)
+  return data
+}
+
+export async function updateMonitoringPolicy(payload: UpstreamRelayMonitoringPolicyInput): Promise<UpstreamRelayMonitoringPolicy> {
+  const { data } = await apiClient.put<UpstreamRelayMonitoringPolicy>(`${base}/monitoring-policy`, payload)
   return data
 }
 
@@ -389,14 +467,19 @@ export const upstreamRelayGroupMonitorsAPI = {
   updateConnector,
   deleteConnector,
   syncConnector,
+  syncAllConnectors,
   refreshConnectorMetrics,
   listSnapshots,
+  listConnectorAPIKeys,
   listSnapshotChanges,
   listCandidates,
   createCandidate,
   updateCandidate,
   deleteCandidate,
   probeCandidate,
+  probeAllCandidates,
+  getMonitoringPolicy,
+  updateMonitoringPolicy,
   getRecommendationPolicy,
   updateRecommendationPolicy,
   previewRecommendations,

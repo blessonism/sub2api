@@ -1,6 +1,10 @@
 <template>
   <BaseDialog :show="show" :title="`健康详情 · #${candidate?.account_id} ${candidate?.account_name || ''}`" width="normal" @close="emit('close')">
     <div v-if="candidate" class="space-y-4 text-sm">
+      <div v-if="candidate.health" class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <span>计算于 {{ formatHealthCalculatedAt(candidate.health.calculated_at) }}</span>
+        <span v-if="candidate.health.stale" class="rounded bg-amber-100 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">健康数据已过期</span>
+      </div>
       <div class="grid grid-cols-2 gap-3">
         <div v-for="stat in stats" :key="stat.label" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ stat.label }}</div>
@@ -31,6 +35,7 @@
 import { computed } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { UpstreamRelayCandidate } from '@/api/admin/upstreamRelayGroupMonitors'
+import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ show: boolean; candidate: UpstreamRelayCandidate | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -57,6 +62,8 @@ const deltaStatusLabel = computed(() => {
 const deltaClass = computed(() => deltaClassMap[props.candidate?.latest_usage_delta?.status ?? ''] ?? 'text-gray-500 dark:text-gray-400')
 
 function formatRate(v: number) { return Number(v).toFixed(4).replace(/\.?0+$/, '') }
+
+function formatHealthCalculatedAt(value?: string) { return formatDateTime(value) || '-' }
 
 function errorClassLabel(c: string) {
   const map: Record<string, string> = {

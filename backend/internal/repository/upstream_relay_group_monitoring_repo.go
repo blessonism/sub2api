@@ -20,6 +20,11 @@ type upstreamRelayRepository struct {
 	db *sql.DB
 }
 
+const (
+	upstreamRelayHealthSnapshotWindowMinutes = 24 * 60
+	upstreamRelayHealthSnapshotSampleLimit   = 20
+)
+
 func NewUpstreamRelayRepository(db *sql.DB) service.UpstreamRelayRepository {
 	return &upstreamRelayRepository{db: db}
 }
@@ -348,6 +353,30 @@ func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, 
 	return tx.Commit()
 }
 
+func (r *upstreamRelayRepository) ListCandidateUsageBindings(ctx context.Context, connectorID int64) ([]service.UpstreamRelayCandidateUsageBinding, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, connector_id, account_id, upstream_group_id,
+		       COALESCE(upstream_api_key_id, 0), COALESCE(upstream_api_key_name, '')
+		FROM upstream_relay_candidates
+		WHERE connector_id=$1
+		  AND deleted_at IS NULL
+		ORDER BY id ASC
+	`, connectorID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := []service.UpstreamRelayCandidateUsageBinding{}
+	for rows.Next() {
+		var item service.UpstreamRelayCandidateUsageBinding
+		if err := rows.Scan(&item.CandidateID, &item.ConnectorID, &item.AccountID, &item.UpstreamGroupID, &item.UpstreamAPIKeyID, &item.UpstreamAPIKeyName); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *upstreamRelayRepository) ListCandidates(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayCandidateListFilters) ([]service.UpstreamRelayCandidate, *pagination.PaginationResult, error) {
 	page, pageSize := normalizePolicyPagination(params)
 	conditions := []string{"c.deleted_at IS NULL"}
@@ -406,20 +435,23 @@ func (r *upstreamRelayRepository) GetCandidate(ctx context.Context, id int64) (*
 }
 
 func (r *upstreamRelayRepository) CreateCandidate(ctx context.Context, candidate *service.UpstreamRelayCandidate) (*service.UpstreamRelayCandidate, error) {
+	if err := r.validateCandidateBinding(ctx, candidate.ConnectorID, candidate.AccountID); err != nil {
+		return nil, err
+	}
 	var id int64
 	if err := scanSingleRow(ctx, r.db, `
 		INSERT INTO upstream_relay_candidates (
 			connector_id, account_id, upstream_group_id, probe_model, probe_protocol,
-			target_group_id, enabled, notes, created_by, created_at, updated_at
+			upstream_api_key_id, upstream_api_key_name, upstream_api_key_masked,
+			enabled, notes, created_by, created_at, updated_at
 		)
-		SELECT $1, ag.account_id, $3, $4, $5, ag.group_id, $7, $8, $9, NOW(), NOW()
-		FROM account_groups ag
-		WHERE ag.account_id=$2 AND ag.group_id=$6
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
 		RETURNING id
 	`, []any{
 		candidate.ConnectorID, candidate.AccountID, candidate.UpstreamGroupID,
-		candidate.ProbeModel, candidate.ProbeProtocol, candidate.TargetGroupID,
-		candidate.Enabled, candidate.Notes, nullableInt64Value(&candidate.CreatedBy),
+		candidate.ProbeModel, candidate.ProbeProtocol, nullableInt64Value(candidate.UpstreamAPIKeyID),
+		candidate.UpstreamAPIKeyName, candidate.UpstreamAPIKeyMasked, candidate.Enabled,
+		candidate.Notes, nullableInt64Value(&candidate.CreatedBy),
 	}, &id); err != nil {
 		return nil, translateRelayWriteError(err)
 	}
@@ -427,21 +459,55 @@ func (r *upstreamRelayRepository) CreateCandidate(ctx context.Context, candidate
 }
 
 func (r *upstreamRelayRepository) UpdateCandidate(ctx context.Context, candidate *service.UpstreamRelayCandidate) (*service.UpstreamRelayCandidate, error) {
+	if err := r.validateCandidateBinding(ctx, candidate.ConnectorID, candidate.AccountID); err != nil {
+		return nil, err
+	}
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE upstream_relay_candidates c
 		SET connector_id=$2, account_id=$3, upstream_group_id=$4, probe_model=$5,
-		    probe_protocol=$6, target_group_id=$7, enabled=$8, notes=$9, updated_at=NOW()
+		    probe_protocol=$6, upstream_api_key_id=$7, upstream_api_key_name=$8,
+		    upstream_api_key_masked=$9, enabled=$10, notes=$11, updated_at=NOW()
 		WHERE c.id=$1 AND c.deleted_at IS NULL
-		  AND EXISTS (SELECT 1 FROM account_groups ag WHERE ag.account_id=$3 AND ag.group_id=$7)
 	`, candidate.ID, candidate.ConnectorID, candidate.AccountID, candidate.UpstreamGroupID,
-		candidate.ProbeModel, candidate.ProbeProtocol, candidate.TargetGroupID, candidate.Enabled, candidate.Notes)
+		candidate.ProbeModel, candidate.ProbeProtocol, nullableInt64Value(candidate.UpstreamAPIKeyID),
+		candidate.UpstreamAPIKeyName, candidate.UpstreamAPIKeyMasked, candidate.Enabled, candidate.Notes)
 	if err != nil {
 		return nil, translateRelayWriteError(err)
 	}
 	if affected, _ := res.RowsAffected(); affected == 0 {
-		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_ACCOUNT_GROUP_MISSING", "candidate account must belong to target group")
+		return nil, service.ErrUpstreamRelayCandidateNotFound
 	}
 	return r.GetCandidate(ctx, candidate.ID)
+}
+
+func (r *upstreamRelayRepository) validateCandidateBinding(ctx context.Context, connectorID, accountID int64) error {
+	var connectorExists bool
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM upstream_relay_connectors
+			WHERE id=$1 AND deleted_at IS NULL
+		)
+	`, []any{connectorID}, &connectorExists); err != nil {
+		return err
+	}
+	if !connectorExists {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_CONNECTOR_MISSING", "candidate connector must exist")
+	}
+	var accountExists bool
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM accounts
+			WHERE id=$1
+		)
+	`, []any{accountID}, &accountExists); err != nil {
+		return err
+	}
+	if !accountExists {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_ACCOUNT_MISSING", "candidate account must exist")
+	}
+	return nil
 }
 
 func (r *upstreamRelayRepository) SoftDeleteCandidate(ctx context.Context, id int64) error {
@@ -477,6 +543,9 @@ func (r *upstreamRelayRepository) InsertProbeResult(ctx context.Context, result 
 	if _, err := tx.ExecContext(ctx, `UPDATE upstream_relay_candidates SET last_probe_result_id=$2, updated_at=NOW() WHERE id=$1`, result.CandidateID, id); err != nil {
 		return nil, err
 	}
+	if err := r.refreshCandidateHealthSnapshot(ctx, tx, result.CandidateID); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -485,6 +554,47 @@ func (r *upstreamRelayRepository) InsertProbeResult(ctx context.Context, result 
 		return nil, err
 	}
 	return candidate.LatestProbe, nil
+}
+
+func (r *upstreamRelayRepository) refreshCandidateHealthSnapshot(ctx context.Context, tx *sql.Tx, candidateID int64) error {
+	probes, err := r.recentCandidateProbeRows(ctx, tx, []int64{candidateID}, upstreamRelayHealthSnapshotWindowMinutes, upstreamRelayHealthSnapshotSampleLimit)
+	if err != nil {
+		return err
+	}
+	health := buildRelayHealth(probes[candidateID], upstreamRelayHealthSnapshotWindowMinutes)
+	if health == nil {
+		health = &service.UpstreamRelayCandidateHealth{WindowMinutes: upstreamRelayHealthSnapshotWindowMinutes}
+	}
+	health.WindowMinutes = upstreamRelayHealthSnapshotWindowMinutes
+	if health.CalculatedAt.IsZero() {
+		health.CalculatedAt = time.Now()
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO upstream_relay_candidate_health_snapshots (
+			candidate_id, probe_count, success_count, success_rate, avg_latency_ms, p95_latency_ms,
+			consecutive_successes, consecutive_failures, last_error_class, last_success_at,
+			window_minutes, sample_size, calculated_at, updated_at
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+		ON CONFLICT (candidate_id) DO UPDATE SET
+			probe_count=EXCLUDED.probe_count,
+			success_count=EXCLUDED.success_count,
+			success_rate=EXCLUDED.success_rate,
+			avg_latency_ms=EXCLUDED.avg_latency_ms,
+			p95_latency_ms=EXCLUDED.p95_latency_ms,
+			consecutive_successes=EXCLUDED.consecutive_successes,
+			consecutive_failures=EXCLUDED.consecutive_failures,
+			last_error_class=EXCLUDED.last_error_class,
+			last_success_at=EXCLUDED.last_success_at,
+			window_minutes=EXCLUDED.window_minutes,
+			sample_size=EXCLUDED.sample_size,
+			calculated_at=EXCLUDED.calculated_at,
+			updated_at=NOW()
+	`, candidateID, health.ProbeCount, health.SuccessCount, health.SuccessRate,
+		nullableIntValue(health.AvgLatencyMs), nullableIntValue(health.P95LatencyMs),
+		health.ConsecutiveSuccesses, health.ConsecutiveFailures, health.LastErrorClass,
+		health.LastSuccessAt, health.WindowMinutes, health.SampleSize, health.CalculatedAt)
+	return err
 }
 
 func (r *upstreamRelayRepository) InsertUsageDeltaSample(ctx context.Context, sample service.UpstreamRelayUsageDeltaSample) (*service.UpstreamRelayUsageDeltaSample, error) {
@@ -536,6 +646,53 @@ func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) 
 		return nil, err
 	}
 	return items, nil
+}
+
+func (r *upstreamRelayRepository) GetMonitoringPolicy(ctx context.Context) (*service.UpstreamRelayMonitoringPolicy, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT auto_sync_enabled, sync_interval_minutes, auto_probe_enabled, probe_interval_minutes,
+		       failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
+		       COALESCE(updated_by, 0), created_at, updated_at
+		FROM upstream_relay_monitoring_policy
+		WHERE id = 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return nil, nil
+	}
+	policy, err := scanRelayMonitoringPolicy(rows)
+	if err != nil {
+		return nil, err
+	}
+	return &policy, rows.Err()
+}
+
+func (r *upstreamRelayRepository) UpsertMonitoringPolicy(ctx context.Context, policy service.UpstreamRelayMonitoringPolicy, operatorID int64) (*service.UpstreamRelayMonitoringPolicy, error) {
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO upstream_relay_monitoring_policy (
+			id, auto_sync_enabled, sync_interval_minutes, auto_probe_enabled, probe_interval_minutes,
+			failure_retry_interval_minutes, sync_concurrency, probe_concurrency,
+			updated_by, created_at, updated_at
+		)
+		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			auto_sync_enabled=EXCLUDED.auto_sync_enabled,
+			sync_interval_minutes=EXCLUDED.sync_interval_minutes,
+			auto_probe_enabled=EXCLUDED.auto_probe_enabled,
+			probe_interval_minutes=EXCLUDED.probe_interval_minutes,
+			failure_retry_interval_minutes=EXCLUDED.failure_retry_interval_minutes,
+			sync_concurrency=EXCLUDED.sync_concurrency,
+			probe_concurrency=EXCLUDED.probe_concurrency,
+			updated_by=EXCLUDED.updated_by,
+			updated_at=NOW()
+	`, policy.AutoSyncEnabled, policy.SyncIntervalMinutes, policy.AutoProbeEnabled, policy.ProbeIntervalMinutes,
+		policy.FailureRetryIntervalMinutes, policy.SyncConcurrency, policy.ProbeConcurrency, operatorID); err != nil {
+		return nil, err
+	}
+	return r.GetMonitoringPolicy(ctx)
 }
 
 func (r *upstreamRelayRepository) GetRecommendationPolicy(ctx context.Context) (*service.UpstreamRelayRecommendationPolicy, error) {
@@ -609,14 +766,14 @@ func (r *upstreamRelayRepository) CreateRecommendationRun(ctx context.Context, r
 		if _, err := tx.ExecContext(ctx, `
 				INSERT INTO upstream_relay_recommendation_suggestions (
 					run_id, candidate_id, connector_id, account_id, upstream_group_id,
-					target_group_id, old_priority, new_priority, final_rate_multiplier,
+					old_priority, new_priority, final_rate_multiplier,
 					health_status, reason_code, confidence, health_summary, rate_source,
 					reason, applied, created_at
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,FALSE,NOW())
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,FALSE,NOW())
 			`, runID, suggestion.CandidateID, suggestion.ConnectorID, suggestion.AccountID,
-			suggestion.UpstreamGroupID, suggestion.TargetGroupID, nullableIntValue(suggestion.OldPriority),
-			suggestion.NewPriority, suggestion.FinalRateMultiplier, suggestion.HealthStatus,
+			suggestion.UpstreamGroupID, nullableIntValue(suggestion.OldPriority), suggestion.NewPriority,
+			suggestion.FinalRateMultiplier, suggestion.HealthStatus,
 			suggestion.ReasonCode, suggestion.Confidence, suggestion.HealthSummary, suggestion.RateSource,
 			suggestion.Reason); err != nil {
 			return nil, err
@@ -695,7 +852,7 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_APPLIED", "recommendation run already applied")
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT candidate_id, account_id, target_group_id, old_priority, new_priority
+		SELECT candidate_id, account_id, old_priority, new_priority
 		FROM upstream_relay_recommendation_suggestions
 		WHERE run_id=$1 AND applied=FALSE
 		ORDER BY new_priority ASC, candidate_id ASC
@@ -706,14 +863,13 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	type row struct {
 		candidateID int64
 		accountID   int64
-		groupID     int64
 		oldPriority sql.NullInt64
 		newPriority int
 	}
 	suggestions := []row{}
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.candidateID, &item.accountID, &item.groupID, &item.oldPriority, &item.newPriority); err != nil {
+		if err := rows.Scan(&item.candidateID, &item.accountID, &item.oldPriority, &item.newPriority); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -728,21 +884,21 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	if len(suggestions) == 0 {
 		return nil, service.ErrUpstreamRelayNoPendingSuggestions
 	}
-	affectedGroups := map[int64][]int64{}
+	affectedAccounts := map[int64]struct{}{}
 	for _, suggestion := range suggestions {
 		oldPriority := nullableInt64Value(nullInt64Ptr(suggestion.oldPriority))
 		res, err := tx.ExecContext(ctx, `
-			UPDATE account_groups
-			SET priority=$3
-			WHERE account_id=$1 AND group_id=$2 AND priority IS NOT DISTINCT FROM $4
-		`, suggestion.accountID, suggestion.groupID, suggestion.newPriority, oldPriority)
+			UPDATE accounts
+			SET priority=$2, updated_at=NOW()
+			WHERE id=$1 AND priority IS NOT DISTINCT FROM $3
+		`, suggestion.accountID, suggestion.newPriority, oldPriority)
 		if err != nil {
 			return nil, err
 		}
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return nil, infraerrors.Conflict("UPSTREAM_RELAY_RECOMMENDATION_STALE", "recommendation target changed after this run")
 		}
-		affectedGroups[suggestion.accountID] = append(affectedGroups[suggestion.accountID], suggestion.groupID)
+		affectedAccounts[suggestion.accountID] = struct{}{}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE upstream_relay_recommendation_suggestions
@@ -758,9 +914,8 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	`, runID, operatorID); err != nil {
 		return nil, err
 	}
-	for accountID, groupIDs := range affectedGroups {
-		payload := buildSchedulerGroupPayload(groupIDs)
-		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+	for accountID := range affectedAccounts {
+		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -806,8 +961,10 @@ func relayCandidateSelect() string {
 		SELECT c.id, c.connector_id, COALESCE(rc.name, ''), rc.status, c.account_id,
 		       s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at,
 		       COALESCE(a.name, ''), COALESCE(a.platform, ''), c.upstream_group_id,
-		       COALESCE(s.name, ''), c.probe_model, c.probe_protocol, c.target_group_id,
-		       COALESCE(g.name, ''), ag.priority, c.enabled, c.notes,
+		       COALESCE(s.name, ''), c.upstream_api_key_id,
+		       COALESCE(c.upstream_api_key_name, ''), COALESCE(c.upstream_api_key_masked, ''),
+		       c.probe_model, c.probe_protocol, a.priority,
+		       c.enabled, c.notes,
 		       c.last_probe_result_id, COALESCE(c.created_by, 0), c.created_at, c.updated_at,
 		       pr.id, pr.success, pr.latency_ms, pr.http_status, COALESCE(pr.error_class, ''),
 		       COALESCE(pr.error_message, ''), pr.probed_at,
@@ -817,8 +974,6 @@ func relayCandidateSelect() string {
 		FROM upstream_relay_candidates c
 		JOIN upstream_relay_connectors rc ON rc.id = c.connector_id AND rc.deleted_at IS NULL
 		JOIN accounts a ON a.id = c.account_id
-		JOIN groups g ON g.id = c.target_group_id
-		JOIN account_groups ag ON ag.account_id = c.account_id AND ag.group_id = c.target_group_id
 		LEFT JOIN upstream_relay_probe_results pr ON pr.id = c.last_probe_result_id
 		LEFT JOIN upstream_relay_group_rate_snapshots s ON s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id
 	`
@@ -904,12 +1059,14 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 		var todayUsageCheckedAt, snapshotTodayUsageCheckedAt sql.NullTime
 		var snapshotPlatform, snapshotStatus, snapshotSource sql.NullString
 		var snapshotSeen sql.NullTime
+		var upstreamAPIKeyID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID, &item.ConnectorID, &item.ConnectorName, &item.ConnectorStatus, &item.AccountID,
 			&todayActualCost, &todayTotalTokens, &todayUsageCheckedAt,
 			&item.AccountName, &item.AccountPlatform, &item.UpstreamGroupID,
-			&item.UpstreamGroupName, &item.ProbeModel, &item.ProbeProtocol, &item.TargetGroupID,
-			&item.TargetGroupName, &priority, &item.Enabled, &item.Notes,
+			&item.UpstreamGroupName, &upstreamAPIKeyID, &item.UpstreamAPIKeyName, &item.UpstreamAPIKeyMasked,
+			&item.ProbeModel, &item.ProbeProtocol, &priority,
+			&item.Enabled, &item.Notes,
 			&item.LastProbeResultID, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt,
 			&probeID, &probeSuccess, &probeLatency, &probeHTTP, &probeErrorClass,
 			&probeErrorMessage, &probeAt,
@@ -924,6 +1081,7 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 		if todayUsageCheckedAt.Valid {
 			item.TodayUsageCheckedAt = &todayUsageCheckedAt.Time
 		}
+		item.UpstreamAPIKeyID = nullableInt64Ptr(upstreamAPIKeyID)
 		item.CurrentPriority = nullableIntFromSQL(priority)
 		if probeID.Valid {
 			latency := nullableIntFromSQL(probeLatency)
@@ -962,6 +1120,25 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func scanRelayMonitoringPolicy(rows *sql.Rows) (service.UpstreamRelayMonitoringPolicy, error) {
+	var policy service.UpstreamRelayMonitoringPolicy
+	if err := rows.Scan(
+		&policy.AutoSyncEnabled,
+		&policy.SyncIntervalMinutes,
+		&policy.AutoProbeEnabled,
+		&policy.ProbeIntervalMinutes,
+		&policy.FailureRetryIntervalMinutes,
+		&policy.SyncConcurrency,
+		&policy.ProbeConcurrency,
+		&policy.UpdatedBy,
+		&policy.CreatedAt,
+		&policy.UpdatedAt,
+	); err != nil {
+		return policy, err
+	}
+	return policy, nil
 }
 
 func scanRelayRecommendationPolicy(rows *sql.Rows) (service.UpstreamRelayRecommendationPolicy, error) {
@@ -1023,7 +1200,7 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT s.id, s.run_id, s.candidate_id, s.connector_id, COALESCE(rc.name, ''),
 		       s.account_id, COALESCE(a.name, ''), s.upstream_group_id, COALESCE(gs.name, ''),
-		       s.target_group_id, COALESCE(g.name, ''), s.old_priority, s.new_priority,
+		       s.old_priority, s.new_priority,
 		       s.final_rate_multiplier, s.health_status, COALESCE(s.reason_code, ''),
 		       COALESCE(s.confidence, ''), COALESCE(s.health_summary, ''), COALESCE(s.rate_source, ''),
 		       s.reason, s.applied, s.applied_by,
@@ -1031,7 +1208,6 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		FROM upstream_relay_recommendation_suggestions s
 		LEFT JOIN upstream_relay_connectors rc ON rc.id = s.connector_id
 		LEFT JOIN accounts a ON a.id = s.account_id
-		LEFT JOIN groups g ON g.id = s.target_group_id
 		LEFT JOIN upstream_relay_group_rate_snapshots gs ON gs.connector_id=s.connector_id AND gs.upstream_group_id=s.upstream_group_id
 		WHERE s.run_id=$1
 		ORDER BY s.new_priority ASC, s.candidate_id ASC
@@ -1046,8 +1222,7 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		var oldPriority, appliedBy sql.NullInt64
 		if err := rows.Scan(&item.ID, &item.RunID, &item.CandidateID, &item.ConnectorID, &item.ConnectorName,
 			&item.AccountID, &item.AccountName, &item.UpstreamGroupID, &item.UpstreamGroupName,
-			&item.TargetGroupID, &item.TargetGroupName, &oldPriority, &item.NewPriority,
-			&item.FinalRateMultiplier, &item.HealthStatus, &item.ReasonCode, &item.Confidence,
+			&oldPriority, &item.NewPriority, &item.FinalRateMultiplier, &item.HealthStatus, &item.ReasonCode, &item.Confidence,
 			&item.HealthSummary, &item.RateSource, &item.Reason, &item.Applied, &appliedBy,
 			&item.AppliedAt, &item.CreatedAt); err != nil {
 			return nil, err
@@ -1075,7 +1250,7 @@ func (r *upstreamRelayRepository) decorateRelayCandidates(ctx context.Context, i
 	for _, item := range items {
 		ids = append(ids, item.ID)
 	}
-	health, err := r.candidateHealthSummaries(ctx, ids)
+	health, err := r.candidateHealthSnapshots(ctx, ids)
 	if err != nil {
 		return err
 	}
@@ -1091,18 +1266,30 @@ func (r *upstreamRelayRepository) decorateRelayCandidates(ctx context.Context, i
 }
 
 func (r *upstreamRelayRepository) candidateHealthSummaries(ctx context.Context, ids []int64) (map[int64]*service.UpstreamRelayCandidateHealth, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	grouped, err := r.recentCandidateProbeRows(ctx, r.db, ids, 30, 20)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]*service.UpstreamRelayCandidateHealth{}
+	for id, probes := range grouped {
+		out[id] = buildRelayHealth(probes, 30)
+	}
+	return out, nil
+}
+
+func (r *upstreamRelayRepository) recentCandidateProbeRows(ctx context.Context, q sqlQueryer, ids []int64, windowMinutes, sampleLimit int) (map[int64][]relayProbeRow, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT candidate_id, success, latency_ms, COALESCE(error_class, ''), probed_at
 		FROM (
 			SELECT candidate_id, success, latency_ms, error_class, probed_at,
 			       ROW_NUMBER() OVER (PARTITION BY candidate_id ORDER BY probed_at DESC, id DESC) AS rn
 			FROM upstream_relay_probe_results
 			WHERE candidate_id = ANY($1)
-			  AND probed_at >= NOW() - INTERVAL '30 minutes'
+			  AND probed_at >= NOW() - ($2::INT * INTERVAL '1 minute')
 		) recent
-		WHERE rn <= 20
+		WHERE rn <= $3
 		ORDER BY candidate_id ASC, probed_at DESC
-	`, pq.Array(ids))
+	`, pq.Array(ids), windowMinutes, sampleLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1118,15 +1305,61 @@ func (r *upstreamRelayRepository) candidateHealthSummaries(ctx context.Context, 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return grouped, nil
+}
+
+func (r *upstreamRelayRepository) candidateHealthSnapshots(ctx context.Context, ids []int64) (map[int64]*service.UpstreamRelayCandidateHealth, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT candidate_id, probe_count, success_count, success_rate,
+		       avg_latency_ms, p95_latency_ms, consecutive_successes, consecutive_failures,
+		       COALESCE(last_error_class, ''), last_success_at, window_minutes, sample_size, calculated_at
+		FROM upstream_relay_candidate_health_snapshots
+		WHERE candidate_id = ANY($1)
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
 	out := map[int64]*service.UpstreamRelayCandidateHealth{}
-	for id, probes := range grouped {
-		out[id] = buildRelayHealth(probes)
+	for rows.Next() {
+		var candidateID int64
+		var health service.UpstreamRelayCandidateHealth
+		var avgLatency, p95Latency sql.NullInt64
+		var lastSuccessAt sql.NullTime
+		if err := rows.Scan(
+			&candidateID, &health.ProbeCount, &health.SuccessCount, &health.SuccessRate,
+			&avgLatency, &p95Latency, &health.ConsecutiveSuccesses, &health.ConsecutiveFailures,
+			&health.LastErrorClass, &lastSuccessAt, &health.WindowMinutes, &health.SampleSize, &health.CalculatedAt,
+		); err != nil {
+			return nil, err
+		}
+		health.AvgLatencyMs = nullableIntFromSQL(avgLatency)
+		health.P95LatencyMs = nullableIntFromSQL(p95Latency)
+		if lastSuccessAt.Valid {
+			health.LastSuccessAt = &lastSuccessAt.Time
+		}
+		out[candidateID] = &health
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == len(ids) {
+		return out, nil
+	}
+	fallback, err := r.candidateHealthSummaries(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for id, health := range fallback {
+		if _, ok := out[id]; !ok {
+			out[id] = health
+		}
 	}
 	return out, nil
 }
 
-func buildRelayHealth(probes []relayProbeRow) *service.UpstreamRelayCandidateHealth {
-	health := &service.UpstreamRelayCandidateHealth{ProbeCount: len(probes), WindowMinutes: 30, SampleSize: len(probes)}
+func buildRelayHealth(probes []relayProbeRow, windowMinutes int) *service.UpstreamRelayCandidateHealth {
+	health := &service.UpstreamRelayCandidateHealth{ProbeCount: len(probes), WindowMinutes: windowMinutes, SampleSize: len(probes)}
 	if len(probes) == 0 {
 		return health
 	}
@@ -1353,6 +1586,14 @@ func nullableIntFromSQL(v sql.NullInt64) *int {
 	return &out
 }
 
+func nullableInt64Ptr(v sql.NullInt64) *int64 {
+	if !v.Valid {
+		return nil
+	}
+	out := v.Int64
+	return &out
+}
+
 func relayPage(total int64, page, pageSize int) *pagination.PaginationResult {
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
 	if pages < 1 {
@@ -1366,8 +1607,11 @@ func translateRelayWriteError(err error) error {
 		return nil
 	}
 	msg := err.Error()
-	if strings.Contains(msg, "upstream_relay_candidates") && strings.Contains(msg, "account_groups") {
-		return infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_ACCOUNT_GROUP_MISSING", "candidate account must belong to target group")
+	if strings.Contains(msg, "upstream_relay_candidates") && strings.Contains(msg, "accounts") {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_ACCOUNT_MISSING", "candidate account must exist")
+	}
+	if strings.Contains(msg, "upstream_relay_candidates") && strings.Contains(msg, "upstream_relay_connectors") {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_CANDIDATE_CONNECTOR_MISSING", "candidate connector must exist")
 	}
 	if strings.Contains(msg, "duplicate key") {
 		return infraerrors.Conflict("UPSTREAM_RELAY_DUPLICATE", "upstream relay mapping already exists")
