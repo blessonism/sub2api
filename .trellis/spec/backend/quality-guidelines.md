@@ -255,6 +255,156 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 
 ---
 
+### Scenario: Admin upstream relay group monitoring
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing the admin upstream relay group monitoring feature that lists connectors, candidate mappings, group-rate snapshots, probes, or priority suggestions.
+- This feature crosses remote upstream credentials, remote user usage snapshots, repository SQL, service DTOs, admin handlers, frontend API types, and the management UI. It needs code-spec depth because connector-account state and candidate-mapping usage can look similar but mean different things.
+
+#### 2. Signatures
+- Connector DTO: `UpstreamRelayConnector` may expose `upstream_account_balance` and `upstream_account_balance_checked_at`.
+- Candidate DTO: `UpstreamRelayCandidate` must expose nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at`, and must not expose connector account balance fields.
+- Candidate list SQL: read today's remote usage snapshot from `upstream_relay_group_rate_snapshots` by `connector_id = candidate.connector_id` and `upstream_group_id = candidate.upstream_group_id`; it must not aggregate local `usage_logs`.
+- Connector sync may aggregate upstream real usage only from the upstream Sub2API ordinary-user usage records endpoint (`GET /api/v1/usage`) using the connector's upstream login/session. Do not require upstream admin permissions for candidate usage.
+- Token usage expression: `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`.
+- Cost expression: `actual_cost`.
+
+#### 3. Contracts
+- Connector rows represent the upstream relay login account; show upstream account balance only on connector surfaces.
+- Candidate rows represent a local mapping to an upstream group; show today's real upstream usage for `connector_id + upstream_group_id`, not local account/group usage and not upstream account balance.
+- Candidate usage window follows the date sent to the upstream ordinary-user `/usage` endpoint during connector sync.
+- Missing, incomplete, unauthorized, or too-large upstream usage pagination must leave `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` null. Unknown usage must not be coerced to zero.
+- Frontend field names must stay aligned with backend JSON: `today_actual_cost`, `today_total_tokens`, `today_usage_checked_at`, `upstream_account_balance`, `upstream_account_balance_checked_at`.
+
+#### 4. Validation & Error Matrix
+- Missing connector profile balance -> connector balance fields are null; candidate usage is independent.
+- No reliable upstream usage snapshot for candidate connector/group -> candidate usage fields are null, not zero.
+- Candidate target group changes -> upstream usage snapshot remains keyed by `connector_id + upstream_group_id`; local target group does not affect candidate usage.
+- Remote upstream profile failure during sync -> do not fail rate snapshot sync solely because balance refresh failed.
+
+#### 5. Good/Base/Bad Cases
+- Good: the connector tab shows `$12.34` synced at a timestamp for the upstream relay account.
+- Good: the candidate tab shows today's upstream `actual_cost` and four-token total for `connector_id + upstream_group_id`.
+- Base: a candidate with unavailable upstream usage displays a clear not-synced state.
+- Bad: returning `upstream_account_balance` from `UpstreamRelayCandidate`.
+- Bad: aggregating candidate usage from local `usage_logs`.
+- Bad: calling upstream admin dashboard APIs for candidate usage when only ordinary upstream user credentials are available.
+
+#### 6. Tests Required
+- Repository test: candidate select query does not include `upstream_account_balance`.
+- Repository test: candidate select query does not aggregate local `usage_logs`.
+- Service test: upstream ordinary-user `/usage` pages aggregate by `group_id`, `actual_cost`, and the four-token sum.
+- Repository scan test: nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` map to the candidate DTO in the correct scan order.
+- Frontend check: candidate API type excludes connector balance fields and includes today's usage fields; connector API type includes balance fields.
+- Frontend check: candidate table renders the usage column while connector table renders the account balance column.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+type UpstreamRelayCandidate struct {
+    UpstreamAccountBalance *float64 `json:"upstream_account_balance,omitempty"`
+}
+```
+
+Correct:
+```go
+type UpstreamRelayCandidate struct {
+    TodayActualCost     *float64  `json:"today_actual_cost,omitempty"`
+    TodayTotalTokens    *int64    `json:"today_total_tokens,omitempty"`
+    TodayUsageCheckedAt *time.Time `json:"today_usage_checked_at,omitempty"`
+}
+```
+
+Wrong:
+```sql
+SELECT SUM(actual_cost) FROM usage_logs WHERE account_id = c.account_id
+```
+
+Correct:
+```sql
+SELECT s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at
+FROM upstream_relay_group_rate_snapshots s
+WHERE s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id
+```
+
+---
+
+### Scenario: Admin upstream relay recommendation policy preview
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing global recommendation policy or preview behavior for admin upstream relay group monitoring.
+- This feature crosses migration, repository, service ranking logic, admin handlers, frontend API types, and UI controls. It needs code-spec depth because preview must be a no-write simulation while saved policy must drive persisted recommendation runs.
+
+#### 2. Signatures
+- Route prefix: `/api/v1/admin/upstream-relay-group-monitors`.
+- Policy endpoints: `GET /recommendation-policy`, `PUT /recommendation-policy`.
+- Preview endpoint: `POST /recommendations/preview`.
+- Persisted run endpoint remains: `POST /recommendations`.
+- DB singleton table: `upstream_relay_recommendation_policy` with `id = 1`.
+- Policy fields: `snapshot_freshness_minutes`, `usage_delta_freshness_minutes`, `probe_freshness_minutes`, `min_success_rate`, `min_sample_size`, `exclude_consecutive_failures`, `priority_start`, `priority_step`, `sort_fields`.
+- Supported `sort_fields`: `rate_asc`, `success_rate_desc`, `latency_asc`.
+
+#### 3. Contracts
+- Missing policy row returns the default policy rather than an error.
+- Default policy must stay equivalent or close to the previous hard-coded recommendation behavior.
+- `POST /recommendations/preview` accepts an optional policy payload; when omitted, it uses the saved/default global policy.
+- Preview returns `suggestions` and `exclusions` with reason codes and human-readable reasons.
+- Preview must not insert into `upstream_relay_recommendation_runs` or `upstream_relay_recommendation_suggestions`.
+- Preview must not update `account_groups.priority` or any target group configuration.
+- `POST /recommendations` must read the saved/default global policy and persist a normal recommendation run using the computed suggestions.
+
+#### 4. Validation & Error Matrix
+- Freshness windows `<= 0` -> `400 UPSTREAM_RELAY_INVALID_POLICY_FRESHNESS`.
+- `min_success_rate < 0`, `> 1`, NaN, or infinity -> `400 UPSTREAM_RELAY_INVALID_POLICY_SUCCESS_RATE`.
+- `min_sample_size < 1` -> `400 UPSTREAM_RELAY_INVALID_POLICY_SAMPLE_SIZE`.
+- `priority_step < 1` -> `400 UPSTREAM_RELAY_INVALID_POLICY_PRIORITY_STEP`.
+- Empty `sort_fields` -> default sort order is used.
+- Duplicate or unsupported `sort_fields` -> `400 UPSTREAM_RELAY_INVALID_POLICY_SORT_FIELDS`.
+- Missing auth subject on policy update or persisted run generation -> `401 User not authenticated`.
+
+#### 5. Good/Base/Bad Cases
+- Good: admin previews an unsaved policy and sees both recommended priority changes and excluded candidates without creating a recommendation run.
+- Good: after saving `priority_start=100` and `priority_step=5`, a persisted recommendation run uses priorities `100, 105, ...`.
+- Base: no saved policy row returns default thresholds and sort fields.
+- Bad: preview calls `CreateRecommendationRun`.
+- Bad: preview silently drops excluded candidates without explaining why.
+- Bad: frontend lets duplicate sort fields through and relies on backend rejection for a normal control flow.
+
+#### 6. Tests Required
+- Service test: preview does not call repository run-creation or apply methods.
+- Service test: persisted generation uses saved policy for priority start, step, filtering, and sort order.
+- Service test: validation rejects invalid freshness, success rate, sample size, priority step, and duplicate/unsupported sort fields.
+- Repository test: singleton policy upsert preserves `id=1`, `updated_by`, and array `sort_fields`.
+- Handler/routes test: policy and preview routes are registered and update requires admin auth.
+- Frontend API test: preview endpoint path differs from persisted generate endpoint path.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+preview := buildPreview(candidates, policy)
+return repo.CreateRecommendationRun(ctx, run, preview.Suggestions)
+```
+
+Correct:
+```go
+preview := buildPreview(candidates, policy)
+return &preview, nil
+```
+
+Wrong:
+```typescript
+sort_fields: ['rate_asc', 'rate_asc']
+```
+
+Correct:
+```typescript
+sort_fields: normalizeSortFields(policyForm.sort_fields)
+```
+
+---
+
 ### Scenario: Conversation capture export quality gate
 
 #### 1. Scope / Trigger

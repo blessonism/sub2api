@@ -57,6 +57,24 @@ Required tests:
 - View test covers loading, success, empty/error states, and important display fields.
 - Sidebar/prefetch tests cover new route visibility and prefetch registration.
 
+### Pattern: Upstream Relay Monitoring API Types
+
+When updating `frontend/src/api/admin/upstreamRelayGroupMonitors.ts`:
+
+- Keep connector-only fields on `UpstreamRelayConnector`, including `upstream_account_balance` and `upstream_account_balance_checked_at`.
+- Keep candidate-mapping usage fields on `UpstreamRelayCandidate`, including nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at`.
+- Do not add upstream account balance fields to `UpstreamRelayCandidate`; candidate rows display the upstream relay user's real usage snapshot for `connector_id + upstream_group_id`, while connector rows display the upstream relay account balance.
+- Treat missing candidate usage as unknown / not synced, not as zero usage.
+- Keep recommendation preview and persisted generation as separate methods: `previewRecommendations()` must call `/recommendations/preview`; `generateRecommendations()` must call `/recommendations`.
+- Normalize recommendation policy `sort_fields` before submit so duplicate fields are removed and missing default sort fields are appended.
+- Add zh/en i18n keys for every table column introduced in `UpstreamRelayGroupMonitoringView.vue`.
+
+Required checks:
+
+- `pnpm typecheck` passes.
+- A targeted key scan confirms every `tM('candidates.*')` and `tM('connectors.*')` key used by the view exists in both locale files.
+- API tests cover both preview and persisted generate endpoint paths.
+
 ---
 
 ## Forbidden Patterns
