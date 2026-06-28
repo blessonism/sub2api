@@ -64,14 +64,71 @@
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
               <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
             </label>
-            <label class="space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedUsers') }}</span>
-              <input v-model="excludedUserIDsText" class="input w-full" placeholder="1,2,3" />
-            </label>
-            <label class="space-y-1 xl:col-span-3">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.excludedApiKeys') }}</span>
-              <input v-model="excludedAPIKeyIDsText" class="input w-full" placeholder="10,11,12" />
-            </label>
+            <div class="space-y-2 md:col-span-2 xl:col-span-3">
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.subjectFilterMode') }}</div>
+              <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <button
+                  type="button"
+                  data-test="conversation-mode-blacklist"
+                  :class="modeButtonClass('blacklist')"
+                  @click="setSubjectFilterMode('blacklist')"
+                >
+                  <span class="text-sm font-semibold">{{ t('admin.conversations.blacklistMode') }}</span>
+                  <span class="mt-1 block text-xs font-normal">{{ t('admin.conversations.blacklistModeHint') }}</span>
+                </button>
+                <button
+                  type="button"
+                  data-test="conversation-mode-whitelist"
+                  :class="modeButtonClass('whitelist')"
+                  @click="setSubjectFilterMode('whitelist')"
+                >
+                  <span class="text-sm font-semibold">{{ t('admin.conversations.whitelistMode') }}</span>
+                  <span class="mt-1 block text-xs font-normal">{{ t('admin.conversations.whitelistModeHint') }}</span>
+                </button>
+              </div>
+              <p v-if="emptyWhitelistActive" data-test="conversation-empty-whitelist-warning" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                {{ t('admin.conversations.emptyWhitelistWarning') }}
+              </p>
+            </div>
+            <div
+              v-for="item in activeSubjectListItems"
+              :key="item.kind"
+              class="space-y-2 md:col-span-2 xl:col-span-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ item.label }}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.subjectListCount', { count: listValues(item.kind).length }) }}</span>
+              </div>
+              <div class="flex min-h-11 flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-2 dark:border-dark-700 dark:bg-dark-900">
+                <span
+                  v-for="id in listValues(item.kind)"
+                  :key="`${item.kind}-${id}`"
+                  class="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                  :data-test="`conversation-id-chip-${item.kind}-${id}`"
+                >
+                  #{{ id }}
+                  <button
+                    type="button"
+                    class="rounded px-1 text-primary-500 hover:bg-primary-100 hover:text-primary-700 dark:text-primary-200 dark:hover:bg-primary-900/60"
+                    :aria-label="t('admin.conversations.removeSubjectId', { id })"
+                    @click="removeListID(item.kind, id)"
+                  >
+                    x
+                  </button>
+                </span>
+                <input
+                  :value="idListDrafts[item.kind]"
+                  class="min-w-[160px] flex-1 border-0 bg-transparent p-1 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white"
+                  :data-test="`conversation-id-input-${item.kind}`"
+                  :placeholder="item.placeholder"
+                  @input="updateIDListDraft(item.kind, $event)"
+                  @keydown="onIDListKeydown(item.kind, $event)"
+                  @paste.prevent="onIDListPaste(item.kind, $event)"
+                  @blur="commitIDListDraft(item.kind)"
+                />
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.conversations.subjectListHint') }}</p>
+            </div>
           </div>
         </section>
 
@@ -417,6 +474,7 @@ import conversationsAPI, {
   type ConversationQualityStatus,
   type ConversationSession,
   type ConversationSessionFilters,
+  type ConversationSubjectFilterMode,
   type ConversationTurn,
   type ConversationTurnSummary,
 } from '@/api/admin/conversations'
@@ -434,13 +492,26 @@ const defaultConfig: ConversationCaptureConfig = {
   session_window_minutes: 30,
   retention_days: 30,
   export_enabled: true,
+  subject_filter_mode: 'blacklist',
   excluded_user_ids: [],
   excluded_api_key_ids: [],
+  included_user_ids: [],
+  included_api_key_ids: [],
 }
 
 const configForm = reactive<ConversationCaptureConfig>({ ...defaultConfig })
-const excludedUserIDsText = ref('')
-const excludedAPIKeyIDsText = ref('')
+type ConversationIDListKind = 'excluded_user_ids' | 'excluded_api_key_ids' | 'included_user_ids' | 'included_api_key_ids'
+
+const excludedUserIDs = ref<number[]>([])
+const excludedAPIKeyIDs = ref<number[]>([])
+const includedUserIDs = ref<number[]>([])
+const includedAPIKeyIDs = ref<number[]>([])
+const idListDrafts = reactive<Record<ConversationIDListKind, string>>({
+  excluded_user_ids: '',
+  excluded_api_key_ids: '',
+  included_user_ids: '',
+  included_api_key_ids: '',
+})
 const loading = ref(false)
 const turnsLoading = ref(false)
 const jobsLoading = ref(false)
@@ -469,8 +540,6 @@ const exportOptions = reactive({
 })
 const pagination = reactive({ total: 0, page: 1, page_size: 20 })
 
-const parsedExcludedUserIDs = computed(() => parseIDs(excludedUserIDsText.value))
-const parsedExcludedAPIKeyIDs = computed(() => parseIDs(excludedAPIKeyIDsText.value))
 const captureStatusLabel = computed(() => (
   configForm.enabled ? t('admin.conversations.captureOn') : t('admin.conversations.captureOff')
 ))
@@ -500,6 +569,38 @@ const emptyStateTitle = computed(() => (
 const emptyStateDescription = computed(() => (
   configForm.enabled ? t('admin.conversations.emptyEnabledDescription') : t('admin.conversations.emptyDisabledDescription')
 ))
+const emptyWhitelistActive = computed(() => (
+  configForm.subject_filter_mode === 'whitelist' &&
+  includedUserIDs.value.length === 0 &&
+  includedAPIKeyIDs.value.length === 0
+))
+const activeSubjectListItems = computed(() => (
+  configForm.subject_filter_mode === 'whitelist'
+    ? [
+        {
+          kind: 'included_user_ids' as const,
+          label: t('admin.conversations.includedUsers'),
+          placeholder: t('admin.conversations.subjectListPlaceholderUsers'),
+        },
+        {
+          kind: 'included_api_key_ids' as const,
+          label: t('admin.conversations.includedApiKeys'),
+          placeholder: t('admin.conversations.subjectListPlaceholderApiKeys'),
+        },
+      ]
+    : [
+        {
+          kind: 'excluded_user_ids' as const,
+          label: t('admin.conversations.excludedUsers'),
+          placeholder: t('admin.conversations.subjectListPlaceholderUsers'),
+        },
+        {
+          kind: 'excluded_api_key_ids' as const,
+          label: t('admin.conversations.excludedApiKeys'),
+          placeholder: t('admin.conversations.subjectListPlaceholderApiKeys'),
+        },
+      ]
+))
 
 onMounted(loadAll)
 
@@ -509,9 +610,17 @@ async function loadAll() {
 
 async function loadConfig() {
   const config = await conversationsAPI.getConfig()
-  Object.assign(configForm, config)
-  excludedUserIDsText.value = config.excluded_user_ids.join(',')
-  excludedAPIKeyIDsText.value = config.excluded_api_key_ids.join(',')
+  const normalized = {
+    ...defaultConfig,
+    ...config,
+    subject_filter_mode: config.subject_filter_mode || defaultConfig.subject_filter_mode,
+    excluded_user_ids: config.excluded_user_ids || [],
+    excluded_api_key_ids: config.excluded_api_key_ids || [],
+    included_user_ids: config.included_user_ids || [],
+    included_api_key_ids: config.included_api_key_ids || [],
+  }
+  Object.assign(configForm, normalized)
+  syncIDLists(normalized)
 }
 
 async function saveConfig() {
@@ -519,12 +628,15 @@ async function saveConfig() {
   try {
     const updated = await conversationsAPI.updateConfig({
       ...configForm,
-      excluded_user_ids: parsedExcludedUserIDs.value,
-      excluded_api_key_ids: parsedExcludedAPIKeyIDs.value,
+      subject_filter_mode: configForm.subject_filter_mode || 'blacklist',
+      excluded_user_ids: excludedUserIDs.value,
+      excluded_api_key_ids: excludedAPIKeyIDs.value,
+      included_user_ids: includedUserIDs.value,
+      included_api_key_ids: includedAPIKeyIDs.value,
     })
-    Object.assign(configForm, updated)
-    excludedUserIDsText.value = updated.excluded_user_ids.join(',')
-    excludedAPIKeyIDsText.value = updated.excluded_api_key_ids.join(',')
+    const normalized = { ...defaultConfig, ...updated }
+    Object.assign(configForm, normalized)
+    syncIDLists(normalized)
   } catch (error) {
     await loadConfig()
     throw error
@@ -540,6 +652,79 @@ async function updateConfigFlag(field: 'enabled' | 'export_enabled', value: bool
   } catch {
     // saveConfig 已重新拉取后端配置，避免开关点击产生未处理异常。
   }
+}
+
+function setSubjectFilterMode(mode: ConversationSubjectFilterMode) {
+  configForm.subject_filter_mode = mode
+}
+
+function modeButtonClass(mode: ConversationSubjectFilterMode): string {
+  const base = 'rounded-md border px-3 py-2 text-left transition'
+  if (configForm.subject_filter_mode === mode) {
+    return `${base} border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-200`
+  }
+  return `${base} border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-primary-500`
+}
+
+function syncIDLists(config: ConversationCaptureConfig) {
+  excludedUserIDs.value = uniquePositiveIDs(config.excluded_user_ids || [])
+  excludedAPIKeyIDs.value = uniquePositiveIDs(config.excluded_api_key_ids || [])
+  includedUserIDs.value = uniquePositiveIDs(config.included_user_ids || [])
+  includedAPIKeyIDs.value = uniquePositiveIDs(config.included_api_key_ids || [])
+  Object.keys(idListDrafts).forEach((key) => {
+    idListDrafts[key as ConversationIDListKind] = ''
+  })
+}
+
+function listValues(kind: ConversationIDListKind): number[] {
+  if (kind === 'excluded_user_ids') return excludedUserIDs.value
+  if (kind === 'excluded_api_key_ids') return excludedAPIKeyIDs.value
+  if (kind === 'included_user_ids') return includedUserIDs.value
+  return includedAPIKeyIDs.value
+}
+
+function setListValues(kind: ConversationIDListKind, values: number[]) {
+  const normalized = uniquePositiveIDs(values)
+  if (kind === 'excluded_user_ids') {
+    excludedUserIDs.value = normalized
+  } else if (kind === 'excluded_api_key_ids') {
+    excludedAPIKeyIDs.value = normalized
+  } else if (kind === 'included_user_ids') {
+    includedUserIDs.value = normalized
+  } else {
+    includedAPIKeyIDs.value = normalized
+  }
+}
+
+function updateIDListDraft(kind: ConversationIDListKind, event: Event) {
+  idListDrafts[kind] = (event.target as HTMLInputElement).value
+}
+
+function onIDListKeydown(kind: ConversationIDListKind, event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ',' && event.key !== ' ' && event.key !== 'Tab') return
+  if (event.key !== 'Tab' || idListDrafts[kind].trim() !== '') {
+    event.preventDefault()
+  }
+  commitIDListDraft(kind)
+}
+
+function onIDListPaste(kind: ConversationIDListKind, event: ClipboardEvent) {
+  addListIDs(kind, event.clipboardData?.getData('text') || '')
+}
+
+function commitIDListDraft(kind: ConversationIDListKind) {
+  addListIDs(kind, idListDrafts[kind])
+  idListDrafts[kind] = ''
+}
+
+function addListIDs(kind: ConversationIDListKind, raw: string) {
+  const ids = parseIDs(raw)
+  if (ids.length === 0) return
+  setListValues(kind, [...listValues(kind), ...ids])
+}
+
+function removeListID(kind: ConversationIDListKind, id: number) {
+  setListValues(kind, listValues(kind).filter((item) => item !== id))
 }
 
 async function loadSessions() {
@@ -776,10 +961,21 @@ function onPageSizeChange(pageSize: number) {
 }
 
 function parseIDs(value: string): number[] {
-  return value
-    .split(',')
+  return uniquePositiveIDs(value
+    .split(/[\s,，;；]+/)
     .map((item) => Number(item.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0)
+    .filter((item) => Number.isInteger(item) && item > 0))
+}
+
+function uniquePositiveIDs(values: number[]): number[] {
+  const seen = new Set<number>()
+  const result: number[] = []
+  values.forEach((value) => {
+    if (!Number.isInteger(value) || value <= 0 || seen.has(value)) return
+    seen.add(value)
+    result.push(value)
+  })
+  return result
 }
 
 function shortId(value: string): string {

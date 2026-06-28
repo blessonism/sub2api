@@ -3,6 +3,7 @@ import type { BasePaginationResponse } from '@/types'
 
 export type ConversationParseStatus = 'success' | 'failed' | 'partial'
 export type ConversationQualityStatus = 'unchecked' | 'clean' | 'needs_review' | 'rejected'
+export type ConversationSubjectFilterMode = 'blacklist' | 'whitelist'
 
 export interface ConversationQualityError {
   code: string
@@ -21,8 +22,11 @@ export interface ConversationCaptureConfig {
   session_window_minutes: number
   retention_days: number
   export_enabled: boolean
+  subject_filter_mode: ConversationSubjectFilterMode
   excluded_user_ids: number[]
   excluded_api_key_ids: number[]
+  included_user_ids: number[]
+  included_api_key_ids: number[]
 }
 
 export interface ConversationSession {

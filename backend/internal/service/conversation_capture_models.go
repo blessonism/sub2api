@@ -24,6 +24,9 @@ const (
 
 	ConversationCaptureEndpointChatCompletions = "chat_completions"
 	ConversationCaptureEndpointResponses       = "responses"
+
+	ConversationCaptureSubjectFilterModeBlacklist = "blacklist"
+	ConversationCaptureSubjectFilterModeWhitelist = "whitelist"
 )
 
 type ConversationCaptureConfig struct {
@@ -37,8 +40,11 @@ type ConversationCaptureConfig struct {
 	SessionWindowMinutes   int     `json:"session_window_minutes"`
 	RetentionDays          int     `json:"retention_days"`
 	ExportEnabled          bool    `json:"export_enabled"`
+	SubjectFilterMode      string  `json:"subject_filter_mode"`
 	ExcludedUserIDs        []int64 `json:"excluded_user_ids"`
 	ExcludedAPIKeyIDs      []int64 `json:"excluded_api_key_ids"`
+	IncludedUserIDs        []int64 `json:"included_user_ids"`
+	IncludedAPIKeyIDs      []int64 `json:"included_api_key_ids"`
 }
 
 type ConversationCaptureDecision struct {
