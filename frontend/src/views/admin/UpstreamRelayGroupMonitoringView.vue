@@ -35,7 +35,7 @@
         </div>
       </div>
 
-      <div v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+      <div v-if="error" data-testid="page-error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
         {{ error }}
       </div>
 
@@ -194,6 +194,59 @@
           </div>
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('connectors.count', { n: connectors.length }) }}</span>
         </div>
+        <div v-if="metricsRefreshResult" data-testid="metrics-refresh-summary" class="border-b border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/30">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span :class="metricsRefreshSummaryClass(metricsRefreshSummary)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                  {{ tM('metricsRefresh.summaryTitle') }}
+                </span>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ tM('metricsRefresh.summaryCounts', { success: metricsRefreshSummary.success, partial: metricsRefreshSummary.partial, failed: metricsRefreshSummary.failed }) }}
+                </span>
+              </div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ tM('metricsRefresh.summaryMeta', { balance: metricsRefreshSummary.balance, total: metricsRefreshSummary.total, usage: metricsRefreshSummary.usage, missing: metricsRefreshSummary.missingGroups }) }}
+                <span class="ml-2">{{ tM('metricsRefresh.updatedAt', { time: formatDate(metricsRefreshResult.updatedAt) }) }}</span>
+              </div>
+            </div>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" @click="metricsRefreshResult.expanded = !metricsRefreshResult.expanded">
+              {{ metricsRefreshResult.expanded ? tM('metricsRefresh.hideDetails') : tM('metricsRefresh.showDetails') }}
+            </button>
+          </div>
+          <div v-if="metricsRefreshResult.expanded" data-testid="metrics-refresh-details" class="mt-3 grid gap-2">
+            <div
+              v-for="item in metricsRefreshResult.items"
+              :key="item.connector.id"
+              class="rounded-md border border-gray-100 bg-white px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900"
+            >
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div class="font-medium text-gray-900 dark:text-white">{{ item.connector.name || `Connector #${item.connector.id}` }}</div>
+                  <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ metricsBalanceDetailLabel(item) }}</span>
+                    <span>{{ metricsUsageDetailLabel(item) }}</span>
+                  </div>
+                </div>
+                <span :class="metricsRefreshStatusClass(item.status)" class="inline-flex w-fit rounded-md px-2 py-1 text-xs font-medium">
+                  {{ metricsRefreshStatusLabel(item.status) }}
+                </span>
+              </div>
+              <div v-if="item.balance_detail.error || item.usage_detail.error" class="mt-2 text-xs text-red-600 dark:text-red-300">
+                {{ item.balance_detail.error || item.usage_detail.error }}
+              </div>
+              <div v-if="metricsMissingGroups(item.usage_detail).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
+                <span
+                  v-for="group in metricsMissingGroups(item.usage_detail).slice(0, 6)"
+                  :key="`${item.connector.id}-${group.upstream_group_id}`"
+                  class="inline-flex rounded bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+                >
+                  {{ group.name || group.upstream_group_id }} · {{ metricsMissingGroupReasonLabel(group.reason) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
         <div v-if="loading" class="flex min-h-56 items-center justify-center">
           <LoadingSpinner />
         </div>
@@ -255,6 +308,9 @@
                 <td class="px-4 py-3 text-right">
                   <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatAccountBalance(connector.upstream_account_balance) }}</div>
                   <div class="mt-1 whitespace-normal break-words text-xs leading-4 text-gray-400 dark:text-gray-500">{{ accountBalanceCheckedLabel(connector, 'connectors') }}</div>
+                  <div v-if="connectorMetricsRefreshResult(connector.id)" class="mt-1 whitespace-normal break-words text-xs leading-4" :class="metricsRefreshStatusTextClass(connectorMetricsRefreshResult(connector.id)!.status)">
+                    {{ connectorMetricsRefreshInlineLabel(connectorMetricsRefreshResult(connector.id)!) }}
+                  </div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex flex-wrap justify-end gap-2">
@@ -275,31 +331,32 @@
                     :aria-hidden="!isConnectorExpanded(connector.id)"
                   >
                     <div class="overflow-hidden">
-                      <div class="px-4 py-3">
+                      <div class="py-3">
                         <div
                           v-if="connectorGroupItems(connector).length > 0"
                           data-testid="connector-group-expansion"
-                          class="grid gap-1.5"
+                          class="grid gap-2"
                         >
                           <div
                             v-for="candidate in connectorGroupItems(connector)"
                             :key="candidate.id"
                             data-testid="connector-group-item"
-                            class="grid gap-1 rounded border border-gray-100 bg-white px-2.5 py-1.5 text-xs leading-5 dark:border-dark-700 dark:bg-dark-900 md:grid-cols-[minmax(140px,1.8fr)_minmax(88px,0.7fr)_minmax(64px,0.55fr)_minmax(120px,0.9fr)_minmax(72px,0.65fr)] md:items-center"
+                            class="grid grid-cols-[26%_12%_20%_16%_13%_13%] items-center rounded border border-gray-100 bg-white text-xs leading-5 dark:border-dark-700 dark:bg-dark-900"
                           >
-                            <div class="min-w-0">
+                            <div class="min-w-0 px-4 py-2.5">
                               <div class="truncate font-medium text-gray-900 dark:text-white">{{ candidateUpstreamGroupLabel(candidate) }}</div>
                               <div class="truncate font-mono text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidate.upstream_group_id }}</div>
                             </div>
-                            <div>
+                            <div class="px-4 py-2.5">
                               <span :class="candidateHealthClass(candidate)" class="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium leading-4">{{ candidateHealthLabel(candidate) }}</span>
                             </div>
-                            <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateRateLabel(candidate) }}</div>
-                            <div class="min-w-0 text-right md:text-left">
+                            <div class="px-4 py-2.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateRateLabel(candidate) }}</div>
+                            <div class="px-4 py-2.5 text-right tabular-nums text-gray-700 dark:text-gray-200">Priority {{ candidate.current_priority ?? '-' }}</div>
+                            <div class="min-w-0 px-4 py-2.5 text-right">
                               <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateTodayUsageCostLabel(candidate) }}</div>
                               <div class="truncate text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidateTodayUsageCompactMetaLabel(candidate) }}</div>
                             </div>
-                            <div class="tabular-nums text-gray-700 dark:text-gray-200">Priority {{ candidate.current_priority ?? '-' }}</div>
+                            <div class="px-4 py-2.5"></div>
                           </div>
                         </div>
                         <div v-else class="rounded-md border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
@@ -964,8 +1021,12 @@ import upstreamRelayAPI, {
   type UpstreamRelayAPIKeyOption,
   type UpstreamRelayBulkOperationItem,
   type UpstreamRelayBulkOperationResult,
+  type UpstreamRelayConnectorMetricsRefreshResult,
   type UpstreamRelayGroupRateSnapshot,
   type UpstreamRelayGroupRateSnapshotChange,
+  type UpstreamRelayMetricsMissingGroupDetail,
+  type UpstreamRelayMetricsUsageDetail,
+  type UpstreamRelayMetricsRefreshStatus,
   type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayMonitoringPolicyInput,
   type UpstreamRelayProbeProtocol,
@@ -980,6 +1041,13 @@ import type { Account } from '@/types'
 
 type SectionKey = 'candidates' | 'connectors' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
 type BulkOperationKind = 'sync' | 'probe'
+type MetricsRefreshResultState = {
+  items: UpstreamRelayConnectorMetricsRefreshResult[]
+  updatedAt: string
+  expanded: boolean
+}
+
+const METRICS_REFRESH_LOCAL_BINDING_ERROR = 'connector has no local account bindings'
 
 const loading = ref(false)
 const error = ref('')
@@ -1015,6 +1083,7 @@ const policyPreviewLastUpdatedAt = ref<string | null>(null)
 const policyPreviewResultRef = ref<HTMLElement | null>(null)
 const monitoringPolicySavedAt = ref<string | null>(null)
 const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
+const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
 const activeSection = ref<SectionKey>('candidates')
 const connectorDialogOpen = ref(false)
 const candidateDialogOpen = ref(false)
@@ -1165,6 +1234,31 @@ const bulkFailedItems = computed(() => {
   return (bulkOperationResult.value?.result.items || [])
     .filter((item) => !item.success)
     .slice(0, 5)
+})
+
+const metricsRefreshResultByConnectorId = computed(() => {
+  const out = new Map<number, UpstreamRelayConnectorMetricsRefreshResult>()
+  for (const item of metricsRefreshResult.value?.items || []) {
+    out.set(item.connector.id, item)
+  }
+  return out
+})
+
+const metricsRefreshSummary = computed(() => {
+  const items = metricsRefreshResult.value?.items || []
+  return items.reduce(
+    (summary, item) => {
+      summary.total++
+      if (item.status === 'success') summary.success++
+      else if (item.status === 'partial') summary.partial++
+      else summary.failed++
+      if (item.balance_detail.status === 'success') summary.balance++
+      if (item.usage_detail.status === 'success' || item.usage_detail.status === 'partial') summary.usage++
+      summary.missingGroups += metricsMissingGroups(item.usage_detail).length
+      return summary
+    },
+    { total: 0, success: 0, partial: 0, failed: 0, balance: 0, usage: 0, missingGroups: 0 }
+  )
 })
 
 const policyMinSuccessRatePercent = computed({
@@ -1577,7 +1671,7 @@ async function syncAllConnectors() {
   }
 }
 
-async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Promise<string | null> {
+async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Promise<UpstreamRelayConnectorMetricsRefreshResult> {
   const result = await upstreamRelayAPI.refreshConnectorMetrics(connector.id)
   connectors.value = connectors.value.map((item) => (item.id === connector.id ? result.connector : item))
   replaceOverviewSnapshotsForConnector(connector.id, result.snapshots)
@@ -1585,15 +1679,7 @@ async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Pr
     snapshots.value = result.snapshots
     snapshotConnector.value = result.connector
   }
-  if (result.snapshots.length === 0) {
-    return tM('errors.metricsRefreshNeedsFullSync')
-  }
-  if (!result.usage_available) {
-    return result.usage_error
-      ? tM('errors.metricsUsageUnavailableWithReason', { reason: result.usage_error })
-      : tM('errors.metricsUsageUnavailable')
-  }
-  return null
+  return result
 }
 
 async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}) {
@@ -1603,12 +1689,27 @@ async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}
   refreshingMetrics.value = true
   if (!options.silent) error.value = ''
   const warnings: string[] = []
+  const results: UpstreamRelayConnectorMetricsRefreshResult[] = []
   try {
     for (const connector of targets) {
-      const warning = await refreshMetricsForConnector(connector)
+      let result: UpstreamRelayConnectorMetricsRefreshResult
+      try {
+        result = await refreshMetricsForConnector(connector)
+      } catch (err) {
+        result = buildMetricsRefreshFailureResult(connector, err)
+      }
+      results.push(result)
+      const warning = metricsRefreshWarning(result)
       if (warning) warnings.push(warning)
     }
     await refreshCandidatesSilent()
+    if (!options.silent) {
+      metricsRefreshResult.value = {
+        items: results,
+        updatedAt: new Date().toISOString(),
+        expanded: results.some((item) => item.status !== 'success')
+      }
+    }
     if (warnings.length > 0 && !options.silent) {
       error.value = warnings[0]
     }
@@ -2182,6 +2283,114 @@ function accountBalanceCheckedLabel(
   return tM(`${scope}.accountBalanceCheckedAt`, {
     time: formatDate(item.upstream_account_balance_checked_at)
   })
+}
+
+function connectorMetricsRefreshResult(connectorID: number) {
+  return metricsRefreshResultByConnectorId.value.get(connectorID) || null
+}
+
+function buildMetricsRefreshFailureResult(connector: UpstreamRelayConnector, err: unknown): UpstreamRelayConnectorMetricsRefreshResult {
+  const message = err instanceof Error ? err.message : extractApiErrorMessage(err) || tM('errors.refreshMetricsFailed')
+  return {
+    connector,
+    snapshots: [],
+    status: 'failed',
+    balance_detail: { status: 'failed', error: message },
+    usage_detail: {
+      status: 'failed',
+      total_groups: connectorGroupItems(connector).length,
+      updated_groups: 0,
+      missing_groups: connectorGroupItems(connector).map((candidate) => ({
+        upstream_group_id: candidate.upstream_group_id,
+        name: candidate.upstream_group_name,
+        reason: 'usage_refresh_failed',
+        message
+      })),
+      error: message
+    },
+    balance_available: false,
+    balance_error: message,
+    usage_available: false,
+    usage_error: message,
+    refreshed_at: new Date().toISOString()
+  }
+}
+
+function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  const failureReasons = metricsRefreshFailureReasons(result)
+  const failureReason = failureReasons.find((reason) => reason !== METRICS_REFRESH_LOCAL_BINDING_ERROR) || null
+  if (result.status === 'failed') {
+    if (failureReason) return failureReason
+    return failureReasons.length === 0 ? tM('errors.refreshMetricsFailed') : null
+  }
+  if (!result.balance_available && !result.usage_available && failureReason) return failureReason
+  if (metricsMissingGroups(result.usage_detail).some((group) => group.reason === 'no_snapshot')) return tM('errors.metricsRefreshNeedsFullSync')
+  return null
+}
+
+function metricsRefreshFailureReasons(result: Pick<UpstreamRelayConnectorMetricsRefreshResult, 'balance_error' | 'usage_error'>) {
+  return [result.balance_error, result.usage_error].filter((reason): reason is string => Boolean(reason))
+}
+
+function metricsMissingGroups(detail: Pick<UpstreamRelayMetricsUsageDetail, 'missing_groups'>): UpstreamRelayMetricsMissingGroupDetail[] {
+  return Array.isArray(detail.missing_groups) ? detail.missing_groups : []
+}
+
+function metricsRefreshStatusLabel(status: UpstreamRelayMetricsRefreshStatus) {
+  return tM(`metricsRefresh.status.${status}`)
+}
+
+function metricsMissingGroupReasonLabel(reason: string) {
+  return tM(`metricsRefresh.missingReasons.${reason}`)
+}
+
+function metricsRefreshStatusClass(status: UpstreamRelayMetricsRefreshStatus) {
+  if (status === 'success') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+  if (status === 'partial' || status === 'skipped') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+}
+
+function metricsRefreshStatusTextClass(status: UpstreamRelayMetricsRefreshStatus) {
+  if (status === 'success') return 'text-emerald-600 dark:text-emerald-300'
+  if (status === 'partial' || status === 'skipped') return 'text-amber-600 dark:text-amber-300'
+  return 'text-red-600 dark:text-red-300'
+}
+
+function metricsRefreshSummaryClass(summary: { failed: number; partial: number }) {
+  if (summary.failed > 0) return metricsRefreshStatusClass('failed')
+  if (summary.partial > 0) return metricsRefreshStatusClass('partial')
+  return metricsRefreshStatusClass('success')
+}
+
+function metricsBalanceDetailLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  if (result.balance_detail.status === 'success') {
+    return tM('metricsRefresh.balanceSuccess', { balance: formatAccountBalance(result.balance_detail.value) })
+  }
+  return tM('metricsRefresh.balanceFailed', { reason: result.balance_detail.error || '-' })
+}
+
+function metricsUsageDetailLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  const detail = result.usage_detail
+  const missingGroups = metricsMissingGroups(detail)
+  if (detail.status === 'success') {
+    return tM('metricsRefresh.usageSuccess', { updated: detail.updated_groups, total: detail.total_groups })
+  }
+  if (detail.status === 'partial') {
+    return tM('metricsRefresh.usagePartial', { updated: detail.updated_groups, total: detail.total_groups, missing: missingGroups.length })
+  }
+  if (detail.status === 'skipped') {
+    return tM('metricsRefresh.usageSkipped', { missing: missingGroups.length })
+  }
+  return tM('metricsRefresh.usageFailed', { reason: detail.error || '-' })
+}
+
+function connectorMetricsRefreshInlineLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  if (result.usage_detail.status === 'success') return tM('metricsRefresh.inlineUsageOk')
+  const missingGroups = metricsMissingGroups(result.usage_detail)
+  if (missingGroups.length > 0) {
+    return tM('metricsRefresh.inlineUsagePartial', { missing: missingGroups.length })
+  }
+  return metricsRefreshStatusLabel(result.usage_detail.status)
 }
 
 function candidateRateLabel(candidate: UpstreamRelayCandidate) {

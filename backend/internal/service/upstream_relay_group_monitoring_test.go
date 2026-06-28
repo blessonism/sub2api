@@ -353,9 +353,15 @@ func TestUpstreamRelayRefreshConnectorMetricsUpdatesUsageFromBoundAPIKeyStats(t 
 	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
 
 	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, result.Status)
 	require.True(t, result.BalanceAvailable)
 	require.True(t, result.UsageAvailable)
 	require.Empty(t, result.UsageError)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, result.BalanceDetail.Status)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, result.UsageDetail.Status)
+	require.Equal(t, 1, result.UsageDetail.TotalGroups)
+	require.Equal(t, 1, result.UsageDetail.UpdatedGroups)
+	require.Empty(t, result.UsageDetail.MissingGroups)
 	require.Equal(t, 0, repo.upsertSnapshotsCalls)
 	require.Equal(t, 0, usageListCalls)
 	require.Equal(t, 2, statsCalls)
@@ -453,9 +459,16 @@ func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBindin
 	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
 
 	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
 	require.True(t, result.BalanceAvailable)
 	require.False(t, result.UsageAvailable)
 	require.Contains(t, result.UsageError, "candidate 1 for bound account 6 has no upstream api key binding")
+	require.Equal(t, upstreamRelayMetricsRefreshStatusFailed, result.UsageDetail.Status)
+	require.Equal(t, 1, result.UsageDetail.TotalGroups)
+	require.Equal(t, 0, result.UsageDetail.UpdatedGroups)
+	require.Len(t, result.UsageDetail.MissingGroups, 1)
+	require.Equal(t, "g1", result.UsageDetail.MissingGroups[0].UpstreamGroupID)
+	require.Equal(t, "usage_refresh_failed", result.UsageDetail.MissingGroups[0].Reason)
 	require.Nil(t, repo.usageByGroup)
 }
 
@@ -492,9 +505,15 @@ func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFa
 	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
 
 	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
 	require.True(t, result.BalanceAvailable)
 	require.False(t, result.UsageAvailable)
 	require.Contains(t, result.UsageError, "usage unavailable")
+	require.Equal(t, upstreamRelayMetricsRefreshStatusFailed, result.UsageDetail.Status)
+	require.Equal(t, 1, result.UsageDetail.TotalGroups)
+	require.Equal(t, 0, result.UsageDetail.UpdatedGroups)
+	require.Len(t, result.UsageDetail.MissingGroups, 1)
+	require.Equal(t, "usage_refresh_failed", result.UsageDetail.MissingGroups[0].Reason)
 	require.Nil(t, repo.usageByGroup)
 	require.Nil(t, repo.usageCheckedAt)
 	require.Len(t, result.Snapshots, 1)
@@ -503,6 +522,45 @@ func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFa
 	require.NotNil(t, result.Snapshots[0].TodayTotalTokens)
 	require.Equal(t, int64(99), *result.Snapshots[0].TodayTotalTokens)
 	require.NotNil(t, result.Snapshots[0].TodayUsageCheckedAt)
+}
+
+func TestUpstreamRelayRefreshConnectorMetricsExplainsMissingSnapshots(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":1.5,"total_tokens":88}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                   7,
+			BaseURL:              server.URL,
+			BearerTokenEncrypted: "session-token",
+		},
+		bindings: []UpstreamRelayCandidateUsageBinding{
+			{CandidateID: 1, ConnectorID: 7, AccountID: 10, UpstreamGroupID: "g1", UpstreamAPIKeyID: 855},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
+	require.True(t, result.BalanceAvailable)
+	require.True(t, result.UsageAvailable)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSkipped, result.UsageDetail.Status)
+	require.Equal(t, 1, result.UsageDetail.TotalGroups)
+	require.Equal(t, 0, result.UsageDetail.UpdatedGroups)
+	require.Len(t, result.UsageDetail.MissingGroups, 1)
+	require.Equal(t, "g1", result.UsageDetail.MissingGroups[0].UpstreamGroupID)
+	require.Equal(t, "no_snapshot", result.UsageDetail.MissingGroups[0].Reason)
+	require.Empty(t, result.Snapshots)
 }
 
 func TestUpstreamRelayConnectorInputEncryptsAndResponseRedactsSecrets(t *testing.T) {

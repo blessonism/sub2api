@@ -171,16 +171,47 @@ type UpstreamRelayCandidateUsageBinding struct {
 }
 
 type UpstreamRelayConnectorMetricsRefreshResult struct {
-	Connector        *UpstreamRelayConnector          `json:"connector"`
-	Snapshots        []UpstreamRelayGroupRateSnapshot `json:"snapshots"`
-	BalanceAvailable bool                             `json:"balance_available"`
-	BalanceError     string                           `json:"balance_error,omitempty"`
-	UsageAvailable   bool                             `json:"usage_available"`
-	UsageError       string                           `json:"usage_error,omitempty"`
-	RefreshedAt      time.Time                        `json:"refreshed_at"`
+	Connector        *UpstreamRelayConnector           `json:"connector"`
+	Snapshots        []UpstreamRelayGroupRateSnapshot  `json:"snapshots"`
+	Status           string                            `json:"status"`
+	BalanceDetail    UpstreamRelayMetricsBalanceDetail `json:"balance_detail"`
+	UsageDetail      UpstreamRelayMetricsUsageDetail   `json:"usage_detail"`
+	BalanceAvailable bool                              `json:"balance_available"`
+	BalanceError     string                            `json:"balance_error,omitempty"`
+	UsageAvailable   bool                              `json:"usage_available"`
+	UsageError       string                            `json:"usage_error,omitempty"`
+	RefreshedAt      time.Time                         `json:"refreshed_at"`
+}
+
+type UpstreamRelayMetricsBalanceDetail struct {
+	Status    string     `json:"status"`
+	Value     *float64   `json:"value,omitempty"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
+	Error     string     `json:"error,omitempty"`
+}
+
+type UpstreamRelayMetricsUsageDetail struct {
+	Status        string                                   `json:"status"`
+	TotalGroups   int                                      `json:"total_groups"`
+	UpdatedGroups int                                      `json:"updated_groups"`
+	MissingGroups []UpstreamRelayMetricsMissingGroupDetail `json:"missing_groups"`
+	Error         string                                   `json:"error,omitempty"`
+	CheckedAt     *time.Time                               `json:"checked_at,omitempty"`
+}
+
+type UpstreamRelayMetricsMissingGroupDetail struct {
+	UpstreamGroupID string `json:"upstream_group_id"`
+	Name            string `json:"name,omitempty"`
+	Reason          string `json:"reason"`
+	Message         string `json:"message"`
 }
 
 const (
+	upstreamRelayMetricsRefreshStatusSuccess = "success"
+	upstreamRelayMetricsRefreshStatusPartial = "partial"
+	upstreamRelayMetricsRefreshStatusFailed  = "failed"
+	upstreamRelayMetricsRefreshStatusSkipped = "skipped"
+
 	UpstreamRelaySnapshotChangeAdded       = "added"
 	UpstreamRelaySnapshotChangeRemoved     = "removed"
 	UpstreamRelaySnapshotChangeRateChanged = "rate_changed"
@@ -615,6 +646,7 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	}
 
 	result := &UpstreamRelayConnectorMetricsRefreshResult{RefreshedAt: time.Now()}
+	bindings, bindingsErr := s.repo.ListCandidateUsageBindings(ctx, connector.ID)
 	balance, balanceErr := s.fetchUpstreamAccountBalance(ctx, connector)
 	balanceCheckedAt := time.Now()
 	if balanceErr != nil {
@@ -628,6 +660,7 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 			return nil, err
 		}
 	}
+	result.BalanceDetail = buildUpstreamRelayMetricsBalanceDetail(result.BalanceAvailable, balance, &balanceCheckedAt, result.BalanceError)
 
 	usageByGroup, usageCheckedAt, usageErr := s.fetchUpstreamGroupTodayUsage(ctx, connector, result.RefreshedAt)
 	if usageErr != nil {
@@ -649,7 +682,133 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	}
 	result.Connector = refreshedConnector
 	result.Snapshots = snapshots
+	result.UsageDetail = buildUpstreamRelayMetricsUsageDetail(bindings, bindingsErr, snapshots, usageCheckedAt, result.UsageAvailable, result.UsageError)
+	result.Status = buildUpstreamRelayMetricsRefreshStatus(result.BalanceDetail.Status, result.UsageDetail.Status)
 	return result, nil
+}
+
+func buildUpstreamRelayMetricsBalanceDetail(available bool, value *float64, checkedAt *time.Time, errText string) UpstreamRelayMetricsBalanceDetail {
+	if !available {
+		return UpstreamRelayMetricsBalanceDetail{
+			Status: upstreamRelayMetricsRefreshStatusFailed,
+			Error:  errText,
+		}
+	}
+	return UpstreamRelayMetricsBalanceDetail{
+		Status:    upstreamRelayMetricsRefreshStatusSuccess,
+		Value:     value,
+		CheckedAt: checkedAt,
+	}
+}
+
+func buildUpstreamRelayMetricsUsageDetail(
+	bindings []UpstreamRelayCandidateUsageBinding,
+	bindingsErr error,
+	snapshots []UpstreamRelayGroupRateSnapshot,
+	checkedAt *time.Time,
+	available bool,
+	errText string,
+) UpstreamRelayMetricsUsageDetail {
+	if bindingsErr != nil {
+		return UpstreamRelayMetricsUsageDetail{
+			Status: upstreamRelayMetricsRefreshStatusFailed,
+			Error:  sanitizeUpstreamRelayError(bindingsErr.Error()),
+		}
+	}
+
+	groupIDs := distinctUpstreamRelayCandidateUsageGroups(bindings)
+	detail := UpstreamRelayMetricsUsageDetail{
+		TotalGroups: len(groupIDs),
+		CheckedAt:   checkedAt,
+	}
+	if len(groupIDs) == 0 {
+		detail.Status = upstreamRelayMetricsRefreshStatusSkipped
+		if errText != "" {
+			detail.Error = errText
+		}
+		return detail
+	}
+
+	snapshotNames := map[string]string{}
+	for _, snapshot := range snapshots {
+		if snapshot.UpstreamGroupID == "" {
+			continue
+		}
+		snapshotNames[snapshot.UpstreamGroupID] = snapshot.Name
+	}
+
+	if len(snapshots) == 0 {
+		detail.Status = upstreamRelayMetricsRefreshStatusSkipped
+		detail.Error = errText
+		for _, groupID := range groupIDs {
+			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
+				UpstreamGroupID: groupID,
+				Reason:          "no_snapshot",
+				Message:         "full connector sync is required before today usage can be refreshed",
+			})
+		}
+		return detail
+	}
+
+	if !available {
+		detail.Status = upstreamRelayMetricsRefreshStatusFailed
+		detail.Error = errText
+		for _, groupID := range groupIDs {
+			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
+				UpstreamGroupID: groupID,
+				Name:            snapshotNames[groupID],
+				Reason:          "usage_refresh_failed",
+				Message:         errText,
+			})
+		}
+		return detail
+	}
+
+	for _, groupID := range groupIDs {
+		if _, ok := snapshotNames[groupID]; !ok {
+			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
+				UpstreamGroupID: groupID,
+				Reason:          "no_snapshot",
+				Message:         "full connector sync is required before today usage can be refreshed",
+			})
+			continue
+		}
+		detail.UpdatedGroups++
+	}
+	if len(detail.MissingGroups) > 0 {
+		detail.Status = upstreamRelayMetricsRefreshStatusPartial
+		return detail
+	}
+	detail.Status = upstreamRelayMetricsRefreshStatusSuccess
+	return detail
+}
+
+func distinctUpstreamRelayCandidateUsageGroups(bindings []UpstreamRelayCandidateUsageBinding) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, binding := range bindings {
+		groupID := strings.TrimSpace(binding.UpstreamGroupID)
+		if groupID == "" {
+			continue
+		}
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		out = append(out, groupID)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func buildUpstreamRelayMetricsRefreshStatus(balanceStatus, usageStatus string) string {
+	if balanceStatus == upstreamRelayMetricsRefreshStatusSuccess && usageStatus == upstreamRelayMetricsRefreshStatusSuccess {
+		return upstreamRelayMetricsRefreshStatusSuccess
+	}
+	if balanceStatus == upstreamRelayMetricsRefreshStatusFailed && usageStatus == upstreamRelayMetricsRefreshStatusFailed {
+		return upstreamRelayMetricsRefreshStatusFailed
+	}
+	return upstreamRelayMetricsRefreshStatusPartial
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ListSnapshots(ctx context.Context, connectorID int64) ([]UpstreamRelayGroupRateSnapshot, error) {
