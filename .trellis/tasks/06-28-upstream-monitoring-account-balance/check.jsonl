@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查余额字段跨层契约、空值和错误语义"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端类型与后端 JSON 字段一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端服务、仓储和管理接口质量约束"}
