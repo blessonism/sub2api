@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "余额字段跨远端接口、数据库、后端 API 和前端表格展示"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型与 Vue 表格字段需要保持一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端服务、仓储和管理接口变更质量约束"}
