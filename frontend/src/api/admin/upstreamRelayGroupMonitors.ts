@@ -5,6 +5,8 @@ export type UpstreamRelayAuthMode = 'manual_session' | 'password_login'
 export type UpstreamRelayConnectorStatus = 'active' | 'needs_reauth' | 'invalid' | 'paused'
 export type UpstreamRelayProbeProtocol = 'chat_completions' | 'responses'
 export type UpstreamRelayRunStatus = 'success' | 'failed'
+export type UpstreamRelaySnapshotChangeType = 'added' | 'removed' | 'rate_changed'
+export type UpstreamRelayRecommendationSortField = 'rate_asc' | 'success_rate_desc' | 'latency_asc'
 
 export interface UpstreamRelayConnector {
   id: number
@@ -13,6 +15,8 @@ export interface UpstreamRelayConnector {
   auth_mode: UpstreamRelayAuthMode
   status: UpstreamRelayConnectorStatus
   credential_version: number
+  upstream_account_balance?: number | null
+  upstream_account_balance_checked_at?: string | null
   bearer_token_masked?: string
   refresh_token_masked?: string
   login_email_masked?: string
@@ -52,8 +56,37 @@ export interface UpstreamRelayGroupRateSnapshot {
   default_rate_multiplier: number
   override_rate_multiplier?: number | null
   final_rate_multiplier: number
+  today_actual_cost?: number | null
+  today_total_tokens?: number | null
+  today_usage_checked_at?: string | null
   source: string
   last_seen_at: string
+}
+
+export interface UpstreamRelayGroupRateSnapshotChange {
+  id: number
+  connector_id: number
+  connector_name?: string
+  upstream_group_id: string
+  group_name: string
+  platform: string
+  change_type: UpstreamRelaySnapshotChangeType
+  old_final_rate_multiplier?: number | null
+  new_final_rate_multiplier?: number | null
+  old_status: string
+  new_status: string
+  source: string
+  changed_at: string
+}
+
+export interface UpstreamRelayConnectorMetricsRefreshResult {
+  connector: UpstreamRelayConnector
+  snapshots: UpstreamRelayGroupRateSnapshot[]
+  balance_available: boolean
+  balance_error?: string
+  usage_available: boolean
+  usage_error?: string
+  refreshed_at: string
 }
 
 export interface UpstreamRelayProbeResult {
@@ -103,6 +136,9 @@ export interface UpstreamRelayCandidate {
   connector_id: number
   connector_name?: string
   connector_status?: UpstreamRelayConnectorStatus
+  today_actual_cost?: number | null
+  today_total_tokens?: number | null
+  today_usage_checked_at?: string | null
   account_id: number
   account_name?: string
   account_platform?: string
@@ -176,6 +212,51 @@ export interface UpstreamRelayRecommendationRun {
   suggestions?: UpstreamRelayRecommendationSuggestion[]
 }
 
+export interface UpstreamRelayRecommendationPolicy {
+  snapshot_freshness_minutes: number
+  usage_delta_freshness_minutes: number
+  probe_freshness_minutes: number
+  min_success_rate: number
+  min_sample_size: number
+  exclude_consecutive_failures: boolean
+  priority_start: number
+  priority_step: number
+  sort_fields: UpstreamRelayRecommendationSortField[]
+  updated_by?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UpstreamRelayRecommendationExclusion {
+  candidate_id: number
+  connector_id: number
+  connector_name?: string
+  account_id: number
+  account_name?: string
+  upstream_group_id: string
+  upstream_group_name?: string
+  target_group_id: number
+  target_group_name?: string
+  old_priority?: number | null
+  expected_priority?: number | null
+  final_rate_multiplier?: number | null
+  rate_source?: string
+  confidence?: string
+  health_status: string
+  health_summary: string
+  reason_code: string
+  reason: string
+}
+
+export interface UpstreamRelayRecommendationPreview {
+  policy: UpstreamRelayRecommendationPolicy
+  total_candidates: number
+  suggestion_count: number
+  excluded_count: number
+  suggestions: UpstreamRelayRecommendationSuggestion[]
+  exclusions: UpstreamRelayRecommendationExclusion[]
+}
+
 const base = '/admin/upstream-relay-group-monitors'
 
 export async function listConnectors(params?: {
@@ -208,8 +289,24 @@ export async function syncConnector(id: number): Promise<UpstreamRelayGroupRateS
   return data
 }
 
+export async function refreshConnectorMetrics(id: number): Promise<UpstreamRelayConnectorMetricsRefreshResult> {
+  const { data } = await apiClient.post<UpstreamRelayConnectorMetricsRefreshResult>(`${base}/connectors/${id}/metrics/refresh`)
+  return data
+}
+
 export async function listSnapshots(id: number): Promise<UpstreamRelayGroupRateSnapshot[]> {
   const { data } = await apiClient.get<UpstreamRelayGroupRateSnapshot[]>(`${base}/connectors/${id}/snapshots`)
+  return data
+}
+
+export async function listSnapshotChanges(params?: {
+  page?: number
+  page_size?: number
+  connector_id?: number
+  change_type?: UpstreamRelaySnapshotChangeType | ''
+  search?: string
+}): Promise<PaginatedResponse<UpstreamRelayGroupRateSnapshotChange>> {
+  const { data } = await apiClient.get<PaginatedResponse<UpstreamRelayGroupRateSnapshotChange>>(`${base}/snapshot-changes`, { params })
   return data
 }
 
@@ -243,6 +340,21 @@ export async function probeCandidate(id: number): Promise<UpstreamRelayProbeResu
   return data
 }
 
+export async function getRecommendationPolicy(): Promise<UpstreamRelayRecommendationPolicy> {
+  const { data } = await apiClient.get<UpstreamRelayRecommendationPolicy>(`${base}/recommendation-policy`)
+  return data
+}
+
+export async function updateRecommendationPolicy(payload: UpstreamRelayRecommendationPolicy): Promise<UpstreamRelayRecommendationPolicy> {
+  const { data } = await apiClient.put<UpstreamRelayRecommendationPolicy>(`${base}/recommendation-policy`, payload)
+  return data
+}
+
+export async function previewRecommendations(payload?: UpstreamRelayRecommendationPolicy): Promise<UpstreamRelayRecommendationPreview> {
+  const { data } = await apiClient.post<UpstreamRelayRecommendationPreview>(`${base}/recommendations/preview`, payload)
+  return data
+}
+
 export async function generateRecommendations(): Promise<UpstreamRelayRecommendationRun> {
   const { data } = await apiClient.post<UpstreamRelayRecommendationRun>(`${base}/recommendations`)
   return data
@@ -266,22 +378,33 @@ export async function applyRecommendationRun(id: number): Promise<UpstreamRelayR
   return data
 }
 
+export async function deleteRecommendationRun(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`${base}/recommendations/${id}`)
+  return data
+}
+
 export const upstreamRelayGroupMonitorsAPI = {
   listConnectors,
   createConnector,
   updateConnector,
   deleteConnector,
   syncConnector,
+  refreshConnectorMetrics,
   listSnapshots,
+  listSnapshotChanges,
   listCandidates,
   createCandidate,
   updateCandidate,
   deleteCandidate,
   probeCandidate,
+  getRecommendationPolicy,
+  updateRecommendationPolicy,
+  previewRecommendations,
   generateRecommendations,
   listRecommendationRuns,
   getRecommendationRun,
-  applyRecommendationRun
+  applyRecommendationRun,
+  deleteRecommendationRun
 }
 
 export default upstreamRelayGroupMonitorsAPI

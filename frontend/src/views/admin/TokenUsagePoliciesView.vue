@@ -35,67 +35,88 @@
           @action="openCreateDialog"
         />
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[1180px] text-sm">
+          <table class="w-full min-w-[960px] text-sm">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.policy') }}</th>
                 <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.targetGroup') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.window') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.actionMode') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.frequency') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.status') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.lastRun') }}</th>
-                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.nextRun') }}</th>
+                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.runningRule') }}</th>
+                <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.executionStatus') }}</th>
                 <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="policy in policies" :key="policy.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
-                <td class="px-4 py-3">
-                  <div class="font-medium text-gray-900 dark:text-white">{{ policy.name }}</div>
-                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ tierSummary(policy) }}
-                  </div>
-                </td>
-                <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                  {{ policy.target_group_name || groupName(policy.target_group_id) }}
-                </td>
-                <td class="px-4 py-3">{{ t(`admin.tokenUsagePolicies.windowDays.${policy.window_days}`) }}</td>
-                <td class="px-4 py-3">{{ actionModeLabel(policy.action_mode) }}</td>
-                <td class="px-4 py-3">{{ frequencyLabel(policy.schedule_frequency) }}</td>
-                <td class="px-4 py-3">
-                  <span :class="policy.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                    {{ policy.enabled ? t('common.enabled') : t('common.disabled') }}
-                  </span>
-                  <span v-if="policy.latest_run" :class="runStatusClass(policy.latest_run.status)" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                    {{ runStatusLabel(policy.latest_run.status) }}
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateTime(policy.last_run_at) }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateTime(policy.next_run_at) }}</td>
-                <td class="px-4 py-3">
-                  <div class="flex justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1" type="button" @click="openPreview(policy)">
-                      {{ t('admin.tokenUsagePolicies.preview') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" @click="openRuns(policy)">
-                      {{ t('admin.tokenUsagePolicies.history') }}
-                    </button>
-                    <button class="btn btn-primary px-2 py-1" type="button" :disabled="runningPolicyId === policy.id" @click="runPolicy(policy)">
-                      {{ runningPolicyId === policy.id ? t('admin.tokenUsagePolicies.running') : t('admin.tokenUsagePolicies.runNow') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="clearingPolicyId === policy.id" @click="clearPolicy(policy)">
-                      {{ clearingPolicyId === policy.id ? t('admin.tokenUsagePolicies.clearing') : t('admin.tokenUsagePolicies.clear') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" @click="openEditDialog(policy)">
-                      {{ t('common.edit') }}
-                    </button>
-                    <button class="btn btn-danger px-2 py-1" type="button" @click="deletePolicy(policy)">
-                      {{ t('common.delete') }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
+              <template v-for="policy in policies" :key="policy.id">
+                <tr class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                  <td class="px-4 py-4 align-top">
+                    <div class="font-medium text-gray-900 dark:text-white">{{ policy.name }}</div>
+                    <div class="mt-1 max-w-[360px] text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      {{ tierSummary(policy) }}
+                    </div>
+                  </td>
+                  <td class="px-4 py-4 align-top text-gray-700 dark:text-gray-300">
+                    <div class="font-medium">{{ policy.target_group_name || groupName(policy.target_group_id) }}</div>
+                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ policyFilterSummary(policy) }}</div>
+                  </td>
+                  <td class="px-4 py-4 align-top">
+                    <div class="space-y-1 text-gray-700 dark:text-gray-300">
+                      <div v-for="line in policyRunRuleLines(policy)" :key="line" class="text-sm">{{ line }}</div>
+                    </div>
+                  </td>
+                  <td class="px-4 py-4 align-top">
+                    <div class="flex flex-wrap gap-2">
+                      <span :class="policy.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                        {{ policy.enabled ? t('common.enabled') : t('common.disabled') }}
+                      </span>
+                      <span v-if="policy.latest_run" :class="runStatusClass(policy.latest_run.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                        {{ runStatusLabel(policy.latest_run.status) }}
+                      </span>
+                    </div>
+                    <div class="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                      <div>{{ t('admin.tokenUsagePolicies.lastRun') }}: {{ formatDateTime(policy.last_run_at) }}</div>
+                      <div>{{ t('admin.tokenUsagePolicies.nextRun') }}: {{ formatDateTime(policy.next_run_at) }}</div>
+                    </div>
+                  </td>
+                  <td class="px-4 py-4 align-top">
+                    <div class="flex justify-end gap-2">
+                      <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" @click="openPreview(policy)">
+                        <Icon name="eye" size="xs" />
+                        {{ t('admin.tokenUsagePolicies.preview') }}
+                      </button>
+                      <button class="btn btn-primary px-3 py-1.5 text-xs" type="button" :disabled="runningPolicyId === policy.id" @click="runPolicy(policy)">
+                        <Icon name="play" size="xs" />
+                        {{ runningPolicyId === policy.id ? t('admin.tokenUsagePolicies.running') : t('admin.tokenUsagePolicies.runNow') }}
+                      </button>
+                      <button class="btn btn-secondary px-2.5 py-1.5 text-xs" type="button" @click="togglePolicyActions(policy.id)">
+                        <Icon :name="isPolicyActionsExpanded(policy.id) ? 'chevronUp' : 'more'" size="xs" />
+                        {{ isPolicyActionsExpanded(policy.id) ? t('admin.tokenUsagePolicies.collapseActions') : t('admin.tokenUsagePolicies.moreActions') }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="isPolicyActionsExpanded(policy.id)" class="bg-gray-50/80 dark:bg-dark-800/60">
+                  <td colspan="5" class="px-4 py-3">
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" @click="openRuns(policy)">
+                        <Icon name="clock" size="xs" />
+                        {{ t('admin.tokenUsagePolicies.history') }}
+                      </button>
+                      <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" @click="openEditDialog(policy)">
+                        <Icon name="edit" size="xs" />
+                        {{ t('common.edit') }}
+                      </button>
+                      <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="clearingPolicyId === policy.id" @click="clearPolicy(policy)">
+                        <Icon name="ban" size="xs" />
+                        {{ clearingPolicyId === policy.id ? t('admin.tokenUsagePolicies.clearing') : t('admin.tokenUsagePolicies.clearAutoControl') }}
+                      </button>
+                      <button class="btn btn-danger px-3 py-1.5 text-xs" type="button" @click="deletePolicy(policy)">
+                        <Icon name="trash" size="xs" />
+                        {{ t('common.delete') }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -113,86 +134,121 @@
   </AppLayout>
 
   <BaseDialog :show="formDialogOpen" :title="formMode === 'create' ? t('admin.tokenUsagePolicies.create') : t('admin.tokenUsagePolicies.edit')" width="extra-wide" @close="formDialogOpen = false">
-    <form class="space-y-6" @submit.prevent="submitForm">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.name') }}</span>
-          <input v-model.trim="form.name" class="input w-full" type="text" />
-        </label>
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.targetGroup') }}</span>
-          <Select v-model="form.target_group_id" :options="groupOptions" searchable />
-        </label>
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.window') }}</span>
-          <Select v-model="form.window_days" :options="windowOptions" />
-        </label>
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.actionMode') }}</span>
-          <Select v-model="form.action_mode" :options="actionModeOptions" />
-        </label>
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.conflictMode') }}</span>
-          <Select v-model="form.conflict_mode" :options="conflictModeOptions" />
-        </label>
-        <label class="space-y-1">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.frequency') }}</span>
-          <Select v-model="form.schedule_frequency" :options="frequencyOptions" />
-        </label>
-      </div>
-
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-        <input v-model="form.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-        {{ t('admin.tokenUsagePolicies.enabled') }}
-      </label>
-
-      <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.filters') }}</h3>
-        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterGroup') }}</span>
-            <Select v-model="form.filters.group_id" :options="filterGroupOptions" searchable clearable />
-          </label>
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterModel') }}</span>
-            <input v-model.trim="filterModelText" class="input w-full" type="text" :placeholder="t('admin.tokenUsagePolicies.filterModelPlaceholder')" />
-          </label>
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterRequestType') }}</span>
-            <Select v-model="form.filters.request_type" :options="requestTypeOptions" clearable />
-          </label>
-          <label class="space-y-1">
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterBillingType') }}</span>
-            <Select v-model="form.filters.billing_type" :options="billingTypeOptions" clearable />
-          </label>
-                    </div>
-                  </section>
-
-      <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-        <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.tiers') }}</h3>
-          <button class="btn btn-secondary px-3 py-1.5 text-sm" type="button" @click="addTier">
-            {{ t('admin.tokenUsagePolicies.addTier') }}
-          </button>
-        </div>
-        <div class="mt-4 space-y-3">
-          <div v-for="(tier, index) in form.tiers" :key="index" class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-800 md:grid-cols-[1fr_1fr_auto]">
+    <form class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" @submit.prevent="submitForm">
+      <div class="space-y-5">
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.basicInfo') }}</h3>
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             <label class="space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minTokens') }}</span>
-              <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" />
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.name') }}</span>
+              <input v-model.trim="form.name" class="input w-full" type="text" />
             </label>
             <label class="space-y-1">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.rateMultiplier') }}</span>
-              <input v-model.number="tier.rate_multiplier" class="input w-full" type="number" min="0.0001" step="0.0001" />
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.targetGroup') }}</span>
+              <Select v-model="form.target_group_id" :options="groupOptions" searchable />
             </label>
-            <div class="flex items-end">
-              <button class="btn btn-danger w-full px-3 py-2" type="button" :disabled="form.tiers.length === 1" @click="removeTier(index)">
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.matchConditions') }}</h3>
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterGroup') }}</span>
+              <Select v-model="form.filters.group_id" :options="filterGroupOptions" searchable clearable />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterModel') }}</span>
+              <input v-model.trim="filterModelText" class="input w-full" type="text" :placeholder="t('admin.tokenUsagePolicies.filterModelPlaceholder')" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterRequestType') }}</span>
+              <Select v-model="form.filters.request_type" :options="requestTypeOptions" clearable />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.filterBillingType') }}</span>
+              <Select v-model="form.filters.billing_type" :options="billingTypeOptions" clearable />
+            </label>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.tierRules') }}</h3>
+            <button class="btn btn-secondary px-3 py-1.5 text-sm" type="button" @click="addTier">
+              <Icon name="plus" size="xs" />
+              {{ t('admin.tokenUsagePolicies.addTier') }}
+            </button>
+          </div>
+          <div class="mt-4 space-y-3">
+            <div v-for="(tier, index) in form.tiers" :key="index" class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-800 md:grid-cols-[auto_1fr_1fr_auto] md:items-end">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+                {{ index + 1 }}
+              </div>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minTokens') }}</span>
+                <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.rateMultiplier') }}</span>
+                <input v-model.number="tier.rate_multiplier" class="input w-full" type="number" min="0.0001" step="0.0001" />
+              </label>
+              <button class="btn btn-secondary px-3 py-2" type="button" :disabled="form.tiers.length === 1" @click="removeTier(index)">
+                <Icon name="trash" size="xs" />
                 {{ t('common.delete') }}
               </button>
             </div>
           </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.executionControl') }}</h3>
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.window') }}</span>
+              <Select v-model="form.window_days" :options="windowOptions" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.actionMode') }}</span>
+              <Select v-model="form.action_mode" :options="actionModeOptions" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.frequency') }}</span>
+              <Select v-model="form.schedule_frequency" :options="frequencyOptions" />
+            </label>
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.conflictMode') }}</span>
+              <Select v-model="form.conflict_mode" :options="conflictModeOptions" />
+            </label>
+            <label class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-dark-800 dark:text-gray-300">
+              <input v-model="form.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              {{ t('admin.tokenUsagePolicies.enabled') }}
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <aside class="h-fit rounded-lg border border-primary-100 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.tokenUsagePolicies.ruleSummary') }}</h3>
+        <div class="mt-4 space-y-4 text-sm">
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.summaryScope') }}</div>
+            <div class="mt-1 text-gray-900 dark:text-gray-100">{{ formRuleScope }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.summaryFilters') }}</div>
+            <div class="mt-1 text-gray-900 dark:text-gray-100">{{ formFilterSummary }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.summaryTiers') }}</div>
+            <ul class="mt-2 space-y-2">
+              <li v-for="line in formTierSummaryLines" :key="line" class="rounded-md bg-white px-3 py-2 text-xs text-gray-700 dark:bg-dark-800 dark:text-gray-200">
+                {{ line }}
+              </li>
+            </ul>
+          </div>
         </div>
-      </section>
+      </aside>
     </form>
     <template #footer>
       <div class="flex justify-end gap-3">
@@ -420,6 +476,7 @@ const loadingRunChangeIds = ref<Set<number>>(new Set())
 const failedRunChangeIds = ref<Set<number>>(new Set())
 const runningPolicyId = ref<number | null>(null)
 const clearingPolicyId = ref<number | null>(null)
+const expandedPolicyActionIds = ref<Set<number>>(new Set())
 const defaultRunChangePageSize = 20
 
 type PolicyForm = {
@@ -484,6 +541,28 @@ const previewMetrics = computed(() => {
 const previewGroups = computed(() => {
   const changes = previewResult.value?.changes ?? []
   return changeGroups(changes)
+})
+const formRuleScope = computed(() => {
+  const targetGroup = form.target_group_id ? groupName(form.target_group_id) : t('admin.tokenUsagePolicies.targetGroupMissing')
+  return [
+    t(`admin.tokenUsagePolicies.windowDays.${form.window_days}`),
+    targetGroup,
+    actionModeLabel(form.action_mode),
+    frequencyLabel(form.schedule_frequency)
+  ].join(' · ')
+})
+const formFilterSummary = computed(() => summarizeFilters(form.filters, filterModelText.value))
+const formTierSummaryLines = computed(() => {
+  if (!form.tiers.length) return [t('admin.tokenUsagePolicies.noTiers')]
+  return form.tiers
+    .slice()
+    .sort((a, b) => Number(a.min_tokens) - Number(b.min_tokens))
+    .map((tier) =>
+      t('admin.tokenUsagePolicies.tierSummaryLine', {
+        tokens: formatNumber(Number(tier.min_tokens) || 0),
+        rate: formatRate(Number(tier.rate_multiplier) || 0)
+      })
+    )
 })
 
 function changeGroups(changes: TokenUsagePolicyChange[]) {
@@ -633,6 +712,20 @@ function addTier() {
 
 function removeTier(index: number) {
   form.tiers.splice(index, 1)
+}
+
+function isPolicyActionsExpanded(policyId: number) {
+  return expandedPolicyActionIds.value.has(policyId)
+}
+
+function togglePolicyActions(policyId: number) {
+  const next = new Set(expandedPolicyActionIds.value)
+  if (next.has(policyId)) {
+    next.delete(policyId)
+  } else {
+    next.add(policyId)
+  }
+  expandedPolicyActionIds.value = next
 }
 
 async function openPreview(policy: TokenUsagePolicy) {
@@ -795,12 +888,42 @@ function groupName(id: number) {
   return groups.value.find((group) => group.id === id)?.name || `#${id}`
 }
 
+function policyRunRuleLines(policy: TokenUsagePolicy) {
+  return [
+    `${t(`admin.tokenUsagePolicies.windowDays.${policy.window_days}`)} · ${frequencyLabel(policy.schedule_frequency)}`,
+    actionModeLabel(policy.action_mode),
+    conflictModeLabel(policy.conflict_mode)
+  ]
+}
+
+function policyFilterSummary(policy: TokenUsagePolicy) {
+  return summarizeFilters(policy.filters)
+}
+
+function summarizeFilters(filters: TokenUsagePolicyFilters, modelText = filters.model || '') {
+  const segments = [
+    filters.group_id ? groupName(filters.group_id) : t('admin.tokenUsagePolicies.allGroups'),
+    modelText ? modelText : t('admin.tokenUsagePolicies.allModels'),
+    optionLabel(requestTypeOptions.value, filters.request_type ?? null),
+    optionLabel(billingTypeOptions.value, filters.billing_type ?? null)
+  ]
+  return segments.join(' · ')
+}
+
+function optionLabel(options: Array<{ value: string | number | null; label: string }>, value: string | number | null) {
+  return options.find((option) => option.value === value)?.label || t('common.all')
+}
+
 function actionModeLabel(value: TokenUsagePolicyActionMode) {
   return t(`admin.tokenUsagePolicies.actionModes.${value}`)
 }
 
 function frequencyLabel(value: TokenUsagePolicyScheduleFrequency) {
   return t(`admin.tokenUsagePolicies.frequencies.${value}`)
+}
+
+function conflictModeLabel(value: TokenUsagePolicyConflictMode) {
+  return t(`admin.tokenUsagePolicies.conflictModes.${value}`)
 }
 
 function changeTypeLabel(value: TokenUsagePolicyChangeType) {
