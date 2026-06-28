@@ -80,6 +80,21 @@ export interface UpstreamRelayGroupRateSnapshotChange {
   changed_at: string
 }
 
+export interface UpstreamRelayGroupUsageHistory {
+  id: number
+  usage_date: string
+  connector_id: number
+  connector_name?: string
+  upstream_group_id: string
+  group_name: string
+  platform: string
+  actual_cost: number
+  total_tokens: number
+  checked_at: string
+  created_at?: string
+  updated_at?: string
+}
+
 export interface UpstreamRelayConnectorMetricsRefreshResult {
   connector: UpstreamRelayConnector
   snapshots: UpstreamRelayGroupRateSnapshot[]
@@ -121,6 +136,13 @@ export interface UpstreamRelayMonitoringPolicy {
   sync_interval_minutes: number
   auto_probe_enabled: boolean
   probe_interval_minutes: number
+  auto_recommendation_enabled: boolean
+  recommendation_interval_minutes: number
+  auto_apply_recommendations_enabled: boolean
+  max_auto_apply_suggestions: number
+  max_auto_apply_priority_delta: number
+  min_auto_apply_confidence: 'high' | 'medium' | 'low' | 'unknown'
+  allow_auto_apply_degraded_health: boolean
   failure_retry_interval_minutes: number
   sync_concurrency: number
   probe_concurrency: number
@@ -138,6 +160,13 @@ export type UpstreamRelayMonitoringPolicyInput = Pick<
   | 'sync_interval_minutes'
   | 'auto_probe_enabled'
   | 'probe_interval_minutes'
+  | 'auto_recommendation_enabled'
+  | 'recommendation_interval_minutes'
+  | 'auto_apply_recommendations_enabled'
+  | 'max_auto_apply_suggestions'
+  | 'max_auto_apply_priority_delta'
+  | 'min_auto_apply_confidence'
+  | 'allow_auto_apply_degraded_health'
   | 'failure_retry_interval_minutes'
   | 'sync_concurrency'
   | 'probe_concurrency'
@@ -400,6 +429,19 @@ export async function listSnapshotChanges(params?: {
   return data
 }
 
+export async function listUsageHistory(params?: {
+  page?: number
+  page_size?: number
+  start_date?: string
+  end_date?: string
+  connector_id?: number
+  upstream_group_id?: string
+  search?: string
+}): Promise<PaginatedResponse<UpstreamRelayGroupUsageHistory>> {
+  const { data } = await apiClient.get<PaginatedResponse<UpstreamRelayGroupUsageHistory>>(`${base}/usage-history`, { params })
+  return data
+}
+
 export async function listCandidates(params?: {
   page?: number
   page_size?: number
@@ -499,6 +541,7 @@ export const upstreamRelayGroupMonitorsAPI = {
   listSnapshots,
   listConnectorAPIKeys,
   listSnapshotChanges,
+  listUsageHistory,
   listCandidates,
   createCandidate,
   updateCandidate,

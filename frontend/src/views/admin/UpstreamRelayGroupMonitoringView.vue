@@ -38,6 +38,9 @@
       <div v-if="error" data-testid="page-error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
         {{ error }}
       </div>
+      <div v-if="successMessage" data-testid="page-success" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+        {{ successMessage }}
+      </div>
 
       <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <button
@@ -376,6 +379,79 @@
         </div>
       </section>
 
+      <section v-if="activeSection === 'usageHistory'" class="card overflow-hidden">
+        <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ tM('usageHistory.title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.description') }}</p>
+          </div>
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.count', { n: usageHistoryTotal }) }}</span>
+        </div>
+        <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto]">
+          <input v-model="usageHistoryStartDate" class="input w-full" type="date" />
+          <input v-model="usageHistoryEndDate" class="input w-full" type="date" />
+          <select v-model.number="usageHistoryConnectorId" class="input w-full">
+            <option :value="0">{{ tM('usageHistory.allConnectors') }}</option>
+            <option v-for="connector in connectors" :key="connector.id" :value="connector.id">{{ connector.name }}</option>
+          </select>
+          <input v-model.trim="usageHistoryGroupId" class="input w-full" type="search" :placeholder="tM('usageHistory.groupPlaceholder')" @keyup.enter="reloadUsageHistory" />
+          <input v-model.trim="usageHistorySearch" class="input w-full" type="search" :placeholder="tM('usageHistory.searchPlaceholder')" @keyup.enter="reloadUsageHistory" />
+          <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="usageHistoryLoading" @click="reloadUsageHistory">
+            <Icon name="refresh" size="sm" />
+            {{ tM('usageHistory.search') }}
+          </button>
+        </div>
+        <div v-if="usageHistoryLoading" class="flex min-h-56 items-center justify-center">
+          <LoadingSpinner />
+        </div>
+        <div v-else-if="usageHistoryGroups.length === 0" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+          {{ tM('usageHistory.empty') }}
+        </div>
+        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+          <div v-for="group in usageHistoryGroups" :key="group.connectorId" class="px-4 py-4">
+            <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="font-semibold text-gray-900 dark:text-white">{{ group.connectorName }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ tM('usageHistory.groupCount', { n: group.items.length }) }}</div>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[920px] text-sm">
+                <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+                  <tr>
+                    <th class="px-3 py-2 text-left">{{ tM('usageHistory.colDate') }}</th>
+                    <th class="px-3 py-2 text-left">{{ tM('usageHistory.colGroup') }}</th>
+                    <th class="px-3 py-2 text-right">{{ tM('usageHistory.colCost') }}</th>
+                    <th class="px-3 py-2 text-right">{{ tM('usageHistory.colTokens') }}</th>
+                    <th class="px-3 py-2 text-left">{{ tM('usageHistory.colCheckedAt') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                  <tr v-for="item in group.items" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                    <td class="px-3 py-3 whitespace-nowrap tabular-nums">{{ item.usage_date }}</td>
+                    <td class="px-3 py-3">
+                      <div class="font-medium text-gray-900 dark:text-white">{{ item.group_name || item.upstream_group_id }}</div>
+                      <div class="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">{{ item.upstream_group_id }}</div>
+                      <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ item.platform || '-' }}</div>
+                    </td>
+                    <td class="px-3 py-3 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(item.actual_cost) }}</td>
+                    <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillions(item.total_tokens) }}</td>
+                    <td class="px-3 py-3 whitespace-nowrap">{{ formatDate(item.checked_at) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+          <span>{{ tM('usageHistory.pageInfo', { page: usageHistoryPage, pages: usageHistoryPages }) }}</span>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryPage <= 1" @click="changeUsageHistoryPage(usageHistoryPage - 1)">{{ tM('usageHistory.prev') }}</button>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryPage >= usageHistoryPages" @click="changeUsageHistoryPage(usageHistoryPage + 1)">{{ tM('usageHistory.next') }}</button>
+          </div>
+        </div>
+      </section>
+
       <section v-if="activeSection === 'snapshotChanges'" class="card overflow-hidden">
         <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -469,13 +545,14 @@
           <LoadingSpinner />
         </div>
         <div v-else class="overflow-x-auto">
-          <table class="w-full min-w-[980px] text-sm">
+          <table class="w-full min-w-[1080px] text-sm">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="px-4 py-3 text-left">{{ tM('recommendations.colRun') }}</th>
                 <th class="px-4 py-3 text-right">{{ tM('recommendations.colCandidates') }}</th>
                 <th class="px-4 py-3 text-right">{{ tM('recommendations.colSuggestions') }}</th>
                 <th class="px-4 py-3 text-left">{{ tM('recommendations.colStatus') }}</th>
+                <th class="px-4 py-3 text-left">{{ tM('recommendations.colSource') }}</th>
                 <th class="px-4 py-3 text-left">{{ tM('recommendations.colCreatedAt') }}</th>
                 <th class="px-4 py-3 text-right">{{ tM('recommendations.colActions') }}</th>
               </tr>
@@ -490,11 +567,17 @@
                     {{ recommendationRunStatusLabel(run) }}
                   </span>
                 </td>
+                <td class="px-4 py-3">
+                  <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div>{{ recommendationRunCreatedByLabel(run) }}</div>
+                    <div v-if="run.applied">{{ recommendationRunAppliedByLabel(run) }}</div>
+                  </div>
+                </td>
                 <td class="px-4 py-3">{{ formatDate(run.created_at) }}</td>
                 <td class="px-4 py-3 text-right">
                   <div class="flex flex-nowrap justify-end gap-2">
-                    <button class="btn btn-primary whitespace-nowrap px-3 py-1.5 text-xs" type="button" :disabled="run.applied || run.suggestion_count === 0" @click="openApplyDialog(run)">
-                      {{ tM('recommendations.viewAndApply') }}
+                    <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="openApplyDialog(run)">
+                      {{ canApplyRecommendationRun(run) ? tM('recommendations.viewAndApply') : tM('recommendations.viewDetails') }}
                     </button>
                     <button class="btn btn-danger whitespace-nowrap px-3 py-1.5 text-xs" type="button" :disabled="run.applied || deletingRecommendationRunId === run.id" @click="removeRecommendationRun(run)">
                       {{ deletingRecommendationRunId === run.id ? tM('recommendations.deleting') : tM('recommendations.delete') }}
@@ -503,7 +586,7 @@
                 </td>
               </tr>
               <tr v-if="recommendationRuns.length === 0">
-                <td colspan="6" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">{{ tM('recommendations.empty') }}</td>
+                <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">{{ tM('recommendations.empty') }}</td>
               </tr>
             </tbody>
           </table>
@@ -518,6 +601,22 @@
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.description') }}</p>
             </div>
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.updatedAt', { time: formatDate(monitoringPolicyForm.updated_at) }) }}</span>
+          </div>
+          <div
+            data-testid="auto-monitoring-status"
+            class="border-b px-4 py-3"
+            :class="autoMonitoringStatusPanelClass"
+          >
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="relative flex h-3 w-3 shrink-0">
+                  <span v-if="autoMonitoringEnabled" class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                  <span class="relative inline-flex h-3 w-3 rounded-full" :class="autoMonitoringStatusDotClass"></span>
+                </span>
+                <span class="text-sm font-semibold">{{ tM(autoMonitoringStatusTitleKey) }}</span>
+              </div>
+              <p class="text-sm">{{ tM(autoMonitoringStatusDetailKey, { sync: savedMonitoringSyncInterval, probe: savedMonitoringProbeInterval, recommendation: savedMonitoringRecommendationInterval }) }}</p>
+            </div>
           </div>
           <div class="grid gap-4 p-4 lg:grid-cols-4">
             <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
@@ -548,6 +647,53 @@
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.probeConcurrency') }}</span>
               <input v-model.number="monitoringPolicyForm.probe_concurrency" class="input w-full" type="number" min="1" />
             </label>
+          </div>
+          <div class="border-t border-gray-100 px-4 py-4 dark:border-dark-700">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ tM('monitoring.recommendationAutomationTitle') }}</div>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('monitoring.recommendationAutomationDescription') }}</p>
+              </div>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ tM('monitoring.recommendationIntervalHint', { recommendation: normalizedMonitoringRecommendationInterval }) }}</span>
+            </div>
+            <div class="mt-4 grid gap-4 lg:grid-cols-4">
+              <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <input v-model="monitoringPolicyForm.auto_recommendation_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+                {{ tM('monitoring.autoRecommendationEnabled') }}
+              </label>
+              <label class="block space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.recommendationInterval') }}</span>
+                <input v-model.number="monitoringPolicyForm.recommendation_interval_minutes" class="input w-full" type="number" min="1" />
+              </label>
+              <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <input v-model="monitoringPolicyForm.auto_apply_recommendations_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+                {{ tM('monitoring.autoApplyRecommendationsEnabled') }}
+              </label>
+              <label class="block space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.minAutoApplyConfidence') }}</span>
+                <select v-model="monitoringPolicyForm.min_auto_apply_confidence" class="input w-full">
+                  <option value="high">{{ tM('confidence.high') }}</option>
+                  <option value="medium">{{ tM('confidence.medium') }}</option>
+                  <option value="low">{{ tM('confidence.low') }}</option>
+                  <option value="unknown">{{ tM('confidence.unknown') }}</option>
+                </select>
+              </label>
+              <label class="block space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.maxAutoApplySuggestions') }}</span>
+                <input v-model.number="monitoringPolicyForm.max_auto_apply_suggestions" class="input w-full" type="number" min="1" />
+              </label>
+              <label class="block space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('monitoring.maxAutoApplyPriorityDelta') }}</span>
+                <input v-model.number="monitoringPolicyForm.max_auto_apply_priority_delta" class="input w-full" type="number" min="0" />
+              </label>
+              <label class="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300 lg:col-span-2">
+                <input v-model="monitoringPolicyForm.allow_auto_apply_degraded_health" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+                {{ tM('monitoring.allowAutoApplyDegradedHealth') }}
+              </label>
+            </div>
+            <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              {{ monitoringPolicyForm.auto_apply_recommendations_enabled ? tM('monitoring.autoApplyEnabledHint') : tM('monitoring.autoApplyDisabledHint') }}
+            </p>
           </div>
           <div class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ tM('monitoring.derivedTitle') }}</div>
@@ -911,10 +1057,22 @@
     </div>
   </BaseDialog>
 
-  <BaseDialog :show="applyDialogOpen" :title="tM('applyDialog.title')" width="extra-wide" @close="applyDialogOpen = false">
+  <BaseDialog :show="applyDialogOpen" :title="applyDialogTitle" width="extra-wide" @close="applyDialogOpen = false">
     <div class="space-y-4">
-      <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-        {{ tM('applyDialog.warning', { id: applyRun?.id || '-', date: formatDate(applyRun?.created_at) }) }}
+      <div class="rounded-lg border px-4 py-3 text-sm" :class="applyDialogNoticeClass">
+        {{ applyDialogNotice }}
+        <span v-if="applyRun?.applied_at" class="ml-1">{{ tM('applyDialog.appliedAt', { date: formatDate(applyRun.applied_at) }) }}</span>
+      </div>
+      <div v-if="lastAppliedRun && applyRun?.id === lastAppliedRun.id" data-testid="apply-success-summary" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <div class="font-semibold">{{ tM('applyDialog.successTitle') }}</div>
+        <div class="mt-1">
+          {{ tM('applyDialog.successDetail', { id: lastAppliedRun.id, count: lastAppliedRun.suggestion_count, date: formatDate(lastAppliedRun.applied_at || lastAppliedRun.created_at) }) }}
+        </div>
+      </div>
+      <div v-if="lastApplyError && applyRun" data-testid="apply-error-summary" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+        <div class="font-semibold">{{ tM('applyDialog.failureTitle') }}</div>
+        <div class="mt-1">{{ tM('applyDialog.failureDetail', { id: applyRun.id }) }}</div>
+        <div class="mt-2 break-words text-xs text-red-700 dark:text-red-200">{{ lastApplyError }}</div>
       </div>
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div v-for="item in applyRiskCards" :key="item.label" class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
@@ -947,7 +1105,6 @@
               </td>
               <td class="px-3 py-3 text-right">
                 <div class="tabular-nums">{{ formatRate(suggestion.final_rate_multiplier) }}</div>
-                <div class="mt-1 flex justify-end"><RateSourceTag :source="suggestion.rate_source" :show-tip="false" /></div>
               </td>
               <td class="px-3 py-3">
                 <span :class="confidenceClass(suggestion.confidence)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ confidenceLabel(suggestion.confidence) }}</span>
@@ -963,8 +1120,8 @@
     </div>
     <template #footer>
       <div class="flex justify-end gap-2">
-        <button class="btn btn-secondary" type="button" @click="applyDialogOpen = false">{{ tM('applyDialog.cancel') }}</button>
-        <button class="btn btn-primary" type="button" :disabled="applying" @click="applySelectedRun">
+        <button class="btn btn-secondary" type="button" @click="applyDialogOpen = false">{{ tM('applyDialog.close') }}</button>
+        <button v-if="canApplySelectedRun" class="btn btn-primary" type="button" :disabled="applying" @click="applySelectedRun">
           {{ applying ? tM('applyDialog.applying') : tM('applyDialog.confirmApply') }}
         </button>
       </div>
@@ -1024,6 +1181,7 @@ import upstreamRelayAPI, {
   type UpstreamRelayConnectorMetricsRefreshResult,
   type UpstreamRelayGroupRateSnapshot,
   type UpstreamRelayGroupRateSnapshotChange,
+  type UpstreamRelayGroupUsageHistory,
   type UpstreamRelayMetricsMissingGroupDetail,
   type UpstreamRelayMetricsUsageDetail,
   type UpstreamRelayMetricsRefreshStatus,
@@ -1039,7 +1197,7 @@ import upstreamRelayAPI, {
 } from '@/api/admin/upstreamRelayGroupMonitors'
 import type { Account } from '@/types'
 
-type SectionKey = 'candidates' | 'connectors' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
+type SectionKey = 'candidates' | 'connectors' | 'usageHistory' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
 type BulkOperationKind = 'sync' | 'probe'
 type MetricsRefreshResultState = {
   items: UpstreamRelayConnectorMetricsRefreshResult[]
@@ -1055,6 +1213,7 @@ const connectors = ref<UpstreamRelayConnector[]>([])
 const snapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
 const overviewSnapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
 const snapshotChanges = ref<UpstreamRelayGroupRateSnapshotChange[]>([])
+const usageHistory = ref<UpstreamRelayGroupUsageHistory[]>([])
 const candidates = ref<UpstreamRelayCandidate[]>([])
 const recommendationRuns = ref<UpstreamRelayRecommendationRun[]>([])
 const accounts = ref<Account[]>([])
@@ -1070,6 +1229,7 @@ const generating = ref(false)
 const applying = ref(false)
 const snapshotLoading = ref(false)
 const snapshotChangesLoading = ref(false)
+const usageHistoryLoading = ref(false)
 const savingConnector = ref(false)
 const savingCandidate = ref(false)
 const loadingConnectorAPIKeys = ref(false)
@@ -1078,6 +1238,9 @@ const savingPolicy = ref(false)
 const previewLoading = ref(false)
 const applyDialogOpen = ref(false)
 const applyRun = ref<UpstreamRelayRecommendationRun | null>(null)
+const lastAppliedRun = ref<UpstreamRelayRecommendationRun | null>(null)
+const lastApplyError = ref('')
+const successMessage = ref('')
 const policyPreview = ref<UpstreamRelayRecommendationPreview | null>(null)
 const policyPreviewLastUpdatedAt = ref<string | null>(null)
 const policyPreviewResultRef = ref<HTMLElement | null>(null)
@@ -1104,6 +1267,15 @@ const snapshotChangePage = ref(1)
 const snapshotChangePageSize = 50
 const snapshotChangeTotal = ref(0)
 const snapshotChangePages = ref(1)
+const usageHistoryConnectorId = ref(0)
+const usageHistoryStartDate = ref(localUsageDate())
+const usageHistoryEndDate = ref(localUsageDate())
+const usageHistoryGroupId = ref('')
+const usageHistorySearch = ref('')
+const usageHistoryPage = ref(1)
+const usageHistoryPageSize = 50
+const usageHistoryTotal = ref(0)
+const usageHistoryPages = ref(1)
 
 const AUTO_REFRESH_INTERVALS = [15, 30, 60] as const
 const autoRefreshEnabled = ref(false)
@@ -1159,6 +1331,13 @@ const monitoringPolicyForm = reactive<UpstreamRelayMonitoringPolicy>({
   sync_interval_minutes: 60,
   auto_probe_enabled: false,
   probe_interval_minutes: 30,
+  auto_recommendation_enabled: false,
+  recommendation_interval_minutes: 60,
+  auto_apply_recommendations_enabled: false,
+  max_auto_apply_suggestions: 20,
+  max_auto_apply_priority_delta: 100,
+  min_auto_apply_confidence: 'medium',
+  allow_auto_apply_degraded_health: false,
   failure_retry_interval_minutes: 10,
   sync_concurrency: 2,
   probe_concurrency: 5,
@@ -1166,6 +1345,7 @@ const monitoringPolicyForm = reactive<UpstreamRelayMonitoringPolicy>({
   usage_delta_stale_after_minutes: 180,
   probe_stale_after_minutes: 90
 })
+const savedMonitoringPolicy = ref<UpstreamRelayMonitoringPolicy | null>(null)
 
 const activeConnectors = computed(() => connectors.value.filter((item) => item.status === 'active'))
 const enabledCandidateCount = computed(() => candidates.value.filter((item) => item.enabled).length)
@@ -1208,6 +1388,7 @@ const candidateCurrentAPIKeyOption = computed<UpstreamRelayAPIKeyOption | null>(
 const sections = computed((): Array<{ key: SectionKey; label: string; badge?: number }> => [
   { key: 'candidates', label: tM('tabs.candidates') },
   { key: 'connectors', label: tM('tabs.connectors') },
+  { key: 'usageHistory', label: tM('tabs.usageHistory') },
   { key: 'snapshotChanges', label: tM('tabs.snapshotChanges') },
   { key: 'monitoring', label: tM('tabs.monitoring') },
   { key: 'recommendations', label: tM('tabs.recommendations'), badge: pendingSuggestionCount.value },
@@ -1226,9 +1407,28 @@ watch(() => candidateForm.connector_id, async (connectorId, previousConnectorId)
 
 const normalizedMonitoringSyncInterval = computed(() => positiveInteger(monitoringPolicyForm.sync_interval_minutes, 1))
 const normalizedMonitoringProbeInterval = computed(() => positiveInteger(monitoringPolicyForm.probe_interval_minutes, 1))
+const normalizedMonitoringRecommendationInterval = computed(() => positiveInteger(monitoringPolicyForm.recommendation_interval_minutes, 1))
+const savedMonitoringSyncInterval = computed(() => positiveInteger(savedMonitoringPolicy.value?.sync_interval_minutes, normalizedMonitoringSyncInterval.value))
+const savedMonitoringProbeInterval = computed(() => positiveInteger(savedMonitoringPolicy.value?.probe_interval_minutes, normalizedMonitoringProbeInterval.value))
+const savedMonitoringRecommendationInterval = computed(() => positiveInteger(savedMonitoringPolicy.value?.recommendation_interval_minutes, normalizedMonitoringRecommendationInterval.value))
 const monitoringSnapshotStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
 const monitoringUsageDeltaStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
 const monitoringProbeStaleAfterMinutes = computed(() => normalizedMonitoringProbeInterval.value * 3)
+const autoMonitoringEnabled = computed(() => Boolean(savedMonitoringPolicy.value?.auto_sync_enabled || savedMonitoringPolicy.value?.auto_probe_enabled || savedMonitoringPolicy.value?.auto_recommendation_enabled))
+const autoMonitoringStatusTitleKey = computed(() => autoMonitoringEnabled.value ? 'monitoring.status.running' : 'monitoring.status.disabled')
+const autoMonitoringStatusDetailKey = computed(() => {
+  if (savedMonitoringPolicy.value?.auto_recommendation_enabled && savedMonitoringPolicy.value?.auto_apply_recommendations_enabled) return 'monitoring.status.detailAutoApply'
+  if (savedMonitoringPolicy.value?.auto_recommendation_enabled) return 'monitoring.status.detailRecommendationOnly'
+  if (savedMonitoringPolicy.value?.auto_sync_enabled && savedMonitoringPolicy.value?.auto_probe_enabled) return 'monitoring.status.detailBoth'
+  if (savedMonitoringPolicy.value?.auto_sync_enabled) return 'monitoring.status.detailSyncOnly'
+  if (savedMonitoringPolicy.value?.auto_probe_enabled) return 'monitoring.status.detailProbeOnly'
+  return 'monitoring.status.detailDisabled'
+})
+const autoMonitoringStatusPanelClass = computed(() => autoMonitoringEnabled.value
+  ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100'
+  : 'border-gray-100 bg-gray-50 text-gray-600 dark:border-dark-700 dark:bg-dark-800/70 dark:text-gray-300'
+)
+const autoMonitoringStatusDotClass = computed(() => autoMonitoringEnabled.value ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-500')
 
 const bulkFailedItems = computed(() => {
   return (bulkOperationResult.value?.result.items || [])
@@ -1285,6 +1485,18 @@ const snapshotChangeTypeOptions = computed((): Array<{ value: UpstreamRelaySnaps
 const snapshotChangeGroups = computed(() => {
   const groups = new Map<number, { connectorId: number; connectorName: string; items: UpstreamRelayGroupRateSnapshotChange[] }>()
   for (const item of snapshotChanges.value) {
+    const connectorName = item.connector_name || `Connector #${item.connector_id}`
+    if (!groups.has(item.connector_id)) {
+      groups.set(item.connector_id, { connectorId: item.connector_id, connectorName, items: [] })
+    }
+    groups.get(item.connector_id)!.items.push(item)
+  }
+  return Array.from(groups.values())
+})
+
+const usageHistoryGroups = computed(() => {
+  const groups = new Map<number, { connectorId: number; connectorName: string; items: UpstreamRelayGroupUsageHistory[] }>()
+  for (const item of usageHistory.value) {
     const connectorName = item.connector_name || `Connector #${item.connector_id}`
     if (!groups.has(item.connector_id)) {
       groups.set(item.connector_id, { connectorId: item.connector_id, connectorName, items: [] })
@@ -1389,6 +1601,28 @@ const applyRiskCards = computed(() => {
   ]
 })
 
+const canApplySelectedRun = computed(() => !!applyRun.value && canApplyRecommendationRun(applyRun.value))
+const applyDialogTitle = computed(() => canApplySelectedRun.value ? tM('applyDialog.title') : tM('applyDialog.detailTitle'))
+const applyDialogNotice = computed(() => {
+  if (!applyRun.value) return ''
+  if (applyRun.value.applied) {
+    return tM('applyDialog.appliedNotice', { id: applyRun.value.id, date: formatDate(applyRun.value.created_at) })
+  }
+  if (applyRun.value.status !== 'success') {
+    return applyRun.value.error_message || tM('applyDialog.notSuccessNotice', { id: applyRun.value.id, status: applyRun.value.status })
+  }
+  if (applyRun.value.suggestion_count === 0) {
+    return tM('applyDialog.noSuggestionsNotice', { id: applyRun.value.id, date: formatDate(applyRun.value.created_at) })
+  }
+  return tM('applyDialog.warning', { id: applyRun.value.id, date: formatDate(applyRun.value.created_at) })
+})
+const applyDialogNoticeClass = computed(() => {
+  if (!applyRun.value) return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+  if (canApplySelectedRun.value) return 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200'
+  if (applyRun.value.applied) return 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200'
+  return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+})
+
 onMounted(() => {
   loadAll()
 })
@@ -1410,12 +1644,22 @@ watch(activeSection, (section) => {
   if (section === 'snapshotChanges' && snapshotChanges.value.length === 0 && !snapshotChangesLoading.value) {
     void loadSnapshotChanges()
   }
+  if (section === 'usageHistory' && usageHistory.value.length === 0 && !usageHistoryLoading.value) {
+    void loadUsageHistory()
+  }
 })
 
 watch([snapshotChangeConnectorId, snapshotChangeType], () => {
   if (activeSection.value === 'snapshotChanges') {
     snapshotChangePage.value = 1
     void loadSnapshotChanges()
+  }
+})
+
+watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate], () => {
+  if (activeSection.value === 'usageHistory') {
+    usageHistoryPage.value = 1
+    void loadUsageHistory()
   }
 })
 
@@ -1557,6 +1801,40 @@ function reloadSnapshotChanges() {
 function changeSnapshotChangePage(page: number) {
   snapshotChangePage.value = Math.max(1, Math.min(page, snapshotChangePages.value))
   void loadSnapshotChanges()
+}
+
+async function loadUsageHistory() {
+  usageHistoryLoading.value = true
+  error.value = ''
+  try {
+    const res = await upstreamRelayAPI.listUsageHistory({
+      page: usageHistoryPage.value,
+      page_size: usageHistoryPageSize,
+      start_date: usageHistoryStartDate.value || undefined,
+      end_date: usageHistoryEndDate.value || undefined,
+      connector_id: usageHistoryConnectorId.value || undefined,
+      upstream_group_id: usageHistoryGroupId.value || undefined,
+      search: usageHistorySearch.value || undefined
+    })
+    usageHistory.value = res.items
+    usageHistoryTotal.value = res.total
+    usageHistoryPages.value = res.pages || 1
+    usageHistoryPage.value = res.page || usageHistoryPage.value
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.loadUsageHistoryFailed')
+  } finally {
+    usageHistoryLoading.value = false
+  }
+}
+
+function reloadUsageHistory() {
+  usageHistoryPage.value = 1
+  void loadUsageHistory()
+}
+
+function changeUsageHistoryPage(page: number) {
+  usageHistoryPage.value = Math.max(1, Math.min(page, usageHistoryPages.value))
+  void loadUsageHistory()
 }
 
 async function hydrateLatestPendingRun() {
@@ -1997,7 +2275,12 @@ function assignPolicyForm(policy: UpstreamRelayRecommendationPolicy) {
 }
 
 function assignMonitoringPolicyForm(policy: UpstreamRelayMonitoringPolicy) {
-  Object.assign(monitoringPolicyForm, policy)
+  const normalized = {
+    ...policy,
+    min_auto_apply_confidence: normalizeAutoApplyConfidence(policy.min_auto_apply_confidence)
+  }
+  Object.assign(monitoringPolicyForm, normalized)
+  savedMonitoringPolicy.value = { ...normalized }
 }
 
 function positiveInteger(value: unknown, fallback: number) {
@@ -2043,10 +2326,22 @@ function normalizedMonitoringPolicyPayload(): UpstreamRelayMonitoringPolicyInput
     sync_interval_minutes: normalizedMonitoringSyncInterval.value,
     auto_probe_enabled: Boolean(monitoringPolicyForm.auto_probe_enabled),
     probe_interval_minutes: normalizedMonitoringProbeInterval.value,
+    auto_recommendation_enabled: Boolean(monitoringPolicyForm.auto_recommendation_enabled),
+    recommendation_interval_minutes: normalizedMonitoringRecommendationInterval.value,
+    auto_apply_recommendations_enabled: Boolean(monitoringPolicyForm.auto_apply_recommendations_enabled),
+    max_auto_apply_suggestions: positiveInteger(monitoringPolicyForm.max_auto_apply_suggestions, 1),
+    max_auto_apply_priority_delta: Math.max(0, Math.floor(Number(monitoringPolicyForm.max_auto_apply_priority_delta) || 0)),
+    min_auto_apply_confidence: normalizeAutoApplyConfidence(monitoringPolicyForm.min_auto_apply_confidence),
+    allow_auto_apply_degraded_health: Boolean(monitoringPolicyForm.allow_auto_apply_degraded_health),
     failure_retry_interval_minutes: positiveInteger(monitoringPolicyForm.failure_retry_interval_minutes, 1),
     sync_concurrency: positiveInteger(monitoringPolicyForm.sync_concurrency, 1),
     probe_concurrency: positiveInteger(monitoringPolicyForm.probe_concurrency, 1)
   }
+}
+
+function normalizeAutoApplyConfidence(value: unknown): UpstreamRelayMonitoringPolicy['min_auto_apply_confidence'] {
+  if (value === 'high' || value === 'medium' || value === 'low' || value === 'unknown') return value
+  return 'medium'
 }
 
 async function saveMonitoringPolicy() {
@@ -2115,6 +2410,9 @@ async function generateRun() {
 
 async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
   error.value = ''
+  successMessage.value = ''
+  lastAppliedRun.value = null
+  lastApplyError.value = ''
   try {
     applyRun.value = await upstreamRelayAPI.getRecommendationRun(run.id)
     applyDialogOpen.value = true
@@ -2127,13 +2425,22 @@ async function applySelectedRun() {
   if (!applyRun.value) return
   applying.value = true
   error.value = ''
+  successMessage.value = ''
+  lastApplyError.value = ''
   try {
-    await upstreamRelayAPI.applyRecommendationRun(applyRun.value.id)
-    applyDialogOpen.value = false
-    applyRun.value = null
+    const appliedRun = await upstreamRelayAPI.applyRecommendationRun(applyRun.value.id)
+    applyRun.value = appliedRun
+    lastAppliedRun.value = appliedRun
+    successMessage.value = tM('applyDialog.successMessage', {
+      id: appliedRun.id,
+      count: appliedRun.suggestion_count,
+      date: formatDate(appliedRun.applied_at || appliedRun.created_at)
+    })
+    recommendationRuns.value = [appliedRun, ...recommendationRuns.value.filter((item) => item.id !== appliedRun.id)]
     await loadAll()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.applyFailed')
+    lastApplyError.value = err instanceof Error ? err.message : tM('errors.applyFailed')
+    error.value = lastApplyError.value
   } finally {
     applying.value = false
   }
@@ -2167,12 +2474,29 @@ function recommendationRunStatusClass(run: UpstreamRelayRecommendationRun) {
   return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
 }
 
+function canApplyRecommendationRun(run: UpstreamRelayRecommendationRun) {
+  return run.status === 'success' && !run.applied && run.suggestion_count > 0
+}
+
+function recommendationRunCreatedByLabel(run: UpstreamRelayRecommendationRun) {
+  return Number(run.created_by || 0) === 0 ? tM('recommendations.sourceSystem') : tM('recommendations.sourceManual')
+}
+
+function recommendationRunAppliedByLabel(run: UpstreamRelayRecommendationRun) {
+  return Number(run.applied_by || 0) === 0 ? tM('recommendations.appliedBySystem') : tM('recommendations.appliedByManual')
+}
+
 function formatDate(value?: string | null) {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function localUsageDate(value: Date = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
 function formatRate(value: number) {

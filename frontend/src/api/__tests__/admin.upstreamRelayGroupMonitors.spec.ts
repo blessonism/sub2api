@@ -19,6 +19,7 @@ import {
   getMonitoringPolicy,
   getRecommendationPolicy,
   listConnectorAPIKeys,
+  listUsageHistory,
   probeAllCandidates,
   previewRecommendations,
   refreshConnectorMetrics,
@@ -46,6 +47,13 @@ describe('admin upstream relay group monitors api', () => {
     sync_interval_minutes: 60,
     auto_probe_enabled: true,
     probe_interval_minutes: 15,
+    auto_recommendation_enabled: true,
+    recommendation_interval_minutes: 30,
+    auto_apply_recommendations_enabled: false,
+    max_auto_apply_suggestions: 20,
+    max_auto_apply_priority_delta: 100,
+    min_auto_apply_confidence: 'medium',
+    allow_auto_apply_degraded_health: false,
     failure_retry_interval_minutes: 5,
     sync_concurrency: 2,
     probe_concurrency: 5,
@@ -142,6 +150,15 @@ describe('admin upstream relay group monitors api', () => {
 
     await expect(listConnectorAPIKeys(7)).resolves.toEqual(keys)
     expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/api-keys')
+  })
+
+  it('loads persisted usage history with date and connector filters', async () => {
+    const response = { items: [], total: 0, page: 1, page_size: 50, pages: 1 }
+    const params = { page: 1, page_size: 50, start_date: '2026-06-28', end_date: '2026-06-29', connector_id: 7, upstream_group_id: 'g1', search: 'relay' }
+    get.mockResolvedValue({ data: response })
+
+    await expect(listUsageHistory(params)).resolves.toEqual(response)
+    expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/usage-history', { params })
   })
 
   it('runs bulk manual sync and probe endpoints', async () => {
