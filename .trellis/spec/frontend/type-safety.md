@@ -63,8 +63,13 @@ When updating `frontend/src/api/admin/upstreamRelayGroupMonitors.ts`:
 
 - Keep connector-only fields on `UpstreamRelayConnector`, including `upstream_account_balance` and `upstream_account_balance_checked_at`.
 - Keep candidate-mapping usage fields on `UpstreamRelayCandidate`, including nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at`.
+- Keep candidate-mapping upstream key fields on `UpstreamRelayCandidate`, including nullable `upstream_api_key_id` plus display-only `upstream_api_key_name` and `upstream_api_key_masked`.
+- Keep candidate bindings account-scoped: `UpstreamRelayCandidate` and recommendation DTOs must not expose `target_group_id` / `target_group_name`.
+- Do not add candidate upstream key fields to `UpstreamRelayConnector` or generic account API types; the mapping belongs to the upstream relay candidate form.
 - Do not add upstream account balance fields to `UpstreamRelayCandidate`; candidate rows display the upstream relay user's real usage snapshot for `connector_id + upstream_group_id`, while connector rows display the upstream relay account balance.
 - Treat missing candidate usage as unknown / not synced, not as zero usage.
+- Add lightweight connector metrics refresh through `refreshConnectorMetrics(id)`, targeting `/connectors/:id/metrics/refresh`; do not reuse the full connector `sync` action for a balance/usage-only refresh.
+- After metrics refresh succeeds, refresh connector and candidate state in the view so connector balance and candidate today usage update together.
 - Keep recommendation preview and persisted generation as separate methods: `previewRecommendations()` must call `/recommendations/preview`; `generateRecommendations()` must call `/recommendations`.
 - Normalize recommendation policy `sort_fields` before submit so duplicate fields are removed and missing default sort fields are appended.
 - Add zh/en i18n keys for every table column introduced in `UpstreamRelayGroupMonitoringView.vue`.
@@ -73,7 +78,7 @@ Required checks:
 
 - `pnpm typecheck` passes.
 - A targeted key scan confirms every `tM('candidates.*')` and `tM('connectors.*')` key used by the view exists in both locale files.
-- API tests cover both preview and persisted generate endpoint paths.
+- API tests cover both preview and persisted generate endpoint paths, plus the connector metrics refresh endpoint path.
 
 ---
 
