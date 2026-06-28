@@ -298,9 +298,6 @@ func (s *ConversationCaptureService) capture(ctx context.Context, decision Conve
 	if endpointKind == ConversationCaptureEndpointResponses {
 		parsed = parseOpenAIResponsesTurn(requestBody, responseRaw, meta.Stream)
 	}
-	if truncated || input.Truncated || input.ClientDisconnect || meta.ClientDisconnect {
-		parsed.ParseStatus = parsed.ParseStatus
-	}
 	sessionID, sessionSource := resolveConversationSessionID(meta, decision.SessionWindowMinutes)
 	if endpointKind == ConversationCaptureEndpointResponses && sessionID == "" {
 		sessionID, sessionSource = s.resolveResponsesSessionID(ctx, meta, parsed, now)
