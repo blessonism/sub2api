@@ -165,7 +165,9 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
 		relay.DELETE("/connectors/:id", h.Admin.UpstreamRelayMonitoring.DeleteConnector)
 		relay.POST("/connectors/:id/sync", h.Admin.UpstreamRelayMonitoring.SyncConnector)
+		relay.POST("/connectors/:id/metrics/refresh", h.Admin.UpstreamRelayMonitoring.RefreshConnectorMetrics)
 		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
+		relay.GET("/snapshot-changes", h.Admin.UpstreamRelayMonitoring.ListSnapshotChanges)
 
 		relay.GET("/candidates", h.Admin.UpstreamRelayMonitoring.ListCandidates)
 		relay.POST("/candidates", h.Admin.UpstreamRelayMonitoring.CreateCandidate)
@@ -173,10 +175,14 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.DELETE("/candidates/:id", h.Admin.UpstreamRelayMonitoring.DeleteCandidate)
 		relay.POST("/candidates/:id/probe", h.Admin.UpstreamRelayMonitoring.ProbeCandidate)
 
+		relay.GET("/recommendation-policy", h.Admin.UpstreamRelayMonitoring.GetRecommendationPolicy)
+		relay.PUT("/recommendation-policy", h.Admin.UpstreamRelayMonitoring.UpdateRecommendationPolicy)
+		relay.POST("/recommendations/preview", h.Admin.UpstreamRelayMonitoring.PreviewRecommendations)
 		relay.POST("/recommendations", h.Admin.UpstreamRelayMonitoring.GenerateRecommendations)
 		relay.GET("/recommendations", h.Admin.UpstreamRelayMonitoring.ListRecommendationRuns)
 		relay.GET("/recommendations/:id", h.Admin.UpstreamRelayMonitoring.GetRecommendationRun)
 		relay.POST("/recommendations/:id/apply", h.Admin.UpstreamRelayMonitoring.ApplyRecommendationRun)
+		relay.DELETE("/recommendations/:id", h.Admin.UpstreamRelayMonitoring.DeleteRecommendationRun)
 	}
 }
 

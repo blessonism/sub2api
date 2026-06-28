@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -27,10 +28,14 @@ func (upstreamRelayHandlerEncryptor) Decrypt(ciphertext string) (string, error) 
 }
 
 type upstreamRelayHandlerRepo struct {
-	createdBy  int64
-	created    *service.UpstreamRelayConnector
-	snapshots  []service.UpstreamRelayGroupRateSnapshot
-	syncStatus string
+	createdBy             int64
+	created               *service.UpstreamRelayConnector
+	snapshots             []service.UpstreamRelayGroupRateSnapshot
+	snapshotChangeFilters service.UpstreamRelaySnapshotChangeListFilters
+	snapshotChangeParams  pagination.PaginationParams
+	syncStatus            string
+	usageByGroup          map[string]service.UpstreamRelayGroupTodayUsage
+	usageCheckedAt        *time.Time
 }
 
 func (r *upstreamRelayHandlerRepo) ListConnectors(context.Context, pagination.PaginationParams, service.UpstreamRelayConnectorListFilters) ([]service.UpstreamRelayConnector, *pagination.PaginationResult, error) {
@@ -71,8 +76,56 @@ func (r *upstreamRelayHandlerRepo) ListSnapshots(context.Context, int64) ([]serv
 	return r.snapshots, nil
 }
 
+func (r *upstreamRelayHandlerRepo) ListSnapshotChanges(_ context.Context, params pagination.PaginationParams, filters service.UpstreamRelaySnapshotChangeListFilters) ([]service.UpstreamRelayGroupRateSnapshotChange, *pagination.PaginationResult, error) {
+	r.snapshotChangeParams = params
+	r.snapshotChangeFilters = filters
+	oldRate := 1.25
+	newRate := 1.5
+	return []service.UpstreamRelayGroupRateSnapshotChange{
+		{
+			ID:                     9,
+			ConnectorID:            filters.ConnectorID,
+			ConnectorName:          "relay-a",
+			UpstreamGroupID:        "gpt-pro",
+			GroupName:              "GPT Pro",
+			Platform:               "openai",
+			ChangeType:             service.UpstreamRelaySnapshotChangeRateChanged,
+			OldFinalRateMultiplier: &oldRate,
+			NewFinalRateMultiplier: &newRate,
+			OldStatus:              "active",
+			NewStatus:              "active",
+			Source:                 service.UpstreamRelayRateSourceOverride,
+			ChangedAt:              time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC),
+		},
+	}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
+}
+
 func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, _ string) error {
 	r.syncStatus = status
+	return nil
+}
+
+func (r *upstreamRelayHandlerRepo) UpdateConnectorAccountBalance(context.Context, int64, *float64, *time.Time) error {
+	return nil
+}
+
+func (r *upstreamRelayHandlerRepo) UpdateSnapshotTodayUsage(_ context.Context, _ int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+	r.usageByGroup = usageByGroup
+	r.usageCheckedAt = checkedAt
+	for i := range r.snapshots {
+		if checkedAt == nil || usageByGroup == nil {
+			r.snapshots[i].TodayActualCost = nil
+			r.snapshots[i].TodayTotalTokens = nil
+			r.snapshots[i].TodayUsageCheckedAt = nil
+			continue
+		}
+		usage := usageByGroup[r.snapshots[i].UpstreamGroupID]
+		actualCost := usage.ActualCost
+		totalTokens := usage.TotalTokens
+		r.snapshots[i].TodayActualCost = &actualCost
+		r.snapshots[i].TodayTotalTokens = &totalTokens
+		r.snapshots[i].TodayUsageCheckedAt = checkedAt
+	}
 	return nil
 }
 
@@ -108,6 +161,15 @@ func (r *upstreamRelayHandlerRepo) ListRecommendationInputs(context.Context) ([]
 	return nil, nil
 }
 
+func (r *upstreamRelayHandlerRepo) GetRecommendationPolicy(context.Context) (*service.UpstreamRelayRecommendationPolicy, error) {
+	return nil, nil
+}
+
+func (r *upstreamRelayHandlerRepo) UpsertRecommendationPolicy(_ context.Context, policy service.UpstreamRelayRecommendationPolicy, operatorID int64) (*service.UpstreamRelayRecommendationPolicy, error) {
+	policy.UpdatedBy = operatorID
+	return &policy, nil
+}
+
 func (r *upstreamRelayHandlerRepo) CreateRecommendationRun(_ context.Context, run service.UpstreamRelayRecommendationRun, suggestions []service.UpstreamRelayRecommendationSuggestion) (*service.UpstreamRelayRecommendationRun, error) {
 	run.ID = 1
 	run.Suggestions = suggestions
@@ -124,6 +186,10 @@ func (r *upstreamRelayHandlerRepo) ListRecommendationRuns(context.Context, pagin
 
 func (r *upstreamRelayHandlerRepo) ApplyRecommendationRun(context.Context, int64, int64) (*service.UpstreamRelayRecommendationRun, error) {
 	return nil, service.ErrUpstreamRelayRunNotFound
+}
+
+func (r *upstreamRelayHandlerRepo) DeleteRecommendationRun(context.Context, int64) error {
+	return service.ErrUpstreamRelayRunNotFound
 }
 
 func TestUpstreamRelayHandlerCreateConnectorUsesOperatorAndRedactsCredentials(t *testing.T) {
@@ -235,4 +301,36 @@ func TestUpstreamRelayHandlerCreatePasswordLoginConnectorRedactsCredentials(t *t
 	require.NotContains(t, w.Body.String(), "login-access-token")
 	require.NotContains(t, w.Body.String(), "login-refresh-token")
 	require.NotContains(t, w.Body.String(), "admin@example.com")
+}
+
+func TestUpstreamRelayHandlerListSnapshotChangesReturnsPaginatedShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/upstream-relay-group-monitors/snapshot-changes?page=2&page_size=5&connector_id=42&change_type=rate_changed&search=gpt", nil)
+
+	handler.ListSnapshotChanges(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 2, repo.snapshotChangeParams.Page)
+	require.Equal(t, 5, repo.snapshotChangeParams.PageSize)
+	require.Equal(t, int64(42), repo.snapshotChangeFilters.ConnectorID)
+	require.Equal(t, service.UpstreamRelaySnapshotChangeRateChanged, repo.snapshotChangeFilters.ChangeType)
+	require.Equal(t, "gpt", repo.snapshotChangeFilters.Search)
+	var envelope struct {
+		Data struct {
+			Items []service.UpstreamRelayGroupRateSnapshotChange `json:"items"`
+			Total int64                                          `json:"total"`
+			Page  int                                            `json:"page"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(1), envelope.Data.Total)
+	require.Equal(t, 2, envelope.Data.Page)
+	require.Len(t, envelope.Data.Items, 1)
+	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
+	require.Equal(t, service.UpstreamRelaySnapshotChangeRateChanged, envelope.Data.Items[0].ChangeType)
 }

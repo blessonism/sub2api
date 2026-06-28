@@ -9,7 +9,9 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -95,6 +97,94 @@ func TestUpstreamRelayRepositoryUpdateConnectorIncrementsCredentialVersionAndPer
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestRelayCandidateSelectUsesRemoteSnapshotUsage(t *testing.T) {
+	query := relayCandidateSelect()
+
+	require.NotContains(t, query, "upstream_account_balance")
+	require.NotContains(t, query, "FROM usage_logs")
+	require.Contains(t, query, "s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at")
+	require.Contains(t, query, "LEFT JOIN upstream_relay_group_rate_snapshots s ON s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id")
+}
+
+func TestUpstreamRelayRepositoryListCandidatesScansRemoteTodayUsage(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM upstream_relay_candidates c WHERE c\\.deleted_at IS NULL").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery("FROM upstream_relay_candidates c").
+		WithArgs(20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "connector_id", "connector_name", "connector_status", "account_id",
+			"today_actual_cost", "today_total_tokens", "today_usage_checked_at",
+			"account_name", "account_platform", "upstream_group_id", "upstream_group_name",
+			"probe_model", "probe_protocol", "target_group_id", "target_group_name",
+			"priority", "enabled", "notes", "last_probe_result_id", "created_by", "created_at", "updated_at",
+			"probe_id", "probe_success", "latency_ms", "http_status", "error_class", "error_message", "probed_at",
+			"snapshot_id", "default_rate_multiplier", "override_rate_multiplier", "final_rate_multiplier",
+			"snapshot_today_actual_cost", "snapshot_today_total_tokens", "snapshot_today_usage_checked_at",
+			"snapshot_platform", "snapshot_status", "snapshot_source", "last_seen_at",
+		}).AddRow(
+			int64(9), int64(2), "relay", service.UpstreamRelayConnectorStatusActive, int64(101),
+			1.2345, int64(12345), now,
+			"account-a", "openai", "upstream-cheap", "Upstream Cheap",
+			"gpt-4o-mini", service.MonitorAPIModeChatCompletions, int64(7), "target-cheap",
+			10, true, "", nil, int64(77), now, now,
+			nil, nil, nil, nil, "", "", nil,
+			nil, nil, nil, nil,
+			nil, nil, nil,
+			"", "", "", nil,
+		))
+	mock.ExpectQuery("FROM upstream_relay_probe_results").
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "success", "latency_ms", "error_class", "probed_at"}))
+	mock.ExpectQuery("FROM upstream_relay_usage_delta_samples").
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "candidate_id", "probe_result_id", "model", "status",
+			"before_cost", "before_actual_cost", "after_cost", "after_actual_cost",
+			"cost_delta", "actual_cost_delta", "derived_rate_multiplier",
+			"unreliable_reason", "sampled_at",
+		}))
+
+	candidates, page, err := repo.ListCandidates(ctx, pagination.PaginationParams{Page: 1, PageSize: 20}, service.UpstreamRelayCandidateListFilters{})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Len(t, candidates, 1)
+	require.NotNil(t, candidates[0].TodayActualCost)
+	require.Equal(t, 1.2345, *candidates[0].TodayActualCost)
+	require.NotNil(t, candidates[0].TodayTotalTokens)
+	require.Equal(t, int64(12345), *candidates[0].TodayTotalTokens)
+	require.NotNil(t, candidates[0].TodayUsageCheckedAt)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryUpdateSnapshotTodayUsageDoesNotRebuildSnapshots(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	checkedAt := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE upstream_relay_group_rate_snapshots").
+		WithArgs(int64(42), &checkedAt).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("UPDATE upstream_relay_group_rate_snapshots").
+		WithArgs(int64(42), "g1", 1.25, int64(1234), &checkedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err := repo.UpdateSnapshotTodayUsage(ctx, 42, map[string]service.UpstreamRelayGroupTodayUsage{
+		"g1": {ActualCost: 1.25, TotalTokens: 1234},
+	}, &checkedAt)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonFields(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUpstreamRelayRepository(db)
@@ -147,6 +237,47 @@ func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonField
 	require.Equal(t, "high", run.Suggestions[0].Confidence)
 	require.Equal(t, service.UpstreamRelayRateSourceOverride, run.Suggestions[0].RateSource)
 	require.Equal(t, "结构化建议原因", run.Suggestions[0].Reason)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryUpsertsRecommendationPolicy(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectExec("INSERT INTO upstream_relay_recommendation_policy").
+		WithArgs(60, 120, 15, 0.8, 5, false, 5, 5, sqlmock.AnyArg(), int64(88)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT snapshot_freshness_minutes").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"snapshot_freshness_minutes", "usage_delta_freshness_minutes", "probe_freshness_minutes",
+			"min_success_rate", "min_sample_size", "exclude_consecutive_failures",
+			"priority_start", "priority_step", "sort_fields", "updated_by", "created_at", "updated_at",
+		}).AddRow(60, 120, 15, 0.8, 5, false, 5, 5, pq.Array([]string{
+			service.UpstreamRelaySortSuccessRateDesc,
+			service.UpstreamRelaySortRateAsc,
+		}), int64(88), now, now))
+
+	policy, err := repo.UpsertRecommendationPolicy(ctx, service.UpstreamRelayRecommendationPolicy{
+		SnapshotFreshnessMinutes:   60,
+		UsageDeltaFreshnessMinutes: 120,
+		ProbeFreshnessMinutes:      15,
+		MinSuccessRate:             0.8,
+		MinSampleSize:              5,
+		ExcludeConsecutiveFailures: false,
+		PriorityStart:              5,
+		PriorityStep:               5,
+		SortFields: []string{
+			service.UpstreamRelaySortSuccessRateDesc,
+			service.UpstreamRelaySortRateAsc,
+		},
+	}, 88)
+
+	require.NoError(t, err)
+	require.Equal(t, 60, policy.SnapshotFreshnessMinutes)
+	require.Equal(t, []string{service.UpstreamRelaySortSuccessRateDesc, service.UpstreamRelaySortRateAsc}, policy.SortFields)
+	require.Equal(t, int64(88), policy.UpdatedBy)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -368,11 +499,13 @@ func expectUpstreamRelayConnectorGet(mock sqlmock.Sqlmock, id int64, now time.Ti
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "name", "base_url", "auth_mode", "bearer_token_encrypted",
 			"refresh_token_encrypted", "login_email_encrypted", "cookie_encrypted", "user_agent_encrypted",
+			"upstream_account_balance", "upstream_account_balance_checked_at",
 			"status", "credential_version", "last_verified_at", "last_synced_at", "last_error",
 			"created_by", "created_at", "updated_at",
 		}).AddRow(
 			connector.ID, connector.Name, connector.BaseURL, connector.AuthMode, connector.BearerTokenEncrypted,
 			connector.RefreshTokenEncrypted, connector.LoginEmailEncrypted, connector.CookieEncrypted, connector.UserAgentEncrypted,
+			connector.UpstreamAccountBalance, connector.UpstreamAccountBalanceCheckedAt,
 			connector.Status, connector.CredentialVersion, connector.LastVerifiedAt, connector.LastSyncedAt, connector.LastError,
 			connector.CreatedBy, now, now,
 		))

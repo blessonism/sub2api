@@ -21,11 +21,131 @@ func (upstreamRelayTestEncryptor) Decrypt(ciphertext string) (string, error) {
 	return ciphertext, nil
 }
 
+type upstreamRelayRecommendationServiceRepo struct {
+	UpstreamRelayRepository
+
+	candidates  []UpstreamRelayCandidate
+	policy      *UpstreamRelayRecommendationPolicy
+	createdRuns int
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) ListRecommendationInputs(context.Context) ([]UpstreamRelayCandidate, error) {
+	return append([]UpstreamRelayCandidate{}, r.candidates...), nil
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) GetRecommendationPolicy(context.Context) (*UpstreamRelayRecommendationPolicy, error) {
+	if r.policy == nil {
+		return nil, nil
+	}
+	policy := *r.policy
+	policy.SortFields = append([]string{}, r.policy.SortFields...)
+	return &policy, nil
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) CreateRecommendationRun(_ context.Context, run UpstreamRelayRecommendationRun, suggestions []UpstreamRelayRecommendationSuggestion) (*UpstreamRelayRecommendationRun, error) {
+	r.createdRuns++
+	run.ID = int64(r.createdRuns)
+	run.SuggestionCount = len(suggestions)
+	run.Suggestions = append([]UpstreamRelayRecommendationSuggestion{}, suggestions...)
+	return &run, nil
+}
+
+type upstreamRelayMetricsRefreshRepo struct {
+	UpstreamRelayRepository
+
+	connector            *UpstreamRelayConnector
+	snapshots            []UpstreamRelayGroupRateSnapshot
+	upsertSnapshotsCalls int
+	updatedBalance       *float64
+	updatedBalanceAt     *time.Time
+	usageByGroup         map[string]UpstreamRelayGroupTodayUsage
+	usageCheckedAt       *time.Time
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) GetConnector(context.Context, int64) (*UpstreamRelayConnector, error) {
+	if r.connector == nil {
+		return nil, ErrUpstreamRelayConnectorNotFound
+	}
+	copy := *r.connector
+	return &copy, nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) UpsertSnapshots(context.Context, int64, []UpstreamRelayGroupRateSnapshot) error {
+	r.upsertSnapshotsCalls++
+	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorAccountBalance(_ context.Context, _ int64, balance *float64, checkedAt *time.Time) error {
+	r.updatedBalance = balance
+	r.updatedBalanceAt = checkedAt
+	if r.connector != nil {
+		r.connector.UpstreamAccountBalance = balance
+		r.connector.UpstreamAccountBalanceCheckedAt = checkedAt
+	}
+	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Context, _ int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+	r.usageByGroup = usageByGroup
+	r.usageCheckedAt = checkedAt
+	for i := range r.snapshots {
+		if checkedAt == nil || usageByGroup == nil {
+			r.snapshots[i].TodayActualCost = nil
+			r.snapshots[i].TodayTotalTokens = nil
+			r.snapshots[i].TodayUsageCheckedAt = nil
+			continue
+		}
+		usage := usageByGroup[r.snapshots[i].UpstreamGroupID]
+		actualCost := usage.ActualCost
+		totalTokens := usage.TotalTokens
+		r.snapshots[i].TodayActualCost = &actualCost
+		r.snapshots[i].TodayTotalTokens = &totalTokens
+		r.snapshots[i].TodayUsageCheckedAt = checkedAt
+	}
+	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) ListSnapshots(context.Context, int64) ([]UpstreamRelayGroupRateSnapshot, error) {
+	out := make([]UpstreamRelayGroupRateSnapshot, len(r.snapshots))
+	copy(out, r.snapshots)
+	return out, nil
+}
+
 func TestUpstreamRelayParseGroupRatesAllowsEmptyObject(t *testing.T) {
 	rates, err := parseGroupRates([]byte(`{}`))
 
 	require.NoError(t, err)
 	require.Empty(t, rates)
+}
+
+func TestUpstreamRelayParseAccountBalanceSupportsProfileShapes(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want float64
+	}{
+		{name: "data balance", body: `{"data":{"balance":12.34}}`, want: 12.34},
+		{name: "top level balance", body: `{"balance":"56.78"}`, want: 56.78},
+		{name: "nested user account balance", body: `{"data":{"user":{"account_balance":90.12}}}`, want: 90.12},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			balance, err := parseUpstreamAccountBalance([]byte(tc.body))
+
+			require.NoError(t, err)
+			require.NotNil(t, balance)
+			require.Equal(t, tc.want, *balance)
+		})
+	}
+}
+
+func TestUpstreamRelayParseAccountBalanceRequiresBalance(t *testing.T) {
+	balance, err := parseUpstreamAccountBalance([]byte(`{"data":{"user":{"email":"admin@example.com"}}}`))
+
+	require.Error(t, err)
+	require.Nil(t, balance)
+	require.Contains(t, err.Error(), "missing balance")
 }
 
 func TestUpstreamRelayFetchGroupSnapshotsUsesOverrideRateFirst(t *testing.T) {
@@ -65,6 +185,162 @@ func TestUpstreamRelayFetchGroupSnapshotsUsesOverrideRateFirst(t *testing.T) {
 	require.Equal(t, 2.5, snapshots[1].FinalRateMultiplier)
 	require.Nil(t, snapshots[1].OverrideRateMultiplier)
 	require.Equal(t, UpstreamRelayRateSourceAvailable, snapshots[1].Source)
+}
+
+func TestUpstreamRelayFetchGroupSnapshotsAggregatesUserUsagePages(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"id":101,"name":"fast","platform":"openai","status":"active","rate_multiplier":1.5},
+			{"id":202,"name":"slow","platform":"anthropic","status":"active","rate_multiplier":2.5}
+		]`))
+	})
+	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+		switch r.URL.Query().Get("page") {
+		case "1":
+			_, _ = w.Write([]byte(`{"data":{"items":[
+				{"group_id":101,"actual_cost":1.25,"input_tokens":10,"output_tokens":20,"cache_creation_tokens":3,"cache_read_tokens":4},
+				{"group_id":202,"actual_cost":2.5,"input_tokens":100,"output_tokens":200,"cache_creation_tokens":30,"cache_read_tokens":40}
+			],"page":1,"page_size":1000,"pages":2,"total":3}}`))
+		case "2":
+			_, _ = w.Write([]byte(`{"data":{"items":[
+				{"group_id":"101","actual_cost":"0.75","input_tokens":1,"output_tokens":2,"cache_creation_tokens":3,"cache_read_tokens":4}
+			],"page":2,"page_size":1000,"pages":2,"total":3}}`))
+		default:
+			http.Error(w, "unexpected page", http.StatusBadRequest)
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	svc := &UpstreamRelayGroupMonitoringService{httpClient: server.Client()}
+	snapshots, err := svc.fetchGroupSnapshots(context.Background(), &UpstreamRelayConnector{
+		ID:               7,
+		BaseURL:          server.URL,
+		BearerTokenPlain: "session-token",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshots, 2)
+	require.NotNil(t, snapshots[0].TodayActualCost)
+	require.Equal(t, 2.0, *snapshots[0].TodayActualCost)
+	require.NotNil(t, snapshots[0].TodayTotalTokens)
+	require.Equal(t, int64(47), *snapshots[0].TodayTotalTokens)
+	require.NotNil(t, snapshots[0].TodayUsageCheckedAt)
+	require.NotNil(t, snapshots[1].TodayActualCost)
+	require.Equal(t, 2.5, *snapshots[1].TodayActualCost)
+	require.NotNil(t, snapshots[1].TodayTotalTokens)
+	require.Equal(t, int64(370), *snapshots[1].TodayTotalTokens)
+}
+
+func TestUpstreamRelayFetchGroupSnapshotsLeavesUsageEmptyWhenUserUsageUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":101,"name":"fast","platform":"openai","status":"active","rate_multiplier":1.5}]`))
+	})
+	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "usage unavailable", http.StatusForbidden)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	svc := &UpstreamRelayGroupMonitoringService{httpClient: server.Client()}
+	snapshots, err := svc.fetchGroupSnapshots(context.Background(), &UpstreamRelayConnector{
+		ID:               7,
+		BaseURL:          server.URL,
+		BearerTokenPlain: "session-token",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshots, 1)
+	require.Nil(t, snapshots[0].TodayActualCost)
+	require.Nil(t, snapshots[0].TodayTotalTokens)
+	require.Nil(t, snapshots[0].TodayUsageCheckedAt)
+}
+
+func TestUpstreamRelayFetchGroupSnapshotsLeavesUsageEmptyWhenUserUsageItemIncomplete(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":101,"name":"fast","platform":"openai","status":"active","rate_multiplier":1.5}]`))
+	})
+	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[
+			{"group_id":101,"actual_cost":1.25,"input_tokens":10,"output_tokens":20}
+		],"pages":1}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	svc := &UpstreamRelayGroupMonitoringService{httpClient: server.Client()}
+	snapshots, err := svc.fetchGroupSnapshots(context.Background(), &UpstreamRelayConnector{
+		ID:               7,
+		BaseURL:          server.URL,
+		BearerTokenPlain: "session-token",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshots, 1)
+	require.Nil(t, snapshots[0].TodayActualCost)
+	require.Nil(t, snapshots[0].TodayTotalTokens)
+	require.Nil(t, snapshots[0].TodayUsageCheckedAt)
+}
+
+func TestUpstreamRelayRefreshConnectorMetricsUpdatesOnlyBalanceAndUsage(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+		require.Equal(t, "1", r.URL.Query().Get("page"))
+		_, _ = w.Write([]byte(`{"data":{"items":[
+			{"group_id":"g1","actual_cost":1.5,"input_tokens":10,"output_tokens":20,"cache_creation_tokens":3,"cache_read_tokens":4}
+		],"pages":1}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                   7,
+			BaseURL:              server.URL,
+			BearerTokenEncrypted: "session-token",
+		},
+		snapshots: []UpstreamRelayGroupRateSnapshot{
+			{ID: 1, ConnectorID: 7, UpstreamGroupID: "g1", Name: "Group 1", FinalRateMultiplier: 0.8},
+			{ID: 2, ConnectorID: 7, UpstreamGroupID: "g2", Name: "Group 2", FinalRateMultiplier: 1.2},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.True(t, result.BalanceAvailable)
+	require.True(t, result.UsageAvailable)
+	require.Equal(t, 0, repo.upsertSnapshotsCalls)
+	require.NotNil(t, repo.updatedBalance)
+	require.Equal(t, 12.34, *repo.updatedBalance)
+	require.NotNil(t, repo.updatedBalanceAt)
+	require.NotNil(t, repo.usageCheckedAt)
+	require.Equal(t, UpstreamRelayGroupTodayUsage{ActualCost: 1.5, TotalTokens: 37}, repo.usageByGroup["g1"])
+	require.Len(t, result.Snapshots, 2)
+	require.NotNil(t, result.Snapshots[0].TodayActualCost)
+	require.Equal(t, 1.5, *result.Snapshots[0].TodayActualCost)
+	require.NotNil(t, result.Snapshots[1].TodayActualCost)
+	require.Equal(t, 0.0, *result.Snapshots[1].TodayActualCost)
 }
 
 func TestUpstreamRelayConnectorInputEncryptsAndResponseRedactsSecrets(t *testing.T) {
@@ -599,6 +875,132 @@ func TestUpstreamRelayBuildSuggestionsSkipsConsecutiveFailures(t *testing.T) {
 	}
 
 	require.Empty(t, buildUpstreamRelaySuggestions(candidates))
+}
+
+func TestUpstreamRelayPreviewReportsSuggestionsAndExclusions(t *testing.T) {
+	now := time.Now()
+	priority50 := 50
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:              1,
+			ConnectorID:     10,
+			ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			AccountID:       101,
+			UpstreamGroupID: "cheap",
+			TargetGroupID:   7,
+			CurrentPriority: &priority50,
+			Enabled:         true,
+			LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+		},
+		{
+			ID:              2,
+			ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			Enabled:         true,
+			LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now.Add(-time.Hour)},
+			LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.7, LastSeenAt: now},
+		},
+	}
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, defaultUpstreamRelayRecommendationPolicy())
+
+	require.Equal(t, 2, preview.TotalCandidates)
+	require.Len(t, preview.Suggestions, 1)
+	require.Equal(t, int64(1), preview.Suggestions[0].CandidateID)
+	require.Len(t, preview.Exclusions, 1)
+	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
+	require.Equal(t, "stale_probe", preview.Exclusions[0].ReasonCode)
+}
+
+func TestUpstreamRelayPolicyCanAllowConsecutiveFailures(t *testing.T) {
+	now := time.Now()
+	candidate := UpstreamRelayCandidate{
+		ID:              10,
+		ConnectorStatus: UpstreamRelayConnectorStatusActive,
+		Enabled:         true,
+		LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+		LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.5, LastSeenAt: now},
+		Health: &UpstreamRelayCandidateHealth{
+			ProbeCount:          4,
+			SuccessCount:        2,
+			SuccessRate:         0.5,
+			ConsecutiveFailures: 1,
+			WindowMinutes:       30,
+			SampleSize:          4,
+		},
+	}
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.ExcludeConsecutiveFailures = false
+
+	preview := buildUpstreamRelayRecommendationPreview([]UpstreamRelayCandidate{candidate}, policy)
+
+	require.Len(t, preview.Suggestions, 1)
+	require.Empty(t, preview.Exclusions)
+}
+
+func TestUpstreamRelayPreviewRecommendationsDoesNotPersistRun(t *testing.T) {
+	now := time.Now()
+	currentPriority := 50
+	repo := &upstreamRelayRecommendationServiceRepo{
+		candidates: []UpstreamRelayCandidate{
+			{
+				ID:              10,
+				ConnectorID:     20,
+				ConnectorStatus: UpstreamRelayConnectorStatusActive,
+				AccountID:       101,
+				UpstreamGroupID: "cheap",
+				TargetGroupID:   7,
+				CurrentPriority: &currentPriority,
+				Enabled:         true,
+				LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+				LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+			},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PriorityStart = 30
+
+	preview, err := svc.PreviewRecommendations(context.Background(), &policy)
+
+	require.NoError(t, err)
+	require.Equal(t, 0, repo.createdRuns)
+	require.Len(t, preview.Suggestions, 1)
+	require.Equal(t, 30, preview.Suggestions[0].NewPriority)
+}
+
+func TestUpstreamRelayGenerateRecommendationsUsesSavedPolicy(t *testing.T) {
+	now := time.Now()
+	currentPriority := 50
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PriorityStart = 40
+	policy.PriorityStep = 5
+	repo := &upstreamRelayRecommendationServiceRepo{
+		policy: &policy,
+		candidates: []UpstreamRelayCandidate{
+			{
+				ID:              10,
+				ConnectorID:     20,
+				ConnectorStatus: UpstreamRelayConnectorStatusActive,
+				AccountID:       101,
+				UpstreamGroupID: "cheap",
+				TargetGroupID:   7,
+				CurrentPriority: &currentPriority,
+				Enabled:         true,
+				LatestProbe:     &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+				LatestSnapshot:  &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+			},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+
+	run, err := svc.GenerateRecommendations(context.Background(), 88)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.createdRuns)
+	require.Equal(t, int64(88), run.CreatedBy)
+	require.Len(t, run.Suggestions, 1)
+	require.Equal(t, 40, run.Suggestions[0].NewPriority)
 }
 
 func TestUpstreamRelayUsageDeltaSampleReliability(t *testing.T) {

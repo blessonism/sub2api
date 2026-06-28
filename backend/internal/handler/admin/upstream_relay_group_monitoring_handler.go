@@ -92,6 +92,19 @@ func (h *UpstreamRelayGroupMonitoringHandler) SyncConnector(c *gin.Context) {
 	response.Success(c, snapshots)
 }
 
+func (h *UpstreamRelayGroupMonitoringHandler) RefreshConnectorMetrics(c *gin.Context) {
+	id, ok := parseRelayID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.svc.RefreshConnectorMetrics(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshots(c *gin.Context) {
 	id, ok := parseRelayID(c, "id")
 	if !ok {
@@ -103,6 +116,28 @@ func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshots(c *gin.Context) {
 		return
 	}
 	response.Success(c, snapshots)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) ListSnapshotChanges(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filters := service.UpstreamRelaySnapshotChangeListFilters{
+		ChangeType: c.Query("change_type"),
+		Search:     c.Query("search"),
+	}
+	if connectorID := c.Query("connector_id"); connectorID != "" {
+		v, err := strconv.ParseInt(connectorID, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "invalid connector_id")
+			return
+		}
+		filters.ConnectorID = v
+	}
+	items, pageResult, err := h.svc.ListSnapshotChanges(c.Request.Context(), page, pageSize, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
 }
 
 func (h *UpstreamRelayGroupMonitoringHandler) ListCandidates(c *gin.Context) {
@@ -194,6 +229,52 @@ func (h *UpstreamRelayGroupMonitoringHandler) ProbeCandidate(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *UpstreamRelayGroupMonitoringHandler) GetRecommendationPolicy(c *gin.Context) {
+	policy, err := h.svc.GetRecommendationPolicy(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) UpdateRecommendationPolicy(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req service.UpstreamRelayRecommendationPolicy
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+	policy, err := h.svc.UpdateRecommendationPolicy(c.Request.Context(), req, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) PreviewRecommendations(c *gin.Context) {
+	var req *service.UpstreamRelayRecommendationPolicy
+	if c.Request.ContentLength != 0 {
+		var payload service.UpstreamRelayRecommendationPolicy
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			response.BadRequest(c, "invalid request: "+err.Error())
+			return
+		}
+		req = &payload
+	}
+	preview, err := h.svc.PreviewRecommendations(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
 func (h *UpstreamRelayGroupMonitoringHandler) GenerateRecommendations(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok || subject.UserID <= 0 {
@@ -247,6 +328,18 @@ func (h *UpstreamRelayGroupMonitoringHandler) ApplyRecommendationRun(c *gin.Cont
 		return
 	}
 	response.Success(c, run)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) DeleteRecommendationRun(c *gin.Context) {
+	id, ok := parseRelayID(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteRecommendationRun(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "deleted"})
 }
 
 func parseRelayID(c *gin.Context, name string) (int64, bool) {
