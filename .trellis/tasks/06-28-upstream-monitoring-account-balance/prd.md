@@ -27,6 +27,7 @@
 - 仅在连接器绑定的上游登录账号可获取余额时展示余额值。
 - 连接器余额不可用时展示稳定的空状态文案。
 - 候选映射页签展示该候选对应上游连接器与上游分组的今日用量，包括 `actual_cost` 和四类 token 总量；不能从本站 `usage_logs` 聚合。
+- 连接器页签提供轻量“刷新用量/余额”操作，只刷新上游余额和上游今日用量，不重建分组快照。
 - 复用现有国际化、格式化和表格展示风格。
 
 ## Acceptance Criteria (evolving)
@@ -35,6 +36,7 @@
 - [x] 已绑定连接器并返回余额的上游账号显示格式化后的余额。
 - [x] 未绑定或余额未知的连接器显示明确空状态。
 - [x] 管理员打开候选映射页签时，可以看到每条候选今日消耗额度和 token 数。
+- [x] 管理员可以在连接器页签单独刷新用量/余额，不必每次执行完整同步。
 - [x] 中英文文案完整。
 - [x] 相关静态检查或针对性构建验证通过，或明确记录无法验证的原因。
 
@@ -58,6 +60,9 @@
 - 本地新增 `upstream_relay_connectors.upstream_account_balance` 和 `upstream_account_balance_checked_at`，仅连接器 DTO / 连接器页签展示这些字段。
 - 候选映射 DTO 不暴露上游账号余额；候选页签展示可空的 `today_actual_cost`、`today_total_tokens` 与 `today_usage_checked_at`。
 - 候选今日用量在连接器同步时使用上游普通用户 `/api/v1/usage` 明细分页按 `group_id` 聚合后写入 `upstream_relay_group_rate_snapshots`；候选查询按 `connector_id + upstream_group_id` 读取该快照。
+- 新增轻量刷新接口 `POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh`，只调用上游 `/api/v1/user/profile` 与 `/api/v1/usage`，更新连接器余额和已有快照的今日用量。
+- 轻量刷新不调用上游 `/groups/available`、`/groups/rates`，不执行 `UpsertSnapshots`，不产生倍率快照变更流水，也不标记 stale。
+- 轻量刷新成功但某个已有快照分组今日无 usage 记录时写入 `0`；usage 不可用、字段不完整或分页超限时清空今日用量并显示未刷新。
 - token 口径为 `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`，费用口径为 `actual_cost`；若上游接口不可用、分页过大或字段不完整，安全失败为空，不回退到本站 `usage_logs`。
 - 远端 profile 余额读取失败不阻断倍率快照同步；前端显示未同步空状态，避免将未知余额误显示为 `0`。
 - 验证记录：`pnpm typecheck`、`pnpm lint:check`、`go vet ./internal/repository ./internal/service ./internal/handler/admin ./internal/server/routes`、`go test -timeout 60s ./internal/repository -run 'RelayCandidateSelect|UpstreamRelay'`、`go test -timeout 60s ./internal/service -run 'UpstreamRelay|ConversationCapture'`、`go test -timeout 60s ./internal/handler/admin -run UpstreamRelay`、`go test -timeout 60s ./internal/server/routes -run UpstreamRelay` 均已通过。

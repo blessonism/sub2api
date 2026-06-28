@@ -264,39 +264,53 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 #### 2. Signatures
 - Connector DTO: `UpstreamRelayConnector` may expose `upstream_account_balance` and `upstream_account_balance_checked_at`.
 - Candidate DTO: `UpstreamRelayCandidate` must expose nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at`, and must not expose connector account balance fields.
-- Candidate list SQL: read today's remote usage snapshot from `upstream_relay_group_rate_snapshots` by `connector_id = candidate.connector_id` and `upstream_group_id = candidate.upstream_group_id`; it must not aggregate local `usage_logs`.
-- Connector sync may aggregate upstream real usage only from the upstream Sub2API ordinary-user usage records endpoint (`GET /api/v1/usage`) using the connector's upstream login/session. Do not require upstream admin permissions for candidate usage.
+- Candidate list SQL: read today's usage snapshot from `upstream_relay_group_rate_snapshots` by `connector_id = candidate.connector_id` and `upstream_group_id = candidate.upstream_group_id`; it must not aggregate `usage_logs` inline while listing candidates.
+- Full connector sync may aggregate upstream real usage from the upstream Sub2API ordinary-user usage records endpoint (`GET /api/v1/usage`) using the connector's upstream login/session. Lightweight metrics refresh may refresh connector balance and candidate usage only when each candidate has an explicit upstream API key binding.
+- Lightweight metrics refresh endpoint: `POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh`.
 - Token usage expression: `input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens`.
 - Cost expression: `actual_cost`.
 
 #### 3. Contracts
 - Connector rows represent the upstream relay login account; show upstream account balance only on connector surfaces.
-- Candidate rows represent a local mapping to an upstream group; show today's real upstream usage for `connector_id + upstream_group_id`, not local account/group usage and not upstream account balance.
-- Candidate usage window follows the date sent to the upstream ordinary-user `/usage` endpoint during connector sync.
-- Missing, incomplete, unauthorized, or too-large upstream usage pagination must leave `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` null. Unknown usage must not be coerced to zero.
-- Frontend field names must stay aligned with backend JSON: `today_actual_cost`, `today_total_tokens`, `today_usage_checked_at`, `upstream_account_balance`, `upstream_account_balance_checked_at`.
+- Candidate rows represent an account-scoped local mapping to an upstream group; show today's usage snapshot for `connector_id + upstream_group_id`, not upstream account balance.
+- Candidate rows own the upstream API key mapping (`upstream_api_key_id` plus display-only name/masked key); do not store this connector-specific mapping in `accounts.credentials`.
+- Candidate usage window follows the local configured timezone day when refreshed from local statistics; full sync may still follow the date sent to the upstream ordinary-user `/usage` endpoint.
+- Full connector sync may refresh group visibility/rates and upsert snapshots. Lightweight metrics refresh must not update snapshot today-usage fields from local logs; it may update them from upstream `/api/v1/usage/stats` using candidate `upstream_api_key_id`.
+- Lightweight metrics refresh must not call upstream `/groups/available`, upstream `/groups/rates`, `UpsertSnapshots`, snapshot-change insertion, or stale snapshot marking.
+- When lightweight usage refresh succeeds, existing snapshots with no matching usage record for today should get zero usage; when usage refresh fails or a candidate lacks explicit upstream API key binding, preserve existing snapshot usage values and report a sanitized `usage_error`.
+- If no snapshot exists for a connector/group, lightweight refresh cannot create it; an admin must run one full sync first.
+- Missing, incomplete, unauthorized, or too-large upstream usage pagination during full sync must leave `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` null. Lightweight metrics refresh must preserve existing snapshot usage values when usage refresh is unavailable. Unknown usage must not be coerced to zero.
+- Frontend field names must stay aligned with backend JSON: `today_actual_cost`, `today_total_tokens`, `today_usage_checked_at`, `upstream_account_balance`, `upstream_account_balance_checked_at`, `upstream_api_key_id`, `upstream_api_key_name`, `upstream_api_key_masked`.
 
 #### 4. Validation & Error Matrix
 - Missing connector profile balance -> connector balance fields are null; candidate usage is independent.
-- No reliable upstream usage snapshot for candidate connector/group -> candidate usage fields are null, not zero.
-- Candidate target group changes -> upstream usage snapshot remains keyed by `connector_id + upstream_group_id`; local target group does not affect candidate usage.
+- No reliable usage snapshot for candidate connector/group -> candidate usage fields are null, not zero.
+- Candidate account changes -> upstream usage snapshot remains keyed by `connector_id + upstream_group_id`; local account priority does not affect candidate usage.
 - Remote upstream profile failure during sync -> do not fail rate snapshot sync solely because balance refresh failed.
+- Lightweight metrics refresh account-scoped usage limitation -> return a successful refresh result when balance refresh succeeds, include a sanitized `usage_error`, and preserve candidate usage fields for that connector.
+- Lightweight metrics refresh on a connector with no snapshots -> balance may refresh, but candidate usage remains unavailable until a full sync creates snapshots.
 
 #### 5. Good/Base/Bad Cases
 - Good: the connector tab shows `$12.34` synced at a timestamp for the upstream relay account.
-- Good: the candidate tab shows today's upstream `actual_cost` and four-token total for `connector_id + upstream_group_id`.
+- Good: the candidate tab shows today's locally aggregated `actual_cost` and four-token total for `connector_id + upstream_group_id`.
+- Good: clicking "Refresh Usage / Balance" refreshes connector balance without changing group-rate snapshots, candidate usage, or producing rate-change history.
 - Base: a candidate with unavailable upstream usage displays a clear not-synced state.
 - Bad: returning `upstream_account_balance` from `UpstreamRelayCandidate`.
-- Bad: aggregating candidate usage from local `usage_logs`.
+- Bad: aggregating `usage_logs` directly in the candidate list query instead of refreshing snapshot fields first.
 - Bad: calling upstream admin dashboard APIs for candidate usage when only ordinary upstream user credentials are available.
 
 #### 6. Tests Required
 - Repository test: candidate select query does not include `upstream_account_balance`.
 - Repository test: candidate select query does not aggregate local `usage_logs`.
 - Service test: upstream ordinary-user `/usage` pages aggregate by `group_id`, `actual_cost`, and the four-token sum.
+- Service test: lightweight metrics refresh does not call upstream `/api/v1/usage`, full snapshot sync, `UpsertSnapshots`, or stale marking behavior.
+- Repository test: candidate creation/update no longer joins `account_groups` or requires `target_group_id`.
+- Repository test: recommendation apply updates `accounts.priority`, not `account_groups.priority`.
+- Service test: incomplete usage records and pagination overflow clear today usage and report usage unavailable.
 - Repository scan test: nullable `today_actual_cost`, `today_total_tokens`, and `today_usage_checked_at` map to the candidate DTO in the correct scan order.
+- Repository test: lightweight today-usage update sets zero for existing snapshots absent from a successful upstream usage page, and sets null on unavailable usage.
 - Frontend check: candidate API type excludes connector balance fields and includes today's usage fields; connector API type includes balance fields.
-- Frontend check: candidate table renders the usage column while connector table renders the account balance column.
+- Frontend check: candidate table renders the usage column, connector table renders account balance, and connector row exposes a lightweight refresh button.
 
 #### 7. Wrong vs Correct
 
@@ -351,7 +365,7 @@ WHERE s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group
 - `POST /recommendations/preview` accepts an optional policy payload; when omitted, it uses the saved/default global policy.
 - Preview returns `suggestions` and `exclusions` with reason codes and human-readable reasons.
 - Preview must not insert into `upstream_relay_recommendation_runs` or `upstream_relay_recommendation_suggestions`.
-- Preview must not update `account_groups.priority` or any target group configuration.
+- Preview must not update `accounts.priority` or any account scheduling configuration.
 - `POST /recommendations` must read the saved/default global policy and persist a normal recommendation run using the computed suggestions.
 
 #### 4. Validation & Error Matrix
