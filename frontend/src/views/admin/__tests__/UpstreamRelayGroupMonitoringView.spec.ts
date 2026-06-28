@@ -7,10 +7,13 @@ const {
   listConnectors,
   listCandidates,
   listRecommendationRuns,
+  getRecommendationRun,
+  applyRecommendationRun,
   getMonitoringPolicy,
   updateMonitoringPolicy,
   getRecommendationPolicy,
   listSnapshots,
+  listUsageHistory,
   refreshConnectorMetrics,
   syncAllConnectors,
   probeAllCandidates,
@@ -22,10 +25,13 @@ const {
   listConnectors: vi.fn(),
   listCandidates: vi.fn(),
   listRecommendationRuns: vi.fn(),
+  getRecommendationRun: vi.fn(),
+  applyRecommendationRun: vi.fn(),
   getMonitoringPolicy: vi.fn(),
   updateMonitoringPolicy: vi.fn(),
   getRecommendationPolicy: vi.fn(),
   listSnapshots: vi.fn(),
+  listUsageHistory: vi.fn(),
   refreshConnectorMetrics: vi.fn(),
   syncAllConnectors: vi.fn(),
   probeAllCandidates: vi.fn(),
@@ -40,10 +46,13 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     listConnectors,
     listCandidates,
     listRecommendationRuns,
+    getRecommendationRun,
+    applyRecommendationRun,
     getMonitoringPolicy,
     updateMonitoringPolicy,
     getRecommendationPolicy,
     listSnapshots,
+    listUsageHistory,
     refreshConnectorMetrics,
     syncAllConnectors,
     probeAllCandidates,
@@ -95,15 +104,77 @@ function mountView() {
   })
 }
 
+function monitoringPolicy(overrides: Record<string, unknown> = {}) {
+  return {
+    auto_sync_enabled: true,
+    sync_interval_minutes: 60,
+    auto_probe_enabled: true,
+    probe_interval_minutes: 15,
+    auto_recommendation_enabled: false,
+    recommendation_interval_minutes: 60,
+    auto_apply_recommendations_enabled: false,
+    max_auto_apply_suggestions: 20,
+    max_auto_apply_priority_delta: 100,
+    min_auto_apply_confidence: 'medium',
+    allow_auto_apply_degraded_health: false,
+    failure_retry_interval_minutes: 5,
+    sync_concurrency: 2,
+    probe_concurrency: 5,
+    snapshot_stale_after_minutes: 180,
+    usage_delta_stale_after_minutes: 180,
+    probe_stale_after_minutes: 45,
+    updated_at: '2026-06-28T12:00:00Z',
+    ...overrides,
+  }
+}
+
+function recommendationRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 77,
+    status: 'success',
+    total_candidates: 1,
+    suggestion_count: 1,
+    applied: false,
+    created_by: 42,
+    created_at: '2026-06-28T12:00:00Z',
+    suggestions: [{
+      id: 1,
+      run_id: 77,
+      candidate_id: 101,
+      connector_id: 7,
+      connector_name: 'relay-a',
+      account_id: 42,
+      account_name: 'claude-relay',
+      upstream_group_id: 'team-alpha',
+      upstream_group_name: 'Team Alpha',
+      old_priority: 50,
+      new_priority: 10,
+      final_rate_multiplier: 0.75,
+      health_status: 'success',
+      reason_code: 'rate_health_priority',
+      confidence: 'high',
+      health_summary: 'probe ok',
+      rate_source: 'login_user_group_rates',
+      reason: '倍率更优，建议提高优先级',
+      applied: false,
+      created_at: '2026-06-28T12:00:00Z',
+    }],
+    ...overrides,
+  }
+}
+
 describe('UpstreamRelayGroupMonitoringView', () => {
   beforeEach(() => {
     listConnectors.mockReset()
     listCandidates.mockReset()
     listRecommendationRuns.mockReset()
+    getRecommendationRun.mockReset()
+    applyRecommendationRun.mockReset()
     getMonitoringPolicy.mockReset()
     updateMonitoringPolicy.mockReset()
     getRecommendationPolicy.mockReset()
     listSnapshots.mockReset()
+    listUsageHistory.mockReset()
     refreshConnectorMetrics.mockReset()
     syncAllConnectors.mockReset()
     probeAllCandidates.mockReset()
@@ -135,7 +206,10 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     })
     listCandidates.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100, pages: 1 })
     listRecommendationRuns.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+    getRecommendationRun.mockRejectedValue(new Error('not found'))
+    applyRecommendationRun.mockRejectedValue(new Error('apply failed'))
     listSnapshots.mockResolvedValue([])
+    listUsageHistory.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50, pages: 1 })
     getRecommendationPolicy.mockResolvedValue({
       snapshot_freshness_minutes: 1440,
       usage_delta_freshness_minutes: 1440,
@@ -147,32 +221,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       priority_step: 10,
       sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc'],
     })
-    getMonitoringPolicy.mockResolvedValue({
-      auto_sync_enabled: true,
-      sync_interval_minutes: 60,
-      auto_probe_enabled: true,
-      probe_interval_minutes: 15,
-      failure_retry_interval_minutes: 5,
-      sync_concurrency: 2,
-      probe_concurrency: 5,
-      snapshot_stale_after_minutes: 180,
-      usage_delta_stale_after_minutes: 180,
-      probe_stale_after_minutes: 45,
-      updated_at: '2026-06-28T12:00:00Z',
-    })
-    updateMonitoringPolicy.mockResolvedValue({
-      auto_sync_enabled: true,
-      sync_interval_minutes: 60,
-      auto_probe_enabled: true,
-      probe_interval_minutes: 15,
-      failure_retry_interval_minutes: 5,
-      sync_concurrency: 2,
-      probe_concurrency: 5,
-      snapshot_stale_after_minutes: 180,
-      usage_delta_stale_after_minutes: 180,
-      probe_stale_after_minutes: 45,
-      updated_at: '2026-06-28T12:10:00Z',
-    })
+    getMonitoringPolicy.mockResolvedValue(monitoringPolicy())
+    updateMonitoringPolicy.mockResolvedValue(monitoringPolicy({ updated_at: '2026-06-28T12:10:00Z' }))
     listAccounts.mockResolvedValue({
       items: [{ id: 42, name: 'claude-relay', platform: 'claude' }],
       total: 1,
@@ -383,6 +433,46 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
     expect(wrapper.find('[data-testid="page-error"]').text()).toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+  })
+
+  it('历史用量页按日期加载并展示每日分组汇总', async () => {
+    listUsageHistory.mockResolvedValue({
+      items: [
+        {
+          id: 88,
+          usage_date: '2026-06-28',
+          connector_id: 7,
+          connector_name: 'relay-a',
+          upstream_group_id: 'team-a',
+          group_name: 'Team A',
+          platform: 'openai',
+          actual_cost: 2.5,
+          total_tokens: 1500000,
+          checked_at: '2026-06-28T15:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const usageHistoryTab = wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!
+    await usageHistoryTab.trigger('click')
+    await flushPromises()
+
+    expect(listUsageHistory).toHaveBeenCalledWith(expect.objectContaining({
+      page: 1,
+      page_size: 50,
+      start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      end_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    expect(wrapper.text()).toContain('relay-a')
+    expect(wrapper.text()).toContain('Team A')
+    expect(wrapper.text()).toContain('$2.50')
+    expect(wrapper.text()).toContain('1.50M')
   })
 
   it('轻量刷新接口失败时优先展示真实失败原因', async () => {
@@ -776,7 +866,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
     await flushPromises()
 
+    expect(wrapper.text()).toContain('monitoring.description')
+    expect(wrapper.text()).not.toContain('当前阶段仅保存配置和支持手动触发')
+    expect(wrapper.find('[data-testid="auto-monitoring-status"]').text()).toContain('monitoring.status.running')
+    expect(wrapper.find('[data-testid="auto-monitoring-status"]').text()).toContain('monitoring.status.detailBoth')
     expect(wrapper.text()).toContain('monitoring.snapshotStaleDerived')
+    expect(wrapper.text()).toContain('monitoring.recommendationAutomationTitle')
+    expect(wrapper.text()).toContain('monitoring.autoApplyDisabledHint')
     expect(wrapper.text()).toContain('60 180')
     expect(wrapper.text()).toContain('15 45')
 
@@ -788,11 +884,242 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       sync_interval_minutes: 60,
       auto_probe_enabled: true,
       probe_interval_minutes: 15,
+      auto_recommendation_enabled: false,
+      recommendation_interval_minutes: 60,
+      auto_apply_recommendations_enabled: false,
+      max_auto_apply_suggestions: 20,
+      max_auto_apply_priority_delta: 100,
+      min_auto_apply_confidence: 'medium',
+      allow_auto_apply_degraded_health: false,
       failure_retry_interval_minutes: 5,
       sync_concurrency: 2,
       probe_concurrency: 5,
     })
     expect(wrapper.text()).toContain('monitoring.savedAt')
+  })
+
+  it('自动监控页在自动项关闭时展示未启用状态', async () => {
+    getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      auto_sync_enabled: false,
+      auto_probe_enabled: false,
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+
+    const status = wrapper.find('[data-testid="auto-monitoring-status"]')
+    expect(status.text()).toContain('monitoring.status.disabled')
+    expect(status.text()).toContain('monitoring.status.detailDisabled')
+  })
+
+  it('自动监控状态基于已保存策略，未保存表单变更不会显示运行中', async () => {
+    getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      auto_sync_enabled: false,
+      auto_probe_enabled: false,
+    }))
+    updateMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      auto_sync_enabled: true,
+      auto_probe_enabled: false,
+      updated_at: '2026-06-28T12:10:00Z',
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+
+    const status = wrapper.find('[data-testid="auto-monitoring-status"]')
+    await wrapper.findAll('input[type="checkbox"]')[0].setValue(true)
+    expect(status.text()).toContain('monitoring.status.disabled')
+    expect(status.text()).toContain('monitoring.status.detailDisabled')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('monitoring.save'))!.trigger('click')
+    await flushPromises()
+
+    expect(status.text()).toContain('monitoring.status.running')
+    expect(status.text()).toContain('monitoring.status.detailSyncOnly')
+  })
+
+  it('自动推荐和自动应用开启时展示安全门提示', async () => {
+    getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      auto_sync_enabled: false,
+      auto_probe_enabled: false,
+      auto_recommendation_enabled: true,
+      recommendation_interval_minutes: 30,
+      auto_apply_recommendations_enabled: true,
+      min_auto_apply_confidence: 'high',
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+
+    const status = wrapper.find('[data-testid="auto-monitoring-status"]')
+    expect(status.text()).toContain('monitoring.status.running')
+    expect(status.text()).toContain('monitoring.status.detailAutoApply')
+    expect(wrapper.text()).toContain('monitoring.autoApplyEnabledHint')
+  })
+
+  it('推荐历史展示系统和管理员生成及应用来源', async () => {
+    listRecommendationRuns.mockResolvedValue({
+      items: [
+        {
+          id: 77,
+          status: 'success',
+          total_candidates: 2,
+          suggestion_count: 1,
+          applied: true,
+          applied_by: 0,
+          applied_at: '2026-06-28T12:05:00Z',
+          created_by: 0,
+          created_at: '2026-06-28T12:00:00Z',
+        },
+        {
+          id: 78,
+          status: 'success',
+          total_candidates: 1,
+          suggestion_count: 1,
+          applied: true,
+          applied_by: 42,
+          applied_at: '2026-06-28T12:15:00Z',
+          created_by: 42,
+          created_at: '2026-06-28T12:10:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('recommendations.colSource')
+    expect(wrapper.text()).toContain('recommendations.sourceSystem')
+    expect(wrapper.text()).toContain('recommendations.appliedBySystem')
+    expect(wrapper.text()).toContain('recommendations.sourceManual')
+    expect(wrapper.text()).toContain('recommendations.appliedByManual')
+  })
+
+  it('已应用的 Priority 建议仍可打开并查看明细', async () => {
+    const appliedRun = recommendationRun({
+      applied: true,
+      applied_by: 42,
+      applied_at: '2026-06-28T12:05:00Z',
+      suggestions: recommendationRun().suggestions.map((item) => ({
+        ...item,
+        applied: true,
+        applied_by: 42,
+        applied_at: '2026-06-28T12:05:00Z',
+      })),
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [appliedRun],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(appliedRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewDetails'))!.trigger('click')
+    await flushPromises()
+
+    expect(getRecommendationRun).toHaveBeenCalledWith(77)
+    expect(wrapper.text()).toContain('applyDialog.appliedNotice')
+    expect(wrapper.text()).toContain('Team Alpha')
+    expect(wrapper.text()).toContain('probe ok')
+    expect(wrapper.html()).not.toContain('rate-source-tag-stub')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('applyDialog.confirmApply'))).toBe(false)
+  })
+
+  it('应用 Priority 建议成功后展示明确反馈并保留审计详情', async () => {
+    const pendingRun = recommendationRun()
+    const appliedRun = recommendationRun({
+      applied: true,
+      applied_by: 42,
+      applied_at: '2026-06-28T12:05:00Z',
+      suggestions: recommendationRun().suggestions.map((item) => ({
+        ...item,
+        applied: true,
+        applied_by: 42,
+        applied_at: '2026-06-28T12:05:00Z',
+      })),
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [pendingRun],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(pendingRun)
+    applyRecommendationRun.mockResolvedValue(appliedRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!.trigger('click')
+    await flushPromises()
+
+    expect(applyRecommendationRun).toHaveBeenCalledWith(77)
+    expect(wrapper.find('[data-testid="page-success"]').text()).toContain('applyDialog.successMessage')
+    expect(wrapper.find('[data-testid="apply-success-summary"]').text()).toContain('applyDialog.successTitle')
+    expect(wrapper.find('[data-testid="apply-success-summary"]').text()).toContain('applyDialog.successDetail')
+    expect(wrapper.text()).toContain('applyDialog.appliedNotice')
+    expect(wrapper.text()).toContain('Team Alpha')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('applyDialog.confirmApply'))).toBe(false)
+  })
+
+  it('应用 Priority 建议失败时展示后端详细原因并保留详情', async () => {
+    const pendingRun = recommendationRun()
+    listRecommendationRuns.mockResolvedValue({
+      items: [pendingRun],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(pendingRun)
+    applyRecommendationRun.mockRejectedValue(new Error('账号 #42 的 priority 已变化：生成建议时为 50，当前为 80，建议值为 10；请重新生成建议后再应用'))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!.trigger('click')
+    await flushPromises()
+
+    expect(applyRecommendationRun).toHaveBeenCalledWith(77)
+    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('账号 #42 的 priority 已变化')
+    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('applyDialog.failureTitle')
+    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('applyDialog.failureDetail')
+    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('账号 #42 的 priority 已变化')
+    expect(wrapper.text()).toContain('Team Alpha')
+    expect(wrapper.html()).not.toContain('rate-source-tag-stub')
+    expect(wrapper.text()).toContain('applyDialog.confirmApply')
   })
 
   it('自动监控页调用批量同步和批量探测接口并展示失败摘要', async () => {
