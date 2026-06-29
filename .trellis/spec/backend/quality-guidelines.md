@@ -516,6 +516,70 @@ turns := FilterConversationExportableTurns(repoTurns, req) // final service gate
 
 ---
 
+### Scenario: User-facing external metric snapshot APIs
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing an authenticated user-facing API that exposes third-party or public external metrics, such as GPT intelligence snapshots shown inside channel status pages.
+- These APIs cross external collection, service normalization, handler/route registration, frontend API parsing, and UI error states. They need code-spec depth because a third-party payload change can otherwise break an unrelated local dashboard.
+
+#### 2. Signatures
+- Route pattern: `GET /api/v1/channel-monitors/<metric-name>` for metrics displayed with the user channel monitor surface.
+- Handler pattern: check the same feature flag as the owning user surface, call a dedicated service method, and return with `response.Success` / `response.ErrorFrom`.
+- Service pattern: expose `GetSnapshot(ctx)` and keep external HTTP collection behind the backend; do not let frontend call third-party metric URLs directly.
+- Static metric routes must be registered before parameterized monitor routes such as `/:id/status`.
+
+#### 3. Contracts
+- Backend response must be a normalized DTO owned by this project, not a raw third-party payload.
+- External requests must use a short timeout, a bounded response body, and an in-process cache or stronger cache to avoid high-frequency third-party traffic.
+- Publicly rendered HTML may be parsed only for data already visible on the public page; do not bypass authorization-only APIs or embed third-party secrets in frontend code.
+- Fields unavailable from the public source should be returned as nullable fields, not fabricated zeros.
+- Cached snapshots returned to callers must be cloned when they contain mutable slices or pointer fields.
+- Frontend API functions should request the backend route and then run runtime parsing/normalization at the API boundary.
+
+#### 4. Validation & Error Matrix
+- Feature disabled -> return a clear unavailable/not found error for the metric while the rest of the channel monitor page can still render.
+- Third-party HTTP error, timeout, or invalid payload -> return service unavailable using a project error type.
+- Missing public metric markers -> return service unavailable and keep the previous UI error state isolated to the metric panel.
+- Legacy payload wrapper still present -> frontend parser may accept it for compatibility tests, but runtime fetching should still go through the backend.
+
+#### 5. Good/Base/Bad Cases
+- Good: `GET /api/v1/channel-monitors/gpt-intelligence` returns a normalized snapshot parsed from public HTML and cached for a TTL.
+- Base: token breakdown is not present in the public source, so `total_tokens` and `output_tokens` are `null`.
+- Bad: frontend fetches `https://third-party.example/current.json` directly and assumes a vendor-specific field exists.
+- Bad: a static route is added after `/:id/status`, causing the metric name to be parsed as a monitor id.
+
+#### 6. Tests Required
+- Service test covers parsing the public payload and the unavailable path when expected markers are missing.
+- Service test covers cache/snapshot clone behavior when mutable pointers or slices are returned.
+- Handler/routes test proves the static metric route is registered before parameterized channel monitor routes.
+- Frontend API test proves the backend endpoint path is used and legacy/direct normalized payloads parse correctly.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```typescript
+fetch('https://codexradar.com/current.json')
+```
+
+Correct:
+```typescript
+apiClient.get('/channel-monitors/gpt-intelligence')
+```
+
+Wrong:
+```go
+monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+monitors.GET("/gpt-intelligence", h.ChannelMonitor.GetGptIntelligence)
+```
+
+Correct:
+```go
+monitors.GET("/gpt-intelligence", h.ChannelMonitor.GetGptIntelligence)
+monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

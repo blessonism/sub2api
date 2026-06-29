@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { apiClient } from '@/api/client'
 import { fetchGptIntelligenceSnapshot, parseGptIntelligenceSnapshot } from '@/api/gptIntelligence'
 
 const payload = {
@@ -46,8 +47,8 @@ const payload = {
 }
 
 afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
+  apiClient.defaults.adapter = undefined
+  vi.restoreAllMocks()
 })
 
 describe('parseGptIntelligenceSnapshot', () => {
@@ -71,6 +72,38 @@ describe('parseGptIntelligenceSnapshot', () => {
     expect(() => parseGptIntelligenceSnapshot({ status: 'none' })).toThrow('missing model_iq payload')
   })
 
+  it('accepts backend-normalized snapshots without the legacy model_iq wrapper', () => {
+    const snapshot = parseGptIntelligenceSnapshot({
+      monitored_at: '2026-06-29T09:00:00Z',
+      timezone: 'Asia/Shanghai',
+      latest: {
+        date: '2026-06-29-pm',
+        score: 75,
+        status: 'yellow',
+        passed: 6,
+        tasks: 12,
+        model: 'GPT-5.5',
+        reasoning_effort: 'xhigh',
+      },
+      recent_days: [],
+      comparisons: [
+        {
+          key: 'gpt_55_high',
+          label: 'GPT-5.5 high',
+          model: 'GPT-5.5',
+          reasoning_effort: 'high',
+          latest: { date: '2026-06-29-pm', score: 87.5, status: 'yellow', passed: 7, tasks: 12 },
+          recent_days: [],
+        },
+      ],
+      quota_radar: null,
+    })
+
+    expect(snapshot.latest?.score).toBe(75)
+    expect(snapshot.comparisons[0]?.key).toBe('gpt_55_high')
+    expect(snapshot.quota_radar).toBeNull()
+  })
+
   it('falls back to UTC when the source timezone is invalid', () => {
     const snapshot = parseGptIntelligenceSnapshot({
       ...payload,
@@ -82,50 +115,24 @@ describe('parseGptIntelligenceSnapshot', () => {
 })
 
 describe('fetchGptIntelligenceSnapshot', () => {
-  it('passes a cancellable signal to fetch and parses the response', async () => {
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.signal).toBeInstanceOf(AbortSignal)
-      return new Response(JSON.stringify(payload), { status: 200 })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const snapshot = await fetchGptIntelligenceSnapshot({ timeoutMs: 1000 })
-
-    expect(fetchMock).toHaveBeenCalledOnce()
-    expect(snapshot.latest?.score).toBe(125)
-  })
-
-  it('aborts the fetch when the caller signal aborts', async () => {
+  it('loads the snapshot through the backend channel monitor endpoint', async () => {
     const ctrl = new AbortController()
-    let passedSignal: AbortSignal | null = null
-    const fetchMock = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
-      passedSignal = init?.signal ?? null
-      return new Promise<Response>(() => {})
+    const adapter = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { code: 0, data: payload.model_iq, message: 'success' },
+      headers: {},
+      config: {},
+      statusText: 'OK',
     })
-    vi.stubGlobal('fetch', fetchMock)
+    apiClient.defaults.adapter = adapter
 
-    void fetchGptIntelligenceSnapshot({ signal: ctrl.signal, timeoutMs: 1000 }).catch(() => undefined)
-    await vi.waitFor(() => expect(passedSignal).toBeInstanceOf(AbortSignal))
+    const snapshot = await fetchGptIntelligenceSnapshot({ signal: ctrl.signal, timeoutMs: 1000 })
 
-    ctrl.abort()
-
-    expect(passedSignal?.aborted).toBe(true)
-  })
-
-  it('aborts the fetch when the timeout elapses', async () => {
-    vi.useFakeTimers()
-    let passedSignal: AbortSignal | null = null
-    const fetchMock = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
-      passedSignal = init?.signal ?? null
-      return new Promise<Response>(() => {})
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    void fetchGptIntelligenceSnapshot({ timeoutMs: 25 }).catch(() => undefined)
-    await vi.waitFor(() => expect(passedSignal).toBeInstanceOf(AbortSignal))
-
-    vi.advanceTimersByTime(25)
-
-    expect(passedSignal?.aborted).toBe(true)
+    expect(adapter).toHaveBeenCalledOnce()
+    const config = adapter.mock.calls[0][0]
+    expect(config.url).toBe('/channel-monitors/gpt-intelligence')
+    expect(config.signal).toBe(ctrl.signal)
+    expect(config.timeout).toBe(1000)
+    expect(snapshot.latest?.score).toBe(125)
   })
 })
