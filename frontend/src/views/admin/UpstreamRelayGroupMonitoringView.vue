@@ -1008,8 +1008,15 @@
     </div>
   </AppLayout>
 
-  <BaseDialog :show="connectorDialogOpen" :title="connectorForm.id ? tM('connectorForm.titleEdit') : tM('connectorForm.titleCreate')" width="wide" @close="closeConnectorDialog">
-    <form id="connector-form" class="space-y-4" @submit.prevent="submitConnector">
+  <BaseDialog
+    :show="connectorDialogOpen"
+    :title="connectorForm.id ? tM('connectorForm.titleEdit') : tM('connectorForm.titleCreate')"
+    width="wide"
+    :close-on-escape="false"
+    :close-on-click-outside="false"
+    @close="closeConnectorDialog"
+  >
+    <form id="connector-form" class="space-y-4" @pointerdown.stop @mousedown.stop @click.stop @submit.prevent="submitConnector">
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelName') }}</span>
         <input v-model.trim="connectorForm.name" class="input w-full" type="text" />
@@ -1018,12 +1025,14 @@
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelBaseUrl') }}</span>
         <input v-model.trim="connectorForm.base_url" class="input w-full" type="url" placeholder="https://upstream.example.com" />
       </label>
-      <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
+      <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" @pointerdown.stop @mousedown.stop @click.stop>
         <button
           type="button"
           class="rounded-md px-3 py-2 text-sm font-medium transition"
           :class="connectorForm.auth_mode === 'manual_session' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-          @click="connectorForm.auth_mode = 'manual_session'"
+          @pointerdown.stop
+          @mousedown.stop
+          @click.stop.prevent="setConnectorAuthMode('manual_session')"
         >
           {{ tM('connectorForm.authManual') }}
         </button>
@@ -1031,7 +1040,9 @@
           type="button"
           class="rounded-md px-3 py-2 text-sm font-medium transition"
           :class="connectorForm.auth_mode === 'password_login' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-          @click="connectorForm.auth_mode = 'password_login'"
+          @pointerdown.stop
+          @mousedown.stop
+          @click.stop.prevent="setConnectorAuthMode('password_login')"
         >
           {{ tM('connectorForm.authPassword') }}
         </button>
@@ -1058,16 +1069,16 @@
           <input v-model.trim="connectorForm.user_agent" class="input w-full" type="text" :placeholder="tM('connectorForm.placeholderUserAgent')" />
         </label>
       </template>
-      <template v-else>
+      <div v-else class="space-y-4" @pointerdown.stop @mousedown.stop @click.stop @input.stop @change.stop>
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelEmail') }}</span>
           <input v-model.trim="connectorForm.login_email" class="input w-full" type="email" autocomplete="username" :placeholder="connectorForm.id ? tM('connectorForm.placeholderEmailEdit') : tM('connectorForm.placeholderEmail')" />
         </label>
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelPassword') }}</span>
-          <input v-model.trim="connectorForm.login_password" class="input w-full" type="password" autocomplete="new-password" :placeholder="tM('connectorForm.placeholderPassword')" />
+          <input v-model.trim="connectorForm.login_password" class="input w-full" type="password" autocomplete="current-password" :placeholder="tM('connectorForm.placeholderPassword')" />
         </label>
-      </template>
+      </div>
     </form>
     <template #footer>
       <div class="flex justify-end gap-2">
@@ -2175,6 +2186,11 @@ function resetConnectorForm() {
 
 function openCreateConnector() {
   resetConnectorForm()
+  connectorDialogOpen.value = true
+}
+
+function setConnectorAuthMode(mode: 'manual_session' | 'password_login') {
+  connectorForm.auth_mode = mode
   connectorDialogOpen.value = true
 }
 

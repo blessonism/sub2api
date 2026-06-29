@@ -99,7 +99,28 @@ function mountView() {
         AppLayout: { template: '<div><slot /></div>' },
         Icon: true,
         LoadingSpinner: true,
-        BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
+        BaseDialog: {
+          props: ['show', 'closeOnEscape', 'closeOnClickOutside'],
+          template: '<div v-if="show" :data-close-on-escape="String(closeOnEscape)" :data-close-on-click-outside="String(closeOnClickOutside)"><slot /><slot name="footer" /></div>',
+        },
+        ConfirmDialog: true,
+        AutoRefreshButton: true,
+        HealthRateBar: true,
+        RateSourceTag: true,
+        CandidateHealthDialog: true,
+      },
+    },
+  })
+}
+
+function mountViewWithRealDialog() {
+  return mount(UpstreamRelayGroupMonitoringView, {
+    attachTo: document.body,
+    global: {
+      stubs: {
+        AppLayout: { template: '<div><slot /></div>' },
+        Icon: true,
+        LoadingSpinner: true,
         ConfirmDialog: true,
         AutoRefreshButton: true,
         HealthRateBar: true,
@@ -179,6 +200,7 @@ function recommendationRun(overrides: Record<string, unknown> = {}) {
 
 describe('UpstreamRelayGroupMonitoringView', () => {
   beforeEach(() => {
+    document.body.innerHTML = ''
     listConnectors.mockReset()
     listCandidates.mockReset()
     listRecommendationRuns.mockReset()
@@ -277,6 +299,83 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       created_at: '2026-06-28T12:00:00Z',
       updated_at: '2026-06-29T12:00:00Z',
     })
+  })
+
+  it('新建连接器选择账号密码登录时保持弹窗表单打开', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    const connectorDialog = wrapper.find('[data-close-on-escape="false"]')
+    expect(connectorDialog.exists()).toBe(true)
+
+    await connectorDialog.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectorForm.authPassword'))!.trigger('click')
+    await flushPromises()
+
+    const activeDialog = wrapper.find('[data-close-on-escape="false"]')
+    expect(activeDialog.exists()).toBe(true)
+    expect(activeDialog.attributes('data-close-on-click-outside')).toBe('false')
+    expect(wrapper.find('input[type="email"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"][autocomplete="current-password"]').exists()).toBe(true)
+
+    const emailInput = wrapper.find('input[type="email"]')
+    const passwordInput = wrapper.find('input[type="password"][autocomplete="current-password"]')
+    await emailInput.trigger('pointerdown')
+    await emailInput.trigger('mousedown')
+    await emailInput.setValue('relay@example.com')
+    await emailInput.trigger('change')
+    await passwordInput.trigger('pointerdown')
+    await passwordInput.trigger('mousedown')
+    await passwordInput.setValue('secret-value')
+    await passwordInput.trigger('change')
+
+    expect(wrapper.find('[data-close-on-escape="false"]').exists()).toBe(true)
+  })
+
+  it('真实弹窗中新建连接器点击账号密码不会触发关闭', async () => {
+    const wrapper = mountViewWithRealDialog()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+
+    const authPasswordButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('admin.upstreamRelayGroupMonitoring.connectorForm.authPassword')
+    ) as HTMLButtonElement
+    expect(authPasswordButton).toBeTruthy()
+
+    authPasswordButton.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    authPasswordButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    authPasswordButton.click()
+    await flushPromises()
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.body.querySelector('input[type="email"]')).not.toBeNull()
+    const emailInput = document.body.querySelector('input[type="email"]') as HTMLInputElement
+    const passwordInput = document.body.querySelector('input[type="password"][autocomplete="current-password"]') as HTMLInputElement
+    expect(emailInput).not.toBeNull()
+    expect(passwordInput).not.toBeNull()
+
+    emailInput.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    emailInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    emailInput.value = 'relay@example.com'
+    emailInput.dispatchEvent(new Event('input', { bubbles: true }))
+    emailInput.dispatchEvent(new Event('change', { bubbles: true }))
+    passwordInput.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    passwordInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    passwordInput.value = 'secret-value'
+    passwordInput.dispatchEvent(new Event('input', { bubbles: true }))
+    passwordInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(createConnector).not.toHaveBeenCalled()
   })
 
   it('新建手动会话连接器会提交 refresh token', async () => {
