@@ -104,6 +104,14 @@ function mountView() {
   })
 }
 
+function usageHistoryCalls() {
+  return listUsageHistory.mock.calls.map((call) => call[0] || {})
+}
+
+function usageHistoryTabCalls() {
+  return usageHistoryCalls().filter((params) => params.page_size === 50)
+}
+
 function monitoringPolicy(overrides: Record<string, unknown> = {}) {
   return {
     auto_sync_enabled: true,
@@ -231,6 +239,100 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       pages: 1,
     })
     listGroups.mockResolvedValue([{ id: 9, name: 'vip', description: '', user_count: 0, created_at: '', updated_at: '' }])
+  })
+
+  it('初始加载会拉取连接器和候选映射的后续分页，避免概览静默截断', async () => {
+    listConnectors
+      .mockResolvedValueOnce({
+        items: [{
+          id: 7,
+          name: 'relay-a',
+          base_url: 'https://relay.example.com',
+          auth_mode: 'manual_session',
+          status: 'active',
+          credential_version: 1,
+          has_bearer_token: true,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        }],
+        total: 2,
+        page: 1,
+        page_size: 100,
+        pages: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [{
+          id: 8,
+          name: 'relay-b',
+          base_url: 'https://relay-b.example.com',
+          auth_mode: 'manual_session',
+          status: 'needs_reauth',
+          credential_version: 1,
+          has_bearer_token: false,
+          has_refresh_token: false,
+          has_login_email: false,
+          has_cookie: false,
+          has_user_agent: false,
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        }],
+        total: 2,
+        page: 2,
+        page_size: 100,
+        pages: 2,
+      })
+    listCandidates
+      .mockResolvedValueOnce({
+        items: [{
+          id: 101,
+          connector_id: 7,
+          account_id: 42,
+          upstream_group_id: 'team-a',
+          probe_model: 'gpt-4o-mini',
+          probe_protocol: 'chat_completions',
+          enabled: true,
+          notes: '',
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        }],
+        total: 2,
+        page: 1,
+        page_size: 100,
+        pages: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [{
+          id: 102,
+          connector_id: 8,
+          account_id: 42,
+          upstream_group_id: 'team-b',
+          probe_model: 'gpt-4o-mini',
+          probe_protocol: 'chat_completions',
+          enabled: false,
+          notes: '',
+          created_at: '2026-06-28T12:00:00Z',
+          updated_at: '2026-06-28T12:00:00Z',
+        }],
+        total: 2,
+        page: 2,
+        page_size: 100,
+        pages: 2,
+      })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(listConnectors).toHaveBeenCalledWith({ page: 1, page_size: 100 })
+    expect(listConnectors).toHaveBeenCalledWith({ page: 2, page_size: 100 })
+    expect(listCandidates).toHaveBeenCalledWith({ page: 1, page_size: 100 })
+    expect(listCandidates).toHaveBeenCalledWith({ page: 2, page_size: 100 })
+    const overview = wrapper.find('section')
+    expect(overview.text()).toContain('1 / 2')
+    expect(overview.text()).toContain('1 / 2')
   })
 
   it('顶部概览合并状态卡、今日用量和最近同步，并在 Priority tab 显示数字徽章', async () => {
@@ -370,6 +472,50 @@ describe('UpstreamRelayGroupMonitoringView', () => {
             },
           ]
     ))
+    listUsageHistory.mockResolvedValue({
+      items: [
+        {
+          id: 88,
+          usage_date: '2026-06-29',
+          connector_id: 7,
+          connector_name: 'relay-a',
+          upstream_group_id: 'team-a',
+          group_name: 'Team A',
+          platform: 'claude',
+          actual_cost: 1.25,
+          total_tokens: 1_250_000,
+          checked_at: '2026-06-29T12:00:00Z',
+        },
+        {
+          id: 89,
+          usage_date: '2026-06-29',
+          connector_id: 7,
+          connector_name: 'relay-a',
+          upstream_group_id: 'team-extra',
+          group_name: 'Team Extra',
+          platform: 'claude',
+          actual_cost: 0.5,
+          total_tokens: 500_000,
+          checked_at: '2026-06-29T12:00:00Z',
+        },
+        {
+          id: 90,
+          usage_date: '2026-06-29',
+          connector_id: 8,
+          connector_name: 'relay-b',
+          upstream_group_id: 'team-b',
+          group_name: 'Team B',
+          platform: 'claude',
+          actual_cost: 2,
+          total_tokens: 1_500_000,
+          checked_at: '2026-06-29T12:00:00Z',
+        },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+    })
 
     const wrapper = mountView()
     await flushPromises()
@@ -438,6 +584,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
   })
 
   it('历史用量页按日期加载并展示每日分组汇总', async () => {
+    const freshCheckedAt = new Date().toISOString()
     listUsageHistory.mockResolvedValue({
       items: [
         {
@@ -450,10 +597,22 @@ describe('UpstreamRelayGroupMonitoringView', () => {
           platform: 'openai',
           actual_cost: 2.5,
           total_tokens: 1500000,
-          checked_at: '2026-06-28T15:00:00Z',
+          checked_at: freshCheckedAt,
+        },
+        {
+          id: 89,
+          usage_date: '2026-06-28',
+          connector_id: 7,
+          connector_name: 'relay-a',
+          upstream_group_id: 'team-b',
+          group_name: 'Team B',
+          platform: 'openai',
+          actual_cost: 1.25,
+          total_tokens: 0,
+          checked_at: '2000-01-01T00:00:00Z',
         },
       ],
-      total: 1,
+      total: 2,
       page: 1,
       page_size: 50,
       pages: 1,
@@ -465,7 +624,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await usageHistoryTab.trigger('click')
     await flushPromises()
 
-    expect(listUsageHistory).toHaveBeenCalledWith(expect.objectContaining({
+    expect(usageHistoryTabCalls()).toContainEqual(expect.objectContaining({
       page: 1,
       page_size: 50,
       start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
@@ -473,16 +632,105 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     }))
     expect(wrapper.text()).toContain('relay-a')
     expect(wrapper.text()).toContain('Team A')
+    expect(wrapper.text()).toContain('Team B')
     expect(wrapper.text()).toContain('usageHistory.startDate')
     expect(wrapper.text()).toContain('usageHistory.endDate')
     expect(wrapper.text()).toContain('usageHistory.connector')
     expect(wrapper.text()).toContain('usageHistory.groupId')
     expect(wrapper.text()).toContain('usageHistory.keyword')
+    expect(wrapper.text()).toContain('usageHistory.onlyAnomalies')
     expect(wrapper.text()).toContain('usageHistory.summaryCost')
     expect(wrapper.text()).toContain('usageHistory.summaryTokens')
     expect(wrapper.text()).toContain('usageHistory.summaryConnectors')
+    expect(wrapper.text()).toContain('usageHistory.summaryGroups')
+    expect(wrapper.text()).toContain('usageHistory.summaryCostPerMillion')
+    expect(wrapper.text()).toContain('usageHistory.summaryLatestCheckedAt')
+    expect(wrapper.text()).toContain('usageHistory.appliedFilterSummary')
+    expect(wrapper.text()).toContain('usageHistory.currentPageScopeHint')
+    expect(wrapper.text()).toContain('usageHistory.shortcutToday')
+    expect(wrapper.text()).toContain('usageHistory.shortcutLast7d')
+    expect(wrapper.text()).toContain('usageHistory.resetFilters')
+    expect(wrapper.text()).toContain('usageHistory.groupSubtotalCost')
+    expect(wrapper.text()).toContain('usageHistory.groupSubtotalTokens')
+    expect(wrapper.text()).toContain('usageHistory.groupSubtotalGroups')
+    expect(wrapper.text()).toContain('usageHistory.groupLatestCheckedAt')
+    expect(wrapper.text()).toContain('usageHistory.flagCostWithoutTokens')
+    expect(wrapper.text()).toContain('usageHistory.flagStaleCheckedAt')
+    expect(wrapper.text()).toContain('$3.75')
     expect(wrapper.text()).toContain('$2.50')
     expect(wrapper.text()).toContain('1.50M')
+
+    await wrapper.findAll('input[type="checkbox"]').find((input) => input.element instanceof HTMLInputElement && !input.element.checked)!.setValue(true)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Team A')
+    expect(wrapper.text()).toContain('Team B')
+  })
+
+  it('历史用量快捷日期会写入日期范围并立即查询', async () => {
+    listUsageHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+    await flushPromises()
+    expect(usageHistoryTabCalls()).toHaveLength(1)
+
+    await wrapper.findAll('button').find((button) => button.text().includes('usageHistory.shortcutLast7d'))!.trigger('click')
+    await flushPromises()
+
+    expect(usageHistoryTabCalls()).toHaveLength(2)
+    const latestParams = usageHistoryTabCalls().at(-1)!
+    expect(latestParams).toEqual(expect.objectContaining({
+      page: 1,
+      page_size: 50,
+      start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      end_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    expect(latestParams.start_date).not.toBe(latestParams.end_date)
+
+    await wrapper.findAll('button').find((button) => button.text().includes('usageHistory.resetFilters'))!.trigger('click')
+    await flushPromises()
+
+    expect(usageHistoryTabCalls()).toHaveLength(3)
+    const resetParams = usageHistoryTabCalls().at(-1)!
+    expect(resetParams.start_date).toBe(resetParams.end_date)
+    expect(resetParams.connector_id).toBeUndefined()
+    expect(resetParams.search).toBeUndefined()
+  })
+
+  it('历史用量日期范围非法时提示并阻止查询', async () => {
+    listUsageHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+    await flushPromises()
+    expect(usageHistoryTabCalls()).toHaveLength(1)
+
+    const dateInputs = wrapper.findAll('input[type="date"]')
+    await dateInputs[0].setValue('2026-06-30')
+    await dateInputs[1].setValue('2026-06-01')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('usageHistory.invalidDateRange')
+    const applyButton = wrapper.findAll('button').find((button) => button.text().includes('usageHistory.applyFilters'))!
+    expect(applyButton.attributes('disabled')).toBeDefined()
+    await applyButton.trigger('click')
+    await flushPromises()
+    expect(usageHistoryTabCalls()).toHaveLength(1)
   })
 
   it('历史用量筛选变更后只标记待应用，点击查询后才重新加载', async () => {
@@ -498,28 +746,31 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
     await flushPromises()
-    expect(listUsageHistory).toHaveBeenCalledTimes(1)
+    expect(usageHistoryTabCalls()).toHaveLength(1)
 
     const controls = wrapper.findAll('input, select')
     await controls.find((input) => input.attributes('type') === 'date')!.setValue('2026-06-27')
     await flushPromises()
 
-    expect(listUsageHistory).toHaveBeenCalledTimes(1)
+    expect(usageHistoryTabCalls()).toHaveLength(1)
     expect(wrapper.text()).toContain('usageHistory.filtersPending')
     expect(wrapper.text()).toContain('usageHistory.applyFilters')
+    expect(wrapper.text()).toContain('usageHistory.resultUsesAppliedFilters')
 
     await wrapper.findAll('button').find((button) => button.text().includes('usageHistory.applyFilters'))!.trigger('click')
     await flushPromises()
 
-    expect(listUsageHistory).toHaveBeenCalledTimes(2)
+    expect(usageHistoryTabCalls()).toHaveLength(2)
     expect(wrapper.text()).not.toContain('usageHistory.filtersPending')
   })
 
   it('历史用量加载时展示骨架状态而不是整页 spinner', async () => {
     let resolveUsageHistory: (value: { items: unknown[]; total: number; page: number; page_size: number; pages: number }) => void
-    listUsageHistory.mockReturnValue(new Promise((resolve) => {
-      resolveUsageHistory = resolve
-    }))
+    listUsageHistory
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 50, pages: 1 })
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveUsageHistory = resolve
+      }))
 
     const wrapper = mountView()
     await flushPromises()
@@ -540,6 +791,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
   it('历史用量页手动刷新用量余额后重载当前历史列表', async () => {
     listUsageHistory
       .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 50,
+        pages: 1,
+      })
+      .mockResolvedValueOnce({
         items: [
           {
             id: 88,
@@ -555,6 +813,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
           },
         ],
         total: 1,
+        page: 1,
+        page_size: 50,
+        pages: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
         page: 1,
         page_size: 50,
         pages: 1,
@@ -617,9 +882,61 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
-    expect(listUsageHistory).toHaveBeenCalledTimes(2)
+    expect(usageHistoryTabCalls()).toHaveLength(2)
     expect(wrapper.text()).toContain('$3.75')
     expect(wrapper.text()).toContain('2.50M')
+  })
+
+  it('历史用量筛选待应用时刷新用量余额不会用旧筛选悄悄重载列表', async () => {
+    listUsageHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+    })
+    refreshConnectorMetrics.mockResolvedValue({
+      connector: {
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [],
+      status: 'success',
+      balance_detail: { status: 'success', checked_at: '2026-06-28T12:05:00Z' },
+      usage_detail: { status: 'success', total_groups: 0, updated_groups: 0, missing_groups: [] },
+      balance_available: true,
+      usage_available: true,
+      refreshed_at: '2026-06-28T12:05:00Z',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+    await flushPromises()
+    expect(usageHistoryTabCalls()).toHaveLength(1)
+
+    const controls = wrapper.findAll('input, select')
+    await controls.find((input) => input.attributes('type') === 'date')!.setValue('2026-06-27')
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await flushPromises()
+
+    expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
+    expect(usageHistoryTabCalls()).toHaveLength(1)
+    expect(wrapper.text()).toContain('usageHistory.resultUsesAppliedFilters')
   })
 
   it('连接器行可单独轻量刷新当前连接器并合并刷新摘要', async () => {
@@ -1197,6 +1514,32 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.findAll('button').some((button) => button.text().includes('recommendations.viewAndApply'))).toBe(false)
   })
 
+  it('推荐历史运行中 run 优先显示运行中而不是待确认', async () => {
+    listRecommendationRuns.mockResolvedValue({
+      items: [recommendationRun({
+        id: 89,
+        status: 'running',
+        suggestion_count: 2,
+        applied: false,
+      })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+
+    const statusCell = wrapper.find('[data-testid="recommendation-run-status-89"]')
+    expect(statusCell.text()).toContain('recommendations.running')
+    expect(statusCell.text()).not.toContain('recommendations.pending')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('recommendations.viewAndApply'))).toBe(false)
+  })
+
   it('推荐历史展示系统和管理员生成及应用来源', async () => {
     listRecommendationRuns.mockResolvedValue({
       items: [
@@ -1309,7 +1652,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!.trigger('click')
+    const applyButton = wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!
+    expect(applyButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="apply-confirmation-control"]').text()).toContain('applyDialog.confirmationText')
+    await wrapper.find('[data-testid="apply-confirmation-control"] input').setValue(true)
+    await flushPromises()
+    expect(applyButton.attributes('disabled')).toBeUndefined()
+    await applyButton.trigger('click')
     await flushPromises()
 
     expect(applyRecommendationRun).toHaveBeenCalledWith(77)
@@ -1339,6 +1688,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="apply-confirmation-control"] input').setValue(true)
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!.trigger('click')
     await flushPromises()
