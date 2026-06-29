@@ -13,8 +13,9 @@ import (
 
 // ChannelMonitorUserHandler 渠道监控用户只读 handler。
 type ChannelMonitorUserHandler struct {
-	monitorService *service.ChannelMonitorService
-	settingService *service.SettingService
+	monitorService         *service.ChannelMonitorService
+	settingService         *service.SettingService
+	gptIntelligenceService *service.GptIntelligenceService
 }
 
 // NewChannelMonitorUserHandler 创建 handler。
@@ -22,10 +23,15 @@ type ChannelMonitorUserHandler struct {
 func NewChannelMonitorUserHandler(
 	monitorService *service.ChannelMonitorService,
 	settingService *service.SettingService,
+	gptIntelligenceService *service.GptIntelligenceService,
 ) *ChannelMonitorUserHandler {
+	if gptIntelligenceService == nil {
+		gptIntelligenceService = service.NewGptIntelligenceService()
+	}
 	return &ChannelMonitorUserHandler{
-		monitorService: monitorService,
-		settingService: settingService,
+		monitorService:         monitorService,
+		settingService:         settingService,
+		gptIntelligenceService: gptIntelligenceService,
 	}
 }
 
@@ -173,4 +179,22 @@ func (h *ChannelMonitorUserHandler) GetStatus(c *gin.Context) {
 		return
 	}
 	response.Success(c, userMonitorDetailToResponse(detail))
+}
+
+// GetGptIntelligence GET /api/v1/channel-monitors/gpt-intelligence
+func (h *ChannelMonitorUserHandler) GetGptIntelligence(c *gin.Context) {
+	if !h.featureEnabled(c) {
+		response.ErrorFrom(c, service.ErrGptIntelligenceUnavailable)
+		return
+	}
+	if h.gptIntelligenceService == nil {
+		response.ErrorFrom(c, service.ErrGptIntelligenceUnavailable)
+		return
+	}
+	snapshot, err := h.gptIntelligenceService.GetSnapshot(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, snapshot)
 }
