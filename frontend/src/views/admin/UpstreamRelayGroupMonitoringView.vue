@@ -401,7 +401,7 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.count', { n: usageHistoryTotal }) }}</span>
           </div>
         </div>
-        <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto]">
+        <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto_auto]">
           <label class="block space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.startDate') }}</span>
             <input v-model="usageHistoryStartDate" class="input w-full" type="date" />
@@ -425,14 +425,40 @@
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.keyword') }}</span>
             <input v-model.trim="usageHistorySearch" class="input w-full" type="search" :placeholder="tM('usageHistory.searchPlaceholder')" @keyup.enter="reloadUsageHistory" />
           </label>
+          <label class="flex items-end gap-2 pb-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="usageHistoryOnlyAnomalies" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+            {{ tM('usageHistory.onlyAnomalies') }}
+          </label>
           <div class="flex items-end">
-            <button class="btn btn-secondary inline-flex w-full items-center justify-center gap-2" type="button" :disabled="usageHistoryLoading" @click="reloadUsageHistory">
+            <button class="btn btn-secondary inline-flex w-full items-center justify-center gap-2" type="button" :disabled="usageHistoryLoading || usageHistoryDateRangeInvalid" @click="reloadUsageHistory">
               <Icon name="refresh" size="sm" />
               {{ usageHistoryFiltersDirty ? tM('usageHistory.applyFilters') : tM('usageHistory.search') }}
             </button>
           </div>
         </div>
-        <div v-if="usageHistory.length > 0" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/30 md:grid-cols-3">
+        <div v-if="usageHistoryDateRangeInvalid" class="border-b border-amber-100 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          {{ tM('usageHistory.invalidDateRange') }}
+        </div>
+        <div class="flex flex-wrap gap-2 border-b border-gray-100 px-4 py-2 dark:border-dark-700">
+          <button
+            v-for="shortcut in usageHistoryDateShortcuts"
+            :key="shortcut.key"
+            class="btn btn-secondary px-3 py-1.5 text-xs"
+            type="button"
+            :disabled="usageHistoryLoading"
+            @click="applyUsageHistoryDateShortcut(shortcut.key)"
+          >
+            {{ shortcut.label }}
+          </button>
+          <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading" @click="resetUsageHistoryFilters">
+            {{ tM('usageHistory.resetFilters') }}
+          </button>
+        </div>
+        <div v-if="usageHistory.length > 0" class="border-b border-gray-100 bg-gray-50/70 dark:border-dark-700 dark:bg-dark-900/30">
+          <div class="px-4 pt-3 text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ tM('usageHistory.currentPageScopeHint', { shown: usageHistoryDisplayItems.length, loaded: usageHistory.length, total: usageHistoryTotal }) }}
+          </div>
+          <div class="grid gap-3 px-4 py-3 md:grid-cols-2 xl:grid-cols-6">
           <div>
             <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryCost') }}</div>
             <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(usageHistorySummary.cost) }}</div>
@@ -445,6 +471,24 @@
             <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryConnectors') }}</div>
             <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usageHistorySummary.connectors }}</div>
           </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryGroups') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usageHistorySummary.groups }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryCostPerMillion') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatCostPerMillionTokens(usageHistorySummary.cost, usageHistorySummary.tokens) }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryLatestCheckedAt') }}</div>
+            <div class="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatDate(usageHistorySummary.latestCheckedAt) }}</div>
+            <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ usageHistorySummary.dateRange }}</div>
+          </div>
+          </div>
+        </div>
+        <div v-if="!usageHistoryLoading" class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
+          {{ usageHistoryAppliedFilterLabel }}
+          <span v-if="usageHistoryFiltersDirty" class="ml-2 font-medium text-amber-700 dark:text-amber-300">{{ tM('usageHistory.resultUsesAppliedFilters') }}</span>
         </div>
         <div v-if="usageHistoryLoading" data-testid="usage-history-skeleton" class="space-y-4 px-4 py-5" role="status" :aria-label="tM('usageHistory.loading')">
           <span class="sr-only">{{ tM('usageHistory.loading') }}</span>
@@ -465,14 +509,20 @@
           </div>
         </div>
         <div v-else-if="usageHistoryGroups.length === 0" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-          {{ tM('usageHistory.empty') }}
+          {{ usageHistoryOnlyAnomalies && usageHistory.length > 0 ? tM('usageHistory.emptyAnomalies') : tM('usageHistory.empty') }}
         </div>
         <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
           <div v-for="group in usageHistoryGroups" :key="group.connectorId" class="px-4 py-4">
-            <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div class="mb-3 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div class="font-semibold text-gray-900 dark:text-white">{{ group.connectorName }}</div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ tM('usageHistory.groupCount', { n: group.items.length }) }}</div>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs">
+                <span class="inline-flex rounded-md bg-gray-100 px-2 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ tM('usageHistory.groupSubtotalCost', { value: formatUsageCost(group.summary.cost) }) }}</span>
+                <span class="inline-flex rounded-md bg-gray-100 px-2 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ tM('usageHistory.groupSubtotalTokens', { value: formatUsageTokenMillions(group.summary.tokens) }) }}</span>
+                <span class="inline-flex rounded-md bg-gray-100 px-2 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ tM('usageHistory.groupSubtotalGroups', { n: group.summary.groups }) }}</span>
+                <span class="inline-flex rounded-md bg-gray-100 px-2 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ tM('usageHistory.groupLatestCheckedAt', { time: formatDate(group.summary.latestCheckedAt) }) }}</span>
               </div>
             </div>
             <div class="overflow-x-auto">
@@ -487,12 +537,21 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                  <tr v-for="item in group.items" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                  <tr v-for="item in group.items" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70" :class="usageHistoryRowFlags(item).length > 0 ? 'bg-amber-50/40 dark:bg-amber-950/10' : ''">
                     <td class="px-3 py-3 whitespace-nowrap tabular-nums">{{ item.usage_date }}</td>
                     <td class="px-3 py-3">
                       <div class="font-medium text-gray-900 dark:text-white">{{ item.group_name || item.upstream_group_id }}</div>
                       <div class="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">{{ item.upstream_group_id }}</div>
                       <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ item.platform || '-' }}</div>
+                      <div v-if="usageHistoryRowFlags(item).length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                        <span
+                          v-for="flag in usageHistoryRowFlags(item)"
+                          :key="flag"
+                          class="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-100"
+                        >
+                          {{ flag }}
+                        </span>
+                      </div>
                     </td>
                     <td class="px-3 py-3 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(item.actual_cost) }}</td>
                     <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillions(item.total_tokens) }}</td>
@@ -506,8 +565,8 @@
         <div class="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
           <span>{{ tM('usageHistory.pageInfo', { page: usageHistoryPage, pages: usageHistoryPages }) }}</span>
           <div class="flex gap-2">
-            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryPage <= 1" @click="changeUsageHistoryPage(usageHistoryPage - 1)">{{ tM('usageHistory.prev') }}</button>
-            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryPage >= usageHistoryPages" @click="changeUsageHistoryPage(usageHistoryPage + 1)">{{ tM('usageHistory.next') }}</button>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryDateRangeInvalid || usageHistoryPage <= 1" @click="changeUsageHistoryPage(usageHistoryPage - 1)">{{ tM('usageHistory.prev') }}</button>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryDateRangeInvalid || usageHistoryPage >= usageHistoryPages" @click="changeUsageHistoryPage(usageHistoryPage + 1)">{{ tM('usageHistory.next') }}</button>
           </div>
         </div>
       </section>
@@ -622,7 +681,7 @@
                 <td class="px-4 py-3 font-mono">#{{ run.id }}</td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ run.total_candidates }}</td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ run.suggestion_count }}</td>
-                <td class="px-4 py-3">
+                <td class="px-4 py-3" :data-testid="`recommendation-run-status-${run.id}`">
                   <span :class="recommendationRunStatusClass(run)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
                     {{ recommendationRunStatusLabel(run) }}
                   </span>
@@ -1146,6 +1205,10 @@
           <div class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.value }}</div>
         </div>
       </div>
+      <label v-if="canApplySelectedRun" data-testid="apply-confirmation-control" class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+        <input v-model="applyConfirmationChecked" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-primary-600" />
+        <span>{{ tM('applyDialog.confirmationText', { id: applyRun?.id, count: applyRun?.suggestion_count ?? 0 }) }}</span>
+      </label>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[860px] text-sm">
           <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
@@ -1187,7 +1250,7 @@
     <template #footer>
       <div class="flex justify-end gap-2">
         <button class="btn btn-secondary" type="button" @click="applyDialogOpen = false">{{ tM('applyDialog.close') }}</button>
-        <button v-if="canApplySelectedRun" class="btn btn-primary" type="button" :disabled="applying" @click="applySelectedRun">
+        <button v-if="canApplySelectedRun" class="btn btn-primary" type="button" :disabled="applying || !applyConfirmationChecked" @click="applySelectedRun">
           {{ applying ? tM('applyDialog.applying') : tM('applyDialog.confirmApply') }}
         </button>
       </div>
@@ -1261,10 +1324,23 @@ import upstreamRelayAPI, {
   type UpstreamRelayRecommendationSortField,
   type UpstreamRelaySnapshotChangeType
 } from '@/api/admin/upstreamRelayGroupMonitors'
-import type { Account } from '@/types'
+import type { Account, PaginatedResponse } from '@/types'
 
 type SectionKey = 'candidates' | 'connectors' | 'usageHistory' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
 type BulkOperationKind = 'sync' | 'probe'
+type UsageHistoryDateShortcutKey = 'today' | 'yesterday' | 'last7d' | 'last30d'
+type UsageHistorySubtotal = {
+  cost: number
+  tokens: number
+  groups: number
+  latestCheckedAt: string | null
+}
+type TodayUsageOverview = {
+  loaded: boolean
+  cost: number
+  tokens: number
+  records: number
+}
 type MetricsRefreshResultState = {
   items: UpstreamRelayConnectorMetricsRefreshResult[]
   updatedAt: string
@@ -1272,12 +1348,15 @@ type MetricsRefreshResultState = {
 }
 
 const METRICS_REFRESH_LOCAL_BINDING_ERROR = 'connector has no local account bindings'
+const USAGE_HISTORY_STALE_MS = 24 * 60 * 60 * 1000
+const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
 
 const loading = ref(false)
 const error = ref('')
 const connectors = ref<UpstreamRelayConnector[]>([])
 const snapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
 const overviewSnapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
+const overviewTodayUsage = ref<TodayUsageOverview>({ loaded: false, cost: 0, tokens: 0, records: 0 })
 const snapshotChanges = ref<UpstreamRelayGroupRateSnapshotChange[]>([])
 const usageHistory = ref<UpstreamRelayGroupUsageHistory[]>([])
 const candidates = ref<UpstreamRelayCandidate[]>([])
@@ -1305,6 +1384,7 @@ const savingPolicy = ref(false)
 const previewLoading = ref(false)
 const applyDialogOpen = ref(false)
 const applyRun = ref<UpstreamRelayRecommendationRun | null>(null)
+const applyConfirmationChecked = ref(false)
 const lastAppliedRun = ref<UpstreamRelayRecommendationRun | null>(null)
 const lastApplyError = ref('')
 const successMessage = ref('')
@@ -1339,6 +1419,7 @@ const usageHistoryStartDate = ref(localUsageDate())
 const usageHistoryEndDate = ref(localUsageDate())
 const usageHistoryGroupId = ref('')
 const usageHistorySearch = ref('')
+const usageHistoryOnlyAnomalies = ref(false)
 const usageHistoryPage = ref(1)
 const usageHistoryPageSize = 50
 const usageHistoryTotal = ref(0)
@@ -1566,6 +1647,37 @@ const snapshotChangeTypeOptions = computed((): Array<{ value: UpstreamRelaySnaps
   { value: 'removed', label: tM('snapshotChanges.typeRemoved') }
 ])
 
+const usageHistoryDateShortcuts = computed((): Array<{ key: UsageHistoryDateShortcutKey; label: string }> => [
+  { key: 'today', label: tM('usageHistory.shortcutToday') },
+  { key: 'yesterday', label: tM('usageHistory.shortcutYesterday') },
+  { key: 'last7d', label: tM('usageHistory.shortcutLast7d') },
+  { key: 'last30d', label: tM('usageHistory.shortcutLast30d') }
+])
+
+const usageHistoryDateRangeInvalid = computed(() => {
+  if (!usageHistoryStartDate.value || !usageHistoryEndDate.value) return false
+  return usageHistoryStartDate.value > usageHistoryEndDate.value
+})
+
+function emptyUsageHistorySubtotal(): UsageHistorySubtotal {
+  return { cost: 0, tokens: 0, groups: 0, latestCheckedAt: null }
+}
+
+function summarizeUsageHistoryItems(items: UpstreamRelayGroupUsageHistory[]): UsageHistorySubtotal {
+  const groupIds = new Set<string>()
+  const summary = emptyUsageHistorySubtotal()
+  for (const item of items) {
+    groupIds.add(`${item.connector_id}:${item.upstream_group_id}`)
+    const cost = Number(item.actual_cost ?? 0)
+    const tokens = Number(item.total_tokens ?? 0)
+    if (Number.isFinite(cost)) summary.cost += cost
+    if (Number.isFinite(tokens)) summary.tokens += tokens
+    if (isLaterDate(item.checked_at, summary.latestCheckedAt)) summary.latestCheckedAt = item.checked_at
+  }
+  summary.groups = groupIds.size
+  return summary
+}
+
 const snapshotChangeGroups = computed(() => {
   const groups = new Map<number, { connectorId: number; connectorName: string; items: UpstreamRelayGroupRateSnapshotChange[] }>()
   for (const item of snapshotChanges.value) {
@@ -1579,44 +1691,55 @@ const snapshotChangeGroups = computed(() => {
 })
 
 const usageHistoryGroups = computed(() => {
-  const groups = new Map<number, { connectorId: number; connectorName: string; items: UpstreamRelayGroupUsageHistory[] }>()
-  for (const item of usageHistory.value) {
+  const groups = new Map<number, { connectorId: number; connectorName: string; items: UpstreamRelayGroupUsageHistory[]; summary: UsageHistorySubtotal }>()
+  for (const item of usageHistoryDisplayItems.value) {
     const connectorName = item.connector_name || `Connector #${item.connector_id}`
     if (!groups.has(item.connector_id)) {
-      groups.set(item.connector_id, { connectorId: item.connector_id, connectorName, items: [] })
+      groups.set(item.connector_id, { connectorId: item.connector_id, connectorName, items: [], summary: emptyUsageHistorySubtotal() })
     }
     groups.get(item.connector_id)!.items.push(item)
   }
-  return Array.from(groups.values())
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    summary: summarizeUsageHistoryItems(group.items)
+  }))
 })
 
 const usageHistorySummary = computed(() => {
   const connectorIds = new Set<number>()
-  return usageHistory.value.reduce(
-    (summary, item) => {
-      connectorIds.add(item.connector_id)
-      const cost = Number(item.actual_cost ?? 0)
-      const tokens = Number(item.total_tokens ?? 0)
-      if (Number.isFinite(cost)) summary.cost += cost
-      if (Number.isFinite(tokens)) summary.tokens += tokens
-      summary.connectors = connectorIds.size
-      return summary
-    },
-    { cost: 0, tokens: 0, connectors: 0 }
-  )
+  for (const item of usageHistory.value) connectorIds.add(item.connector_id)
+  const summary = summarizeUsageHistoryItems(usageHistory.value)
+  return {
+    ...summary,
+    connectors: connectorIds.size,
+    dateRange: usageHistoryDateRangeLabel.value
+  }
 })
 
-const overviewTodayUsage = computed(() => {
-  return overviewSnapshots.value.reduce(
-    (total, snapshot) => {
-      const tokens = Number(snapshot.today_total_tokens ?? 0)
-      const cost = Number(snapshot.today_actual_cost ?? 0)
-      if (Number.isFinite(tokens)) total.tokens += tokens
-      if (Number.isFinite(cost)) total.cost += cost
-      return total
-    },
-    { tokens: 0, cost: 0 }
-  )
+const usageHistoryDisplayItems = computed(() => {
+  if (!usageHistoryOnlyAnomalies.value) return usageHistory.value
+  return usageHistory.value.filter((item) => usageHistoryRowFlags(item).length > 0)
+})
+
+const usageHistoryDateRangeLabel = computed(() => {
+  const start = appliedUsageHistoryFilters.startDate || usageHistoryStartDate.value
+  const end = appliedUsageHistoryFilters.endDate || usageHistoryEndDate.value
+  if (start && end) return start === end ? start : `${start} - ${end}`
+  if (start) return tM('usageHistory.rangeFrom', { date: start })
+  if (end) return tM('usageHistory.rangeUntil', { date: end })
+  return tM('usageHistory.rangeAll')
+})
+
+const usageHistoryAppliedFilterLabel = computed(() => {
+  const connectorName = appliedUsageHistoryFilters.connectorId
+    ? connectors.value.find((item) => item.id === appliedUsageHistoryFilters.connectorId)?.name || `Connector #${appliedUsageHistoryFilters.connectorId}`
+    : tM('usageHistory.allConnectors')
+  const extraFilters = [appliedUsageHistoryFilters.groupId, appliedUsageHistoryFilters.search].filter(Boolean)
+  return tM('usageHistory.appliedFilterSummary', {
+    range: usageHistoryDateRangeLabel.value,
+    connector: connectorName,
+    filters: extraFilters.length > 0 ? extraFilters.join(' / ') : tM('usageHistory.noExtraFilters')
+  })
 })
 
 const overviewStats = computed(() => {
@@ -1634,8 +1757,9 @@ const overviewStats = computed(() => {
     totalCandidates: candidates.value.length,
     failedCandidates: failedCandidateCount.value,
     pendingSuggestions: pendingSuggestionCount.value,
-    todayUsageTokens: formatUsageTokenMillions(overviewTodayUsage.value.tokens),
-    todayUsageCost: formatUsageCost(overviewTodayUsage.value.cost),
+    todayUsageTokens: overviewTodayUsage.value.loaded ? formatUsageTokenMillions(overviewTodayUsage.value.tokens) : '-',
+    todayUsageCost: overviewTodayUsage.value.loaded ? formatUsageCost(overviewTodayUsage.value.cost) : '-',
+    todayUsageRecords: overviewTodayUsage.value.records,
     latestSyncedAt: formatDate(latestSyncedAt)
   }
 })
@@ -1659,8 +1783,8 @@ const overviewCards = computed(() => [
     key: 'today-usage',
     label: tM('overview.todayUsage'),
     value: overviewStats.value.todayUsageCost,
-    hint: tM('overview.todayUsageHint', { tokens: overviewStats.value.todayUsageTokens }),
-    section: 'connectors' as SectionKey
+    hint: tM('overview.todayUsageHint', { tokens: overviewStats.value.todayUsageTokens, records: overviewStats.value.todayUsageRecords }),
+    section: 'usageHistory' as SectionKey
   },
   {
     key: 'latest-sync',
@@ -1762,22 +1886,38 @@ watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate, usag
   }
 })
 
+async function loadAllPages<T>(
+  loader: (params: { page: number; page_size: number }) => Promise<PaginatedResponse<T>>,
+  pageSize = 100
+) {
+  const first = await loader({ page: 1, page_size: pageSize })
+  const items = [...first.items]
+  const pages = Math.max(1, first.pages || Math.ceil((first.total || items.length) / pageSize))
+  for (let page = 2; page <= pages; page++) {
+    const res = await loader({ page, page_size: pageSize })
+    items.push(...res.items)
+  }
+  return items
+}
+
 async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [connectorRes, candidateRes, runRes, accountRes, policy, monitoringPolicy] = await Promise.all([
-      upstreamRelayAPI.listConnectors({ page: 1, page_size: 100 }),
-      upstreamRelayAPI.listCandidates({ page: 1, page_size: 100 }),
+    const [connectorItems, candidateItems, runRes, accountRes, policy, monitoringPolicy, todayUsage] = await Promise.all([
+      loadAllPages<UpstreamRelayConnector>((params) => upstreamRelayAPI.listConnectors(params)),
+      loadAllPages<UpstreamRelayCandidate>((params) => upstreamRelayAPI.listCandidates(params)),
       upstreamRelayAPI.listRecommendationRuns({ page: 1, page_size: 20 }),
       accountsAPI.list(1, 200, { status: 'active' }),
       upstreamRelayAPI.getRecommendationPolicy(),
-      upstreamRelayAPI.getMonitoringPolicy()
+      upstreamRelayAPI.getMonitoringPolicy(),
+      loadTodayUsageOverview()
     ])
-    connectors.value = connectorRes.items
-    candidates.value = candidateRes.items
+    connectors.value = connectorItems
+    candidates.value = candidateItems
     recommendationRuns.value = runRes.items
     accounts.value = accountRes.items
+    overviewTodayUsage.value = todayUsage
     assignPolicyForm(policy)
     assignMonitoringPolicyForm(monitoringPolicy)
     if (!selectedConnectorId.value && connectors.value.length > 0) {
@@ -1795,8 +1935,7 @@ async function loadAll() {
 
 async function refreshCandidatesSilent() {
   try {
-    const res = await upstreamRelayAPI.listCandidates({ page: 1, page_size: 100 })
-    candidates.value = res.items
+    candidates.value = await loadAllPages<UpstreamRelayCandidate>((params) => upstreamRelayAPI.listCandidates(params))
     lastLoadedAt.value = new Date().toISOString()
     await hydrateLatestPendingRun()
   } catch { /* silent */ }
@@ -1861,6 +2000,37 @@ async function loadOverviewSnapshots(connectorItems: UpstreamRelayConnector[]) {
   }
   const snapshotGroups = await Promise.all(connectorItems.map((connector) => upstreamRelayAPI.listSnapshots(connector.id)))
   overviewSnapshots.value = snapshotGroups.flat()
+}
+
+async function loadTodayUsageOverview(): Promise<TodayUsageOverview> {
+  const today = localUsageDate()
+  let page = 1
+  let pages = 1
+  const total = { loaded: true, cost: 0, tokens: 0, records: 0 }
+  do {
+    const res = await upstreamRelayAPI.listUsageHistory({
+      page,
+      page_size: OVERVIEW_TODAY_USAGE_PAGE_SIZE,
+      start_date: today,
+      end_date: today
+    })
+    total.records += res.items.length
+    for (const item of res.items) {
+      const cost = Number(item.actual_cost ?? 0)
+      const tokens = Number(item.total_tokens ?? 0)
+      if (Number.isFinite(cost)) total.cost += cost
+      if (Number.isFinite(tokens)) total.tokens += tokens
+    }
+    pages = Math.max(1, res.pages || 1)
+    page++
+  } while (page <= pages)
+  return total
+}
+
+async function refreshTodayUsageOverviewSilent() {
+  try {
+    overviewTodayUsage.value = await loadTodayUsageOverview()
+  } catch { /* silent */ }
 }
 
 function replaceOverviewSnapshotsForConnector(connectorId: number, nextSnapshots: UpstreamRelayGroupRateSnapshot[]) {
@@ -1928,6 +2098,10 @@ async function loadUsageHistory() {
 }
 
 function reloadUsageHistory() {
+  if (usageHistoryDateRangeInvalid.value) {
+    usageHistoryFiltersDirty.value = true
+    return
+  }
   Object.assign(appliedUsageHistoryFilters, {
     connectorId: usageHistoryConnectorId.value,
     startDate: usageHistoryStartDate.value,
@@ -1937,6 +2111,34 @@ function reloadUsageHistory() {
   })
   usageHistoryPage.value = 1
   void loadUsageHistory()
+}
+
+function resetUsageHistoryFilters() {
+  const today = localUsageDate()
+  usageHistoryConnectorId.value = 0
+  usageHistoryStartDate.value = today
+  usageHistoryEndDate.value = today
+  usageHistoryGroupId.value = ''
+  usageHistorySearch.value = ''
+  usageHistoryOnlyAnomalies.value = false
+  reloadUsageHistory()
+}
+
+function applyUsageHistoryDateShortcut(shortcut: UsageHistoryDateShortcutKey) {
+  const today = new Date()
+  let start = today
+  let end = today
+  if (shortcut === 'yesterday') {
+    start = addLocalDays(today, -1)
+    end = start
+  } else if (shortcut === 'last7d') {
+    start = addLocalDays(today, -6)
+  } else if (shortcut === 'last30d') {
+    start = addLocalDays(today, -29)
+  }
+  usageHistoryStartDate.value = localUsageDate(start)
+  usageHistoryEndDate.value = localUsageDate(end)
+  reloadUsageHistory()
 }
 
 function changeUsageHistoryPage(page: number) {
@@ -2024,8 +2226,7 @@ async function sync(connector: UpstreamRelayConnector) {
     snapshotConnector.value = connector
     snapshotDialogOpen.value = true
     // 静默刷新连接器列表以更新 last_synced_at，不触发全页 loading
-    const res = await upstreamRelayAPI.listConnectors({ page: 1, page_size: 100 })
-    connectors.value = res.items
+    connectors.value = await loadAllPages<UpstreamRelayConnector>((params) => upstreamRelayAPI.listConnectors(params))
     if (activeSection.value === 'snapshotChanges') {
       await loadSnapshotChanges()
     }
@@ -2106,8 +2307,11 @@ async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}
       if (warning) warnings.push(warning)
     }
     await refreshCandidatesSilent()
+    await refreshTodayUsageOverviewSilent()
     if (activeSection.value === 'usageHistory') {
-      await loadUsageHistory()
+      if (!usageHistoryFiltersDirty.value) {
+        await loadUsageHistory()
+      }
     }
     if (!options.silent) {
       setMetricsRefreshResultItems(results)
@@ -2138,8 +2342,11 @@ async function refreshMetricsForSingleConnector(connector: UpstreamRelayConnecto
       result = buildMetricsRefreshFailureResult(connector, err)
     }
     await refreshCandidatesSilent()
+    await refreshTodayUsageOverviewSilent()
     if (activeSection.value === 'usageHistory') {
-      await loadUsageHistory()
+      if (!usageHistoryFiltersDirty.value) {
+        await loadUsageHistory()
+      }
     }
     mergeMetricsRefreshResultItem(result)
     const warning = metricsRefreshWarning(result)
@@ -2565,6 +2772,7 @@ async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
   successMessage.value = ''
   lastAppliedRun.value = null
   lastApplyError.value = ''
+  applyConfirmationChecked.value = false
   try {
     applyRun.value = await upstreamRelayAPI.getRecommendationRun(run.id)
     applyDialogOpen.value = true
@@ -2575,6 +2783,7 @@ async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
 
 async function applySelectedRun() {
   if (!applyRun.value) return
+  if (!applyConfirmationChecked.value) return
   applying.value = true
   error.value = ''
   successMessage.value = ''
@@ -2595,6 +2804,7 @@ async function applySelectedRun() {
     error.value = lastApplyError.value
   } finally {
     applying.value = false
+    applyConfirmationChecked.value = false
   }
 }
 
@@ -2616,17 +2826,24 @@ function statusClass(status: string) {
 
 function recommendationRunStatusLabel(run: UpstreamRelayRecommendationRun) {
   if (run.status === 'failed') return tM('recommendations.failed')
-  if (run.applied) return tM('recommendations.applied')
-  if (run.suggestion_count === 0) return tM('recommendations.noSuggestions')
-  if (run.status === 'success') return tM('recommendations.pending')
-  return tM('recommendations.pending')
+  if (run.status === 'running') return tM('recommendations.running')
+  if (run.status === 'success') {
+    if (run.applied) return tM('recommendations.applied')
+    if (run.suggestion_count === 0) return tM('recommendations.noSuggestions')
+    return tM('recommendations.pending')
+  }
+  return tM('recommendations.unknown')
 }
 
 function recommendationRunStatusClass(run: UpstreamRelayRecommendationRun) {
   if (run.status === 'failed') return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
-  if (run.applied) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
-  if (run.suggestion_count === 0) return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
-  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  if (run.status === 'running') return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
+  if (run.status === 'success') {
+    if (run.applied) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+    if (run.suggestion_count === 0) return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  }
+  return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
 }
 
 function canApplyRecommendationRun(run: UpstreamRelayRecommendationRun) {
@@ -2652,6 +2869,22 @@ function formatDate(value?: string | null) {
 function localUsageDate(value: Date = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+}
+
+function addLocalDays(value: Date, days: number) {
+  const next = new Date(value)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function isLaterDate(value?: string | null, compareTo?: string | null) {
+  if (!value) return false
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return false
+  if (!compareTo) return true
+  const compareDate = new Date(compareTo)
+  if (Number.isNaN(compareDate.getTime())) return true
+  return date.getTime() > compareDate.getTime()
 }
 
 function formatRate(value: number) {
@@ -2732,6 +2965,26 @@ function formatUsageCost(value?: number | null) {
 function formatUsageTokenMillions(value?: number | null) {
   const numeric = Number(value ?? 0)
   return `${(Number.isFinite(numeric) ? numeric / 1_000_000 : 0).toFixed(2)}M`
+}
+
+function formatCostPerMillionTokens(cost?: number | null, tokens?: number | null) {
+  const numericCost = Number(cost ?? 0)
+  const numericTokens = Number(tokens ?? 0)
+  if (!Number.isFinite(numericCost) || !Number.isFinite(numericTokens) || numericTokens <= 0) return '-'
+  return formatUsageCost(numericCost / (numericTokens / 1_000_000))
+}
+
+function usageHistoryRowFlags(item: UpstreamRelayGroupUsageHistory) {
+  const flags: string[] = []
+  const cost = Number(item.actual_cost ?? 0)
+  const tokens = Number(item.total_tokens ?? 0)
+  if (cost > 0 && tokens <= 0) flags.push(tM('usageHistory.flagCostWithoutTokens'))
+  if (tokens > 0 && cost <= 0) flags.push(tM('usageHistory.flagTokensWithoutCost'))
+  const checkedAt = new Date(item.checked_at)
+  if (!Number.isNaN(checkedAt.getTime()) && Date.now() - checkedAt.getTime() > USAGE_HISTORY_STALE_MS) {
+    flags.push(tM('usageHistory.flagStaleCheckedAt'))
+  }
+  return flags
 }
 
 function candidateTodayUsageCostLabel(candidate: UpstreamRelayCandidate) {
