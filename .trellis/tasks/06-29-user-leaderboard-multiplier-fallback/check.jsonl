@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否保持下游 fork 变更边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验证用户可见排行榜响应和回归测试"}

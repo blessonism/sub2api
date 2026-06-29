@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "遵守下游二开分支与变更边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "用户可见用量排行榜 API 的契约和测试要求"}

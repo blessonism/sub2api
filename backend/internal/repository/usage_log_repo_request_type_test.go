@@ -816,7 +816,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardUsesCurrentAutoMultiplier(t *t
 	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
 		AddRow("top", int64(1), currentUserID, "current@example.com", int64(3), int64(120), 0.7)
 
-	mock.ExpectQuery("JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = 'active'[\\s\\S]*JOIN user_group_rate_multipliers ugr ON ugr\\.user_id = a\\.user_id AND ugr\\.group_id = a\\.target_group_id[\\s\\S]*ugr\\.rate_multiplier = a\\.last_rate_multiplier").
+	mock.ExpectQuery("MIN\\(COALESCE\\(ugr\\.visible_rate_multiplier, target_group\\.visible_rate_multiplier, ugr\\.rate_multiplier, target_group\\.rate_multiplier\\)\\)[\\s\\S]*JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = 'active'[\\s\\S]*JOIN user_group_rate_multipliers ugr ON ugr\\.user_id = a\\.user_id AND ugr\\.group_id = a\\.target_group_id[\\s\\S]*ugr\\.rate_multiplier = a\\.last_rate_multiplier").
 		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 
@@ -826,6 +826,30 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardUsesCurrentAutoMultiplier(t *t
 	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.Ranking[0].DiscountRateMultiplier)
 	require.NotNil(t, got.MyRank)
 	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.MyRank.DiscountRateMultiplier)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetUserTokenLeaderboardCommonGroupFallsBackToRealMultiplier(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	currentUserID := int64(9)
+
+	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
+		AddRow("top", int64(1), currentUserID, "current@example.com", int64(3), int64(120), 0.85)
+
+	mock.ExpectQuery("common_multiplier AS \\([\\s\\S]*SELECT COALESCE\\(g\\.visible_rate_multiplier, g\\.rate_multiplier\\) AS rate_multiplier[\\s\\S]*s\\.key = 'token_leaderboard_common_group_id'[\\s\\S]*g\\.subscription_type = 'standard'[\\s\\S]*g\\.is_exclusive = FALSE").
+		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
+		WillReturnRows(rows)
+
+	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 10, currentUserID)
+	require.NoError(t, err)
+	require.Len(t, got.Ranking, 1)
+	require.Equal(t, ptrLeaderboardRateForRepoTest(0.85), got.Ranking[0].DiscountRateMultiplier)
+	require.NotNil(t, got.MyRank)
+	require.Equal(t, ptrLeaderboardRateForRepoTest(0.85), got.MyRank.DiscountRateMultiplier)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
