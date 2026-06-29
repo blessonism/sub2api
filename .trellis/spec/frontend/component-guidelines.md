@@ -56,4 +56,35 @@ Questions to answer:
 
 <!-- Component-related mistakes your team has made -->
 
-(To be filled by the team)
+### Common Mistake: Credential dialogs closing during local mode switches
+
+**Symptom**: Browser password managers, credential pickers, or local auth-mode buttons may close a `BaseDialog` form while users select credential-related options, causing unsaved input to be lost.
+
+**Cause**: `BaseDialog` closes on Escape by default, and credential forms often include mode-switch buttons plus username/password fields inside a form. If pointer/mouse/click/input/change events from browser credential UI are allowed to propagate, real browser behavior can misclassify local credential selection as a modal-close interaction.
+
+**Fix**: For credential-entry dialogs, pass `:close-on-escape="false"` and `:close-on-click-outside="false"`, stop propagation on local mode-switch controls, and isolate username/password fields from pointer/mouse/click/input/change propagation. Keep explicit close controls such as cancel, close button, or successful submit.
+
+```vue
+<BaseDialog
+  :show="credentialDialogOpen"
+  :close-on-escape="false"
+  :close-on-click-outside="false"
+  @close="closeCredentialDialog"
+>
+  <button
+    type="button"
+    @pointerdown.stop
+    @mousedown.stop
+    @click.stop.prevent="setCredentialMode('password')"
+  >
+    账号密码
+  </button>
+
+  <div @pointerdown.stop @mousedown.stop @click.stop @input.stop @change.stop>
+    <input autocomplete="username" />
+    <input type="password" autocomplete="current-password" />
+  </div>
+</BaseDialog>
+```
+
+**Prevention**: Add a view test that opens the dialog, dispatches pointer/mouse/click events on the credential mode switch and credential inputs, dispatches input/change events, enters values, and asserts the dialog remains visible.
