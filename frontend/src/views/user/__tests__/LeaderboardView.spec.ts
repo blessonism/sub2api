@@ -106,7 +106,7 @@ describe('LeaderboardView', () => {
       ranking: [
         {
           rank: 1,
-          masked_email: 'a***a@example.com',
+          masked_email: 'alp***ha@example.com',
           requests: 10,
           tokens: 1_200_000,
           discount_rate_multiplier: 0.6,
@@ -114,7 +114,7 @@ describe('LeaderboardView', () => {
         },
         {
           rank: 2,
-          masked_email: 'b***b@example.com',
+          masked_email: 'bet***ta@example.com',
           requests: 8,
           tokens: 50_000,
           discount_rate_multiplier: 0.8,
@@ -123,7 +123,7 @@ describe('LeaderboardView', () => {
       ],
       my_rank: {
         rank: 11,
-        masked_email: 'm***e@example.com',
+        masked_email: 'min***ne@example.com',
         requests: 2,
         tokens: 180_000,
         discount_rate_multiplier: 0.7,
@@ -140,8 +140,8 @@ describe('LeaderboardView', () => {
     await flushPromises()
 
     const text = wrapper.text()
-    expect(text).toContain('a***a@example.com')
-    expect(text).toContain('m***e@example.com')
+    expect(text).toContain('alp***ha@example.com')
+    expect(text).toContain('min***ne@example.com')
     expect(text).toContain('Top 10')
     expect(text).toContain('Today: 2026-06-18')
     expect(getDashboardLeaderboard).toHaveBeenCalledWith({ period: 'day' })
@@ -164,7 +164,7 @@ describe('LeaderboardView', () => {
       ranking: [],
       my_rank: {
         rank: 0,
-        masked_email: 'm***e@example.com',
+        masked_email: 'min***ne@example.com',
         requests: 0,
         tokens: 0,
         discount_rate_multiplier: null,
@@ -190,7 +190,7 @@ describe('LeaderboardView', () => {
         ranking: [
           {
             rank: 1,
-            masked_email: 'a***a@example.com',
+            masked_email: 'alp***ha@example.com',
             requests: 10,
             tokens: 1_200_000,
             discount_rate_multiplier: 0.8,
@@ -199,7 +199,7 @@ describe('LeaderboardView', () => {
         ],
         my_rank: {
           rank: 3,
-          masked_email: 'm***e@example.com',
+          masked_email: 'min***ne@example.com',
           requests: 2,
           tokens: 180_000,
           discount_rate_multiplier: 0.7,
@@ -214,7 +214,7 @@ describe('LeaderboardView', () => {
         ranking: [],
         my_rank: {
           rank: 0,
-          masked_email: 'm***e@example.com',
+          masked_email: 'min***ne@example.com',
           requests: 0,
           tokens: 0,
           discount_rate_multiplier: null,
@@ -243,7 +243,7 @@ describe('LeaderboardView', () => {
         ranking: [],
         my_rank: {
           rank: 0,
-          masked_email: 'm***e@example.com',
+          masked_email: 'min***ne@example.com',
           requests: 0,
           tokens: 0,
           discount_rate_multiplier: null,
@@ -258,7 +258,7 @@ describe('LeaderboardView', () => {
         ranking: [],
         my_rank: {
           rank: 0,
-          masked_email: 'm***e@example.com',
+          masked_email: 'min***ne@example.com',
           requests: 0,
           tokens: 0,
           discount_rate_multiplier: null,
@@ -298,7 +298,7 @@ describe('LeaderboardView', () => {
       ranking: [
         {
           rank: 1,
-          masked_email: 'w***k@example.com',
+          masked_email: 'wee***ly@example.com',
           requests: 70,
           tokens: 7_000_000,
           discount_rate_multiplier: 0.5,
@@ -307,7 +307,7 @@ describe('LeaderboardView', () => {
       ],
       my_rank: {
         rank: 1,
-        masked_email: 'w***k@example.com',
+        masked_email: 'wee***ly@example.com',
         requests: 70,
         tokens: 7_000_000,
         discount_rate_multiplier: 0.5,
@@ -321,13 +321,13 @@ describe('LeaderboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('This week: 2026-06-15 - 2026-06-21')
-    expect(wrapper.text()).toContain('w***k@example.com')
+    expect(wrapper.text()).toContain('wee***ly@example.com')
 
     dailyRequest.resolve({
       ranking: [
         {
           rank: 1,
-          masked_email: 'd***y@example.com',
+          masked_email: 'dai***ly@example.com',
           requests: 10,
           tokens: 1_000_000,
           discount_rate_multiplier: 0.8,
@@ -336,7 +336,7 @@ describe('LeaderboardView', () => {
       ],
       my_rank: {
         rank: 1,
-        masked_email: 'd***y@example.com',
+        masked_email: 'dai***ly@example.com',
         requests: 10,
         tokens: 1_000_000,
         discount_rate_multiplier: 0.8,
@@ -350,8 +350,8 @@ describe('LeaderboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('This week: 2026-06-15 - 2026-06-21')
-    expect(wrapper.text()).toContain('w***k@example.com')
-    expect(wrapper.text()).not.toContain('d***y@example.com')
+    expect(wrapper.text()).toContain('wee***ly@example.com')
+    expect(wrapper.text()).not.toContain('dai***ly@example.com')
   })
 
   it('renders error state when leaderboard request fails', async () => {

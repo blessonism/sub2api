@@ -124,12 +124,12 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	require.Equal(t, currentUserID, repo.currentUserID)
 	require.Equal(t, start, repo.startTime)
 	require.Equal(t, end, repo.endTime)
-	require.Equal(t, "a***a@example.com", got.Ranking[0].MaskedEmail)
+	require.Equal(t, "alp***ha@example.com", got.Ranking[0].MaskedEmail)
 	require.Equal(t, ptrLeaderboardRate(0.6), got.Ranking[0].DiscountRateMultiplier)
 	require.False(t, got.Ranking[0].IsCurrentUser)
 	require.Nil(t, got.Ranking[1].DiscountRateMultiplier)
 	require.Equal(t, int64(11), got.MyRank.Rank)
-	require.Equal(t, "c***t@example.com", got.MyRank.MaskedEmail)
+	require.Equal(t, "cur***nt@example.com", got.MyRank.MaskedEmail)
 	require.Equal(t, ptrLeaderboardRate(0.7), got.MyRank.DiscountRateMultiplier)
 	require.True(t, got.MyRank.IsCurrentUser)
 
@@ -137,6 +137,31 @@ func TestUsageServiceGetUserTokenLeaderboardMasksEmails(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(payload), "alpha@example.com")
 	require.NotContains(t, string(payload), "current@example.com")
+}
+
+func TestMaskUserTokenLeaderboardEmail(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		email string
+		want  string
+	}{
+		{name: "long local part", email: "current@example.com", want: "cur***nt@example.com"},
+		{name: "five char local part", email: "alpha@example.com", want: "alp***ha@example.com"},
+		{name: "three char local part", email: "abc@example.com", want: "abc***bc@example.com"},
+		{name: "two char local part", email: "ab@example.com", want: "a***@example.com"},
+		{name: "one char local part", email: "a@example.com", want: "a***@example.com"},
+		{name: "missing at", email: "opaque-id", want: "o***"},
+		{name: "unicode local part", email: "用户测试@example.com", want: "用户测***测试@example.com"},
+		{name: "empty", email: "", want: "***"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, maskUserTokenLeaderboardEmail(tt.email))
+		})
+	}
 }
 
 func TestUsageServiceGetStatsByUserIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
@@ -201,7 +226,7 @@ func TestUsageServiceGetUserTokenLeaderboardReturnsZeroRankWhenCurrentUserHasNoU
 	require.Equal(t, int64(0), got.MyRank.Requests)
 	require.Equal(t, int64(0), got.MyRank.Tokens)
 	require.Nil(t, got.MyRank.DiscountRateMultiplier)
-	require.Equal(t, "n***e@example.com", got.MyRank.MaskedEmail)
+	require.Equal(t, "no-***ge@example.com", got.MyRank.MaskedEmail)
 	require.True(t, got.MyRank.IsCurrentUser)
 }
 

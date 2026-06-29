@@ -22,7 +22,7 @@ describe('usage leaderboard api', () => {
       ranking: [
         {
           rank: 1,
-          masked_email: 'a***a@example.com',
+          masked_email: 'alp***ha@example.com',
           requests: 10,
           tokens: 1000,
           discount_rate_multiplier: 0.8,
@@ -31,7 +31,7 @@ describe('usage leaderboard api', () => {
       ],
       my_rank: {
         rank: 11,
-        masked_email: 'm***e@example.com',
+        masked_email: 'min***ne@example.com',
         requests: 2,
         tokens: 80,
         discount_rate_multiplier: 0.7,
@@ -55,7 +55,7 @@ describe('usage leaderboard api', () => {
       ranking: [],
       my_rank: {
         rank: 0,
-        masked_email: 'm***e@example.com',
+        masked_email: 'min***ne@example.com',
         requests: 0,
         tokens: 0,
         discount_rate_multiplier: null,
@@ -79,7 +79,7 @@ describe('usage leaderboard api', () => {
       ranking: [],
       my_rank: {
         rank: 0,
-        masked_email: 'm***e@example.com',
+        masked_email: 'min***ne@example.com',
         requests: 0,
         tokens: 0,
         discount_rate_multiplier: null,
