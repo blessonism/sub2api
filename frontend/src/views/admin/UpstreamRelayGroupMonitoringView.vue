@@ -10,28 +10,36 @@
             <span>{{ tM('statsNote') }}</span>
           </div>
         </div>
-        <div class="flex flex-wrap justify-start gap-2 lg:justify-end">
-          <AutoRefreshButton
-            :enabled="autoRefreshEnabled"
-            :interval-seconds="autoRefreshInterval"
-            :countdown="autoRefreshCountdown"
-            :intervals="AUTO_REFRESH_INTERVALS"
-            button-class="btn btn-secondary inline-flex items-center gap-2"
-            @update:enabled="autoRefreshEnabled = $event"
-            @update:interval="autoRefreshInterval = $event"
-          />
-          <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="loading" @click="loadAll">
-            <Icon name="refresh" size="sm" />
-            {{ tM('refresh') }}
-          </button>
-          <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="refreshingMetrics || activeConnectors.length === 0" @click="() => refreshMetricsForAllConnectors()">
-            <Icon name="refresh" size="sm" />
-            {{ refreshingMetrics ? tM('refreshingMetrics') : tM('refreshMetrics') }}
-          </button>
-          <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="generating" @click="generateRun">
-            <Icon name="chart" size="sm" />
-            {{ generating ? tM('generating') : tM('generateSuggestions') }}
-          </button>
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end lg:justify-end">
+          <div class="space-y-1">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('actionGroups.data') }}</div>
+            <div class="flex flex-wrap justify-start gap-2 lg:justify-end">
+              <AutoRefreshButton
+                :enabled="autoRefreshEnabled"
+                :interval-seconds="autoRefreshInterval"
+                :countdown="autoRefreshCountdown"
+                :intervals="AUTO_REFRESH_INTERVALS"
+                button-class="btn btn-secondary inline-flex items-center gap-2"
+                @update:enabled="autoRefreshEnabled = $event"
+                @update:interval="autoRefreshInterval = $event"
+              />
+              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="loading" @click="loadAll">
+                <Icon name="refresh" size="sm" />
+                {{ tM('refresh') }}
+              </button>
+              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="refreshingMetrics || activeConnectors.length === 0" @click="() => refreshMetricsForAllConnectors()">
+                <Icon name="refresh" size="sm" />
+                {{ refreshingMetrics ? tM('refreshingMetrics') : tM('refreshMetrics') }}
+              </button>
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('actionGroups.recommendation') }}</div>
+            <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="generating" @click="generateRun">
+              <Icon name="chart" size="sm" />
+              {{ generating ? tM('generating') : tM('generateSuggestions') }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -321,6 +329,9 @@
                     <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="syncingId === connector.id || refreshingMetrics" @click="sync(connector)">
                       {{ syncingId === connector.id ? tM('connectors.syncing') : tM('connectors.syncAction') }}
                     </button>
+                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="refreshingMetrics" @click="refreshMetricsForSingleConnector(connector)">
+                      {{ connectorMetricsRefreshingLabel(connector) }}
+                    </button>
                     <button class="btn btn-secondary whitespace-nowrap px-3 py-1 text-xs" type="button" @click="openSnapshotDialog(connector)">{{ tM('connectors.snapshots') }}</button>
                     <button class="btn btn-danger whitespace-nowrap px-2 py-1 text-xs" type="button" @click="removeConnector(connector)">{{ tM('connectors.delete') }}</button>
                   </div>
@@ -385,24 +396,73 @@
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ tM('usageHistory.title') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.description') }}</p>
           </div>
-          <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.count', { n: usageHistoryTotal }) }}</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <span v-if="usageHistoryFiltersDirty" class="inline-flex rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">{{ tM('usageHistory.filtersPending') }}</span>
+            <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.count', { n: usageHistoryTotal }) }}</span>
+          </div>
         </div>
         <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto]">
-          <input v-model="usageHistoryStartDate" class="input w-full" type="date" />
-          <input v-model="usageHistoryEndDate" class="input w-full" type="date" />
-          <select v-model.number="usageHistoryConnectorId" class="input w-full">
-            <option :value="0">{{ tM('usageHistory.allConnectors') }}</option>
-            <option v-for="connector in connectors" :key="connector.id" :value="connector.id">{{ connector.name }}</option>
-          </select>
-          <input v-model.trim="usageHistoryGroupId" class="input w-full" type="search" :placeholder="tM('usageHistory.groupPlaceholder')" @keyup.enter="reloadUsageHistory" />
-          <input v-model.trim="usageHistorySearch" class="input w-full" type="search" :placeholder="tM('usageHistory.searchPlaceholder')" @keyup.enter="reloadUsageHistory" />
-          <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="usageHistoryLoading" @click="reloadUsageHistory">
-            <Icon name="refresh" size="sm" />
-            {{ tM('usageHistory.search') }}
-          </button>
+          <label class="block space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.startDate') }}</span>
+            <input v-model="usageHistoryStartDate" class="input w-full" type="date" />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.endDate') }}</span>
+            <input v-model="usageHistoryEndDate" class="input w-full" type="date" />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.connector') }}</span>
+            <select v-model.number="usageHistoryConnectorId" class="input w-full">
+              <option :value="0">{{ tM('usageHistory.allConnectors') }}</option>
+              <option v-for="connector in connectors" :key="connector.id" :value="connector.id">{{ connector.name }}</option>
+            </select>
+          </label>
+          <label class="block space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.groupId') }}</span>
+            <input v-model.trim="usageHistoryGroupId" class="input w-full" type="search" :placeholder="tM('usageHistory.groupPlaceholder')" @keyup.enter="reloadUsageHistory" />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.keyword') }}</span>
+            <input v-model.trim="usageHistorySearch" class="input w-full" type="search" :placeholder="tM('usageHistory.searchPlaceholder')" @keyup.enter="reloadUsageHistory" />
+          </label>
+          <div class="flex items-end">
+            <button class="btn btn-secondary inline-flex w-full items-center justify-center gap-2" type="button" :disabled="usageHistoryLoading" @click="reloadUsageHistory">
+              <Icon name="refresh" size="sm" />
+              {{ usageHistoryFiltersDirty ? tM('usageHistory.applyFilters') : tM('usageHistory.search') }}
+            </button>
+          </div>
         </div>
-        <div v-if="usageHistoryLoading" class="flex min-h-56 items-center justify-center">
-          <LoadingSpinner />
+        <div v-if="usageHistory.length > 0" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/30 md:grid-cols-3">
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryCost') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(usageHistorySummary.cost) }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryTokens') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageTokenMillions(usageHistorySummary.tokens) }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryConnectors') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usageHistorySummary.connectors }}</div>
+          </div>
+        </div>
+        <div v-if="usageHistoryLoading" data-testid="usage-history-skeleton" class="space-y-4 px-4 py-5" role="status" :aria-label="tM('usageHistory.loading')">
+          <span class="sr-only">{{ tM('usageHistory.loading') }}</span>
+          <div v-for="group in 2" :key="group" class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="skeleton h-4 w-32"></div>
+              <div class="skeleton h-3 w-20"></div>
+            </div>
+            <div class="space-y-2">
+              <div v-for="row in 3" :key="row" class="grid grid-cols-[minmax(90px,120px)_1fr_minmax(80px,110px)_minmax(80px,110px)_minmax(120px,160px)] gap-3">
+                <div class="skeleton h-4"></div>
+                <div class="skeleton h-4"></div>
+                <div class="skeleton h-4"></div>
+                <div class="skeleton h-4"></div>
+                <div class="skeleton h-4"></div>
+              </div>
+            </div>
+          </div>
         </div>
         <div v-else-if="usageHistoryGroups.length === 0" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
           {{ tM('usageHistory.empty') }}
@@ -446,8 +506,8 @@
         <div class="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
           <span>{{ tM('usageHistory.pageInfo', { page: usageHistoryPage, pages: usageHistoryPages }) }}</span>
           <div class="flex gap-2">
-            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryPage <= 1" @click="changeUsageHistoryPage(usageHistoryPage - 1)">{{ tM('usageHistory.prev') }}</button>
-            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryPage >= usageHistoryPages" @click="changeUsageHistoryPage(usageHistoryPage + 1)">{{ tM('usageHistory.next') }}</button>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryPage <= 1" @click="changeUsageHistoryPage(usageHistoryPage - 1)">{{ tM('usageHistory.prev') }}</button>
+            <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="usageHistoryLoading || usageHistoryFiltersDirty || usageHistoryPage >= usageHistoryPages" @click="changeUsageHistoryPage(usageHistoryPage + 1)">{{ tM('usageHistory.next') }}</button>
           </div>
         </div>
       </section>
@@ -616,6 +676,12 @@
                 <span class="text-sm font-semibold">{{ tM(autoMonitoringStatusTitleKey) }}</span>
               </div>
               <p class="text-sm">{{ tM(autoMonitoringStatusDetailKey, { sync: savedMonitoringSyncInterval, probe: savedMonitoringProbeInterval, recommendation: savedMonitoringRecommendationInterval }) }}</p>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span v-for="item in autoMonitoringStatusChips" :key="item.key" class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium" :class="item.className">
+                <span class="h-1.5 w-1.5 rounded-full" :class="item.dotClass"></span>
+                {{ item.label }}
+              </span>
             </div>
           </div>
           <div class="grid gap-4 p-4 lg:grid-cols-4">
@@ -1221,6 +1287,7 @@ const connectorAPIKeys = ref<UpstreamRelayAPIKeyOption[]>([])
 const selectedConnectorId = ref(0)
 const syncingId = ref<number | null>(null)
 const refreshingMetrics = ref(false)
+const refreshingMetricsConnectorId = ref<number | null>(null)
 const probingId = ref<number | null>(null)
 const togglingCandidateId = ref<number | null>(null)
 const bulkSyncing = ref(false)
@@ -1276,6 +1343,14 @@ const usageHistoryPage = ref(1)
 const usageHistoryPageSize = 50
 const usageHistoryTotal = ref(0)
 const usageHistoryPages = ref(1)
+const usageHistoryFiltersDirty = ref(false)
+const appliedUsageHistoryFilters = reactive({
+  connectorId: 0,
+  startDate: usageHistoryStartDate.value,
+  endDate: usageHistoryEndDate.value,
+  groupId: '',
+  search: ''
+})
 
 const AUTO_REFRESH_INTERVALS = [15, 30, 60] as const
 const autoRefreshEnabled = ref(false)
@@ -1350,7 +1425,7 @@ const savedMonitoringPolicy = ref<UpstreamRelayMonitoringPolicy | null>(null)
 const activeConnectors = computed(() => connectors.value.filter((item) => item.status === 'active'))
 const enabledCandidateCount = computed(() => candidates.value.filter((item) => item.enabled).length)
 const failedCandidateCount = computed(() => candidates.value.filter((item) => candidateHealthSeverity(item) === 'failed').length)
-const pendingRuns = computed(() => recommendationRuns.value.filter((item) => !item.applied && item.suggestion_count > 0))
+const pendingRuns = computed(() => recommendationRuns.value.filter((item) => item.status === 'success' && !item.applied && item.suggestion_count > 0))
 const pendingSuggestionCount = computed(() => pendingRuns.value.reduce((total, item) => total + item.suggestion_count, 0))
 const latestPendingRun = computed(() => pendingRuns.value[0] || null)
 const pendingSuggestionMap = computed(() => {
@@ -1429,6 +1504,15 @@ const autoMonitoringStatusPanelClass = computed(() => autoMonitoringEnabled.valu
   : 'border-gray-100 bg-gray-50 text-gray-600 dark:border-dark-700 dark:bg-dark-800/70 dark:text-gray-300'
 )
 const autoMonitoringStatusDotClass = computed(() => autoMonitoringEnabled.value ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-500')
+const autoMonitoringStatusChips = computed(() => {
+  const policy = savedMonitoringPolicy.value
+  return [
+    autoMonitoringStatusChip('sync', Boolean(policy?.auto_sync_enabled), savedMonitoringSyncInterval.value),
+    autoMonitoringStatusChip('probe', Boolean(policy?.auto_probe_enabled), savedMonitoringProbeInterval.value),
+    autoMonitoringStatusChip('recommendation', Boolean(policy?.auto_recommendation_enabled), savedMonitoringRecommendationInterval.value),
+    autoMonitoringStatusChip('autoApply', Boolean(policy?.auto_recommendation_enabled && policy?.auto_apply_recommendations_enabled))
+  ]
+})
 
 const bulkFailedItems = computed(() => {
   return (bulkOperationResult.value?.result.items || [])
@@ -1504,6 +1588,22 @@ const usageHistoryGroups = computed(() => {
     groups.get(item.connector_id)!.items.push(item)
   }
   return Array.from(groups.values())
+})
+
+const usageHistorySummary = computed(() => {
+  const connectorIds = new Set<number>()
+  return usageHistory.value.reduce(
+    (summary, item) => {
+      connectorIds.add(item.connector_id)
+      const cost = Number(item.actual_cost ?? 0)
+      const tokens = Number(item.total_tokens ?? 0)
+      if (Number.isFinite(cost)) summary.cost += cost
+      if (Number.isFinite(tokens)) summary.tokens += tokens
+      summary.connectors = connectorIds.size
+      return summary
+    },
+    { cost: 0, tokens: 0, connectors: 0 }
+  )
 })
 
 const overviewTodayUsage = computed(() => {
@@ -1656,10 +1756,9 @@ watch([snapshotChangeConnectorId, snapshotChangeType], () => {
   }
 })
 
-watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate], () => {
+watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate, usageHistoryGroupId, usageHistorySearch], () => {
   if (activeSection.value === 'usageHistory') {
-    usageHistoryPage.value = 1
-    void loadUsageHistory()
+    usageHistoryFiltersDirty.value = true
   }
 })
 
@@ -1810,16 +1909,17 @@ async function loadUsageHistory() {
     const res = await upstreamRelayAPI.listUsageHistory({
       page: usageHistoryPage.value,
       page_size: usageHistoryPageSize,
-      start_date: usageHistoryStartDate.value || undefined,
-      end_date: usageHistoryEndDate.value || undefined,
-      connector_id: usageHistoryConnectorId.value || undefined,
-      upstream_group_id: usageHistoryGroupId.value || undefined,
-      search: usageHistorySearch.value || undefined
+      start_date: appliedUsageHistoryFilters.startDate || undefined,
+      end_date: appliedUsageHistoryFilters.endDate || undefined,
+      connector_id: appliedUsageHistoryFilters.connectorId || undefined,
+      upstream_group_id: appliedUsageHistoryFilters.groupId || undefined,
+      search: appliedUsageHistoryFilters.search || undefined
     })
     usageHistory.value = res.items
     usageHistoryTotal.value = res.total
     usageHistoryPages.value = res.pages || 1
     usageHistoryPage.value = res.page || usageHistoryPage.value
+    usageHistoryFiltersDirty.value = false
   } catch (err) {
     error.value = err instanceof Error ? err.message : tM('errors.loadUsageHistoryFailed')
   } finally {
@@ -1828,12 +1928,20 @@ async function loadUsageHistory() {
 }
 
 function reloadUsageHistory() {
+  Object.assign(appliedUsageHistoryFilters, {
+    connectorId: usageHistoryConnectorId.value,
+    startDate: usageHistoryStartDate.value,
+    endDate: usageHistoryEndDate.value,
+    groupId: usageHistoryGroupId.value,
+    search: usageHistorySearch.value
+  })
   usageHistoryPage.value = 1
   void loadUsageHistory()
 }
 
 function changeUsageHistoryPage(page: number) {
   usageHistoryPage.value = Math.max(1, Math.min(page, usageHistoryPages.value))
+  usageHistoryFiltersDirty.value = false
   void loadUsageHistory()
 }
 
@@ -1960,11 +2068,28 @@ async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Pr
   return result
 }
 
+function setMetricsRefreshResultItems(items: UpstreamRelayConnectorMetricsRefreshResult[], expanded?: boolean) {
+  metricsRefreshResult.value = {
+    items,
+    updatedAt: new Date().toISOString(),
+    expanded: expanded ?? items.some((item) => item.status !== 'success')
+  }
+}
+
+function mergeMetricsRefreshResultItem(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  const currentItems = metricsRefreshResult.value?.items || []
+  const nextItems = currentItems.some((item) => item.connector.id === result.connector.id)
+    ? currentItems.map((item) => (item.connector.id === result.connector.id ? result : item))
+    : [result, ...currentItems]
+  setMetricsRefreshResultItems(nextItems, Boolean(metricsRefreshResult.value?.expanded) || result.status !== 'success')
+}
+
 async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}) {
   if (refreshingMetrics.value) return
   const targets = activeConnectors.value.length > 0 ? activeConnectors.value : connectors.value
   if (targets.length === 0) return
   refreshingMetrics.value = true
+  refreshingMetricsConnectorId.value = null
   if (!options.silent) error.value = ''
   const warnings: string[] = []
   const results: UpstreamRelayConnectorMetricsRefreshResult[] = []
@@ -1981,12 +2106,11 @@ async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}
       if (warning) warnings.push(warning)
     }
     await refreshCandidatesSilent()
+    if (activeSection.value === 'usageHistory') {
+      await loadUsageHistory()
+    }
     if (!options.silent) {
-      metricsRefreshResult.value = {
-        items: results,
-        updatedAt: new Date().toISOString(),
-        expanded: results.some((item) => item.status !== 'success')
-      }
+      setMetricsRefreshResultItems(results)
     }
     if (warnings.length > 0 && !options.silent) {
       error.value = warnings[0]
@@ -1997,6 +2121,34 @@ async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}
     }
   } finally {
     refreshingMetrics.value = false
+    refreshingMetricsConnectorId.value = null
+  }
+}
+
+async function refreshMetricsForSingleConnector(connector: UpstreamRelayConnector) {
+  if (refreshingMetrics.value) return
+  refreshingMetrics.value = true
+  refreshingMetricsConnectorId.value = connector.id
+  error.value = ''
+  let result: UpstreamRelayConnectorMetricsRefreshResult
+  try {
+    try {
+      result = await refreshMetricsForConnector(connector)
+    } catch (err) {
+      result = buildMetricsRefreshFailureResult(connector, err)
+    }
+    await refreshCandidatesSilent()
+    if (activeSection.value === 'usageHistory') {
+      await loadUsageHistory()
+    }
+    mergeMetricsRefreshResultItem(result)
+    const warning = metricsRefreshWarning(result)
+    if (warning) error.value = warning
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+  } finally {
+    refreshingMetrics.value = false
+    refreshingMetricsConnectorId.value = null
   }
 }
 
@@ -2463,12 +2615,15 @@ function statusClass(status: string) {
 }
 
 function recommendationRunStatusLabel(run: UpstreamRelayRecommendationRun) {
+  if (run.status === 'failed') return tM('recommendations.failed')
   if (run.applied) return tM('recommendations.applied')
   if (run.suggestion_count === 0) return tM('recommendations.noSuggestions')
+  if (run.status === 'success') return tM('recommendations.pending')
   return tM('recommendations.pending')
 }
 
 function recommendationRunStatusClass(run: UpstreamRelayRecommendationRun) {
+  if (run.status === 'failed') return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
   if (run.applied) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
   if (run.suggestion_count === 0) return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
   return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
@@ -2611,6 +2766,26 @@ function accountBalanceCheckedLabel(
 
 function connectorMetricsRefreshResult(connectorID: number) {
   return metricsRefreshResultByConnectorId.value.get(connectorID) || null
+}
+
+type AutoMonitoringStatusChipKey = 'sync' | 'probe' | 'recommendation' | 'autoApply'
+
+function autoMonitoringStatusChip(key: AutoMonitoringStatusChipKey, enabled: boolean, interval?: number) {
+  const status = tM(`monitoring.statusChips.${enabled ? 'enabled' : 'disabled'}`)
+  return {
+    key,
+    label: interval
+      ? tM(`monitoring.statusChips.${key}`, { status, interval })
+      : tM(`monitoring.statusChips.${key}`, { status }),
+    className: enabled
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+      : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300',
+    dotClass: enabled ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-500'
+  }
+}
+
+function connectorMetricsRefreshingLabel(connector: UpstreamRelayConnector) {
+  return refreshingMetricsConnectorId.value === connector.id ? tM('connectors.refreshingMetrics') : tM('connectors.refreshMetrics')
 }
 
 function buildMetricsRefreshFailureResult(connector: UpstreamRelayConnector, err: unknown): UpstreamRelayConnectorMetricsRefreshResult {
