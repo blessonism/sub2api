@@ -48,8 +48,17 @@ type GptIntelligenceService struct {
 
 func NewGptIntelligenceService() *GptIntelligenceService {
 	return &GptIntelligenceService{
-		client: &http.Client{Timeout: gptIntelligenceFetchTimeout},
+		client: newGptIntelligenceHTTPClient(),
 		now:    time.Now,
+	}
+}
+
+func newGptIntelligenceHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{
+		Timeout:   gptIntelligenceFetchTimeout,
+		Transport: transport,
 	}
 }
 

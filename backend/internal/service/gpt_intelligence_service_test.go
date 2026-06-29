@@ -3,6 +3,7 @@
 package service
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -49,6 +50,15 @@ func TestParseGptIntelligenceHTML_ReturnsUnavailableWhenTitlesMissing(t *testing
 
 	require.Error(t, err)
 	require.True(t, infraErrorIsServiceUnavailable(err))
+}
+
+func TestNewGptIntelligenceHTTPClient_DisablesEnvironmentProxy(t *testing.T) {
+	client := newGptIntelligenceHTTPClient()
+	transport, ok := client.Transport.(*http.Transport)
+
+	require.True(t, ok)
+	require.Nil(t, transport.Proxy)
+	require.Equal(t, gptIntelligenceFetchTimeout, client.Timeout)
 }
 
 func TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers(t *testing.T) {
