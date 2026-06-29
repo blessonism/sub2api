@@ -1,5 +1,5 @@
-const CODEX_RADAR_CURRENT_URL = 'https://codexradar.com/current.json'
-const DEFAULT_FETCH_TIMEOUT_MS = 8000
+import { apiClient } from './client'
+
 const DEFAULT_TIMEZONE = 'UTC'
 
 export type GptIntelligenceStatus = 'green' | 'yellow' | 'red' | 'unknown'
@@ -78,29 +78,6 @@ function readTimezone(value: unknown): string {
   }
 }
 
-function createFetchSignal(options: FetchOptions): { signal: AbortSignal; cleanup: () => void } {
-  const ctrl = new AbortController()
-  const abort = () => ctrl.abort()
-  const timeoutMs = options.timeoutMs && options.timeoutMs > 0
-    ? options.timeoutMs
-    : DEFAULT_FETCH_TIMEOUT_MS
-  const timeoutId = globalThis.setTimeout(abort, timeoutMs)
-
-  if (options.signal?.aborted) {
-    abort()
-  } else {
-    options.signal?.addEventListener('abort', abort, { once: true })
-  }
-
-  return {
-    signal: ctrl.signal,
-    cleanup: () => {
-      globalThis.clearTimeout(timeoutId)
-      options.signal?.removeEventListener('abort', abort)
-    },
-  }
-}
-
 function parseRun(value: unknown): GptIntelligenceRun | null {
   if (!isRecord(value)) return null
   return {
@@ -121,6 +98,24 @@ function parseRun(value: unknown): GptIntelligenceRun | null {
 }
 
 function parseComparisons(value: unknown): GptIntelligenceComparison[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((raw) => {
+        if (!isRecord(raw)) return null
+        const key = readString(raw.key) || readString(raw.label)
+        return {
+          key,
+          label: readString(raw.label) || key,
+          model: readString(raw.model),
+          reasoning_effort: readString(raw.reasoning_effort),
+          latest: parseRun(raw.latest),
+          recent_days: Array.isArray(raw.recent_days)
+            ? raw.recent_days.map(parseRun).filter((item): item is GptIntelligenceRun => item !== null)
+            : [],
+        }
+      })
+      .filter((item): item is GptIntelligenceComparison => item !== null)
+  }
   if (!isRecord(value)) return []
   return Object.entries(value)
     .map(([key, raw]) => {
@@ -154,8 +149,10 @@ export function parseGptIntelligenceSnapshot(value: unknown): GptIntelligenceSna
   if (!isRecord(value)) {
     throw new Error('invalid codex radar payload')
   }
-  const modelIq = value.model_iq
-  if (!isRecord(modelIq)) {
+  const hasDirectSnapshot =
+    'latest' in value || 'recent_days' in value || 'comparisons' in value
+  const modelIq = isRecord(value.model_iq) ? value.model_iq : value
+  if (!isRecord(modelIq) || (!isRecord(value.model_iq) && !hasDirectSnapshot)) {
     throw new Error('missing model_iq payload')
   }
 
@@ -176,22 +173,9 @@ export function parseGptIntelligenceSnapshot(value: unknown): GptIntelligenceSna
 export async function fetchGptIntelligenceSnapshot(
   options: FetchOptions = {},
 ): Promise<GptIntelligenceSnapshot> {
-  const { signal, cleanup } = createFetchSignal(options)
-
-  try {
-    const res = await fetch(CODEX_RADAR_CURRENT_URL, {
-      headers: {
-        Accept: 'application/json',
-      },
-      signal,
-    })
-
-    if (!res.ok) {
-      throw new Error(`codex radar request failed: ${res.status}`)
-    }
-
-    return parseGptIntelligenceSnapshot(await res.json())
-  } finally {
-    cleanup()
-  }
+  const { data } = await apiClient.get<GptIntelligenceSnapshot>('/channel-monitors/gpt-intelligence', {
+    signal: options.signal,
+    timeout: options.timeoutMs,
+  })
+  return parseGptIntelligenceSnapshot(data)
 }

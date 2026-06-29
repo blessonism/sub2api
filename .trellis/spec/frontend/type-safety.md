@@ -85,6 +85,21 @@ Required checks:
 - API tests cover both preview and persisted generate endpoint paths, the connector metrics refresh endpoint path, and the usage-history endpoint path.
 - View tests cover the usage-history tab loading/rendering path and required zh/en i18n keys.
 
+### Pattern: Backend-normalized external metric snapshots
+
+When adding a frontend API for external metrics displayed inside user pages:
+
+- Fetch through the project backend route, not the third-party public URL.
+- Keep interfaces in the API module that owns the feature, and align field names with backend JSON names.
+- Parse unknown API data with runtime guards before exposing it to views.
+- Preserve nullable unknown fields as `null`; do not convert unavailable external data to zero.
+- If a legacy vendor wrapper is supported, keep it in the parser for compatibility tests only. The runtime fetch path should still use the backend route.
+
+Required checks:
+
+- API test verifies the backend endpoint path, abort signal, and timeout forwarding.
+- Parser test covers backend-normalized payloads, legacy wrapped payloads, invalid payload rejection, and nullable optional fields.
+
 ---
 
 ## Forbidden Patterns
