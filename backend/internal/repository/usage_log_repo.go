@@ -3084,7 +3084,7 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			auto_multipliers AS (
 				SELECT
 					a.user_id,
-					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier)) AS rate_multiplier
+					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier, ugr.rate_multiplier, target_group.rate_multiplier)) AS rate_multiplier
 				FROM token_usage_auto_assignments a
 				JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
 				JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'
@@ -3095,7 +3095,7 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 				GROUP BY a.user_id
 			),
 			common_multiplier AS (
-				SELECT g.visible_rate_multiplier AS rate_multiplier
+				SELECT COALESCE(g.visible_rate_multiplier, g.rate_multiplier) AS rate_multiplier
 				FROM settings s
 				JOIN groups g ON g.id = CASE WHEN s.value ~ '^[0-9]+$' THEN s.value::bigint ELSE 0 END
 				WHERE s.key = '` + service.SettingKeyTokenLeaderboardCommonGroupID + `'
