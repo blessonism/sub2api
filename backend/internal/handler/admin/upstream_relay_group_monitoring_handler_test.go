@@ -65,6 +65,10 @@ func (r *upstreamRelayHandlerRepo) UpdateConnector(context.Context, *service.Ups
 	return nil, service.ErrUpstreamRelayConnectorNotFound
 }
 
+func (r *upstreamRelayHandlerRepo) UpdateConnectorTokens(context.Context, int64, int64, string, string) (*service.UpstreamRelayConnector, error) {
+	return nil, service.ErrUpstreamRelayConnectorNotFound
+}
+
 func (r *upstreamRelayHandlerRepo) SoftDeleteConnector(context.Context, int64) error {
 	return service.ErrUpstreamRelayConnectorNotFound
 }

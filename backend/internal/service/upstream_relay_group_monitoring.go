@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -92,6 +93,9 @@ var (
 	ErrUpstreamRelayAppliedRunDelete = infraerrors.Conflict(
 		"UPSTREAM_RELAY_APPLIED_RUN_DELETE", "applied recommendation run cannot be deleted",
 	)
+	ErrUpstreamRelayCredentialVersionConflict = infraerrors.Conflict(
+		"UPSTREAM_RELAY_CREDENTIAL_VERSION_CONFLICT", "upstream relay connector credentials were updated concurrently",
+	)
 )
 
 type UpstreamRelayConnector struct {
@@ -141,6 +145,7 @@ type UpstreamRelayConnectorInput struct {
 	BaseURL           string  `json:"base_url"`
 	AuthMode          string  `json:"auth_mode"`
 	BearerToken       *string `json:"bearer_token,omitempty"`
+	RefreshToken      *string `json:"refresh_token,omitempty"`
 	LoginEmail        *string `json:"login_email,omitempty"`
 	LoginPassword     *string `json:"login_password,omitempty"`
 	Cookie            *string `json:"cookie,omitempty"`
@@ -523,6 +528,7 @@ type UpstreamRelayRepository interface {
 	GetConnector(ctx context.Context, id int64) (*UpstreamRelayConnector, error)
 	CreateConnector(ctx context.Context, connector *UpstreamRelayConnector) (*UpstreamRelayConnector, error)
 	UpdateConnector(ctx context.Context, connector *UpstreamRelayConnector, credentialsUpdated bool) (*UpstreamRelayConnector, error)
+	UpdateConnectorTokens(ctx context.Context, connectorID int64, expectedCredentialVersion int64, bearerTokenEncrypted, refreshTokenEncrypted string) (*UpstreamRelayConnector, error)
 	SoftDeleteConnector(ctx context.Context, id int64) error
 	UpsertSnapshots(ctx context.Context, connectorID int64, snapshots []UpstreamRelayGroupRateSnapshot) error
 	ListSnapshots(ctx context.Context, connectorID int64) ([]UpstreamRelayGroupRateSnapshot, error)
@@ -657,7 +663,9 @@ func (s *UpstreamRelayGroupMonitoringService) SyncConnector(ctx context.Context,
 	if err := s.persistKnownUsageHistory(ctx, id, snapshots); err != nil {
 		return nil, err
 	}
-	s.refreshConnectorAccountBalance(ctx, connector)
+	if err := s.refreshConnectorAccountBalance(ctx, connector); err != nil {
+		return nil, err
+	}
 	if err := s.repo.MarkConnectorSync(ctx, id, UpstreamRelayConnectorStatusActive, ""); err != nil {
 		return nil, err
 	}
@@ -1385,8 +1393,10 @@ func (s *UpstreamRelayGroupMonitoringService) normalizeConnectorInput(ctx contex
 	if (baseURLChanged || previousAuthMode == UpstreamRelayAuthModePasswordLogin) && !explicitBearerToken {
 		return nil, false, ErrUpstreamRelayInvalidManualSession
 	}
-	connector.RefreshTokenEncrypted = ""
 	connector.LoginEmailEncrypted = ""
+	if (baseURLChanged || previousAuthMode == UpstreamRelayAuthModePasswordLogin) && input.RefreshToken == nil {
+		connector.RefreshTokenEncrypted = ""
+	}
 	if baseURLChanged {
 		connector.CookieEncrypted = ""
 		connector.UserAgentEncrypted = ""
@@ -1397,6 +1407,19 @@ func (s *UpstreamRelayGroupMonitoringService) normalizeConnectorInput(ctx contex
 			return nil, false, fmt.Errorf("encrypt bearer token: %w", err)
 		}
 		connector.BearerTokenEncrypted = encrypted
+		updated = true
+	}
+	if input.RefreshToken != nil {
+		refreshToken := strings.TrimSpace(*input.RefreshToken)
+		if refreshToken == "" {
+			connector.RefreshTokenEncrypted = ""
+		} else {
+			encrypted, err := s.encryptor.Encrypt(refreshToken)
+			if err != nil {
+				return nil, false, fmt.Errorf("encrypt refresh token: %w", err)
+			}
+			connector.RefreshTokenEncrypted = encrypted
+		}
 		updated = true
 	}
 	if input.Cookie != nil && strings.TrimSpace(*input.Cookie) != "" {
@@ -1794,17 +1817,21 @@ func isRelayUsageDate(v string) bool {
 	return err == nil && parsed.Format("2006-01-02") == v
 }
 
-func (s *UpstreamRelayGroupMonitoringService) refreshConnectorAccountBalance(ctx context.Context, connector *UpstreamRelayConnector) {
+func (s *UpstreamRelayGroupMonitoringService) refreshConnectorAccountBalance(ctx context.Context, connector *UpstreamRelayConnector) error {
 	if s == nil || s.repo == nil || connector == nil {
-		return
+		return nil
 	}
 	balance, err := s.fetchUpstreamAccountBalance(ctx, connector)
 	checkedAt := time.Now()
 	if err != nil {
 		_ = s.repo.UpdateConnectorAccountBalance(ctx, connector.ID, nil, nil)
-		return
+		if connector.Status == UpstreamRelayConnectorStatusNeedsReauth {
+			return err
+		}
+		return nil
 	}
 	_ = s.repo.UpdateConnectorAccountBalance(ctx, connector.ID, balance, &checkedAt)
+	return nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAccountBalance(ctx context.Context, connector *UpstreamRelayConnector) (*float64, error) {
@@ -1820,6 +1847,68 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAccountBalance(ctx co
 }
 
 func (s *UpstreamRelayGroupMonitoringService) getUpstreamJSON(ctx context.Context, connector *UpstreamRelayConnector, path string) ([]byte, error) {
+	body, err := s.doUpstreamJSON(ctx, connector, path)
+	if err == nil {
+		return body, nil
+	}
+	var upstreamErr *upstreamRelayHTTPError
+	if !errors.As(err, &upstreamErr) || !upstreamErr.isTokenExpired() || strings.TrimSpace(connector.RefreshTokenPlain) == "" {
+		return nil, err
+	}
+	if refreshErr := s.refreshUpstreamRelayConnectorToken(ctx, connector); refreshErr != nil {
+		if s.reloadConnectorCredentialsAfterRefreshFailure(ctx, connector) == nil {
+			return s.retryUpstreamJSONAfterRefresh(ctx, connector, path)
+		}
+		s.markConnectorRefreshFailure(ctx, connector, refreshErr)
+		return nil, fmt.Errorf("refresh upstream token: %w", refreshErr)
+	}
+	return s.retryUpstreamJSONAfterRefresh(ctx, connector, path)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) retryUpstreamJSONAfterRefresh(ctx context.Context, connector *UpstreamRelayConnector, path string) ([]byte, error) {
+	body, err := s.doUpstreamJSON(ctx, connector, path)
+	if err == nil {
+		return body, nil
+	}
+	var upstreamErr *upstreamRelayHTTPError
+	if errors.As(err, &upstreamErr) && upstreamErr.isTokenExpired() {
+		s.markConnectorRefreshFailure(ctx, connector, err)
+	}
+	return nil, err
+}
+
+func (s *UpstreamRelayGroupMonitoringService) markConnectorRefreshFailure(ctx context.Context, connector *UpstreamRelayConnector, err error) {
+	if s == nil || s.repo == nil || connector == nil || err == nil {
+		return
+	}
+	message := sanitizeUpstreamRelayError(fmt.Sprintf("refresh upstream token: %v", err))
+	connector.Status = UpstreamRelayConnectorStatusNeedsReauth
+	connector.LastError = message
+	_ = s.repo.MarkConnectorSync(ctx, connector.ID, UpstreamRelayConnectorStatusNeedsReauth, message)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) reloadConnectorCredentialsAfterRefreshFailure(ctx context.Context, connector *UpstreamRelayConnector) error {
+	if s == nil || s.repo == nil || connector == nil {
+		return ErrUpstreamRelayConnectorNotFound
+	}
+	previousVersion := connector.CredentialVersion
+	return s.reloadConnectorCredentialsIfVersionAdvanced(ctx, connector, previousVersion)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) reloadConnectorCredentialsIfVersionAdvanced(ctx context.Context, connector *UpstreamRelayConnector, previousVersion int64) error {
+	if err := s.reloadConnectorCredentials(ctx, connector); err != nil {
+		return err
+	}
+	if connector.CredentialVersion <= previousVersion {
+		return ErrUpstreamRelayCredentialVersionConflict
+	}
+	if strings.TrimSpace(connector.BearerTokenPlain) == "" {
+		return fmt.Errorf("upstream bearer token is empty after credential reload")
+	}
+	return nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) doUpstreamJSON(ctx context.Context, connector *UpstreamRelayConnector, path string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(connector.BaseURL, "/")+path, nil)
 	if err != nil {
 		return nil, err
@@ -1838,9 +1927,128 @@ func (s *UpstreamRelayGroupMonitoringService) getUpstreamJSON(ctx context.Contex
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream HTTP %d: %s", resp.StatusCode, sanitizeUpstreamRelayError(string(body)))
+		return nil, &upstreamRelayHTTPError{StatusCode: resp.StatusCode, Body: body}
 	}
 	return body, nil
+}
+
+type upstreamRelayHTTPError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *upstreamRelayHTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("upstream HTTP %d: %s", e.StatusCode, sanitizeUpstreamRelayError(string(e.Body)))
+}
+
+func (e *upstreamRelayHTTPError) isTokenExpired() bool {
+	return e != nil && e.StatusCode == http.StatusUnauthorized && upstreamRelayBodyHasReason(e.Body, "TOKEN_EXPIRED")
+}
+
+func upstreamRelayBodyHasReason(body []byte, reason string) bool {
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return strings.Contains(strings.ToUpper(string(body)), reason)
+	}
+	root, _ := raw.(map[string]any)
+	if root == nil {
+		return false
+	}
+	if strings.EqualFold(relayString(root["code"]), reason) || strings.EqualFold(relayString(root["reason"]), reason) {
+		return true
+	}
+	if data, ok := root["data"].(map[string]any); ok {
+		return strings.EqualFold(relayString(data["code"]), reason) || strings.EqualFold(relayString(data["reason"]), reason)
+	}
+	return false
+}
+
+func (s *UpstreamRelayGroupMonitoringService) refreshUpstreamRelayConnectorToken(ctx context.Context, connector *UpstreamRelayConnector) error {
+	if s == nil || s.repo == nil {
+		return fmt.Errorf("upstream token refresh requires repository")
+	}
+	if connector == nil {
+		return ErrUpstreamRelayConnectorNotFound
+	}
+	refreshToken := strings.TrimSpace(connector.RefreshTokenPlain)
+	if refreshToken == "" {
+		return fmt.Errorf("upstream refresh token is empty")
+	}
+	payload, err := json.Marshal(map[string]string{"refresh_token": refreshToken})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(connector.BaseURL, "/")+"/api/v1/auth/refresh", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("upstream refresh HTTP %d: %s", resp.StatusCode, sanitizeUpstreamRelayError(string(body)))
+	}
+	token, _, err := parseUpstreamRelayLoginToken(body)
+	if err != nil {
+		return err
+	}
+	accessToken := normalizeBearerToken(token.AccessToken)
+	nextRefreshToken := strings.TrimSpace(token.RefreshToken)
+	if accessToken == "" || nextRefreshToken == "" {
+		return fmt.Errorf("upstream refresh response missing access_token or refresh_token")
+	}
+	encryptedAccess, err := s.encryptor.Encrypt(accessToken)
+	if err != nil {
+		return fmt.Errorf("encrypt bearer token: %w", err)
+	}
+	encryptedRefresh, err := s.encryptor.Encrypt(nextRefreshToken)
+	if err != nil {
+		return fmt.Errorf("encrypt refresh token: %w", err)
+	}
+	updated, err := s.repo.UpdateConnectorTokens(ctx, connector.ID, connector.CredentialVersion, encryptedAccess, encryptedRefresh)
+	if err != nil {
+		if errors.Is(err, ErrUpstreamRelayCredentialVersionConflict) {
+			return s.reloadConnectorCredentialsIfVersionAdvanced(ctx, connector, connector.CredentialVersion)
+		}
+		return err
+	}
+	connector.BearerTokenEncrypted = updated.BearerTokenEncrypted
+	connector.RefreshTokenEncrypted = updated.RefreshTokenEncrypted
+	connector.CredentialVersion = updated.CredentialVersion
+	connector.Status = updated.Status
+	connector.LastError = updated.LastError
+	connector.BearerTokenPlain = accessToken
+	connector.RefreshTokenPlain = nextRefreshToken
+	return nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) reloadConnectorCredentials(ctx context.Context, connector *UpstreamRelayConnector) error {
+	latest, err := s.repo.GetConnector(ctx, connector.ID)
+	if err != nil {
+		return err
+	}
+	if err := s.decryptConnector(latest); err != nil {
+		return err
+	}
+	if strings.TrimSpace(latest.BearerTokenPlain) == "" {
+		return fmt.Errorf("upstream bearer token is empty after credential reload")
+	}
+	connector.BearerTokenEncrypted = latest.BearerTokenEncrypted
+	connector.RefreshTokenEncrypted = latest.RefreshTokenEncrypted
+	connector.CredentialVersion = latest.CredentialVersion
+	connector.Status = latest.Status
+	connector.LastError = latest.LastError
+	connector.BearerTokenPlain = latest.BearerTokenPlain
+	connector.RefreshTokenPlain = latest.RefreshTokenPlain
+	return nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Context, candidate UpstreamRelayCandidate, account *Account) UpstreamRelayProbeResult {

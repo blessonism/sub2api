@@ -41,6 +41,7 @@ export interface UpstreamRelayConnectorInput {
   base_url: string
   auth_mode?: UpstreamRelayAuthMode
   bearer_token?: string
+  refresh_token?: string
   login_email?: string
   login_password?: string
   cookie?: string

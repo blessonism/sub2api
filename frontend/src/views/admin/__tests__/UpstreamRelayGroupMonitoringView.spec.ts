@@ -17,6 +17,8 @@ const {
   refreshConnectorMetrics,
   syncAllConnectors,
   probeAllCandidates,
+  createConnector,
+  updateConnector,
   createCandidate,
   updateCandidate,
   listAccounts,
@@ -35,6 +37,8 @@ const {
   refreshConnectorMetrics: vi.fn(),
   syncAllConnectors: vi.fn(),
   probeAllCandidates: vi.fn(),
+  createConnector: vi.fn(),
+  updateConnector: vi.fn(),
   createCandidate: vi.fn(),
   updateCandidate: vi.fn(),
   listAccounts: vi.fn(),
@@ -56,6 +60,8 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     refreshConnectorMetrics,
     syncAllConnectors,
     probeAllCandidates,
+    createConnector,
+    updateConnector,
     createCandidate,
     updateCandidate,
   },
@@ -186,6 +192,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     refreshConnectorMetrics.mockReset()
     syncAllConnectors.mockReset()
     probeAllCandidates.mockReset()
+    createConnector.mockReset()
+    updateConnector.mockReset()
     createCandidate.mockReset()
     updateCandidate.mockReset()
     listAccounts.mockReset()
@@ -239,6 +247,106 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       pages: 1,
     })
     listGroups.mockResolvedValue([{ id: 9, name: 'vip', description: '', user_count: 0, created_at: '', updated_at: '' }])
+    createConnector.mockResolvedValue({
+      id: 9,
+      name: 'relay-password',
+      base_url: 'https://relay-password.example.com',
+      auth_mode: 'password_login',
+      status: 'active',
+      credential_version: 1,
+      has_bearer_token: false,
+      has_refresh_token: false,
+      has_login_email: true,
+      has_cookie: false,
+      has_user_agent: false,
+      created_at: '2026-06-29T12:00:00Z',
+      updated_at: '2026-06-29T12:00:00Z',
+    })
+    updateConnector.mockResolvedValue({
+      id: 7,
+      name: 'relay-a',
+      base_url: 'https://relay.example.com',
+      auth_mode: 'manual_session',
+      status: 'active',
+      credential_version: 2,
+      has_bearer_token: true,
+      has_refresh_token: false,
+      has_login_email: false,
+      has_cookie: false,
+      has_user_agent: false,
+      created_at: '2026-06-28T12:00:00Z',
+      updated_at: '2026-06-29T12:00:00Z',
+    })
+  })
+
+  it('新建手动会话连接器会提交 refresh token', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    const inputs = wrapper.findAll('input')
+    await inputs.find((input) => input.attributes('type') === 'text')!.setValue('relay-manual')
+    await inputs.find((input) => input.attributes('type') === 'url')!.setValue('https://relay.example.com')
+    const passwordInputs = wrapper.findAll('input[type="password"]')
+    await passwordInputs[0].setValue('manual-access-token')
+    await passwordInputs[1].setValue('manual-refresh-token')
+
+    await wrapper.find('form#connector-form').trigger('submit')
+    await flushPromises()
+
+    expect(createConnector).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'relay-manual',
+      base_url: 'https://relay.example.com',
+      auth_mode: 'manual_session',
+      bearer_token: 'manual-access-token',
+      refresh_token: 'manual-refresh-token',
+    }))
+  })
+
+  it('编辑手动会话连接器可显式清空已保存的 refresh token', async () => {
+    listConnectors.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        has_bearer_token: true,
+        has_refresh_token: true,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.edit'))!.trigger('click')
+    await flushPromises()
+
+    const clearRefreshCheckbox = wrapper.find('form#connector-form input[type="checkbox"]')
+    expect(clearRefreshCheckbox.exists()).toBe(true)
+    await clearRefreshCheckbox.setValue(true)
+    await wrapper.find('form#connector-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateConnector).toHaveBeenCalledWith(7, expect.objectContaining({
+      name: 'relay-a',
+      base_url: 'https://relay.example.com',
+      auth_mode: 'manual_session',
+      refresh_token: '',
+    }))
   })
 
   it('初始加载会拉取连接器和候选映射的后续分页，避免概览静默截断', async () => {
