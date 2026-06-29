@@ -142,6 +142,26 @@ func (r *upstreamRelayRepository) UpdateConnector(ctx context.Context, connector
 	return r.GetConnector(ctx, connector.ID)
 }
 
+func (r *upstreamRelayRepository) UpdateConnectorTokens(ctx context.Context, connectorID int64, expectedCredentialVersion int64, bearerTokenEncrypted, refreshTokenEncrypted string) (*service.UpstreamRelayConnector, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE upstream_relay_connectors
+		SET bearer_token_encrypted=$3,
+		    refresh_token_encrypted=$4,
+		    status=$5,
+		    last_error=NULL,
+		    credential_version=credential_version + 1,
+		    updated_at=NOW()
+		WHERE id=$1 AND credential_version=$2 AND deleted_at IS NULL
+	`, connectorID, expectedCredentialVersion, nullStringIfEmpty(bearerTokenEncrypted), nullStringIfEmpty(refreshTokenEncrypted), service.UpstreamRelayConnectorStatusActive)
+	if err != nil {
+		return nil, err
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return nil, service.ErrUpstreamRelayCredentialVersionConflict
+	}
+	return r.GetConnector(ctx, connectorID)
+}
+
 func (r *upstreamRelayRepository) SoftDeleteConnector(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE upstream_relay_connectors SET deleted_at=NOW(), updated_at=NOW(), status=$2 WHERE id=$1 AND deleted_at IS NULL`, id, service.UpstreamRelayConnectorStatusPaused)
 	if err != nil {

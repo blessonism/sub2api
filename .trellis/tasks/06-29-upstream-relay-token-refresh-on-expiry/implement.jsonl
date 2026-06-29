@@ -1,0 +1,5 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"遵守下游 fork 分支与任务边界，避免混入当前前端弹窗修复分支"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"包含 Admin upstream relay group monitoring 专项契约、错误矩阵和测试要求"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"本任务跨远端认证、服务、仓储、状态展示和测试边界"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"复用现有登录解析、错误清洗和 credential_version 机制，避免重复实现"}
+{"file":".trellis/tasks/06-29-upstream-relay-token-refresh-on-expiry/research/token-refresh-investigation.md","reason":"token 过期根因、refresh 契约、并发风险和推荐实现方案"}

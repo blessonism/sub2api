@@ -1,0 +1,5 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"检查实现是否基于 custom/main 且未混入无关前端改动"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"核对上游倍率监控专项契约、metrics refresh partial 语义和 usage unknown 行为"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查 token 刷新后的数据流、错误传播和状态展示是否一致"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"检查是否复用现有解析、脱敏、版本控制机制"}
+{"file":".trellis/tasks/06-29-upstream-relay-token-refresh-on-expiry/research/token-refresh-investigation.md","reason":"核对实现是否覆盖研究文档列出的根因、风险和测试点"}

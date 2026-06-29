@@ -1042,6 +1042,14 @@
           <input v-model.trim="connectorForm.bearer_token" class="input w-full" type="password" autocomplete="new-password" :placeholder="tM('connectorForm.placeholderBearerToken')" />
         </label>
         <label class="block space-y-1">
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelRefreshToken') }}</span>
+          <input v-model.trim="connectorForm.refresh_token" class="input w-full" type="password" autocomplete="new-password" :disabled="connectorForm.clear_refresh_token" :placeholder="tM('connectorForm.placeholderRefreshToken')" />
+        </label>
+        <label v-if="connectorForm.id && connectorForm.has_refresh_token" class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+          <input v-model="connectorForm.clear_refresh_token" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+          <span>{{ tM('connectorForm.clearRefreshToken') }}</span>
+        </label>
+        <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelCookie') }}</span>
           <textarea v-model.trim="connectorForm.cookie" class="input min-h-[74px] w-full" :placeholder="tM('connectorForm.placeholderCookie')" />
         </label>
@@ -1450,6 +1458,9 @@ const connectorForm = reactive({
   base_url: '',
   auth_mode: 'manual_session' as 'manual_session' | 'password_login',
   bearer_token: '',
+  refresh_token: '',
+  clear_refresh_token: false,
+  has_refresh_token: false,
   login_email: '',
   login_password: '',
   cookie: '',
@@ -2159,7 +2170,7 @@ async function hydrateLatestPendingRun() {
 }
 
 function resetConnectorForm() {
-  Object.assign(connectorForm, { id: 0, name: '', base_url: '', auth_mode: 'manual_session', bearer_token: '', login_email: '', login_password: '', cookie: '', user_agent: '' })
+  Object.assign(connectorForm, { id: 0, name: '', base_url: '', auth_mode: 'manual_session', bearer_token: '', refresh_token: '', clear_refresh_token: false, has_refresh_token: false, login_email: '', login_password: '', cookie: '', user_agent: '' })
 }
 
 function openCreateConnector() {
@@ -2179,6 +2190,9 @@ function editConnector(connector: UpstreamRelayConnector) {
     base_url: connector.base_url,
     auth_mode: connector.auth_mode,
     bearer_token: '',
+    refresh_token: '',
+    clear_refresh_token: false,
+    has_refresh_token: connector.has_refresh_token,
     login_email: '',
     login_password: '',
     cookie: '',
@@ -2196,6 +2210,9 @@ async function submitConnector() {
       base_url: connectorForm.base_url,
       auth_mode: connectorForm.auth_mode,
       bearer_token: connectorForm.auth_mode === 'manual_session' ? connectorForm.bearer_token || undefined : undefined,
+      refresh_token: connectorForm.auth_mode === 'manual_session'
+        ? connectorForm.clear_refresh_token ? '' : connectorForm.refresh_token || undefined
+        : undefined,
       login_email: connectorForm.auth_mode === 'password_login' ? connectorForm.login_email || undefined : undefined,
       login_password: connectorForm.auth_mode === 'password_login' ? connectorForm.login_password || undefined : undefined,
       cookie: connectorForm.auth_mode === 'manual_session' ? connectorForm.cookie || undefined : undefined,

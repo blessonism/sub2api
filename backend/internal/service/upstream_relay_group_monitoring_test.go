@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -94,8 +95,15 @@ type upstreamRelayMetricsRefreshRepo struct {
 	snapshots            []UpstreamRelayGroupRateSnapshot
 	bindings             []UpstreamRelayCandidateUsageBinding
 	upsertSnapshotsCalls int
+	tokenUpdateCalls     int
+	tokenUpdateVersion   int64
+	tokenUpdateAccess    string
+	tokenUpdateRefresh   string
+	tokenUpdateErr       error
 	updatedBalance       *float64
 	updatedBalanceAt     *time.Time
+	syncStatus           string
+	syncError            string
 	usageByGroup         map[string]UpstreamRelayGroupTodayUsage
 	usageCheckedAt       *time.Time
 	usageHistoryRows     []UpstreamRelayGroupUsageHistoryUpsert
@@ -114,12 +122,42 @@ func (r *upstreamRelayMetricsRefreshRepo) UpsertSnapshots(context.Context, int64
 	return nil
 }
 
+func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorTokens(_ context.Context, connectorID int64, expectedCredentialVersion int64, bearerTokenEncrypted, refreshTokenEncrypted string) (*UpstreamRelayConnector, error) {
+	r.tokenUpdateCalls++
+	r.tokenUpdateVersion = expectedCredentialVersion
+	r.tokenUpdateAccess = bearerTokenEncrypted
+	r.tokenUpdateRefresh = refreshTokenEncrypted
+	if r.tokenUpdateErr != nil {
+		return nil, r.tokenUpdateErr
+	}
+	if r.connector == nil || r.connector.ID != connectorID {
+		return nil, ErrUpstreamRelayConnectorNotFound
+	}
+	r.connector.BearerTokenEncrypted = bearerTokenEncrypted
+	r.connector.RefreshTokenEncrypted = refreshTokenEncrypted
+	r.connector.CredentialVersion = expectedCredentialVersion + 1
+	r.connector.Status = UpstreamRelayConnectorStatusActive
+	r.connector.LastError = ""
+	copy := *r.connector
+	return &copy, nil
+}
+
 func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorAccountBalance(_ context.Context, _ int64, balance *float64, checkedAt *time.Time) error {
 	r.updatedBalance = balance
 	r.updatedBalanceAt = checkedAt
 	if r.connector != nil {
 		r.connector.UpstreamAccountBalance = balance
 		r.connector.UpstreamAccountBalanceCheckedAt = checkedAt
+	}
+	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) MarkConnectorSync(_ context.Context, _ int64, status string, errMessage string) error {
+	r.syncStatus = status
+	r.syncError = errMessage
+	if r.connector != nil {
+		r.connector.Status = status
+		r.connector.LastError = errMessage
 	}
 	return nil
 }
@@ -249,6 +287,330 @@ func TestUpstreamRelayFetchGroupSnapshotsUsesOverrideRateFirst(t *testing.T) {
 	require.Equal(t, 2.5, snapshots[1].FinalRateMultiplier)
 	require.Nil(t, snapshots[1].OverrideRateMultiplier)
 	require.Equal(t, UpstreamRelayRateSourceAvailable, snapshots[1].Source)
+}
+
+func TestUpstreamRelayGetUpstreamJSONRefreshesExpiredTokenAndRetries(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		if profileCalls == 1 {
+			require.Equal(t, "Bearer expired-access", r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired","access_token":"leaked-access"}`))
+			return
+		}
+		require.Equal(t, "Bearer fresh-access", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		require.Equal(t, http.MethodPost, r.Method)
+		var payload map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.Equal(t, "old-refresh", payload["refresh_token"])
+		_, _ = w.Write([]byte(`{"data":{"access_token":"fresh-access","refresh_token":"fresh-refresh","token_type":"Bearer"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	body, err := svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"data":{"balance":12.34}}`, string(body))
+	require.Equal(t, 2, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, int64(3), repo.tokenUpdateVersion)
+	require.Equal(t, "enc:fresh-access", repo.tokenUpdateAccess)
+	require.Equal(t, "enc:fresh-refresh", repo.tokenUpdateRefresh)
+	require.Equal(t, "fresh-access", connector.BearerTokenPlain)
+	require.Equal(t, "fresh-refresh", connector.RefreshTokenPlain)
+	require.Equal(t, int64(4), connector.CredentialVersion)
+}
+
+func TestUpstreamRelayManualSessionRefreshesExpiredTokenAndRetries(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		if profileCalls == 1 {
+			require.Equal(t, "Bearer manual-expired-access", r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired"}`))
+			return
+		}
+		require.Equal(t, "Bearer manual-fresh-access", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":45.67}}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		var payload map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.Equal(t, "manual-refresh", payload["refresh_token"])
+		_, _ = w.Write([]byte(`{"data":{"access_token":"manual-fresh-access","refresh_token":"manual-fresh-refresh","token_type":"Bearer"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			AuthMode:              UpstreamRelayAuthModeManualSession,
+			BearerTokenEncrypted:  "manual-expired-access",
+			RefreshTokenEncrypted: "manual-refresh",
+			CredentialVersion:     5,
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	body, err := svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"data":{"balance":45.67}}`, string(body))
+	require.Equal(t, 2, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, "enc:manual-fresh-access", repo.tokenUpdateAccess)
+	require.Equal(t, "enc:manual-fresh-refresh", repo.tokenUpdateRefresh)
+	require.Empty(t, repo.syncStatus)
+}
+
+func TestUpstreamRelayGetUpstreamJSONMarksNeedsReauthWhenRefreshFails(t *testing.T) {
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired"}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid refresh","refresh_token":"leaked-refresh","access_token":"leaked-access","cookie":"leaked-cookie"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	_, err = svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.Error(t, err)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, 0, repo.tokenUpdateCalls)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, repo.syncStatus)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, connector.Status)
+	require.Contains(t, repo.syncError, "upstream refresh HTTP 401")
+	require.Contains(t, repo.syncError, "[REDACTED]")
+	require.NotContains(t, repo.syncError, "leaked-refresh")
+	require.NotContains(t, repo.syncError, "leaked-access")
+	require.NotContains(t, repo.syncError, "leaked-cookie")
+	require.NotContains(t, err.Error(), "leaked-refresh")
+	require.NotContains(t, err.Error(), "leaked-access")
+	require.NotContains(t, err.Error(), "leaked-cookie")
+}
+
+func TestUpstreamRelayGetUpstreamJSONReloadsConcurrentRefreshAfterRefreshFailure(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	var repo *upstreamRelayMetricsRefreshRepo
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		if profileCalls == 1 {
+			require.Equal(t, "Bearer expired-access", r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired"}`))
+			return
+		}
+		require.Equal(t, "Bearer concurrent-fresh-access", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":98.76}}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		repo.connector.BearerTokenEncrypted = "concurrent-fresh-access"
+		repo.connector.RefreshTokenEncrypted = "concurrent-fresh-refresh"
+		repo.connector.CredentialVersion = 4
+		repo.connector.Status = UpstreamRelayConnectorStatusActive
+		repo.connector.LastError = ""
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid refresh","refresh_token":"old-refresh"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo = &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+			Status:                UpstreamRelayConnectorStatusActive,
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	body, err := svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"data":{"balance":98.76}}`, string(body))
+	require.Equal(t, 2, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, int64(4), connector.CredentialVersion)
+	require.Equal(t, "concurrent-fresh-access", connector.BearerTokenPlain)
+	require.Equal(t, "concurrent-fresh-refresh", connector.RefreshTokenPlain)
+	require.Empty(t, repo.syncStatus)
+}
+
+func TestUpstreamRelayGetUpstreamJSONMarksNeedsReauthWhenTokenUpdateConflictDoesNotAdvanceVersion(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		require.Equal(t, "Bearer expired-access", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired"}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		_, _ = w.Write([]byte(`{"data":{"access_token":"fresh-access","refresh_token":"fresh-refresh","token_type":"Bearer"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+		},
+		tokenUpdateErr: ErrUpstreamRelayCredentialVersionConflict,
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	_, err = svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.Error(t, err)
+	require.Equal(t, 1, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, repo.syncStatus)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, connector.Status)
+	require.Contains(t, repo.syncError, "credentials were updated concurrently")
+	require.Equal(t, int64(3), connector.CredentialVersion)
+}
+
+func TestUpstreamRelayGetUpstreamJSONMarksNeedsReauthWhenRetryStillTokenExpired(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		if profileCalls == 1 {
+			require.Equal(t, "Bearer expired-access", r.Header.Get("Authorization"))
+		} else {
+			require.Equal(t, "Bearer fresh-but-rejected-access", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired","access_token":"leaked-retry-access"}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		_, _ = w.Write([]byte(`{"data":{"access_token":"fresh-but-rejected-access","refresh_token":"fresh-refresh","token_type":"Bearer"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+	connector, err := repo.GetConnector(context.Background(), 7)
+	require.NoError(t, err)
+	require.NoError(t, svc.decryptConnector(connector))
+
+	_, err = svc.getUpstreamJSON(context.Background(), connector, "/api/v1/user/profile")
+
+	require.Error(t, err)
+	require.Equal(t, 2, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, repo.syncStatus)
+	require.Equal(t, UpstreamRelayConnectorStatusNeedsReauth, connector.Status)
+	require.Contains(t, repo.syncError, "upstream HTTP 401")
+	require.Contains(t, repo.syncError, "[REDACTED]")
+	require.NotContains(t, repo.syncError, "leaked-retry-access")
+}
+
+func TestUpstreamRelayGetUpstreamJSONDoesNotRefreshWithoutRefreshToken(t *testing.T) {
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired","refresh_token":"leaked-refresh"}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		http.Error(w, "refresh should not be called", http.StatusInternalServerError)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	svc := &UpstreamRelayGroupMonitoringService{httpClient: server.Client()}
+
+	_, err := svc.getUpstreamJSON(context.Background(), &UpstreamRelayConnector{
+		ID:               7,
+		BaseURL:          server.URL,
+		BearerTokenPlain: "expired-access",
+	}, "/api/v1/user/profile")
+
+	require.Error(t, err)
+	require.Equal(t, 0, refreshCalls)
+	require.NotContains(t, err.Error(), "leaked-refresh")
+	require.Contains(t, err.Error(), "[REDACTED]")
 }
 
 func TestUpstreamRelayFetchGroupSnapshotsLeavesUsageEmptyWithoutBindings(t *testing.T) {
@@ -406,6 +768,57 @@ func TestUpstreamRelayRefreshConnectorMetricsUpdatesUsageFromBoundAPIKeyStats(t 
 	require.Equal(t, 5.75, *result.Snapshots[0].TodayActualCost)
 	require.NotNil(t, result.Snapshots[1].TodayActualCost)
 	require.Equal(t, 0.0, *result.Snapshots[1].TodayActualCost)
+}
+
+func TestUpstreamRelayRefreshConnectorMetricsReturnsConnectorAfterTokenRefresh(t *testing.T) {
+	profileCalls := 0
+	refreshCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		profileCalls++
+		if profileCalls == 1 {
+			require.Equal(t, "Bearer expired-access", r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"TOKEN_EXPIRED","message":"Token has expired"}`))
+			return
+		}
+		require.Equal(t, "Bearer fresh-access", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		_, _ = w.Write([]byte(`{"data":{"access_token":"fresh-access","refresh_token":"fresh-refresh","token_type":"Bearer"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                    7,
+			BaseURL:               server.URL,
+			BearerTokenEncrypted:  "expired-access",
+			RefreshTokenEncrypted: "old-refresh",
+			CredentialVersion:     3,
+			Status:                UpstreamRelayConnectorStatusNeedsReauth,
+			LastError:             "previous token expired",
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
+	require.True(t, result.BalanceAvailable)
+	require.False(t, result.UsageAvailable)
+	require.Equal(t, 2, profileCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.NotNil(t, result.Connector)
+	require.Equal(t, int64(4), result.Connector.CredentialVersion)
+	require.Equal(t, UpstreamRelayConnectorStatusActive, result.Connector.Status)
+	require.Empty(t, result.Connector.LastError)
+	require.True(t, result.Connector.HasRefreshToken)
 }
 
 func TestUpstreamRelayListConnectorAPIKeysReturnsVisibleOptions(t *testing.T) {
@@ -595,36 +1008,43 @@ func TestUpstreamRelayRefreshConnectorMetricsExplainsMissingSnapshots(t *testing
 func TestUpstreamRelayConnectorInputEncryptsAndResponseRedactsSecrets(t *testing.T) {
 	svc := &UpstreamRelayGroupMonitoringService{encryptor: upstreamRelayTestEncryptor{}}
 	token := "Bearer sk-live-secret-token"
+	refreshToken := "refresh-live-secret-token"
 	cookie := "cf_clearance=super-secret-cookie"
 	userAgent := "Mozilla/5.0 relay integration browser"
 
 	connector, credentialsUpdated, err := svc.normalizeConnectorInput(context.Background(), UpstreamRelayConnectorInput{
-		Name:        "relay",
-		BaseURL:     "https://relay.example.com/",
-		AuthMode:    UpstreamRelayAuthModeManualSession,
-		BearerToken: &token,
-		Cookie:      &cookie,
-		UserAgent:   &userAgent,
+		Name:         "relay",
+		BaseURL:      "https://relay.example.com/",
+		AuthMode:     UpstreamRelayAuthModeManualSession,
+		BearerToken:  &token,
+		RefreshToken: &refreshToken,
+		Cookie:       &cookie,
+		UserAgent:    &userAgent,
 	}, nil, 99)
 
 	require.NoError(t, err)
 	require.True(t, credentialsUpdated)
 	require.Equal(t, "https://relay.example.com", connector.BaseURL)
 	require.Equal(t, "enc:sk-live-secret-token", connector.BearerTokenEncrypted)
+	require.Equal(t, "enc:refresh-live-secret-token", connector.RefreshTokenEncrypted)
 	require.Equal(t, "enc:cf_clearance=super-secret-cookie", connector.CookieEncrypted)
 	require.Equal(t, "enc:Mozilla/5.0 relay integration browser", connector.UserAgentEncrypted)
 
 	connector.BearerTokenPlain = "sk-live-secret-token"
+	connector.RefreshTokenPlain = refreshToken
 	connector.CookiePlain = "cf_clearance=super-secret-cookie"
 	connector.UserAgentPlain = userAgent
 	svc.prepareConnectorResponse(connector)
 
 	require.True(t, connector.HasBearerToken)
+	require.True(t, connector.HasRefreshToken)
 	require.True(t, connector.HasCookie)
 	require.True(t, connector.HasUserAgent)
 	require.Equal(t, "sk-l...oken", connector.BearerTokenMasked)
+	require.NotContains(t, connector.RefreshTokenMasked, refreshToken)
 	require.NotContains(t, connector.CookieMasked, "super-secret-cookie")
 	require.Empty(t, connector.BearerTokenPlain)
+	require.Empty(t, connector.RefreshTokenPlain)
 	require.Empty(t, connector.CookiePlain)
 	require.Empty(t, connector.UserAgentPlain)
 }
