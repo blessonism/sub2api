@@ -1,0 +1,32 @@
+{
+  "id": "user-leaderboard-email-mask",
+  "name": "user-leaderboard-email-mask",
+  "title": "用户排行榜邮箱脱敏显示",
+  "description": "用户侧 Token 排行榜邮箱按用户名部分前 3 位和 @ 前最后 2 位展示",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "leaderboard",
+  "package": "frontend,backend",
+  "priority": "P2",
+  "creator": "Edom",
+  "assignee": "Edom",
+  "createdAt": "2026-06-29",
+  "completedAt": "2026-06-29",
+  "branch": "fix/user-leaderboard-email-mask",
+  "base_branch": "custom/main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/internal/service/usage_service.go",
+    "backend/internal/service/usage_service_leaderboard_test.go",
+    "backend/internal/handler/usage_handler_leaderboard_test.go",
+    "frontend/src/views/user/__tests__/LeaderboardView.spec.ts",
+    "frontend/src/api/__tests__/usage.leaderboard.spec.ts"
+  ],
+  "notes": "用户侧排行榜 masked_email 改为排行榜专用脱敏规则，不影响登录/TOTP 等公共 MaskEmail 场景。",
+  "meta": {}
+}

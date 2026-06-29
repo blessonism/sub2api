@@ -375,7 +375,7 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 		if err != nil {
 			return nil, fmt.Errorf("get current user: %w", err)
 		}
-		myRank.MaskedEmail = MaskEmail(user.Email)
+		myRank.MaskedEmail = maskUserTokenLeaderboardEmail(user.Email)
 	}
 
 	return &usagestats.UserTokenLeaderboardResponse{
@@ -391,12 +391,43 @@ func (s *UsageService) GetUserTokenLeaderboard(ctx context.Context, userID int64
 func userTokenLeaderboardPublicItem(row usagestats.UserTokenLeaderboardRow, currentUserID int64) usagestats.UserTokenLeaderboardItem {
 	return usagestats.UserTokenLeaderboardItem{
 		Rank:                   row.Rank,
-		MaskedEmail:            MaskEmail(row.Email),
+		MaskedEmail:            maskUserTokenLeaderboardEmail(row.Email),
 		Requests:               row.Requests,
 		Tokens:                 row.Tokens,
 		DiscountRateMultiplier: normalizeLeaderboardRateMultiplier(row.DiscountRateMultiplier),
 		IsCurrentUser:          row.UserID == currentUserID,
 	}
+}
+
+// maskUserTokenLeaderboardEmail 仅用于用户侧排行榜：保留用户名前 3 位和 @ 前最后 2 位。
+func maskUserTokenLeaderboardEmail(email string) string {
+	if len(email) < 3 {
+		return "***"
+	}
+
+	atIdx := -1
+	for i, c := range email {
+		if c == '@' {
+			atIdx = i
+			break
+		}
+	}
+
+	if atIdx == -1 || atIdx < 1 {
+		emailRunes := []rune(email)
+		if len(emailRunes) == 0 {
+			return "***"
+		}
+		return string(emailRunes[:1]) + "***"
+	}
+
+	localPart := email[:atIdx]
+	domain := email[atIdx:]
+	localRunes := []rune(localPart)
+	if len(localRunes) <= 2 {
+		return string(localRunes[:1]) + "***" + domain
+	}
+	return string(localRunes[:3]) + "***" + string(localRunes[len(localRunes)-2:]) + domain
 }
 
 func normalizeLeaderboardRateMultiplier(value *float64) *float64 {
