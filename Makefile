@@ -18,12 +18,12 @@ dev-down:
 dev-status:
 	@./deploy/start-local.sh --status
 
-# 一键编译前后端
-build: build-backend build-frontend
+# 一键编译前后端：先生成前端产物，再把最新 dist 嵌入后端二进制
+build: build-frontend build-backend
 
-# 编译后端（复用 backend/Makefile）
+# 编译后端（复用 backend/Makefile，嵌入最新前端产物）
 build-backend:
-	@$(MAKE) -C backend build
+	@$(MAKE) -C backend build-embed
 
 # 编译前端（需要已安装依赖）
 build-frontend:
