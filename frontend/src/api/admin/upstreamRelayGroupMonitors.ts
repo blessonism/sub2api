@@ -184,6 +184,11 @@ export interface UpstreamRelayBulkOperationItem {
   success: boolean
   count?: number
   error_reason?: string
+  probe_result_id?: number
+  latency_ms?: number | null
+  http_status?: number | null
+  error_class?: string
+  probed_at?: string
 }
 
 export interface UpstreamRelayBulkOperationResult {
