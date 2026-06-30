@@ -417,6 +417,25 @@ describe('useAuthStore', () => {
       expect(mockReportActivity).toHaveBeenCalledTimes(2)
     })
 
+    it('忽略显式标记区域内的前台活跃事件', async () => {
+      vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+      const ignoredArea = document.createElement('div')
+      const button = document.createElement('button')
+      ignoredArea.dataset.ignoreForegroundActivity = 'true'
+      ignoredArea.appendChild(button)
+      document.body.appendChild(ignoredArea)
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+
+      button.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      await Promise.resolve()
+
+      expect(mockReportActivity).not.toHaveBeenCalled()
+      ignoredArea.remove()
+    })
+
     it('页面隐藏时不上报活跃，恢复可见后可按近期交互上报', async () => {
       vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
       mockLogin.mockResolvedValue(fakeAuthResponse)

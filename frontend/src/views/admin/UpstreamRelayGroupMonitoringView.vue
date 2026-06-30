@@ -1014,9 +1014,23 @@
     width="wide"
     :close-on-escape="false"
     :close-on-click-outside="false"
-    @close="closeConnectorDialog"
+    :show-close-button="false"
+    :animated="false"
+    @close="keepConnectorDialogOpen"
   >
-    <form id="connector-form" class="space-y-4" @pointerdown.stop @mousedown.stop @click.stop @submit.prevent="submitConnector">
+    <form
+      id="connector-form"
+      class="space-y-4"
+      data-ignore-foreground-activity="true"
+      @pointerdown.stop
+      @pointerup.stop
+      @mousedown.stop
+      @mouseup.stop
+      @touchstart.stop
+      @touchend.stop
+      @click.stop
+      @submit.prevent="submitConnector"
+    >
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelName') }}</span>
         <input v-model.trim="connectorForm.name" class="input w-full" type="text" />
@@ -1025,13 +1039,26 @@
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelBaseUrl') }}</span>
         <input v-model.trim="connectorForm.base_url" class="input w-full" type="url" placeholder="https://upstream.example.com" />
       </label>
-      <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" @pointerdown.stop @mousedown.stop @click.stop>
+      <div
+        class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800"
+        @pointerdown.stop
+        @pointerup.stop
+        @mousedown.stop
+        @mouseup.stop
+        @touchstart.stop
+        @touchend.stop
+        @click.stop
+      >
         <button
           type="button"
           class="rounded-md px-3 py-2 text-sm font-medium transition"
           :class="connectorForm.auth_mode === 'manual_session' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
           @pointerdown.stop
+          @pointerup.stop
           @mousedown.stop
+          @mouseup.stop
+          @touchstart.stop
+          @touchend.stop
           @click.stop.prevent="setConnectorAuthMode('manual_session')"
         >
           {{ tM('connectorForm.authManual') }}
@@ -1041,7 +1068,11 @@
           class="rounded-md px-3 py-2 text-sm font-medium transition"
           :class="connectorForm.auth_mode === 'password_login' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
           @pointerdown.stop
+          @pointerup.stop
           @mousedown.stop
+          @mouseup.stop
+          @touchstart.stop
+          @touchend.stop
           @click.stop.prevent="setConnectorAuthMode('password_login')"
         >
           {{ tM('connectorForm.authPassword') }}
@@ -1069,7 +1100,19 @@
           <input v-model.trim="connectorForm.user_agent" class="input w-full" type="text" :placeholder="tM('connectorForm.placeholderUserAgent')" />
         </label>
       </template>
-      <div v-else class="space-y-4" @pointerdown.stop @mousedown.stop @click.stop @input.stop @change.stop>
+      <div
+        v-else
+        class="space-y-4"
+        @pointerdown.stop
+        @pointerup.stop
+        @mousedown.stop
+        @mouseup.stop
+        @touchstart.stop
+        @touchend.stop
+        @click.stop
+        @input.stop
+        @change.stop
+      >
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelEmail') }}</span>
           <input v-model.trim="connectorForm.login_email" class="input w-full" type="email" autocomplete="username" :placeholder="connectorForm.id ? tM('connectorForm.placeholderEmailEdit') : tM('connectorForm.placeholderEmail')" />
@@ -1078,6 +1121,10 @@
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('connectorForm.labelPassword') }}</span>
           <input v-model.trim="connectorForm.login_password" class="input w-full" type="password" autocomplete="current-password" :placeholder="tM('connectorForm.placeholderPassword')" />
         </label>
+      </div>
+      <div v-if="connectorFormError" data-testid="connector-form-error" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+        <div class="font-medium">{{ tM('connectorForm.saveFailedTitle') }}</div>
+        <div class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{{ connectorFormError }}</div>
       </div>
     </form>
     <template #footer>
@@ -1319,7 +1366,7 @@ import HealthRateBar from '@/components/admin/upstreamRelay/HealthRateBar.vue'
 import RateSourceTag from '@/components/admin/upstreamRelay/RateSourceTag.vue'
 import CandidateHealthDialog from '@/components/admin/upstreamRelay/CandidateHealthDialog.vue'
 import accountsAPI from '@/api/admin/accounts'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import upstreamRelayAPI, {
   type UpstreamRelayCandidate,
   type UpstreamRelayConnector,
@@ -1415,6 +1462,7 @@ const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelay
 const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
 const activeSection = ref<SectionKey>('candidates')
 const connectorDialogOpen = ref(false)
+const connectorFormError = ref('')
 const candidateDialogOpen = ref(false)
 const snapshotDialogOpen = ref(false)
 const snapshotConnector = ref<UpstreamRelayConnector | null>(null)
@@ -1453,6 +1501,7 @@ const appliedUsageHistoryFilters = reactive({
 })
 
 const AUTO_REFRESH_INTERVALS = [15, 30, 60] as const
+const PASSWORD_LOGIN_NEEDS_MANUAL_SESSION_CODE = 'UPSTREAM_RELAY_PASSWORD_LOGIN_NEEDS_MANUAL_SESSION'
 const autoRefreshEnabled = ref(false)
 const autoRefreshInterval = ref(30)
 const autoRefreshCountdown = ref(30)
@@ -2182,6 +2231,7 @@ async function hydrateLatestPendingRun() {
 
 function resetConnectorForm() {
   Object.assign(connectorForm, { id: 0, name: '', base_url: '', auth_mode: 'manual_session', bearer_token: '', refresh_token: '', clear_refresh_token: false, has_refresh_token: false, login_email: '', login_password: '', cookie: '', user_agent: '' })
+  connectorFormError.value = ''
 }
 
 function openCreateConnector() {
@@ -2192,6 +2242,7 @@ function openCreateConnector() {
 function setConnectorAuthMode(mode: 'manual_session' | 'password_login') {
   connectorForm.auth_mode = mode
   connectorDialogOpen.value = true
+  connectorFormError.value = ''
 }
 
 function closeConnectorDialog() {
@@ -2199,7 +2250,25 @@ function closeConnectorDialog() {
   resetConnectorForm()
 }
 
+function keepConnectorDialogOpen() {
+  connectorDialogOpen.value = true
+}
+
+function formatConnectorSaveError(err: unknown): string {
+  const rawMessage = extractApiErrorMessage(err, tM('errors.saveConnectorFailed'))
+  if (extractApiErrorCode(err) !== PASSWORD_LOGIN_NEEDS_MANUAL_SESSION_CODE) {
+    return rawMessage
+  }
+
+  return [
+    tM('connectorForm.passwordLoginNeedsManualSession.reason'),
+    tM('connectorForm.passwordLoginNeedsManualSession.action'),
+    tM('connectorForm.passwordLoginNeedsManualSession.original', { message: rawMessage })
+  ].join('\n')
+}
+
 function editConnector(connector: UpstreamRelayConnector) {
+  connectorFormError.value = ''
   Object.assign(connectorForm, {
     id: connector.id,
     name: connector.name,
@@ -2219,7 +2288,7 @@ function editConnector(connector: UpstreamRelayConnector) {
 
 async function submitConnector() {
   savingConnector.value = true
-  error.value = ''
+  connectorFormError.value = ''
   try {
     const payload = {
       name: connectorForm.name,
@@ -2243,7 +2312,7 @@ async function submitConnector() {
     resetConnectorForm()
     await loadAll()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.saveConnectorFailed')
+    connectorFormError.value = formatConnectorSaveError(err)
   } finally {
     savingConnector.value = false
   }

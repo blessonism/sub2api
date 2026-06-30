@@ -2324,12 +2324,18 @@ export default {
         labelUserAgent: 'User-Agent',
         placeholderUserAgent: "Browser's User-Agent string",
         labelEmail: 'Upstream Email',
-        placeholderEmail: 'admin@example.com',
+        placeholderEmail: "admin{'@'}example.com",
         placeholderEmailEdit: 'Leave blank to keep existing',
         labelPassword: 'Upstream Password',
         placeholderPassword: 'Used once to obtain token, not stored',
         cancel: 'Cancel',
         saving: 'Saving...',
+        saveFailedTitle: 'Connector was not saved',
+        passwordLoginNeedsManualSession: {
+          reason: 'Reason: the upstream login triggered browser verification or 2FA, so the system cannot complete login with only email and password.',
+          action: 'Recommended action: finish the upstream login in a browser, switch to Manual Session, then save with the Bearer Token, Cookie, or Refresh Token.',
+          original: 'Original error: {message}'
+        },
         saveAndVerify: 'Save & Verify',
         updateAndVerify: 'Update & Verify'
       },

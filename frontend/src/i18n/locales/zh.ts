@@ -2345,12 +2345,18 @@ export default {
         labelUserAgent: 'User-Agent',
         placeholderUserAgent: '浏览器请求里的 User-Agent',
         labelEmail: '上游邮箱',
-        placeholderEmail: 'admin@example.com',
+        placeholderEmail: "admin{'@'}example.com",
         placeholderEmailEdit: '留空沿用已保存邮箱',
         labelPassword: '上游密码',
         placeholderPassword: '仅用于本次换取 token，不保存',
         cancel: '取消',
         saving: '保存中...',
+        saveFailedTitle: '连接器未保存',
+        passwordLoginNeedsManualSession: {
+          reason: '原因：上游登录触发了浏览器验证或双因素认证，系统无法仅凭账号密码自动完成登录。',
+          action: '建议：请在浏览器中完成上游登录后，切换为“手动登录态”，填入 Bearer Token、Cookie 或 Refresh Token 后再保存。',
+          original: '原始错误：{message}'
+        },
         saveAndVerify: '保存并验证',
         updateAndVerify: '更新并验证'
       },
