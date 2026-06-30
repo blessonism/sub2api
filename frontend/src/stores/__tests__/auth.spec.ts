@@ -378,32 +378,29 @@ describe('useAuthStore', () => {
   })
 
   describe('foreground activity heartbeat', () => {
-    it('仅在登录后页面可见且有近期交互时上报活跃', async () => {
+    it('登录后页面可见时立即上报活跃，但不会因闲置定时器重复上报', async () => {
       vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
       mockLogin.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
 
       await store.login({ email: 'test@example.com', password: '123456' })
-
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
-      expect(mockReportActivity).not.toHaveBeenCalled()
-
-      window.dispatchEvent(new Event('pointerdown'))
       await Promise.resolve()
+
       expect(mockReportActivity).toHaveBeenCalledTimes(1)
 
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
       expect(mockReportActivity).toHaveBeenCalledTimes(1)
     })
 
-    it('持续前台交互时按心跳间隔再次上报活跃', async () => {
+    it('持续前台访问时通过交互按最小间隔再次上报活跃', async () => {
       vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
       mockLogin.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
 
       await store.login({ email: 'test@example.com', password: '123456' })
+      await Promise.resolve()
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
 
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
       window.dispatchEvent(new Event('pointerdown'))
       await Promise.resolve()
       expect(mockReportActivity).toHaveBeenCalledTimes(1)
@@ -414,6 +411,8 @@ describe('useAuthStore', () => {
       expect(mockReportActivity).toHaveBeenCalledTimes(1)
 
       await vi.advanceTimersByTimeAsync(60 * 1000)
+      window.dispatchEvent(new Event('scroll'))
+      await Promise.resolve()
       expect(mockReportActivity).toHaveBeenCalledTimes(2)
     })
 
@@ -428,6 +427,9 @@ describe('useAuthStore', () => {
       document.body.appendChild(ignoredArea)
 
       await store.login({ email: 'test@example.com', password: '123456' })
+      await Promise.resolve()
+      expect(mockReportActivity).toHaveBeenCalledTimes(1)
+      mockReportActivity.mockClear()
 
       button.dispatchEvent(new Event('pointerdown', { bubbles: true }))
       await Promise.resolve()
@@ -436,12 +438,14 @@ describe('useAuthStore', () => {
       ignoredArea.remove()
     })
 
-    it('页面隐藏时不上报活跃，恢复可见后可按近期交互上报', async () => {
+    it('页面隐藏时不上报活跃，恢复可见后立即按节流上报', async () => {
       vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
       mockLogin.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
 
       await store.login({ email: 'test@example.com', password: '123456' })
+      await Promise.resolve()
+      mockReportActivity.mockClear()
 
       Object.defineProperty(document, 'visibilityState', {
         configurable: true,
@@ -451,17 +455,14 @@ describe('useAuthStore', () => {
       await Promise.resolve()
       expect(mockReportActivity).not.toHaveBeenCalled()
 
-      vi.setSystemTime(new Date('2026-06-27T00:01:00Z'))
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+      expect(mockReportActivity).not.toHaveBeenCalled()
+
       Object.defineProperty(document, 'visibilityState', {
         configurable: true,
         value: 'visible',
       })
       document.dispatchEvent(new Event('visibilitychange'))
-      await Promise.resolve()
-
-      expect(mockReportActivity).not.toHaveBeenCalled()
-
-      window.dispatchEvent(new Event('pointerdown'))
       await Promise.resolve()
 
       expect(mockReportActivity).toHaveBeenCalledTimes(1)
@@ -474,6 +475,8 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
 
       await store.login({ email: 'test@example.com', password: '123456' })
+      await Promise.resolve()
+      mockReportActivity.mockClear()
       await store.logout()
 
       window.dispatchEvent(new Event('pointerdown'))

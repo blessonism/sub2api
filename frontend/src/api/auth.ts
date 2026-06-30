@@ -158,7 +158,7 @@ export async function getCurrentUser() {
 
 /**
  * Report foreground user activity.
- * 前端只应在页面可见且近期有真实用户交互时调用。
+ * 前端只应在登录态页面进入前台或用户交互时调用，具体写入频率由前后端共同节流。
  */
 export async function reportActivity(): Promise<void> {
   await apiClient.post('/user/activity')
