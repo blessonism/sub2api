@@ -228,30 +228,57 @@
             <span class="block text-sm font-semibold">{{ template.title }}</span>
             <span class="mt-0.5 block text-xs leading-5 opacity-80">{{ template.description }}</span>
           </button>
+          <div
+            v-if="!promptTemplates.length"
+            class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500 dark:border-dark-700 dark:bg-dark-900/50 dark:text-gray-400"
+          >
+            {{ t('channelStatus.modelIq.intelligenceCheck.emptyTemplates') }}
+          </div>
+          <button
+            v-if="canEditIntelligenceTemplates"
+            type="button"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-500/40 dark:hover:text-primary-300"
+            @click="addPromptTemplate"
+          >
+            <Icon name="plus" size="xs" />
+            {{ t('channelStatus.modelIq.intelligenceCheck.addTemplate') }}
+          </button>
         </div>
       </div>
 
       <div class="min-w-0 flex-1">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {{ activePromptTemplate.title }}
+                {{ activePromptTemplate.title || t('channelStatus.modelIq.intelligenceCheck.emptyTemplates') }}
               </span>
               <span
-                v-if="canEditIntelligenceTemplates"
+                v-if="canEditIntelligenceTemplates && activePromptTemplateAvailable"
                 class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-300"
               >
-                {{ t('channelStatus.modelIq.intelligenceCheck.adminDraft') }}
+                {{ activePromptTemplateIsCustom
+                  ? t('channelStatus.modelIq.intelligenceCheck.customTemplate')
+                  : t('channelStatus.modelIq.intelligenceCheck.adminDraft') }}
               </span>
             </div>
             <div class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {{ activePromptTemplate.description }}
+              {{ activePromptTemplate.description || t('channelStatus.modelIq.intelligenceCheck.emptyDescription') }}
             </div>
           </div>
+          <button
+            v-if="canEditIntelligenceTemplates && activePromptTemplateAvailable"
+            data-test="delete-intelligence-template"
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-500/30 dark:bg-dark-800 dark:text-red-300 dark:hover:bg-red-500/10"
+            @click="deleteActivePromptTemplate"
+          >
+            <Icon name="trash" size="xs" />
+            {{ t('channelStatus.modelIq.intelligenceCheck.deleteTemplate') }}
+          </button>
         </div>
 
-        <div v-if="canEditIntelligenceTemplates" class="mt-4 grid gap-3 sm:grid-cols-2">
+        <div v-if="canEditIntelligenceTemplates && activePromptTemplateAvailable" class="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label class="input-label" for="model-iq-template-title">
               {{ t('channelStatus.modelIq.intelligenceCheck.titleLabel') }}
@@ -287,6 +314,7 @@
             v-model="activePromptTemplate.prompt"
             rows="10"
             class="input min-h-56 resize-y font-mono text-xs leading-5"
+            :disabled="!activePromptTemplateAvailable"
             :readonly="!canEditIntelligenceTemplates"
             :placeholder="t('channelStatus.modelIq.intelligenceCheck.promptPlaceholder')"
           ></textarea>
@@ -298,7 +326,7 @@
               {{ t('channelStatus.modelIq.intelligenceCheck.expectedLabel') }}
             </div>
             <textarea
-              v-if="canEditIntelligenceTemplates"
+              v-if="canEditIntelligenceTemplates && activePromptTemplateAvailable"
               v-model="activePromptTemplate.expected"
               rows="3"
               class="input mt-2 min-h-24 resize-y text-sm leading-6"
@@ -313,7 +341,7 @@
               {{ t('channelStatus.modelIq.intelligenceCheck.thresholdLabel') }}
             </div>
             <textarea
-              v-if="canEditIntelligenceTemplates"
+              v-if="canEditIntelligenceTemplates && activePromptTemplateAvailable"
               v-model="activePromptTemplate.threshold"
               rows="3"
               class="input mt-2 min-h-24 resize-y text-sm leading-6"
@@ -341,11 +369,11 @@
       <div class="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <button
           v-if="canEditIntelligenceTemplates"
-          type="button"
-          class="btn btn-secondary"
-          :disabled="!activePromptTemplateDirty"
-          @click="resetActivePromptTemplate"
-        >
+            type="button"
+            class="btn btn-secondary"
+            :disabled="!activePromptTemplateAvailable || !activePromptTemplateDirty"
+            @click="resetActivePromptTemplate"
+          >
           {{ t('channelStatus.modelIq.intelligenceCheck.reset') }}
         </button>
         <span v-else class="hidden sm:block"></span>
@@ -362,6 +390,7 @@
           <button
             type="button"
             class="btn btn-primary"
+            :disabled="!activePromptTemplateAvailable"
             @click="copyActivePromptTemplate"
           >
             <Icon name="copy" size="xs" class="mr-1" />
@@ -374,7 +403,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -391,9 +420,11 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type {
+  GptIntelligencePromptTemplate,
   GptIntelligenceRun,
   GptIntelligenceSnapshot,
 } from '@/api/gptIntelligence'
+import { updateGptIntelligenceTemplates } from '@/api/admin/gptIntelligence'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler)
 
@@ -490,7 +521,6 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const PROMPT_TEMPLATE_STORAGE_KEY = 'model-iq-intelligence-check-prompt-templates'
 const DEFAULT_PROMPT_TEMPLATES = [
   {
     id: 'logic',
@@ -552,19 +582,31 @@ const latest = computed(() => props.snapshot?.latest ?? null)
 
 const canEditIntelligenceTemplates = computed(() => props.canEditIntelligenceTemplates === true)
 
+watch(
+  () => props.snapshot?.intelligence_check_templates,
+  (templates) => {
+    replacePromptTemplates(templates)
+  },
+  { immediate: true },
+)
+
 const activePromptTemplate = computed(() => {
   return promptTemplates.find((template) => template.id === activePromptTemplateId.value)
     ?? promptTemplates[0]
-    ?? DEFAULT_PROMPT_TEMPLATES[0]
+    ?? emptyPromptTemplate()
 })
+
+const activePromptTemplateAvailable = computed(() => promptTemplates.length > 0)
 
 const activeDefaultPromptTemplate = computed(() => {
   return DEFAULT_PROMPT_TEMPLATES.find((template) => template.id === activePromptTemplate.value.id)
 })
 
+const activePromptTemplateIsCustom = computed(() => !activeDefaultPromptTemplate.value)
+
 const activePromptTemplateDirty = computed(() => {
   const defaultTemplate = activeDefaultPromptTemplate.value
-  if (!defaultTemplate) return false
+  if (!defaultTemplate) return true
   const template = activePromptTemplate.value
   return template.title !== defaultTemplate.title
     || template.description !== defaultTemplate.description
@@ -930,52 +972,87 @@ function buildSingleSeriesChartData(
 }
 
 function loadPromptTemplates(): PromptTemplateDraft[] {
-  if (typeof window === 'undefined') return cloneDefaultPromptTemplates()
-
-  try {
-    const raw = window.localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)
-    if (!raw) return cloneDefaultPromptTemplates()
-    const saved = JSON.parse(raw) as Array<Partial<PromptTemplateDraft>>
-    if (!Array.isArray(saved)) return cloneDefaultPromptTemplates()
-
-    return DEFAULT_PROMPT_TEMPLATES.map((defaultTemplate) => {
-      const savedTemplate = saved.find((item) => item.id === defaultTemplate.id)
-      return {
-        ...defaultTemplate,
-        title: typeof savedTemplate?.title === 'string'
-          ? savedTemplate.title
-          : defaultTemplate.title,
-        description: typeof savedTemplate?.description === 'string'
-          ? savedTemplate.description
-          : defaultTemplate.description,
-        prompt: typeof savedTemplate?.prompt === 'string'
-          ? savedTemplate.prompt
-          : defaultTemplate.prompt,
-        expected: typeof savedTemplate?.expected === 'string'
-          ? savedTemplate.expected
-          : defaultTemplate.expected,
-        threshold: typeof savedTemplate?.threshold === 'string'
-          ? savedTemplate.threshold
-          : defaultTemplate.threshold,
-      }
-    })
-  } catch {
-    return cloneDefaultPromptTemplates()
-  }
+  return cloneDefaultPromptTemplates()
 }
 
 function cloneDefaultPromptTemplates(): PromptTemplateDraft[] {
   return DEFAULT_PROMPT_TEMPLATES.map((template) => ({ ...template }))
 }
 
-function savePromptTemplateDrafts() {
+async function savePromptTemplateDrafts() {
   if (!canEditIntelligenceTemplates.value) return
   draftState.value = 'idle'
   try {
-    window.localStorage.setItem(PROMPT_TEMPLATE_STORAGE_KEY, JSON.stringify(promptTemplates))
+    const response = await updateGptIntelligenceTemplates(promptTemplates)
+    replacePromptTemplates(response.templates)
     draftState.value = 'saved'
   } catch {
     draftState.value = 'failed'
+  }
+}
+
+function replacePromptTemplates(templates?: GptIntelligencePromptTemplate[]) {
+  const next = normalizePromptTemplates(templates)
+  promptTemplates.splice(0, promptTemplates.length, ...next)
+  if (!promptTemplates.some((template) => template.id === activePromptTemplateId.value)) {
+    activePromptTemplateId.value = promptTemplates[0]?.id ?? ''
+  }
+}
+
+function normalizePromptTemplates(templates?: Array<Partial<PromptTemplateDraft>>): PromptTemplateDraft[] {
+  if (!Array.isArray(templates)) return cloneDefaultPromptTemplates()
+  const normalized: PromptTemplateDraft[] = []
+  const defaultIDs = new Set(DEFAULT_PROMPT_TEMPLATES.map((template) => template.id))
+  const templatesByID = new Map(templates.map((template) => [template.id, template]))
+  for (const defaultTemplate of DEFAULT_PROMPT_TEMPLATES) {
+    if (!templatesByID.has(defaultTemplate.id)) continue
+    const savedTemplate = templates.find((item) => item.id === defaultTemplate.id)
+    normalized.push({
+      ...defaultTemplate,
+      title: typeof savedTemplate?.title === 'string' && savedTemplate.title.trim()
+        ? savedTemplate.title
+        : defaultTemplate.title,
+      description: typeof savedTemplate?.description === 'string'
+        ? savedTemplate.description
+        : defaultTemplate.description,
+      prompt: typeof savedTemplate?.prompt === 'string' && savedTemplate.prompt.trim()
+        ? savedTemplate.prompt
+        : defaultTemplate.prompt,
+      expected: typeof savedTemplate?.expected === 'string' && savedTemplate.expected.trim()
+        ? savedTemplate.expected
+        : defaultTemplate.expected,
+      threshold: typeof savedTemplate?.threshold === 'string' && savedTemplate.threshold.trim()
+        ? savedTemplate.threshold
+        : defaultTemplate.threshold,
+    })
+  }
+  const seenCustomIDs = new Set<string>()
+  for (const template of templates) {
+    if (typeof template.id !== 'string' || !template.id.trim() || defaultIDs.has(template.id)) continue
+    if (seenCustomIDs.has(template.id)) continue
+    seenCustomIDs.add(template.id)
+    normalized.push({
+      id: template.id,
+      title: typeof template.title === 'string' && template.title.trim()
+        ? template.title
+        : t('channelStatus.modelIq.intelligenceCheck.newTemplateTitle'),
+      description: typeof template.description === 'string' ? template.description : '',
+      prompt: typeof template.prompt === 'string' ? template.prompt : '',
+      expected: typeof template.expected === 'string' ? template.expected : '',
+      threshold: typeof template.threshold === 'string' ? template.threshold : '',
+    })
+  }
+  return normalized
+}
+
+function emptyPromptTemplate(): PromptTemplateDraft {
+  return {
+    id: '',
+    title: '',
+    description: '',
+    prompt: '',
+    expected: '',
+    threshold: '',
   }
 }
 
@@ -990,6 +1067,41 @@ function resetActivePromptTemplate() {
   activePromptTemplate.value.threshold = defaultTemplate.threshold
   draftState.value = 'idle'
   copyState.value = 'idle'
+}
+
+function addPromptTemplate() {
+  if (!canEditIntelligenceTemplates.value) return
+  const id = buildCustomTemplateId()
+  promptTemplates.push({
+    id,
+    title: t('channelStatus.modelIq.intelligenceCheck.newTemplateTitle'),
+    description: '',
+    prompt: '',
+    expected: '',
+    threshold: '',
+  })
+  activePromptTemplateId.value = id
+  draftState.value = 'idle'
+  copyState.value = 'idle'
+}
+
+function deleteActivePromptTemplate() {
+  if (!canEditIntelligenceTemplates.value || !activePromptTemplateAvailable.value) return
+  const index = promptTemplates.findIndex((template) => template.id === activePromptTemplate.value.id)
+  if (index < 0) return
+  promptTemplates.splice(index, 1)
+  activePromptTemplateId.value = promptTemplates[Math.max(index - 1, 0)]?.id ?? ''
+  draftState.value = 'idle'
+  copyState.value = 'idle'
+}
+
+function buildCustomTemplateId(): string {
+  let index = 1
+  const existingIDs = new Set(promptTemplates.map((template) => template.id))
+  while (existingIDs.has(`custom-${index}`)) {
+    index += 1
+  }
+  return `custom-${index}`
 }
 
 async function copyActivePromptTemplate() {

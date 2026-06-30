@@ -670,6 +670,20 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 	}
 }
 
+func (s *SettingService) GetRawSettingValue(ctx context.Context, key string) (string, error) {
+	if s == nil || s.settingRepo == nil {
+		return "", ErrSettingNotFound
+	}
+	return s.settingRepo.GetValue(ctx, key)
+}
+
+func (s *SettingService) SetRawSettingValue(ctx context.Context, key, value string) error {
+	if s == nil || s.settingRepo == nil {
+		return ErrSettingNotFound
+	}
+	return s.settingRepo.Set(ctx, key, value)
+}
+
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
 func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscriptionGroupReader) {
 	s.defaultSubGroupReader = reader
