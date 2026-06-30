@@ -103,6 +103,12 @@ func (r *upstreamRelayRecommendationServiceRepo) RestoreRecommendationRun(_ cont
 	}, nil
 }
 
+func requireRelayNewPriority(t *testing.T, suggestion UpstreamRelayRecommendationSuggestion, want int) {
+	t.Helper()
+	require.NotNil(t, suggestion.NewPriority)
+	require.Equal(t, want, *suggestion.NewPriority)
+}
+
 type upstreamRelayMetricsRefreshRepo struct {
 	UpstreamRelayRepository
 
@@ -1407,10 +1413,10 @@ func TestUpstreamRelayBuildSuggestionsOnlyUsesMappedHealthyCandidates(t *testing
 
 	require.Len(t, suggestions, 2)
 	require.Equal(t, int64(2), suggestions[0].CandidateID)
-	require.Equal(t, 10, suggestions[0].NewPriority)
+	requireRelayNewPriority(t, suggestions[0], 10)
 	require.Equal(t, 0.6, suggestions[0].FinalRateMultiplier)
 	require.Equal(t, int64(1), suggestions[1].CandidateID)
-	require.Equal(t, 20, suggestions[1].NewPriority)
+	requireRelayNewPriority(t, suggestions[1], 20)
 	require.Equal(t, "rate_health_priority", suggestions[0].ReasonCode)
 	require.NotEmpty(t, suggestions[0].HealthSummary)
 	require.NotEmpty(t, suggestions[0].RateSource)
@@ -1638,13 +1644,72 @@ func TestUpstreamRelayPreviewDeduplicatesSuggestionsByAccount(t *testing.T) {
 
 	require.Len(t, preview.Suggestions, 2)
 	require.Equal(t, int64(1), preview.Suggestions[0].CandidateID)
-	require.Equal(t, 30, preview.Suggestions[0].NewPriority)
+	requireRelayNewPriority(t, preview.Suggestions[0], 30)
 	require.Equal(t, int64(3), preview.Suggestions[1].CandidateID)
-	require.Equal(t, 40, preview.Suggestions[1].NewPriority)
+	requireRelayNewPriority(t, preview.Suggestions[1], 40)
 	require.Len(t, preview.Exclusions, 1)
 	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
 	require.Equal(t, "duplicate_account_candidate", preview.Exclusions[0].ReasonCode)
 	require.Contains(t, preview.Exclusions[0].Reason, "同一账号")
+}
+
+func TestUpstreamRelayPreviewDoesNotMixAccountGateAndPriorityForSameAccount(t *testing.T) {
+	now := time.Now()
+	priority50 := 50
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountName:        "account-a",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			UpstreamGroupID:    "failed",
+			CurrentPriority:    &priority50,
+			Enabled:            true,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.4, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountName:        "account-a",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			UpstreamGroupID:    "healthy",
+			CurrentPriority:    &priority50,
+			Enabled:            true,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now, LatencyMs: intPtr(70)},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.6, LastSeenAt: now},
+		},
+		{
+			ID:                 3,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountName:        "account-b",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			UpstreamGroupID:    "fallback",
+			Enabled:            true,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now, LatencyMs: intPtr(90)},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, LastSeenAt: now},
+		},
+	}
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, defaultUpstreamRelayRecommendationPolicy())
+
+	require.Len(t, preview.Suggestions, 2)
+	require.Equal(t, UpstreamRelaySuggestionActionPriorityUpdate, preview.Suggestions[0].ActionType)
+	require.Equal(t, int64(102), preview.Suggestions[0].AccountID)
+	require.Equal(t, UpstreamRelaySuggestionActionAccountPause, preview.Suggestions[1].ActionType)
+	require.Equal(t, int64(101), preview.Suggestions[1].AccountID)
+	require.Len(t, preview.Exclusions, 1)
+	require.Equal(t, "account_gate_suggestion_exists", preview.Exclusions[0].ReasonCode)
+	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
 }
 
 func TestUpstreamRelayPreviewKeepsRankForUnchangedAccount(t *testing.T) {
@@ -1679,7 +1744,7 @@ func TestUpstreamRelayPreviewKeepsRankForUnchangedAccount(t *testing.T) {
 
 	require.Len(t, preview.Suggestions, 1)
 	require.Equal(t, int64(2), preview.Suggestions[0].CandidateID)
-	require.Equal(t, 40, preview.Suggestions[0].NewPriority)
+	requireRelayNewPriority(t, preview.Suggestions[0], 40)
 	require.Len(t, preview.Exclusions, 1)
 	require.Equal(t, "priority_unchanged", preview.Exclusions[0].ReasonCode)
 }
@@ -1737,7 +1802,7 @@ func TestUpstreamRelayPreviewRecommendationsDoesNotPersistRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, repo.createdRuns)
 	require.Len(t, preview.Suggestions, 1)
-	require.Equal(t, 30, preview.Suggestions[0].NewPriority)
+	requireRelayNewPriority(t, preview.Suggestions[0], 30)
 }
 
 func TestUpstreamRelayGetMonitoringPolicyReturnsDefaultsWithDerivedFreshness(t *testing.T) {
@@ -1888,7 +1953,7 @@ func TestUpstreamRelayGenerateRecommendationsUsesSavedPolicy(t *testing.T) {
 	require.Equal(t, 1, repo.createdRuns)
 	require.Equal(t, int64(88), run.CreatedBy)
 	require.Len(t, run.Suggestions, 1)
-	require.Equal(t, 40, run.Suggestions[0].NewPriority)
+	requireRelayNewPriority(t, run.Suggestions[0], 40)
 }
 
 func TestUpstreamRelayGenerateRecommendationsFreshnessIsDerivedFromMonitoringPolicy(t *testing.T) {
@@ -2033,8 +2098,8 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 				AllowAutoApplyDegradedHealth: true,
 			},
 			suggestions: []UpstreamRelayRecommendationSuggestion{
-				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
-				{OldPriority: &oldPriority, NewPriority: 30, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: intPtr(20), Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: intPtr(30), Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
 			},
 			wantReason: "too_many_suggestions",
 		},
@@ -2047,7 +2112,7 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 				AllowAutoApplyDegradedHealth: true,
 			},
 			suggestions: []UpstreamRelayRecommendationSuggestion{
-				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: intPtr(20), Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
 			},
 			wantReason: "priority_delta_exceeded",
 		},
@@ -2060,7 +2125,7 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 				AllowAutoApplyDegradedHealth: true,
 			},
 			suggestions: []UpstreamRelayRecommendationSuggestion{
-				{OldPriority: &oldPriority, NewPriority: 11, Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: intPtr(11), Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
 			},
 			wantReason: "priority_delta_exceeded",
 		},
@@ -2073,7 +2138,7 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 				AllowAutoApplyDegradedHealth: true,
 			},
 			suggestions: []UpstreamRelayRecommendationSuggestion{
-				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceLow, HealthStatus: "healthy"},
+				{OldPriority: &oldPriority, NewPriority: intPtr(20), Confidence: upstreamRelayConfidenceLow, HealthStatus: "healthy"},
 			},
 			wantReason: "confidence_below_threshold",
 		},
@@ -2086,9 +2151,22 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 				AllowAutoApplyDegradedHealth: false,
 			},
 			suggestions: []UpstreamRelayRecommendationSuggestion{
-				{OldPriority: &oldPriority, NewPriority: 20, Confidence: upstreamRelayConfidenceHigh, HealthStatus: upstreamRelayHealthDegraded},
+				{OldPriority: &oldPriority, NewPriority: intPtr(20), Confidence: upstreamRelayConfidenceHigh, HealthStatus: upstreamRelayHealthDegraded},
 			},
 			wantReason: "degraded_health",
+		},
+		{
+			name: "account gate suggestions require manual apply",
+			policy: UpstreamRelayMonitoringPolicy{
+				MaxAutoApplySuggestions:      5,
+				MaxAutoApplyPriorityDelta:    100,
+				MinAutoApplyConfidence:       upstreamRelayConfidenceLow,
+				AllowAutoApplyDegradedHealth: true,
+			},
+			suggestions: []UpstreamRelayRecommendationSuggestion{
+				{ActionType: UpstreamRelaySuggestionActionAccountPause, OldSchedulable: boolPtr(true), NewSchedulable: boolPtr(false), Confidence: upstreamRelayConfidenceHigh, HealthStatus: "healthy"},
+			},
+			wantReason: "account_gate_suggestion_requires_manual_apply",
 		},
 	}
 
@@ -2106,6 +2184,119 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 			require.Equal(t, tc.wantReason, reason)
 		})
 	}
+}
+
+func TestUpstreamRelayRecommendationPreviewCreatesAccountPauseSuggestion(t *testing.T) {
+	now := time.Now()
+	priority := 50
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountName:        "高风险账号",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			CurrentPriority:    &priority,
+			Enabled:            true,
+			UpstreamGroupID:    "expensive",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:          3,
+				SuccessCount:        2,
+				SuccessRate:         0.67,
+				ConsecutiveFailures: 1,
+				WindowMinutes:       30,
+				SampleSize:          3,
+			},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "healthy",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, defaultUpstreamRelayRecommendationPolicy())
+
+	require.NotEmpty(t, preview.Suggestions)
+	var pause *UpstreamRelayRecommendationSuggestion
+	for i := range preview.Suggestions {
+		if preview.Suggestions[i].ActionType == UpstreamRelaySuggestionActionAccountPause {
+			pause = &preview.Suggestions[i]
+			break
+		}
+	}
+	require.NotNil(t, pause)
+	require.Equal(t, int64(101), pause.AccountID)
+	require.Equal(t, boolPtr(true), pause.OldSchedulable)
+	require.Equal(t, boolPtr(false), pause.NewSchedulable)
+	require.Contains(t, pause.Reason, "建议暂停账号承接")
+}
+
+func TestUpstreamRelayRecommendationPreviewSkipsPauseForLastSchedulablePlatformAccount(t *testing.T) {
+	now := time.Now()
+	candidate := UpstreamRelayCandidate{
+		ID:                 1,
+		ConnectorID:        10,
+		ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+		AccountID:          101,
+		AccountPlatform:    PlatformOpenAI,
+		AccountSchedulable: true,
+		Enabled:            true,
+		UpstreamGroupID:    "failed",
+		LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+		LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+	}
+
+	preview := buildUpstreamRelayRecommendationPreview([]UpstreamRelayCandidate{candidate}, defaultUpstreamRelayRecommendationPolicy())
+
+	for _, suggestion := range preview.Suggestions {
+		require.NotEqual(t, UpstreamRelaySuggestionActionAccountPause, suggestion.ActionType)
+	}
+	require.Len(t, preview.Exclusions, 1)
+}
+
+func TestUpstreamRelayRecommendationPreviewCreatesAccountResumeSuggestion(t *testing.T) {
+	now := time.Now()
+	candidate := UpstreamRelayCandidate{
+		ID:                 1,
+		ConnectorID:        10,
+		ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+		AccountID:          101,
+		AccountName:        "已恢复账号",
+		AccountPlatform:    PlatformOpenAI,
+		AccountSchedulable: false,
+		AccountGateActive:  true,
+		Enabled:            true,
+		UpstreamGroupID:    "recovered",
+		LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+		Health: &UpstreamRelayCandidateHealth{
+			ProbeCount:           3,
+			SuccessCount:         3,
+			SuccessRate:          1,
+			ConsecutiveSuccesses: 3,
+			WindowMinutes:        30,
+			SampleSize:           3,
+		},
+		LatestSnapshot: &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+	}
+
+	preview := buildUpstreamRelayRecommendationPreview([]UpstreamRelayCandidate{candidate}, defaultUpstreamRelayRecommendationPolicy())
+
+	require.Len(t, preview.Suggestions, 1)
+	require.Equal(t, UpstreamRelaySuggestionActionAccountResume, preview.Suggestions[0].ActionType)
+	require.Equal(t, boolPtr(false), preview.Suggestions[0].OldSchedulable)
+	require.Equal(t, boolPtr(true), preview.Suggestions[0].NewSchedulable)
 }
 
 func TestUpstreamRelayUsageDeltaSampleReliability(t *testing.T) {

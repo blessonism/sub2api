@@ -226,6 +226,7 @@ function recommendationRun(overrides: Record<string, unknown> = {}) {
     suggestions: [{
       id: 1,
       run_id: 77,
+      action_type: 'priority_update',
       candidate_id: 101,
       connector_id: 7,
       connector_name: 'relay-a',
@@ -2127,6 +2128,70 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     expect(getRecommendationRun).toHaveBeenCalledTimes(1)
     expect(getRecommendationRun).toHaveBeenCalledWith(77)
+  })
+
+  it('推荐详情展示账号暂停和恢复建议', async () => {
+    const gateRun = recommendationRun({
+      suggestion_count: 2,
+      suggestions: [
+        {
+          ...recommendationRun().suggestions[0],
+          id: 11,
+          action_type: 'account_pause',
+          account_id: 42,
+          account_name: 'claude-relay',
+          old_priority: 50,
+          new_priority: null,
+          old_schedulable: true,
+          new_schedulable: false,
+          health_status: 'failed',
+          reason_code: 'account_gate_latest_probe_failed',
+          confidence: 'medium',
+          health_summary: 'latest probe failed',
+          reason: '最近探测失败，建议暂停账号承接',
+        },
+        {
+          ...recommendationRun().suggestions[0],
+          id: 12,
+          action_type: 'account_resume',
+          account_id: 43,
+          account_name: 'claude-recovered',
+          old_priority: 60,
+          new_priority: null,
+          old_schedulable: false,
+          new_schedulable: true,
+          health_status: 'success',
+          reason_code: 'account_gate_recovered',
+          confidence: 'high',
+          health_summary: 'probe ok',
+          reason: '建议恢复账号承接',
+        },
+      ],
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [gateRun],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(gateRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('suggestionActions.accountPause')
+    expect(wrapper.text()).toContain('suggestionActions.accountResume')
+    expect(wrapper.text()).toContain('schedulableStatus.enabled')
+    expect(wrapper.text()).toContain('schedulableStatus.paused')
+    expect(wrapper.text()).toContain('→')
+    expect(wrapper.text()).toContain('applyDialog.riskPause')
+    expect(wrapper.text()).toContain('applyDialog.riskResume')
   })
 
   it('已应用的 Priority 建议仍可打开并查看明细', async () => {

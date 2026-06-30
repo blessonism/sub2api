@@ -743,6 +743,7 @@ func (r *upstreamRelayRepository) ListRecommendationInputs(ctx context.Context) 
 		WHERE c.deleted_at IS NULL
 		  AND c.enabled = TRUE
 		  AND rc.status = $1
+		  AND (a.schedulable = TRUE OR gs.account_id IS NOT NULL)
 	`, service.UpstreamRelayConnectorStatusActive)
 	if err != nil {
 		return nil, err
@@ -889,14 +890,15 @@ func (r *upstreamRelayRepository) CreateRecommendationRun(ctx context.Context, r
 	for _, suggestion := range suggestions {
 		if _, err := tx.ExecContext(ctx, `
 				INSERT INTO upstream_relay_recommendation_suggestions (
-					run_id, candidate_id, connector_id, account_id, upstream_group_id,
-					old_priority, new_priority, final_rate_multiplier,
+					run_id, action_type, candidate_id, connector_id, account_id, upstream_group_id,
+					old_priority, new_priority, old_schedulable, new_schedulable, final_rate_multiplier,
 					health_status, reason_code, confidence, health_summary, rate_source,
 					reason, applied, created_at
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,FALSE,NOW())
-			`, runID, suggestion.CandidateID, suggestion.ConnectorID, suggestion.AccountID,
-			suggestion.UpstreamGroupID, nullableIntValue(suggestion.OldPriority), suggestion.NewPriority,
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,FALSE,NOW())
+			`, runID, relaySuggestionActionOrDefault(suggestion.ActionType), suggestion.CandidateID, suggestion.ConnectorID, suggestion.AccountID,
+			suggestion.UpstreamGroupID, nullableIntValue(suggestion.OldPriority), nullableIntValue(suggestion.NewPriority),
+			nullableBoolValue(suggestion.OldSchedulable), nullableBoolValue(suggestion.NewSchedulable),
 			suggestion.FinalRateMultiplier, suggestion.HealthStatus,
 			suggestion.ReasonCode, suggestion.Confidence, suggestion.HealthSummary, suggestion.RateSource,
 			suggestion.Reason); err != nil {
@@ -995,24 +997,33 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_CLOSED", "recommendation run already closed")
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT candidate_id, account_id, old_priority, new_priority
+		SELECT id, COALESCE(action_type, 'priority_update'), candidate_id, account_id,
+		       old_priority, new_priority, old_schedulable, new_schedulable,
+		       COALESCE(reason_code, ''), reason
 		FROM upstream_relay_recommendation_suggestions
 		WHERE run_id=$1 AND applied=FALSE
-		ORDER BY new_priority ASC, candidate_id ASC
+		ORDER BY COALESCE(new_priority, 2147483647) ASC, candidate_id ASC
 	`, runID)
 	if err != nil {
 		return nil, err
 	}
 	type row struct {
-		candidateID int64
-		accountID   int64
-		oldPriority sql.NullInt64
-		newPriority int
+		id             int64
+		actionType     string
+		candidateID    int64
+		accountID      int64
+		oldPriority    sql.NullInt64
+		newPriority    sql.NullInt64
+		oldSchedulable sql.NullBool
+		newSchedulable sql.NullBool
+		reasonCode     string
+		reason         string
 	}
 	suggestions := []row{}
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.candidateID, &item.accountID, &item.oldPriority, &item.newPriority); err != nil {
+		if err := rows.Scan(&item.id, &item.actionType, &item.candidateID, &item.accountID, &item.oldPriority,
+			&item.newPriority, &item.oldSchedulable, &item.newSchedulable, &item.reasonCode, &item.reason); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -1029,17 +1040,75 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	}
 	affectedAccounts := map[int64]struct{}{}
 	for _, suggestion := range suggestions {
-		oldPriority := nullableInt64Value(nullInt64Ptr(suggestion.oldPriority))
-		res, err := tx.ExecContext(ctx, `
-			UPDATE accounts
-			SET priority=$2, updated_at=NOW()
-			WHERE id=$1 AND priority IS NOT DISTINCT FROM $3
-		`, suggestion.accountID, suggestion.newPriority, oldPriority)
-		if err != nil {
-			return nil, err
-		}
-		if affected, _ := res.RowsAffected(); affected == 0 {
-			return nil, r.buildRelayRecommendationStaleError(ctx, tx, suggestion.accountID, oldPriority, suggestion.newPriority)
+		switch suggestion.actionType {
+		case service.UpstreamRelaySuggestionActionPriorityUpdate:
+			if !suggestion.newPriority.Valid {
+				return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "priority suggestion is missing new priority")
+			}
+			oldPriority := nullableInt64Value(nullInt64Ptr(suggestion.oldPriority))
+			res, err := tx.ExecContext(ctx, `
+				UPDATE accounts
+				SET priority=$2, updated_at=NOW()
+				WHERE id=$1 AND priority IS NOT DISTINCT FROM $3
+			`, suggestion.accountID, int(suggestion.newPriority.Int64), oldPriority)
+			if err != nil {
+				return nil, err
+			}
+			if affected, _ := res.RowsAffected(); affected == 0 {
+				return nil, r.buildRelayRecommendationStaleError(ctx, tx, suggestion.accountID, oldPriority, int(suggestion.newPriority.Int64))
+			}
+		case service.UpstreamRelaySuggestionActionAccountPause:
+			if !suggestion.oldSchedulable.Valid || !suggestion.newSchedulable.Valid {
+				return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "account gate suggestion is missing schedulable state")
+			}
+			if !suggestion.oldSchedulable.Bool || suggestion.newSchedulable.Bool {
+				return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "account pause suggestion must change schedulable from true to false")
+			}
+			res, err := tx.ExecContext(ctx, `
+					UPDATE accounts
+					SET schedulable=$2, updated_at=NOW()
+					WHERE id=$1 AND schedulable IS NOT DISTINCT FROM $3
+			`, suggestion.accountID, suggestion.newSchedulable.Bool, suggestion.oldSchedulable.Bool)
+			if err != nil {
+				return nil, err
+			}
+			if affected, _ := res.RowsAffected(); affected == 0 {
+				return nil, r.buildRelaySchedulableStaleError(ctx, tx, suggestion.accountID, suggestion.oldSchedulable.Bool, suggestion.newSchedulable.Bool)
+			}
+			if err := r.upsertRelayAccountGateState(ctx, tx, suggestion.accountID, suggestion.oldSchedulable.Bool,
+				suggestion.reasonCode, suggestion.reason, suggestion.id, operatorID, runID); err != nil {
+				return nil, err
+			}
+		case service.UpstreamRelaySuggestionActionAccountResume:
+			if !suggestion.oldSchedulable.Valid || !suggestion.newSchedulable.Valid {
+				return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "account gate suggestion is missing schedulable state")
+			}
+			if suggestion.oldSchedulable.Bool || !suggestion.newSchedulable.Bool {
+				return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "account resume suggestion must change schedulable from false to true")
+			}
+			if err := r.ensureActiveRelayAccountGateState(ctx, tx, suggestion.accountID); err != nil {
+				return nil, err
+			}
+			res, err := tx.ExecContext(ctx, `
+				UPDATE accounts
+				SET schedulable=$2, updated_at=NOW()
+				WHERE id=$1 AND schedulable IS NOT DISTINCT FROM $3
+			`, suggestion.accountID, suggestion.newSchedulable.Bool, suggestion.oldSchedulable.Bool)
+			if err != nil {
+				return nil, err
+			}
+			if affected, _ := res.RowsAffected(); affected == 0 {
+				return nil, r.buildRelaySchedulableStaleError(ctx, tx, suggestion.accountID, suggestion.oldSchedulable.Bool, suggestion.newSchedulable.Bool)
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE upstream_relay_account_gate_states
+				SET active=FALSE, restored_by=$2, restored_at=NOW(), updated_at=NOW()
+				WHERE account_id=$1 AND active=TRUE
+			`, suggestion.accountID, nullableOperatorID(operatorID)); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", "unsupported recommendation action type")
 		}
 		affectedAccounts[suggestion.accountID] = struct{}{}
 	}
@@ -1166,6 +1235,60 @@ func (r *upstreamRelayRepository) buildRelayRecommendationStaleError(ctx context
 	)
 }
 
+func (r *upstreamRelayRepository) buildRelaySchedulableStaleError(ctx context.Context, q sqlQueryer, accountID int64, expected, next bool) error {
+	var current sql.NullBool
+	if err := scanSingleRow(ctx, q, `SELECT schedulable FROM accounts WHERE id=$1`, []any{accountID}, &current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return infraerrors.Conflict("UPSTREAM_RELAY_RECOMMENDATION_STALE", fmt.Sprintf("账号 #%d 已不存在，无法应用调度状态建议", accountID))
+		}
+		return err
+	}
+	return infraerrors.Conflict(
+		"UPSTREAM_RELAY_RECOMMENDATION_STALE",
+		fmt.Sprintf("账号 #%d 的调度状态已变化：生成建议时为 %s，当前为 %s，建议值为 %s；请重新生成建议后再应用",
+			accountID,
+			formatRelaySchedulable(expected),
+			formatRelaySQLSchedulable(current),
+			formatRelaySchedulable(next),
+		),
+	)
+}
+
+func (r *upstreamRelayRepository) upsertRelayAccountGateState(ctx context.Context, tx *sql.Tx, accountID int64, oldSchedulable bool, reasonCode, reason string, suggestionID, operatorID, runID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO upstream_relay_account_gate_states (
+			account_id, active, original_schedulable, pause_reason_code, pause_reason,
+			source_run_id, source_suggestion_id, paused_by, paused_at, restored_by, restored_at,
+			created_at, updated_at
+		)
+		VALUES ($1,TRUE,$2,$3,$4,$5,$6,$7,NOW(),NULL,NULL,NOW(),NOW())
+		ON CONFLICT (account_id) DO UPDATE SET
+			active=TRUE,
+			original_schedulable=EXCLUDED.original_schedulable,
+			pause_reason_code=EXCLUDED.pause_reason_code,
+			pause_reason=EXCLUDED.pause_reason,
+			source_run_id=EXCLUDED.source_run_id,
+			source_suggestion_id=EXCLUDED.source_suggestion_id,
+			paused_by=EXCLUDED.paused_by,
+			paused_at=NOW(),
+			restored_by=NULL,
+			restored_at=NULL,
+			updated_at=NOW()
+	`, accountID, oldSchedulable, reasonCode, reason, runID, suggestionID, nullableOperatorID(operatorID))
+	return err
+}
+
+func (r *upstreamRelayRepository) ensureActiveRelayAccountGateState(ctx context.Context, q sqlQueryer, accountID int64) error {
+	var exists bool
+	if err := scanSingleRow(ctx, q, `SELECT EXISTS(SELECT 1 FROM upstream_relay_account_gate_states WHERE account_id=$1 AND active=TRUE)`, []any{accountID}, &exists); err != nil {
+		return err
+	}
+	if !exists {
+		return infraerrors.Conflict("UPSTREAM_RELAY_ACCOUNT_GATE_STATE_MISSING", "account was not paused by upstream relay gate")
+	}
+	return nil
+}
+
 func formatRelayNullablePriority(value any) string {
 	switch v := value.(type) {
 	case nil:
@@ -1186,6 +1309,20 @@ func formatRelaySQLPriority(value sql.NullInt64) string {
 		return "未设置"
 	}
 	return fmt.Sprintf("%d", value.Int64)
+}
+
+func formatRelaySchedulable(value bool) string {
+	if value {
+		return "可调度"
+	}
+	return "暂停"
+}
+
+func formatRelaySQLSchedulable(value sql.NullBool) string {
+	if !value.Valid {
+		return "未知"
+	}
+	return formatRelaySchedulable(value.Bool)
 }
 
 func (r *upstreamRelayRepository) DeleteRecommendationRun(ctx context.Context, runID int64) error {
@@ -1223,7 +1360,7 @@ func relayCandidateSelect() string {
 	return `
 		SELECT c.id, c.connector_id, COALESCE(rc.name, ''), rc.status, c.account_id,
 		       s.today_actual_cost, s.today_total_tokens, s.today_usage_checked_at,
-		       COALESCE(a.name, ''), COALESCE(a.platform, ''), c.upstream_group_id,
+		       COALESCE(a.name, ''), COALESCE(a.platform, ''), a.schedulable, (gs.account_id IS NOT NULL), c.upstream_group_id,
 		       COALESCE(s.name, ''), c.upstream_api_key_id,
 		       COALESCE(c.upstream_api_key_name, ''), COALESCE(c.upstream_api_key_masked, ''),
 		       c.probe_model, c.probe_protocol, a.priority,
@@ -1237,6 +1374,7 @@ func relayCandidateSelect() string {
 		FROM upstream_relay_candidates c
 		JOIN upstream_relay_connectors rc ON rc.id = c.connector_id AND rc.deleted_at IS NULL
 		JOIN accounts a ON a.id = c.account_id
+		LEFT JOIN upstream_relay_account_gate_states gs ON gs.account_id = c.account_id AND gs.active = TRUE
 		LEFT JOIN upstream_relay_probe_results pr ON pr.id = c.last_probe_result_id
 		LEFT JOIN upstream_relay_group_rate_snapshots s ON s.connector_id = c.connector_id AND s.upstream_group_id = c.upstream_group_id
 	`
@@ -1342,7 +1480,7 @@ func scanRelayCandidates(rows *sql.Rows) ([]service.UpstreamRelayCandidate, erro
 		if err := rows.Scan(
 			&item.ID, &item.ConnectorID, &item.ConnectorName, &item.ConnectorStatus, &item.AccountID,
 			&todayActualCost, &todayTotalTokens, &todayUsageCheckedAt,
-			&item.AccountName, &item.AccountPlatform, &item.UpstreamGroupID,
+			&item.AccountName, &item.AccountPlatform, &item.AccountSchedulable, &item.AccountGateActive, &item.UpstreamGroupID,
 			&item.UpstreamGroupName, &upstreamAPIKeyID, &item.UpstreamAPIKeyName, &item.UpstreamAPIKeyMasked,
 			&item.ProbeModel, &item.ProbeProtocol, &priority,
 			&item.Enabled, &item.Notes,
@@ -1485,9 +1623,9 @@ func scanRelayRun(rows *sql.Rows) (service.UpstreamRelayRecommendationRun, error
 
 func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runID int64) ([]service.UpstreamRelayRecommendationSuggestion, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT s.id, s.run_id, s.candidate_id, s.connector_id, COALESCE(rc.name, ''),
+		SELECT s.id, s.run_id, COALESCE(s.action_type, 'priority_update'), s.candidate_id, s.connector_id, COALESCE(rc.name, ''),
 		       s.account_id, COALESCE(a.name, ''), s.upstream_group_id, COALESCE(gs.name, ''),
-		       s.old_priority, s.new_priority,
+		       s.old_priority, s.new_priority, s.old_schedulable, s.new_schedulable,
 		       s.final_rate_multiplier, s.health_status, COALESCE(s.reason_code, ''),
 		       COALESCE(s.confidence, ''), COALESCE(s.health_summary, ''), COALESCE(s.rate_source, ''),
 		       s.reason, s.applied, s.applied_by,
@@ -1497,7 +1635,7 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 		LEFT JOIN accounts a ON a.id = s.account_id
 		LEFT JOIN upstream_relay_group_rate_snapshots gs ON gs.connector_id=s.connector_id AND gs.upstream_group_id=s.upstream_group_id
 		WHERE s.run_id=$1
-		ORDER BY s.new_priority ASC, s.candidate_id ASC
+		ORDER BY COALESCE(s.new_priority, 2147483647) ASC, s.candidate_id ASC
 	`, runID)
 	if err != nil {
 		return nil, err
@@ -1507,14 +1645,19 @@ func (r *upstreamRelayRepository) listRelaySuggestions(ctx context.Context, runI
 	for rows.Next() {
 		var item service.UpstreamRelayRecommendationSuggestion
 		var oldPriority, appliedBy sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.RunID, &item.CandidateID, &item.ConnectorID, &item.ConnectorName,
+		var newPriority sql.NullInt64
+		var oldSchedulable, newSchedulable sql.NullBool
+		if err := rows.Scan(&item.ID, &item.RunID, &item.ActionType, &item.CandidateID, &item.ConnectorID, &item.ConnectorName,
 			&item.AccountID, &item.AccountName, &item.UpstreamGroupID, &item.UpstreamGroupName,
-			&oldPriority, &item.NewPriority, &item.FinalRateMultiplier, &item.HealthStatus, &item.ReasonCode, &item.Confidence,
+			&oldPriority, &newPriority, &oldSchedulable, &newSchedulable, &item.FinalRateMultiplier, &item.HealthStatus, &item.ReasonCode, &item.Confidence,
 			&item.HealthSummary, &item.RateSource, &item.Reason, &item.Applied, &appliedBy,
 			&item.AppliedAt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		item.OldPriority = nullableIntFromSQL(oldPriority)
+		item.NewPriority = nullableIntFromSQL(newPriority)
+		item.OldSchedulable = nullableBoolFromSQL(oldSchedulable)
+		item.NewSchedulable = nullableBoolFromSQL(newSchedulable)
 		item.AppliedBy = nullInt64Ptr(appliedBy)
 		items = append(items, item)
 	}
@@ -1881,6 +2024,14 @@ func nullableInt64Ptr(v sql.NullInt64) *int64 {
 	return &out
 }
 
+func nullableBoolFromSQL(v sql.NullBool) *bool {
+	if !v.Valid {
+		return nil
+	}
+	out := v.Bool
+	return &out
+}
+
 func relayPage(total int64, page, pageSize int) *pagination.PaginationResult {
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
 	if pages < 1 {
@@ -1911,6 +2062,28 @@ func nullableIntValue(v *int) any {
 		return nil
 	}
 	return *v
+}
+
+func nullableBoolValue(v *bool) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func nullableOperatorID(operatorID int64) any {
+	if operatorID <= 0 {
+		return nil
+	}
+	return operatorID
+}
+
+func relaySuggestionActionOrDefault(action string) string {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return service.UpstreamRelaySuggestionActionPriorityUpdate
+	}
+	return action
 }
 
 func nullStringIfEmpty(v string) any {

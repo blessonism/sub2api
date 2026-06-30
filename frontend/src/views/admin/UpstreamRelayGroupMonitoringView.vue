@@ -195,8 +195,8 @@
                 <td class="px-4 py-3 text-right">
                   <div class="tabular-nums text-gray-900 dark:text-white">{{ candidate.current_priority ?? '-' }}</div>
                   <div v-if="candidatePendingSuggestion(candidate)" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-300">
-                    {{ tM('candidates.pendingSuggestion', { priority: candidatePendingSuggestion(candidate)?.new_priority }) }}
-                    <span class="text-gray-400 dark:text-gray-500">({{ priorityDeltaLabel(candidatePendingSuggestion(candidate)!) }})</span>
+                    {{ tM('candidates.pendingSuggestion', { action: suggestionActionLabel(candidatePendingSuggestion(candidate)!) }) }}
+                    <span class="text-gray-400 dark:text-gray-500">({{ suggestionChangeLabel(candidatePendingSuggestion(candidate)!) }})</span>
                   </div>
                   <div v-else class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ tM('candidates.noPendingSuggestion') }}</div>
                 </td>
@@ -1022,8 +1022,9 @@
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
+                  <th class="px-4 py-3 text-left">{{ tM('applyDialog.colAction') }}</th>
                   <th class="px-4 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
-                  <th class="px-4 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
+                  <th class="px-4 py-3 text-right">{{ tM('applyDialog.colChange') }}</th>
                   <th class="px-4 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ tM('policy.colReason') }}</th>
                 </tr>
@@ -1031,13 +1032,16 @@
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                 <tr v-for="suggestion in policyPreview.suggestions" :key="suggestion.candidate_id">
                   <td class="px-4 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
+                  <td class="px-4 py-3">
+                    <span :class="suggestionActionClass(suggestion)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ suggestionActionLabel(suggestion) }}</span>
+                  </td>
                   <td class="px-4 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
-                  <td class="px-4 py-3 text-right">{{ suggestion.old_priority ?? '-' }} → {{ suggestion.new_priority }}</td>
+                  <td class="px-4 py-3 text-right">{{ suggestionChangeLabel(suggestion) }}</td>
                   <td class="px-4 py-3 text-right">{{ formatRate(suggestion.final_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ suggestion.reason }}</td>
                 </tr>
                 <tr v-if="policyPreview.suggestions.length === 0">
-                  <td colspan="5" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">{{ tM('policy.noPreviewSuggestions') }}</td>
+                  <td colspan="6" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">{{ tM('policy.noPreviewSuggestions') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1353,8 +1357,9 @@
           <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
             <tr>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
+              <th class="px-3 py-3 text-left">{{ tM('applyDialog.colAction') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
-              <th class="px-3 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
+              <th class="px-3 py-3 text-right">{{ tM('applyDialog.colChange') }}</th>
               <th class="px-3 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colConfidence') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colSummary') }}</th>
@@ -1363,13 +1368,17 @@
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-for="suggestion in applyRun?.suggestions || []" :key="suggestion.id || suggestion.candidate_id">
               <td class="px-3 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
+              <td class="px-3 py-3">
+                <span :class="suggestionActionClass(suggestion)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ suggestionActionLabel(suggestion) }}</span>
+              </td>
               <td class="px-3 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
               <td class="px-3 py-3 text-right">
-                <div class="inline-flex items-center gap-1 tabular-nums">
+                <div v-if="suggestionActionType(suggestion) === 'priority_update'" class="inline-flex items-center gap-1 tabular-nums">
                   <span class="text-gray-400 dark:text-gray-500">{{ suggestion.old_priority ?? '-' }}</span>
                   <Icon :name="(priorityDeltaIcon(suggestion) as 'arrowUp' | 'arrowDown' | 'arrowRight')" size="xs" :class="priorityDeltaClass(suggestion)" />
-                  <span class="font-semibold" :class="priorityDeltaClass(suggestion)">{{ suggestion.new_priority }}</span>
+                  <span class="font-semibold" :class="priorityDeltaClass(suggestion)">{{ suggestion.new_priority ?? '-' }}</span>
                 </div>
+                <span v-else :class="suggestionActionClass(suggestion)" class="font-medium">{{ suggestionSchedulableTransitionLabel(suggestion) }}</span>
               </td>
               <td class="px-3 py-3 text-right">
                 <div class="tabular-nums">{{ formatRate(suggestion.final_rate_multiplier) }}</div>
@@ -1454,6 +1463,7 @@ import upstreamRelayAPI, {
   type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayMonitoringPolicyInput,
   type UpstreamRelayProbeProtocol,
+  type UpstreamRelayRecommendationActionType,
   type UpstreamRelayRecommendationPolicy,
   type UpstreamRelayRecommendationPreview,
   type UpstreamRelayRecommendationSuggestion,
@@ -1466,6 +1476,7 @@ import type { Account, PaginatedResponse } from '@/types'
 type SectionKey = 'candidates' | 'connectors' | 'usageHistory' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
 type BulkOperationKind = 'sync' | 'probe'
 type UsageHistoryDateShortcutKey = 'today' | 'yesterday' | 'last7d' | 'last30d'
+type SuggestionActionType = UpstreamRelayRecommendationActionType
 type UsageHistorySubtotal = {
   cost: number
   tokens: number
@@ -2070,6 +2081,9 @@ const snapshotDialogTitle = computed(() =>
 
 const applyRiskCards = computed(() => {
   const suggestions = applyRun.value?.suggestions || []
+  const prioritySuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'priority_update').length
+  const pauseSuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'account_pause').length
+  const resumeSuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'account_resume').length
   const lowConfidenceCount = suggestions.filter((item) => item.confidence === 'low' || item.confidence === 'unknown').length
   const riskyCandidateIds = new Set(
     candidates.value
@@ -2079,12 +2093,17 @@ const applyRiskCards = computed(() => {
   const riskySuggestionCount = suggestions.filter((item) => riskyCandidateIds.has(item.candidate_id)).length
   const connectorCount = new Set(suggestions.map((item) => item.connector_id)).size
   const maxPriorityDelta = suggestions.reduce((max, item) => {
+    if (suggestionActionType(item) !== 'priority_update') return max
     if (item.old_priority === null || item.old_priority === undefined) return max
+    if (item.new_priority === null || item.new_priority === undefined) return max
     return Math.max(max, Math.abs(item.new_priority - item.old_priority))
   }, 0)
 
   return [
     { label: tM('applyDialog.riskTotal'), value: suggestions.length },
+    { label: tM('applyDialog.riskPriority'), value: prioritySuggestionCount },
+    { label: tM('applyDialog.riskPause'), value: pauseSuggestionCount },
+    { label: tM('applyDialog.riskResume'), value: resumeSuggestionCount },
     { label: tM('applyDialog.riskLowConfidence'), value: lowConfidenceCount },
     { label: tM('applyDialog.riskFailedCandidates'), value: riskySuggestionCount },
     { label: tM('applyDialog.riskConnectors'), value: connectorCount },
@@ -3768,6 +3787,43 @@ function suggestionMappingLabel(suggestion: Pick<UpstreamRelayRecommendationSugg
   return `${suggestion.upstream_group_name || suggestion.upstream_group_id} → ${candidateAccountLabel(suggestion)}`
 }
 
+function suggestionActionType(suggestion: UpstreamRelayRecommendationSuggestion): SuggestionActionType {
+  return suggestion.action_type || 'priority_update'
+}
+
+function suggestionActionLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  const map: Record<SuggestionActionType, string> = {
+    priority_update: tM('suggestionActions.priorityUpdate'),
+    account_pause: tM('suggestionActions.accountPause'),
+    account_resume: tM('suggestionActions.accountResume')
+  }
+  return map[suggestionActionType(suggestion)] || suggestion.action_type || '-'
+}
+
+function suggestionActionClass(suggestion: UpstreamRelayRecommendationSuggestion) {
+  const map: Record<SuggestionActionType, string> = {
+    priority_update: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200',
+    account_pause: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200',
+    account_resume: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+  }
+  return map[suggestionActionType(suggestion)] || 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
+}
+
+function schedulableStatusLabel(value?: boolean | null) {
+  if (value === true) return tM('schedulableStatus.enabled')
+  if (value === false) return tM('schedulableStatus.paused')
+  return '-'
+}
+
+function suggestionSchedulableTransitionLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  return `${schedulableStatusLabel(suggestion.old_schedulable)} → ${schedulableStatusLabel(suggestion.new_schedulable)}`
+}
+
+function suggestionChangeLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  if (suggestionActionType(suggestion) !== 'priority_update') return suggestionSchedulableTransitionLabel(suggestion)
+  return `${suggestion.old_priority ?? '-'} → ${suggestion.new_priority ?? '-'}`
+}
+
 function exclusionReasonLabel(reasonCode: string) {
   const key = reasonCode.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase())
   return tM(`policy.reasonCodes.${key}`)
@@ -3782,15 +3838,9 @@ function apiKeyOptionLabel(apiKey: UpstreamRelayAPIKeyOption) {
   return apiKey.masked_key ? `${name} · ${apiKey.masked_key}` : name
 }
 
-function priorityDeltaLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
-  if (suggestion.old_priority === null || suggestion.old_priority === undefined) return tM('priorityDelta.new')
-  const delta = suggestion.new_priority - suggestion.old_priority
-  if (delta === 0) return tM('priorityDelta.unchanged')
-  return delta > 0 ? `+${delta}` : `${delta}`
-}
-
 function priorityDeltaIcon(suggestion: UpstreamRelayRecommendationSuggestion): string {
   if (suggestion.old_priority === null || suggestion.old_priority === undefined) return 'arrowRight'
+  if (suggestion.new_priority === null || suggestion.new_priority === undefined) return 'arrowRight'
   const delta = suggestion.new_priority - suggestion.old_priority
   if (delta > 0) return 'arrowUp'
   if (delta < 0) return 'arrowDown'
@@ -3799,6 +3849,7 @@ function priorityDeltaIcon(suggestion: UpstreamRelayRecommendationSuggestion): s
 
 function priorityDeltaClass(suggestion: UpstreamRelayRecommendationSuggestion): string {
   if (suggestion.old_priority === null || suggestion.old_priority === undefined) return 'text-primary-600 dark:text-primary-400'
+  if (suggestion.new_priority === null || suggestion.new_priority === undefined) return 'text-gray-400 dark:text-gray-500'
   const delta = suggestion.new_priority - suggestion.old_priority
   if (delta > 0) return 'text-primary-600 dark:text-primary-400'
   if (delta < 0) return 'text-amber-600 dark:text-amber-400'
