@@ -64,6 +64,14 @@
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
               <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
             </label>
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureChatCompletions') }}</span>
+              <Toggle :model-value="configForm.capture_chat_completions" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_chat_completions', value)" />
+            </div>
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureResponses') }}</span>
+              <Toggle :model-value="configForm.capture_responses" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_responses', value)" />
+            </div>
             <div class="space-y-2 md:col-span-2 xl:col-span-3">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.subjectFilterMode') }}</div>
               <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -161,7 +169,6 @@
         </section>
       </div>
 
-      <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section class="card overflow-hidden">
           <div class="border-b border-gray-100 p-4 dark:border-dark-700">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -178,24 +185,33 @@
                 </button>
               </div>
             </div>
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-7">
-              <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
-              <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
-              <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
-              <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
-              <select v-model="filters.quality_status" class="input">
-                <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
-                <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
-                <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
-                <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
-                <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
-              </select>
-              <select v-model="filters.exportable" class="input">
-                <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
-                <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
-                <option value="false">{{ t('admin.conversations.notExportable') }}</option>
-              </select>
-              <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
+            <div class="mt-4 space-y-2">
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
+                <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
+                <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
+                <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
+              </div>
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <select v-model="filters.quality_status" class="input">
+                  <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
+                  <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
+                  <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
+                  <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
+                  <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
+                </select>
+                <select v-model="filters.exportable" class="input">
+                  <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
+                  <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
+                  <option value="false">{{ t('admin.conversations.notExportable') }}</option>
+                </select>
+                <input v-model="filters.started_at_from" class="input" type="date" :placeholder="t('admin.conversations.dateFrom')" />
+                <input v-model="filters.started_at_to" class="input" type="date" :placeholder="t('admin.conversations.dateTo')" />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button v-if="hasActiveFilters" class="btn btn-secondary" type="button" @click="clearFilters">{{ t('admin.conversations.clearFilters') }}</button>
+                <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
+              </div>
             </div>
           </div>
           <div v-if="loading" class="flex min-h-64 items-center justify-center">
@@ -208,7 +224,7 @@
             :description="emptyStateDescription"
           />
           <div v-else class="overflow-x-auto">
-            <table class="w-full min-w-[1080px] text-sm">
+            <table class="w-full min-w-[900px] text-sm">
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.session') }}</th>
@@ -218,11 +234,16 @@
                   <th class="px-4 py-3 text-right">{{ t('admin.conversations.cost') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.status') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.updated') }}</th>
-                  <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                <tr v-for="session in sessions" :key="session.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                <tr
+                  v-for="session in sessions"
+                  :key="session.id"
+                  class="cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-800/70"
+                  :class="selectedSession?.id === session.id ? 'bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/30' : ''"
+                  @click="selectSession(session)"
+                >
                   <td class="px-4 py-3">
                     <div class="font-medium text-gray-900 dark:text-white">{{ shortId(session.session_id) }}</div>
                     <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -231,41 +252,24 @@
                     </div>
                   </td>
                   <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                    <div>user #{{ session.user_id }}</div>
+                    <div>{{ session.user_email || `user #${session.user_id}` }}</div>
                     <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">key #{{ session.api_key_id }}</div>
                   </td>
                   <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ session.model }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(session.total_tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(session.actual_cost) }}</td>
                   <td class="px-4 py-3">
-                    <span :class="pillClass(session.exportable ? 'success' : 'muted')" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.exportable ? t('admin.conversations.exportable') : t('admin.conversations.notExportable') }}
+                    <span :class="pillClass(qualityKind(session.quality_status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                      {{ qualityLabel(session.quality_status) }}
                     </span>
-                    <span :class="pillClass(session.capture_status === 'captured' ? 'success' : 'warn')" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.capture_status }}
-                    </span>
-                    <span :class="pillClass(qualityKind(session.quality_status))" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.quality_status }}
+                    <span v-if="!session.exportable" class="ml-1.5 inline-flex rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+                      {{ t('admin.conversations.notExportable') }}
                     </span>
                     <div v-if="formatQualityErrors(session.quality_errors)" class="mt-1 max-w-xs truncate text-xs text-amber-700 dark:text-amber-300">
                       {{ formatQualityErrors(session.quality_errors) }}
                     </div>
                   </td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(session.ended_at) }}</td>
-                  <td class="px-4 py-3">
-                    <div class="flex justify-end gap-2">
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="selectSession(session)">{{ t('common.view') }}</button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="toggleSessionExportable(session)">
-                        {{ session.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}
-                      </button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="markSessionQuality(session, 'clean')">
-                        {{ t('admin.conversations.markClean') }}
-                      </button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="markSessionQuality(session, 'rejected')">
-                        {{ t('admin.conversations.reject') }}
-                      </button>
-                    </div>
-                  </td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateShort(session.ended_at) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -280,105 +284,273 @@
           />
         </section>
 
-        <aside class="card min-h-[360px] self-start p-4">
-          <div v-if="!selectedSession" class="flex h-full min-h-[320px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-            {{ t('admin.conversations.selectHint') }}
-          </div>
-          <div v-else class="space-y-4">
-            <div>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ shortId(selectedSession.session_id) }}</h2>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ selectedSession.request_path }} · {{ selectedSession.session_source }}
-              </p>
-            </div>
-            <div class="grid grid-cols-1 gap-2 text-xs">
-              <div class="flex flex-wrap gap-2">
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'clean')">
-                  {{ t('admin.conversations.markClean') }}
-                </button>
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'needs_review')">
-                  {{ t('admin.conversations.needsReview') }}
-                </button>
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'rejected')">
-                  {{ t('admin.conversations.reject') }}
+      <Teleport to="body">
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="translate-x-full"
+          enter-to-class="translate-x-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="translate-x-0"
+          leave-to-class="translate-x-full"
+        >
+          <aside v-if="selectedSession" class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col overflow-hidden bg-white shadow-2xl dark:bg-dark-900">
+          <div class="flex min-h-0 flex-1 flex-col">
+            <!-- Session header -->
+            <div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <code class="max-w-[160px] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+                      {{ shortId(selectedSession.session_id) }}
+                    </code>
+                    <span :class="pillClass(qualityKind(selectedSession.quality_status))" class="inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium">
+                      {{ qualityLabel(selectedSession.quality_status) }}
+                    </span>
+                    <span
+                      class="inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium"
+                      :class="selectedSession.exportable
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'"
+                    >
+                      {{ selectedSession.exportable ? t('admin.conversations.exportable') : t('admin.conversations.notExportable') }}
+                    </span>
+                  </div>
+                  <div class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <span class="rounded bg-primary-50 px-1.5 py-0.5 font-mono text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ selectedSession.model }}</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ selectedSession.provider }} · {{ selectedSession.session_source }}</span>
+                  </div>
+                  <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ formatDateShort(selectedSession.started_at) }}
+                    <span v-if="selectedSession.ended_at"> → {{ formatTimeOnly(selectedSession.ended_at) }}</span>
+                    <span v-if="sessionDuration(selectedSession)" class="ml-1 text-gray-300 dark:text-dark-600">({{ sessionDuration(selectedSession) }})</span>
+                  </div>
+                </div>
+                <button type="button" class="ml-1 shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200" @click="closeSession()">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
-              <label class="space-y-1">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.conversations.mergeSourceIds') }}</span>
-                <div class="flex gap-2">
-                  <input v-model="mergeSourceIDsText" class="input w-full" placeholder="12,13" />
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="mergeIntoSelectedSession">
-                    {{ t('admin.conversations.merge') }}
-                  </button>
-                </div>
-              </label>
             </div>
-            <div v-if="turnsLoading" class="flex min-h-40 items-center justify-center">
+
+            <!-- Stats row -->
+            <div class="shrink-0 grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100 dark:divide-dark-700 dark:border-dark-700">
+              <div class="px-2 py-2 text-center">
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ selectedSession.turn_count }}</div>
+                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.turns') }}</div>
+              </div>
+              <div class="px-2 py-2 text-center">
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatNumberCompact(selectedSession.input_tokens) }}</div>
+                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.inputTokens') }}</div>
+              </div>
+              <div class="px-2 py-2 text-center">
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatNumberCompact(selectedSession.output_tokens) }}</div>
+                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.outputTokens') }}</div>
+              </div>
+              <div class="px-2 py-2 text-center">
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatCostCompact(selectedSession.actual_cost) }}</div>
+                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.cost') }}</div>
+              </div>
+            </div>
+
+            <!-- Identity row -->
+            <div class="shrink-0 flex divide-x divide-gray-100 border-b border-gray-100 dark:divide-dark-700 dark:border-dark-700">
+              <div class="min-w-0 flex-1 px-3 py-2">
+                <div class="text-xs text-gray-400 dark:text-gray-500">User</div>
+                <div class="mt-0.5 truncate text-xs font-medium text-gray-900 dark:text-white">{{ selectedSession.user_email || `#${selectedSession.user_id}` }}</div>
+                <div v-if="selectedSession.user_email" class="text-xs text-gray-400 dark:text-gray-500">#{{ selectedSession.user_id }}</div>
+              </div>
+              <div class="flex-1 px-3 py-2">
+                <div class="text-xs text-gray-400 dark:text-gray-500">API Key</div>
+                <div class="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">#{{ selectedSession.api_key_id }}</div>
+              </div>
+              <div class="flex-1 px-3 py-2">
+                <div class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.retentionUntil') }}</div>
+                <div class="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">{{ formatDateShort(selectedSession.retention_until) }}</div>
+              </div>
+            </div>
+
+            <!-- Quality actions -->
+            <div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+              <div class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.qualitySection') }}</div>
+              <div class="flex gap-1.5">
+                <button
+                  type="button"
+                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
+                  :class="selectedSession.quality_status === 'clean'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-emerald-700'"
+                  @click="markSessionQuality(selectedSession, 'clean')"
+                >{{ t('admin.conversations.markClean') }}</button>
+                <button
+                  type="button"
+                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
+                  :class="selectedSession.quality_status === 'needs_review'
+                    ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-amber-700'"
+                  @click="markSessionQuality(selectedSession, 'needs_review')"
+                >{{ t('admin.conversations.needsReview') }}</button>
+                <button
+                  type="button"
+                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
+                  :class="selectedSession.quality_status === 'rejected'
+                    ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-rose-700'"
+                  @click="markSessionQuality(selectedSession, 'rejected')"
+                >{{ t('admin.conversations.reject') }}</button>
+                <button
+                  type="button"
+                  class="rounded-md border px-2 py-1.5 text-xs font-medium transition"
+                  :class="selectedSession.exportable
+                    ? 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400'
+                    : 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'"
+                  @click="toggleSessionExportable(selectedSession)"
+                >{{ selectedSession.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}</button>
+              </div>
+              <div class="mt-2 flex gap-1.5">
+                <input v-model="mergeSourceIDsText" class="input min-w-0 flex-1 text-xs" :placeholder="t('admin.conversations.mergeSourceIds')" />
+                <button class="btn btn-secondary shrink-0 px-2 py-1 text-xs" type="button" @click="mergeIntoSelectedSession">
+                  {{ t('admin.conversations.merge') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Turn list -->
+            <div v-if="turnsLoading" class="flex shrink-0 min-h-40 items-center justify-center">
               <LoadingSpinner />
             </div>
-            <div v-else class="space-y-3">
-              <article v-for="turn in turns" :key="turn.id" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      #{{ turn.turn_index }} · {{ turn.parse_status }}
-                    </div>
-                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {{ turn.request_id }} · {{ turn.stream ? 'stream' : 'non-stream' }}
-                      <span v-if="turn.duplicate_count > 0"> · {{ t('admin.conversations.duplicate') }}</span>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="toggleTurnExportable(turn)">
-                      {{ turn.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markTurnQuality(turn, 'clean')">
-                      {{ t('admin.conversations.markClean') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markTurnQuality(turn, 'rejected')">
-                      {{ t('admin.conversations.reject') }}
-                    </button>
-                  </div>
-                </div>
-                <div class="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-300">
-                  <div v-if="selectedTurnDetails[turn.id]" class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.userMessages') }}</div>
-                    <pre class="whitespace-pre-wrap break-words">{{ renderMessages(selectedTurnDetails[turn.id].request_messages) }}</pre>
-                  </div>
-                  <div v-if="selectedTurnDetails[turn.id]" class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.assistantMessages') }}</div>
-                    <pre class="whitespace-pre-wrap break-words">{{ renderMessages(selectedTurnDetails[turn.id].response_messages) }}</pre>
-                  </div>
-                  <div v-else class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.preview') }}</div>
-                    <pre class="max-h-40 whitespace-pre-wrap break-words overflow-auto">{{ turn.payload_preview || '-' }}</pre>
-                  </div>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                  <span :class="pillClass(turn.truncated ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.truncated ? 'truncated' : 'complete' }}</span>
-                  <span :class="pillClass(turn.client_disconnect ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.client_disconnect ? 'disconnect' : 'connected' }}</span>
-                  <span :class="pillClass(qualityKind(turn.quality_status))" class="rounded-md px-2 py-1">{{ turn.quality_status }}</span>
-                  <span v-if="formatQualityErrors(turn.quality_errors)" class="rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                    {{ formatQualityErrors(turn.quality_errors) }}
+            <div v-else-if="turns.length === 0" class="flex shrink-0 min-h-20 items-center justify-center text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.conversations.noTurns') }}
+            </div>
+            <div v-else class="flex-1 min-h-0 divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
+              <div v-for="turn in turns" :key="turn.id">
+                <!-- Turn row -->
+                <button
+                  type="button"
+                  class="flex w-full items-start gap-2 px-3 py-2.5 text-left transition hover:bg-gray-50 dark:hover:bg-dark-800/70"
+                  @click="toggleTurnExpanded(turn.id)"
+                >
+                  <span class="mt-0.5 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                    #{{ turn.turn_index }}
                   </span>
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="loadTurnDetail(turn.id)">
-                    {{ selectedTurnDetails[turn.id] ? t('admin.conversations.hideDetail') : t('admin.conversations.loadDetail') }}
-                  </button>
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="splitFromTurn(turn.id)">
-                    {{ t('admin.conversations.splitHere') }}
-                  </button>
+                  <span :class="pillClass(qualityKind(turn.quality_status))" class="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs">
+                    {{ qualityLabel(turn.quality_status) }}
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span v-if="turnPreviewText(turn)" class="block truncate text-xs text-gray-600 dark:text-gray-300">{{ turnPreviewText(turn) }}</span>
+                    <span v-else class="block text-xs text-gray-400 dark:text-gray-500">—</span>
+                    <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0 text-xs text-gray-400 dark:text-gray-500">
+                      <span class="tabular-nums">{{ formatNumberCompact(turn.total_tokens) }} tok</span>
+                      <span v-if="turn.duplicate_count > 0" class="text-amber-600 dark:text-amber-400">×{{ turn.duplicate_count }} dup</span>
+                      <span v-if="turn.truncated" class="text-amber-600 dark:text-amber-400">trunc</span>
+                      <span v-if="turn.parse_status === 'failed'" class="text-rose-600 dark:text-rose-400">parse-err</span>
+                      <span v-if="turn.client_disconnect" class="text-gray-400 dark:text-gray-500">disconnect</span>
+                    </span>
+                  </span>
+                  <svg
+                    class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform"
+                    :class="expandedTurns.has(turn.id) ? 'rotate-180' : ''"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <!-- Turn expanded body -->
+                <div v-if="expandedTurns.has(turn.id)" class="border-t border-gray-100 bg-gray-50/50 dark:border-dark-700 dark:bg-dark-800/30">
+                  <!-- Turn meta bar -->
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-gray-100 px-3 py-1.5 dark:border-dark-700">
+                    <span class="font-mono text-xs text-gray-400 dark:text-gray-500">{{ shortId(turn.request_id) }}</span>
+                    <span class="text-xs text-gray-300 dark:text-dark-600">·</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatCostCompact(turn.actual_cost) }}</span>
+                    <span class="text-xs text-gray-300 dark:text-dark-600">·</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateShort(turn.created_at) }}</span>
+                  </div>
+
+                  <!-- Messages -->
+                  <div class="space-y-1.5 p-3">
+                    <div v-if="turnDetailLoading.has(turn.id)" class="flex items-center justify-center py-4">
+                      <LoadingSpinner />
+                    </div>
+                    <div v-else-if="turnDetailErrors[turn.id]" class="flex items-center gap-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">
+                      <span>{{ t('admin.conversations.loadDetailFailed') }}</span>
+                      <button type="button" class="ml-auto shrink-0 underline hover:no-underline" @click="fetchTurnDetail(turn.id)">{{ t('common.retry') }}</button>
+                    </div>
+                    <template v-else-if="selectedTurnDetails[turn.id]">
+                      <div
+                        v-for="(msg, i) in [...selectedTurnDetails[turn.id].request_messages, ...selectedTurnDetails[turn.id].response_messages]"
+                        :key="i"
+                        class="rounded-md px-3 py-2 text-xs"
+                        :class="String(msg.role) === 'user'
+                          ? 'bg-blue-50 text-blue-900 dark:bg-blue-900/20 dark:text-blue-200'
+                          : String(msg.role) === 'assistant'
+                            ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-200'
+                            : 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-200'"
+                      >
+                        <div class="mb-1 font-semibold capitalize">{{ msg.role }}</div>
+                        <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words font-sans">{{ getTextContent(msg.content) }}</pre>
+                      </div>
+                    </template>
+                    <div v-else class="max-h-40 overflow-auto rounded-md bg-gray-100 p-2.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">
+                      <pre class="whitespace-pre-wrap break-words font-sans">{{ turn.payload_preview || '-' }}</pre>
+                    </div>
+                  </div>
+
+                  <!-- Turn actions -->
+                  <div class="border-t border-gray-100 px-3 py-2.5 dark:border-dark-700">
+                    <div class="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
+                        :class="turn.quality_status === 'clean'
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300'"
+                        @click="markTurnQuality(turn, 'clean')"
+                      >{{ t('admin.conversations.markClean') }}</button>
+                      <button
+                        type="button"
+                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
+                        :class="turn.quality_status === 'rejected'
+                          ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300'"
+                        @click="markTurnQuality(turn, 'rejected')"
+                      >{{ t('admin.conversations.reject') }}</button>
+                      <button
+                        type="button"
+                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
+                        :class="turn.exportable
+                          ? 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400'
+                          : 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'"
+                        @click="toggleTurnExportable(turn)"
+                      >{{ turn.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}</button>
+                      <button class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300" type="button" @click="splitFromTurn(turn.id)">
+                        {{ t('admin.conversations.splitHere') }}
+                      </button>
+                    </div>
+                    <div class="mt-1.5 flex gap-1.5">
+                      <input v-model.number="moveTargets[turn.id]" class="input min-w-0 flex-1 text-xs" type="number" min="1" :placeholder="t('admin.conversations.moveTarget')" />
+                      <button class="btn btn-secondary shrink-0 px-2 py-1 text-xs" type="button" @click="moveTurnToSession(turn.id)">
+                        {{ t('admin.conversations.move') }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div class="mt-2 flex gap-2">
-                  <input v-model.number="moveTargets[turn.id]" class="input min-w-0 flex-1 text-xs" type="number" min="1" :placeholder="t('admin.conversations.moveTarget')" />
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="moveTurnToSession(turn.id)">
-                    {{ t('admin.conversations.move') }}
-                  </button>
-                </div>
-              </article>
+              </div>
             </div>
           </div>
-        </aside>
-      </div>
+          </aside>
+        </Transition>
+        <Transition
+          enter-active-class="transition duration-200"
+          enter-from-class="opacity-0"
+          enter-to-class="opacity-100"
+          leave-active-class="transition duration-150"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
+        >
+          <div v-if="selectedSession" class="fixed inset-0 z-40 bg-black/30 dark:bg-black/50" @click="closeSession()" />
+        </Transition>
+      </Teleport>
 
       <section class="card p-4">
         <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -438,7 +610,7 @@
                 </td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(job.turn_count) }}</td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ formatBytes(job.file_size) }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(job.expires_at) }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateShort(job.expires_at) }}</td>
                 <td class="px-4 py-3">
                   <div class="flex justify-end gap-2">
                     <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status !== 'completed'" @click="downloadExportJob(job.id)">
@@ -512,6 +684,39 @@ const idListDrafts = reactive<Record<ConversationIDListKind, string>>({
   included_user_ids: '',
   included_api_key_ids: '',
 })
+const expandedTurns = ref(new Set<number>())
+const turnDetailLoading = ref(new Set<number>())
+const turnDetailErrors = reactive<Record<number, true>>({})
+
+function toggleTurnExpanded(id: number) {
+  if (expandedTurns.value.has(id)) {
+    expandedTurns.value.delete(id)
+  } else {
+    expandedTurns.value.add(id)
+    if (!selectedTurnDetails[id] && !turnDetailLoading.value.has(id)) void fetchTurnDetail(id)
+  }
+  expandedTurns.value = new Set(expandedTurns.value)
+}
+
+async function fetchTurnDetail(id: number) {
+  const sessionAtStart = selectedSession.value?.id
+  delete turnDetailErrors[id]
+  turnDetailLoading.value = new Set([...turnDetailLoading.value, id])
+  try {
+    const detail = await conversationsAPI.getTurn(id)
+    if (selectedSession.value?.id === sessionAtStart) {
+      selectedTurnDetails[id] = detail
+    }
+  } catch {
+    if (selectedSession.value?.id === sessionAtStart) {
+      turnDetailErrors[id] = true
+    }
+  } finally {
+    turnDetailLoading.value.delete(id)
+    turnDetailLoading.value = new Set(turnDetailLoading.value)
+  }
+}
+
 const loading = ref(false)
 const turnsLoading = ref(false)
 const jobsLoading = ref(false)
@@ -532,6 +737,8 @@ const filters = reactive({
   request_id: '',
   quality_status: '',
   exportable: '',
+  started_at_from: '',
+  started_at_to: '',
 })
 const exportOptions = reactive({
   redaction_enabled: true,
@@ -555,6 +762,8 @@ const hasActiveFilters = computed(() => Boolean(
   || filters.request_id
   || filters.quality_status
   || filters.exportable
+  || filters.started_at_from
+  || filters.started_at_to
 ))
 const captureSummaryItems = computed(() => [
   { label: t('admin.conversations.samplePercent'), value: `${configForm.sample_percent}%` },
@@ -645,7 +854,7 @@ async function saveConfig() {
   }
 }
 
-async function updateConfigFlag(field: 'enabled' | 'export_enabled', value: boolean) {
+async function updateConfigFlag(field: 'enabled' | 'export_enabled' | 'capture_chat_completions' | 'capture_responses', value: boolean) {
   configForm[field] = value
   try {
     await saveConfig()
@@ -760,6 +969,8 @@ function buildFilters(): ConversationSessionFilters {
     request_id: filters.request_id || undefined,
     quality_status: filters.quality_status || undefined,
     exportable: filters.exportable === '' ? undefined : filters.exportable === 'true',
+    started_at_from: filters.started_at_from || undefined,
+    started_at_to: filters.started_at_to || undefined,
   }
 }
 
@@ -768,8 +979,23 @@ function applyFilters() {
   void loadSessions()
 }
 
+function clearFilters() {
+  filters.user_id = null
+  filters.api_key_id = null
+  filters.model = ''
+  filters.request_id = ''
+  filters.quality_status = ''
+  filters.exportable = ''
+  filters.started_at_from = ''
+  filters.started_at_to = ''
+  applyFilters()
+}
+
 async function selectSession(session: ConversationSession) {
   selectedSession.value = session
+  expandedTurns.value = new Set()
+  turnDetailLoading.value = new Set()
+  Object.keys(turnDetailErrors).forEach((key) => delete turnDetailErrors[Number(key)])
   turnsLoading.value = true
   try {
     const response = await conversationsAPI.listSessionTurns(session.id, { page: 1, page_size: 50 })
@@ -780,6 +1006,13 @@ async function selectSession(session: ConversationSession) {
   } finally {
     turnsLoading.value = false
   }
+}
+
+function closeSession() {
+  selectedSession.value = null
+  expandedTurns.value = new Set()
+  turnDetailLoading.value = new Set()
+  Object.keys(turnDetailErrors).forEach((key) => delete turnDetailErrors[Number(key)])
 }
 
 async function refreshSelectedSession() {
@@ -867,14 +1100,6 @@ async function moveTurnToSession(turnId: number) {
   if (!target || target <= 0) return
   await conversationsAPI.moveTurn(turnId, { target_session_id: target })
   await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function loadTurnDetail(id: number) {
-  if (selectedTurnDetails[id]) {
-    delete selectedTurnDetails[id]
-    return
-  }
-  selectedTurnDetails[id] = await conversationsAPI.getTurn(id)
 }
 
 async function exportJSONL() {
@@ -1005,20 +1230,45 @@ function formatMinutes(value: number): string {
   return t('admin.conversations.minutesValue', { count: value || 0 })
 }
 
-function formatDate(value: string): string {
+function formatDateShort(value: string): string {
   if (!value) return '-'
-  return new Date(value).toLocaleString()
+  return new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function renderMessages(messages: Array<Record<string, unknown>>): string {
-  if (!messages?.length) return '-'
-  return messages
-    .map((message) => {
-      const role = String(message.role || 'message')
-      const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? message)
-      return `${role}: ${content}`
-    })
-    .join('\n\n')
+function formatTimeOnly(value: string): string {
+  if (!value) return ''
+  return new Date(value).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function sessionDuration(session: { started_at: string; ended_at: string }): string {
+  if (!session.started_at || !session.ended_at) return ''
+  const ms = new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()
+  if (ms <= 0) return ''
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+}
+
+function formatNumberCompact(value: number): string {
+  if (!value) return '0'
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 10_000) return `${Math.round(value / 1_000)}K`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return String(value)
+}
+
+function formatCostCompact(value: number): string {
+  if (!value) return '$0'
+  if (value >= 1) return `$${value.toFixed(3)}`
+  if (value >= 0.001) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(6)}`
+}
+
+function turnPreviewText(turn: { payload_preview?: string | null }): string {
+  if (!turn.payload_preview) return ''
+  const firstLine = turn.payload_preview.trim().split('\n')[0] || ''
+  return firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine
 }
 
 function formatQualityErrors(errors: Array<{ code?: string; message?: string }> | undefined): string {
@@ -1027,6 +1277,29 @@ function formatQualityErrors(errors: Array<{ code?: string; message?: string }> 
     .map((error) => error.message || error.code || '')
     .filter(Boolean)
     .join('; ')
+}
+
+function getTextContent(content: unknown): string {
+  if (content == null) return '-'
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.map((block) => {
+      if (typeof block === 'string') return block
+      if (block && typeof block === 'object') {
+        const b = block as Record<string, unknown>
+        if (b.type === 'text') return String(b.text ?? '')
+        if (b.type === 'tool_use') return `[tool_use: ${b.name}]\n${JSON.stringify(b.input, null, 2)}`
+        if (b.type === 'tool_result') {
+          const c = typeof b.content === 'string' ? b.content : JSON.stringify(b.content, null, 2)
+          return `[tool_result: ${b.tool_use_id}]\n${c}`
+        }
+        if (b.type === 'image') return '[image]'
+        return JSON.stringify(b, null, 2)
+      }
+      return String(block)
+    }).filter(Boolean).join('\n\n')
+  }
+  return JSON.stringify(content, null, 2)
 }
 
 function pillClass(kind: 'success' | 'warn' | 'muted'): string {
@@ -1039,6 +1312,17 @@ function qualityKind(status: ConversationQualityStatus | string): 'success' | 'w
   if (status === 'clean') return 'success'
   if (status === 'needs_review' || status === 'rejected') return 'warn'
   return 'muted'
+}
+
+const qualityLabelMap = computed(() => ({
+  clean: t('admin.conversations.qualityClean'),
+  needs_review: t('admin.conversations.qualityNeedsReview'),
+  rejected: t('admin.conversations.qualityRejected'),
+  unchecked: t('admin.conversations.qualityUnchecked'),
+}))
+
+function qualityLabel(status: string): string {
+  return qualityLabelMap.value[status as keyof typeof qualityLabelMap.value] || status
 }
 
 function jobStatusKind(status: ConversationExportJob['status']): 'success' | 'warn' | 'muted' {
