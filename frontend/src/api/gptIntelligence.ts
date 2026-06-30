@@ -37,6 +37,15 @@ export interface GptIntelligenceQuotaRadar {
   updated_at: string
 }
 
+export interface GptIntelligencePromptTemplate {
+  id: string
+  title: string
+  description: string
+  prompt: string
+  expected: string
+  threshold: string
+}
+
 export interface GptIntelligenceSnapshot {
   monitored_at: string
   timezone: string
@@ -44,6 +53,7 @@ export interface GptIntelligenceSnapshot {
   recent_days: GptIntelligenceRun[]
   comparisons: GptIntelligenceComparison[]
   quota_radar: GptIntelligenceQuotaRadar | null
+  intelligence_check_templates?: GptIntelligencePromptTemplate[]
 }
 
 interface FetchOptions {
@@ -145,6 +155,27 @@ function parseQuotaRadar(value: unknown): GptIntelligenceQuotaRadar | null {
   }
 }
 
+function parsePromptTemplates(value: unknown): GptIntelligencePromptTemplate[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((raw) => {
+      if (!isRecord(raw)) return null
+      const id = readString(raw.id)
+      const title = readString(raw.title)
+      const prompt = readString(raw.prompt)
+      if (!id || !title || !prompt) return null
+      return {
+        id,
+        title,
+        description: readString(raw.description),
+        prompt,
+        expected: readString(raw.expected),
+        threshold: readString(raw.threshold),
+      }
+    })
+    .filter((item): item is GptIntelligencePromptTemplate => item !== null)
+}
+
 export function parseGptIntelligenceSnapshot(value: unknown): GptIntelligenceSnapshot {
   if (!isRecord(value)) {
     throw new Error('invalid codex radar payload')
@@ -167,6 +198,7 @@ export function parseGptIntelligenceSnapshot(value: unknown): GptIntelligenceSna
     recent_days: recentDays,
     comparisons: parseComparisons(modelIq.comparisons),
     quota_radar: parseQuotaRadar(modelIq.quota_radar),
+    intelligence_check_templates: parsePromptTemplates(modelIq.intelligence_check_templates),
   }
 }
 

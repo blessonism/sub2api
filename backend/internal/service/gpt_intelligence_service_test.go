@@ -43,6 +43,7 @@ func TestParseGptIntelligenceHTML_ExtractsPublicModelIqTitles(t *testing.T) {
 	require.Equal(t, "public_html_title", snapshot.Metadata.Method)
 	require.Equal(t, 4, snapshot.Metadata.RunCount)
 	require.Equal(t, gptIntelligenceSourceURL, snapshot.Source.URL)
+	require.Len(t, snapshot.Templates, 3)
 }
 
 func TestParseGptIntelligenceHTML_ReturnsUnavailableWhenTitlesMissing(t *testing.T) {
@@ -65,6 +66,9 @@ func TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers(t *testing.T) {
 	score := 80.0
 	original := &GptIntelligenceSnapshot{
 		Latest: &GptIntelligenceRun{Score: &score},
+		Templates: []GptIntelligencePromptTemplate{
+			{ID: "logic", Title: "原始标题", Prompt: "原始题目", Expected: "原始期望", Threshold: "原始阈值"},
+		},
 		RecentDays: []GptIntelligenceRun{
 			{Score: &score},
 		},
@@ -85,11 +89,78 @@ func TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers(t *testing.T) {
 	*cloned.RecentDays[0].Score = 60
 	*cloned.Comparisons[0].Latest.Score = 50
 	*cloned.Comparisons[0].RecentDays[0].Score = 40
+	cloned.Templates[0].Title = "修改标题"
 
 	require.Equal(t, 80.0, *original.Latest.Score)
 	require.Equal(t, 80.0, *original.RecentDays[0].Score)
 	require.Equal(t, 80.0, *original.Comparisons[0].Latest.Score)
 	require.Equal(t, 80.0, *original.Comparisons[0].RecentDays[0].Score)
+	require.Equal(t, "原始标题", original.Templates[0].Title)
+}
+
+func TestEncodeGptIntelligencePromptTemplates_NormalizesKnownTemplates(t *testing.T) {
+	defaults := DefaultGptIntelligencePromptTemplates()
+	defaults[0].Title = "  新逻辑题  "
+
+	raw, normalized, err := EncodeGptIntelligencePromptTemplates(defaults)
+
+	require.NoError(t, err)
+	require.Contains(t, raw, `"id":"logic"`)
+	require.Len(t, normalized, 3)
+	require.Equal(t, "新逻辑题", normalized[0].Title)
+}
+
+func TestEncodeGptIntelligencePromptTemplates_PreservesCustomTemplates(t *testing.T) {
+	templates := DefaultGptIntelligencePromptTemplates()
+	templates = append(templates, GptIntelligencePromptTemplate{
+		ID:          "custom-1",
+		Title:       "自定义题",
+		Description: "管理员新增",
+		Prompt:      "自定义 Prompt",
+		Expected:    "自定义期望",
+		Threshold:   "自定义阈值",
+	})
+
+	_, normalized, err := EncodeGptIntelligencePromptTemplates(templates)
+
+	require.NoError(t, err)
+	require.Len(t, normalized, 4)
+	require.Equal(t, "custom-1", normalized[3].ID)
+	require.Equal(t, "自定义题", normalized[3].Title)
+}
+
+func TestEncodeGptIntelligencePromptTemplates_DoesNotRestoreDeletedDefaultTemplates(t *testing.T) {
+	_, normalized, err := EncodeGptIntelligencePromptTemplates([]GptIntelligencePromptTemplate{
+		{
+			ID:        "custom-1",
+			Title:     "自定义题",
+			Prompt:    "自定义 Prompt",
+			Expected:  "自定义期望",
+			Threshold: "自定义阈值",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, normalized, 1)
+	require.Equal(t, "custom-1", normalized[0].ID)
+}
+
+func TestEncodeGptIntelligencePromptTemplates_AllowsEmptyTemplates(t *testing.T) {
+	raw, normalized, err := EncodeGptIntelligencePromptTemplates(nil)
+
+	require.NoError(t, err)
+	require.Equal(t, "[]", raw)
+	require.Empty(t, normalized)
+}
+
+func TestEncodeGptIntelligencePromptTemplates_RejectsEmptyPrompt(t *testing.T) {
+	defaults := DefaultGptIntelligencePromptTemplates()
+	defaults[0].Prompt = " "
+
+	_, _, err := EncodeGptIntelligencePromptTemplates(defaults)
+
+	require.Error(t, err)
+	require.True(t, ErrGptIntelligenceTemplateInvalid.Is(err))
 }
 
 func infraErrorIsServiceUnavailable(err error) bool {

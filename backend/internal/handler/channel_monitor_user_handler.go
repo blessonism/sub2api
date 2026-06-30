@@ -196,5 +196,16 @@ func (h *ChannelMonitorUserHandler) GetGptIntelligence(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if h.settingService != nil {
+		raw, err := h.settingService.GetRawSettingValue(c.Request.Context(), service.SettingKeyGptIntelligenceTemplates)
+		if err == nil {
+			templates, decodeErr := service.DecodeGptIntelligencePromptTemplates(raw)
+			if decodeErr == nil {
+				snapshot.Templates = templates
+			}
+		} else if service.ErrSettingNotFound.Is(err) {
+			snapshot.Templates = service.DefaultGptIntelligencePromptTemplates()
+		}
+	}
 	response.Success(c, snapshot)
 }

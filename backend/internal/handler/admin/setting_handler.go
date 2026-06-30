@@ -66,6 +66,10 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 }
 
+type gptIntelligenceTemplateUpdateRequest struct {
+	Templates []service.GptIntelligencePromptTemplate `json:"templates" binding:"required"`
+}
+
 // NewSettingHandler 创建系统设置处理器
 func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService) *SettingHandler {
 	return &SettingHandler{
@@ -3495,6 +3499,26 @@ func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 		return
 	}
 	response.Success(c, service.PopulateWebSearchUsage(c.Request.Context(), updated))
+}
+
+// UpdateGptIntelligenceTemplates 保存 GPT 智力检验全局模板。
+// PUT /api/v1/admin/settings/gpt-intelligence/templates
+func (h *SettingHandler) UpdateGptIntelligenceTemplates(c *gin.Context) {
+	var req gptIntelligenceTemplateUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, service.ErrGptIntelligenceTemplateInvalid.WithCause(err))
+		return
+	}
+	raw, templates, err := service.EncodeGptIntelligencePromptTemplates(req.Templates)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.settingService.SetRawSettingValue(c.Request.Context(), service.SettingKeyGptIntelligenceTemplates, raw); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"templates": templates})
 }
 
 // ResetWebSearchUsage 重置指定 provider 的配额用量

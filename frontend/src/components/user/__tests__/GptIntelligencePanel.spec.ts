@@ -1,7 +1,15 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GptIntelligencePanel from '@/components/user/monitor/GptIntelligencePanel.vue'
 import type { GptIntelligenceSnapshot } from '@/api/gptIntelligence'
+
+const { updateGptIntelligenceTemplates } = vi.hoisted(() => ({
+  updateGptIntelligenceTemplates: vi.fn(),
+}))
+
+vi.mock('@/api/admin/gptIntelligence', () => ({
+  updateGptIntelligenceTemplates,
+}))
 
 const messages: Record<string, string> = {
   'channelStatus.modelIq.title': 'GPT IQ Test',
@@ -32,6 +40,12 @@ const messages: Record<string, string> = {
   'channelStatus.modelIq.intelligenceCheck.title': 'GPT intelligence check',
   'channelStatus.modelIq.intelligenceCheck.subtitle': 'Pick a prompt template',
   'channelStatus.modelIq.intelligenceCheck.adminDraft': 'Admin draft',
+  'channelStatus.modelIq.intelligenceCheck.customTemplate': 'Custom prompt',
+  'channelStatus.modelIq.intelligenceCheck.addTemplate': 'Add test prompt',
+  'channelStatus.modelIq.intelligenceCheck.deleteTemplate': 'Delete prompt',
+  'channelStatus.modelIq.intelligenceCheck.newTemplateTitle': 'New test prompt',
+  'channelStatus.modelIq.intelligenceCheck.emptyTemplates': 'No test prompts',
+  'channelStatus.modelIq.intelligenceCheck.emptyDescription': 'Admins can add a prompt and save it to the global prompt list.',
   'channelStatus.modelIq.intelligenceCheck.titleLabel': 'Prompt title',
   'channelStatus.modelIq.intelligenceCheck.titlePlaceholder': 'Enter a prompt title',
   'channelStatus.modelIq.intelligenceCheck.descriptionLabel': 'Description',
@@ -218,6 +232,10 @@ const snapshot: GptIntelligenceSnapshot = {
 }
 
 describe('GptIntelligencePanel', () => {
+  beforeEach(() => {
+    updateGptIntelligenceTemplates.mockReset()
+  })
+
   it('renders the latest intelligence snapshot', () => {
     const wrapper = mount(GptIntelligencePanel, {
       props: {
@@ -319,9 +337,22 @@ describe('GptIntelligencePanel', () => {
   })
 
   it('opens intelligence check templates as read-only for regular users', async () => {
+    const snapshotWithGlobalTemplates: GptIntelligenceSnapshot = {
+      ...snapshot,
+      intelligence_check_templates: [
+        {
+          id: 'logic',
+          title: '管理员逻辑题',
+          description: '所有用户可见',
+          prompt: '全局 Prompt',
+          expected: '全局期望',
+          threshold: '全局阈值',
+        },
+      ],
+    }
     const wrapper = mount(GptIntelligencePanel, {
       props: {
-        snapshot,
+        snapshot: snapshotWithGlobalTemplates,
         loading: false,
         error: null,
       },
@@ -338,9 +369,11 @@ describe('GptIntelligencePanel', () => {
     await wrapper.get('button[aria-label="Intelligence check"]').trigger('click')
 
     expect(wrapper.text()).toContain('GPT intelligence check')
-    expect(wrapper.text()).toContain('逻辑推理')
-    expect(wrapper.text()).toContain('指令遵循')
-    expect(wrapper.text()).toContain('上下文抗干扰')
+    expect(wrapper.text()).toContain('管理员逻辑题')
+    expect(wrapper.text()).toContain('所有用户可见')
+    expect(wrapper.find('textarea').element.value).toBe('全局 Prompt')
+    expect(wrapper.text()).not.toContain('指令遵循')
+    expect(wrapper.text()).not.toContain('上下文抗干扰')
     expect(wrapper.text()).toContain('Copy prompt')
     expect(wrapper.text()).not.toContain('Save draft')
     expect(wrapper.find('#model-iq-template-title').exists()).toBe(false)
@@ -349,6 +382,18 @@ describe('GptIntelligencePanel', () => {
   })
 
   it('lets admins edit intelligence check template fields', async () => {
+    updateGptIntelligenceTemplates.mockResolvedValueOnce({
+      templates: [
+        {
+          id: 'logic',
+          title: '保存后的逻辑题',
+          description: '所有用户可见',
+          prompt: '保存后的 Prompt',
+          expected: '保存后的期望',
+          threshold: '保存后的阈值',
+        },
+      ],
+    })
     const wrapper = mount(GptIntelligencePanel, {
       props: {
         snapshot,
@@ -371,6 +416,82 @@ describe('GptIntelligencePanel', () => {
     expect(wrapper.find('#model-iq-template-description').exists()).toBe(true)
     expect(wrapper.find('textarea[placeholder="Enter the expected signal"]').exists()).toBe(true)
     expect(wrapper.find('textarea[placeholder="Enter the failure threshold"]').exists()).toBe(true)
+
+    await wrapper.find('#model-iq-template-title').setValue('保存后的逻辑题')
+    const saveButton = wrapper.findAll('button').find((button) => button.text().includes('Save draft'))
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    expect(updateGptIntelligenceTemplates).toHaveBeenCalledOnce()
+    expect(updateGptIntelligenceTemplates.mock.calls[0][0][0]).toMatchObject({
+      id: 'logic',
+      title: '保存后的逻辑题',
+    })
+    expect(wrapper.text()).toContain('Draft saved')
+  })
+
+  it('lets admins delete default intelligence check templates', async () => {
+    updateGptIntelligenceTemplates.mockResolvedValueOnce({
+      templates: [],
+    })
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot,
+        loading: false,
+        error: null,
+        canEditIntelligenceTemplates: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.get('button[aria-label="Intelligence check"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Delete prompt')
+    const deleteButton = wrapper.get('[data-test="delete-intelligence-template"]')
+    expect(deleteButton.text()).toContain('Delete prompt')
+    await deleteButton.trigger('click')
+
+    const saveButton = wrapper.findAll('button').find((button) => button.text().includes('Save draft'))
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    expect(updateGptIntelligenceTemplates).toHaveBeenCalledOnce()
+    expect(updateGptIntelligenceTemplates.mock.calls[0][0].some((template) => template.id === 'logic')).toBe(false)
+    expect(wrapper.text()).toContain('No test prompts')
+  })
+
+  it('lets admins add a prompt after all prompts were deleted', async () => {
+    const emptySnapshot: GptIntelligenceSnapshot = {
+      ...snapshot,
+      intelligence_check_templates: [],
+    }
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot: emptySnapshot,
+        loading: false,
+        error: null,
+        canEditIntelligenceTemplates: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.get('button[aria-label="Intelligence check"]').trigger('click')
+    expect(wrapper.text()).toContain('No test prompts')
+
+    const addButton = wrapper.findAll('button').find((button) => button.text().includes('Add test prompt'))
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+
+    expect(wrapper.text()).toContain('New test prompt')
+    expect(wrapper.find('#model-iq-template-title').exists()).toBe(true)
   })
 
   it('shows an inline error when there is no cached snapshot', () => {

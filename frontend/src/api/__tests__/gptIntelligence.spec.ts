@@ -43,6 +43,16 @@ const payload = {
       adjusted_delta: 42,
       updated_at: '2026-06-24T04:58:05Z',
     },
+    intelligence_check_templates: [
+      {
+        id: 'logic',
+        title: '管理员逻辑题',
+        description: '所有用户可见',
+        prompt: '全局 Prompt',
+        expected: '全局期望',
+        threshold: '全局阈值',
+      },
+    ],
   },
 }
 
@@ -66,6 +76,7 @@ describe('parseGptIntelligenceSnapshot', () => {
     expect(snapshot.comparisons[0]?.recent_days).toHaveLength(2)
     expect(snapshot.comparisons[0]?.recent_days[0]?.score).toBe(100)
     expect(snapshot.quota_radar?.basis_window_label).toBe('5h')
+    expect(snapshot.intelligence_check_templates[0]?.title).toBe('管理员逻辑题')
   })
 
   it('rejects payloads without model_iq data', () => {
@@ -97,6 +108,7 @@ describe('parseGptIntelligenceSnapshot', () => {
         },
       ],
       quota_radar: null,
+      intelligence_check_templates: [],
     })
 
     expect(snapshot.latest?.score).toBe(75)
