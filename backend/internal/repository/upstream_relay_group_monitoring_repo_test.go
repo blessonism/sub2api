@@ -15,6 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testIntPtr(value int) *int {
+	return &value
+}
+
+func testBoolPtr(value bool) *bool {
+	return &value
+}
+
 func TestUpstreamRelayRepositoryCreateConnectorPersistsPasswordLoginFields(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUpstreamRelayRepository(db)
@@ -148,7 +156,7 @@ func TestUpstreamRelayRepositoryListCandidatesScansRemoteTodayUsage(t *testing.T
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "connector_id", "connector_name", "connector_status", "account_id",
 			"today_actual_cost", "today_total_tokens", "today_usage_checked_at",
-			"account_name", "account_platform", "upstream_group_id", "upstream_group_name",
+			"account_name", "account_platform", "account_schedulable", "account_gate_active", "upstream_group_id", "upstream_group_name",
 			"upstream_api_key_id", "upstream_api_key_name", "upstream_api_key_masked",
 			"probe_model", "probe_protocol", "priority", "enabled", "notes",
 			"last_probe_result_id", "created_by", "created_at", "updated_at",
@@ -159,7 +167,7 @@ func TestUpstreamRelayRepositoryListCandidatesScansRemoteTodayUsage(t *testing.T
 		}).AddRow(
 			int64(9), int64(2), "relay", service.UpstreamRelayConnectorStatusActive, int64(101),
 			1.2345, int64(12345), now,
-			"account-a", "openai", "upstream-cheap", "Upstream Cheap",
+			"account-a", "openai", true, false, "upstream-cheap", "Upstream Cheap",
 			int64(855), "特惠", "sk-***",
 			"gpt-4o-mini", service.MonitorAPIModeChatCompletions, 10, true, "", nil, int64(77), now, now,
 			nil, nil, nil, nil, "", "", nil,
@@ -392,10 +400,10 @@ func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonField
 	mock.ExpectQuery("INSERT INTO upstream_relay_recommendation_runs").
 		WithArgs(service.UpstreamRelayRunStatusSuccess, 1, 1, nil, int64(88)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(44)))
-	mock.ExpectExec(`VALUES \(\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8,\$9,\$10,\$11,\$12,\$13,\$14,FALSE,NOW\(\)\)`).
+	mock.ExpectExec("INSERT INTO upstream_relay_recommendation_suggestions").
 		WithArgs(
-			int64(44), int64(9), int64(10), int64(101), "cheap-upstream",
-			oldPriority, 10, 0.75, "healthy", "rate_health_priority",
+			int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(9), int64(10), int64(101), "cheap-upstream",
+			oldPriority, 10, nil, nil, 0.75, "healthy", "rate_health_priority",
 			"high", "最近3次成功率 100%，连续成功 3，连续失败 0，p95 80ms",
 			service.UpstreamRelayRateSourceOverride, "结构化建议原因",
 		).
@@ -415,7 +423,7 @@ func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonField
 			AccountID:           101,
 			UpstreamGroupID:     "cheap-upstream",
 			OldPriority:         &oldPriority,
-			NewPriority:         10,
+			NewPriority:         testIntPtr(10),
 			FinalRateMultiplier: 0.75,
 			HealthStatus:        "healthy",
 			ReasonCode:          "rate_health_priority",
@@ -565,11 +573,11 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunUpdatesPriorityAndAudit(t 
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
 			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
-	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
-			AddRow(int64(1), int64(101), 50, 10).
-			AddRow(int64(2), int64(102), 60, 20))
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(1), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(1), int64(101), 50, 10, nil, nil, "rate_health_priority", "rate").
+			AddRow(int64(2), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(2), int64(102), 60, 20, nil, nil, "rate_health_priority", "rate"))
 	mock.ExpectExec("UPDATE accounts").
 		WithArgs(int64(101), 10, int64(50)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -612,10 +620,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunUsesSuggestionSnapshotWith
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
 			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
-	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
-			AddRow(int64(99), int64(101), 50, 10))
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(99), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(99), int64(101), 50, 10, nil, nil, "rate_health_priority", "rate"))
 	mock.ExpectExec("UPDATE accounts").
 		WithArgs(int64(101), 10, int64(50)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -648,10 +656,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStalePriority(t *te
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
 			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
-	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
-			AddRow(int64(1), int64(101), 50, 10))
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(1), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(1), int64(101), 50, 10, nil, nil, "rate_health_priority", "rate"))
 	mock.ExpectExec("UPDATE accounts").
 		WithArgs(int64(101), 10, int64(50)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -670,6 +678,217 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStalePriority(t *te
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpstreamRelayRepositoryApplyRecommendationRunAppliesAccountPause(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
+		WithArgs(int64(44)).
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(7), service.UpstreamRelaySuggestionActionAccountPause, int64(9), int64(101), 50, nil, true, false, "account_gate_latest_probe_failed", "最近探测失败；建议暂停账号承接"))
+	mock.ExpectExec("UPDATE accounts").
+		WithArgs(int64(101), false, true).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO upstream_relay_account_gate_states").
+		WithArgs(int64(101), true, "account_gate_latest_probe_failed", "最近探测失败；建议暂停账号承接", int64(44), int64(7), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_suggestions").
+		WithArgs(int64(44), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_runs").
+		WithArgs(int64(44), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WithArgs(service.SchedulerOutboxEventAccountChanged, sqlmock.AnyArg(), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectUpstreamRelayRunDetailWithSuggestions(mock, now, true, newRelaySuggestionRows().AddRow(
+		int64(7), int64(44), service.UpstreamRelaySuggestionActionAccountPause, int64(9), int64(10), "relay", int64(101), "account-a",
+		"cheap-upstream", "cheap upstream", 50, nil, true, false, 0.75, "failed", "account_gate_latest_probe_failed", "medium",
+		"最近探测失败", service.UpstreamRelayRateSourceOverride, "最近探测失败；建议暂停账号承接", true, int64(99), now, now,
+	))
+
+	run, err := repo.ApplyRecommendationRun(ctx, 44, 99)
+
+	require.NoError(t, err)
+	require.True(t, run.Applied)
+	require.Len(t, run.Suggestions, 1)
+	require.Equal(t, service.UpstreamRelaySuggestionActionAccountPause, run.Suggestions[0].ActionType)
+	require.Equal(t, testBoolPtr(true), run.Suggestions[0].OldSchedulable)
+	require.Equal(t, testBoolPtr(false), run.Suggestions[0].NewSchedulable)
+	require.Nil(t, run.Suggestions[0].NewPriority)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryApplyRecommendationRunAppliesAccountResumeOnlyWithGateState(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
+		WithArgs(int64(44)).
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(8), service.UpstreamRelaySuggestionActionAccountResume, int64(9), int64(101), 50, nil, false, true, "account_gate_recovered", "建议恢复账号承接"))
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM upstream_relay_account_gate_states").
+		WithArgs(int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec("UPDATE accounts").
+		WithArgs(int64(101), true, false).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE upstream_relay_account_gate_states").
+		WithArgs(int64(101), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_suggestions").
+		WithArgs(int64(44), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_runs").
+		WithArgs(int64(44), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WithArgs(service.SchedulerOutboxEventAccountChanged, sqlmock.AnyArg(), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectUpstreamRelayRunDetailWithSuggestions(mock, now, true, newRelaySuggestionRows().AddRow(
+		int64(8), int64(44), service.UpstreamRelaySuggestionActionAccountResume, int64(9), int64(10), "relay", int64(101), "account-a",
+		"cheap-upstream", "cheap upstream", 50, nil, false, true, 0.75, "healthy", "account_gate_recovered", "high",
+		"最近3次成功率 100%", service.UpstreamRelayRateSourceOverride, "建议恢复账号承接", true, int64(99), now, now,
+	))
+
+	run, err := repo.ApplyRecommendationRun(ctx, 44, 99)
+
+	require.NoError(t, err)
+	require.True(t, run.Applied)
+	require.Len(t, run.Suggestions, 1)
+	require.Equal(t, service.UpstreamRelaySuggestionActionAccountResume, run.Suggestions[0].ActionType)
+	require.Equal(t, testBoolPtr(false), run.Suggestions[0].OldSchedulable)
+	require.Equal(t, testBoolPtr(true), run.Suggestions[0].NewSchedulable)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsResumeWithoutGateState(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
+		WithArgs(int64(44)).
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(8), service.UpstreamRelaySuggestionActionAccountResume, int64(9), int64(101), 50, nil, false, true, "account_gate_recovered", "建议恢复账号承接"))
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM upstream_relay_account_gate_states").
+		WithArgs(int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectRollback()
+
+	_, err := repo.ApplyRecommendationRun(ctx, 44, 99)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.Equal(t, "UPSTREAM_RELAY_ACCOUNT_GATE_STATE_MISSING", infraerrors.Reason(err))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsInvalidAccountGateDirection(t *testing.T) {
+	cases := []struct {
+		name       string
+		actionType string
+		oldValue   bool
+		newValue   bool
+		wantMsg    string
+	}{
+		{
+			name:       "pause must turn schedulable off",
+			actionType: service.UpstreamRelaySuggestionActionAccountPause,
+			oldValue:   false,
+			newValue:   true,
+			wantMsg:    "pause suggestion must change schedulable from true to false",
+		},
+		{
+			name:       "resume must turn schedulable on",
+			actionType: service.UpstreamRelaySuggestionActionAccountResume,
+			oldValue:   true,
+			newValue:   false,
+			wantMsg:    "resume suggestion must change schedulable from false to true",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock := newSQLMock(t)
+			repo := NewUpstreamRelayRepository(db)
+			ctx := context.Background()
+
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+				WithArgs(int64(44)).
+				WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+					AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+			mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
+				WithArgs(int64(44)).
+				WillReturnRows(newRelayPendingSuggestionRows().
+					AddRow(int64(8), tc.actionType, int64(9), int64(101), 50, nil, tc.oldValue, tc.newValue, "account_gate_invalid", "invalid account gate direction"))
+			mock.ExpectRollback()
+
+			_, err := repo.ApplyRecommendationRun(ctx, 44, 99)
+
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, "UPSTREAM_RELAY_INVALID_RECOMMENDATION_SUGGESTION", infraerrors.Reason(err))
+			require.Contains(t, err.Error(), tc.wantMsg)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStaleSchedulable(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
+		WithArgs(int64(44)).
+		WillReturnRows(newRelayPendingSuggestionRows().
+			AddRow(int64(7), service.UpstreamRelaySuggestionActionAccountPause, int64(9), int64(101), 50, nil, true, false, "account_gate_latest_probe_failed", "最近探测失败；建议暂停账号承接"))
+	mock.ExpectExec("UPDATE accounts").
+		WithArgs(int64(101), false, true).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT schedulable FROM accounts").
+		WithArgs(int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"schedulable"}).AddRow(false))
+	mock.ExpectRollback()
+
+	_, err := repo.ApplyRecommendationRun(ctx, 44, 99)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.Equal(t, "UPSTREAM_RELAY_RECOMMENDATION_STALE", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "账号 #101 的调度状态已变化")
+	require.Contains(t, err.Error(), "生成建议时为 可调度，当前为 暂停，建议值为 暂停")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsEmptyPendingSuggestions(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUpstreamRelayRepository(db)
@@ -680,9 +899,9 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsEmptyPendingSuggest
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
 			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
-	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
+	mock.ExpectQuery("SELECT id, COALESCE\\(action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}))
+		WillReturnRows(newRelayPendingSuggestionRows())
 	mock.ExpectRollback()
 
 	_, err := repo.ApplyRecommendationRun(ctx, 44, 99)
@@ -940,17 +1159,11 @@ func expectUpstreamRelayRunDetail(mock sqlmock.Sqlmock, now time.Time, applied b
 		}).AddRow(
 			int64(44), service.UpstreamRelayRunStatusSuccess, 2, 2, applied, int64(99), now, false, nil, nil, "", int64(88), now,
 		))
-	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, COALESCE\\(s\\.action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "run_id", "candidate_id", "connector_id", "connector_name",
-			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
-			"old_priority", "new_priority", "final_rate_multiplier", "health_status", "reason_code", "confidence",
-			"health_summary", "rate_source", "reason", "applied", "applied_by",
-			"applied_at", "created_at",
-		}).
-			AddRow(int64(1), int64(44), int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", 50, 10, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", applied, int64(99), now, now).
-			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", applied, int64(99), now, now))
+		WillReturnRows(newRelaySuggestionRows().
+			AddRow(int64(1), int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", 50, 10, nil, nil, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", applied, int64(99), now, now).
+			AddRow(int64(2), int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, nil, nil, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", applied, int64(99), now, now))
 }
 
 func expectUpstreamRelayRunDetailClosed(mock sqlmock.Sqlmock, now time.Time) {
@@ -962,17 +1175,11 @@ func expectUpstreamRelayRunDetailClosed(mock sqlmock.Sqlmock, now time.Time) {
 		}).AddRow(
 			int64(44), service.UpstreamRelayRunStatusSuccess, 2, 2, false, nil, nil, true, int64(99), now, "", int64(88), now,
 		))
-	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, COALESCE\\(s\\.action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "run_id", "candidate_id", "connector_id", "connector_name",
-			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
-			"old_priority", "new_priority", "final_rate_multiplier", "health_status", "reason_code", "confidence",
-			"health_summary", "rate_source", "reason", "applied", "applied_by",
-			"applied_at", "created_at",
-		}).
-			AddRow(int64(1), int64(44), int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", 50, 10, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", false, nil, nil, now).
-			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", false, nil, nil, now))
+		WillReturnRows(newRelaySuggestionRows().
+			AddRow(int64(1), int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", 50, 10, nil, nil, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", false, nil, nil, now).
+			AddRow(int64(2), int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, nil, nil, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", false, nil, nil, now))
 }
 
 func expectUpstreamRelayRunDetailSingle(mock sqlmock.Sqlmock, now time.Time) {
@@ -984,18 +1191,45 @@ func expectUpstreamRelayRunDetailSingle(mock sqlmock.Sqlmock, now time.Time) {
 		}).AddRow(
 			int64(44), service.UpstreamRelayRunStatusSuccess, 1, 1, false, nil, nil, false, nil, nil, "", int64(88), now,
 		))
-	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, COALESCE\\(s\\.action_type").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "run_id", "candidate_id", "connector_id", "connector_name",
-			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
-			"old_priority", "new_priority", "final_rate_multiplier", "health_status", "reason_code", "confidence",
-			"health_summary", "rate_source", "reason", "applied", "applied_by",
-			"applied_at", "created_at",
-		}).AddRow(
-			int64(1), int64(44), int64(9), int64(10), "relay", int64(101), "account-a",
-			"cheap-upstream", "cheap upstream", 50, 10, 0.75, "healthy", "rate_health_priority", "high",
+		WillReturnRows(newRelaySuggestionRows().AddRow(
+			int64(1), int64(44), service.UpstreamRelaySuggestionActionPriorityUpdate, int64(9), int64(10), "relay", int64(101), "account-a",
+			"cheap-upstream", "cheap upstream", 50, 10, nil, nil, 0.75, "healthy", "rate_health_priority", "high",
 			"最近3次成功率 100%，连续成功 3，连续失败 0，p95 80ms",
 			service.UpstreamRelayRateSourceOverride, "结构化建议原因", false, nil, nil, now,
 		))
+}
+
+func expectUpstreamRelayRunDetailWithSuggestions(mock sqlmock.Sqlmock, now time.Time, applied bool, rows *sqlmock.Rows) {
+	mock.ExpectQuery("SELECT id, status, total_candidates, suggestion_count").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
+			"applied_at", "closed", "closed_by", "closed_at", "error_message", "created_by", "created_at",
+		}).AddRow(
+			int64(44), service.UpstreamRelayRunStatusSuccess, 1, 1, applied, int64(99), now, false, nil, nil, "", int64(88), now,
+		))
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, COALESCE\\(s\\.action_type").
+		WithArgs(int64(44)).
+		WillReturnRows(rows)
+}
+
+func newRelaySuggestionRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "run_id", "action_type", "candidate_id", "connector_id", "connector_name",
+		"account_id", "account_name", "upstream_group_id", "upstream_group_name",
+		"old_priority", "new_priority", "old_schedulable", "new_schedulable",
+		"final_rate_multiplier", "health_status", "reason_code", "confidence",
+		"health_summary", "rate_source", "reason", "applied", "applied_by",
+		"applied_at", "created_at",
+	})
+}
+
+func newRelayPendingSuggestionRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "action_type", "candidate_id", "account_id",
+		"old_priority", "new_priority", "old_schedulable", "new_schedulable",
+		"reason_code", "reason",
+	})
 }

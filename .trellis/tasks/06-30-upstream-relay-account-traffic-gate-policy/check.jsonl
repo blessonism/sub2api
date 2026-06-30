@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查实现是否遵守下游 fork 分支边界和生产安全边界"}
+{"file": "docs/UPSTREAM_RELAY_ACCOUNT_TRAFFIC_GATE_POLICY_CN.md", "reason": "检查后续实现是否符合账号流量闸门业务设计"}

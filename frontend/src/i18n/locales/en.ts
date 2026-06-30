@@ -2053,7 +2053,7 @@ export default {
 	        todayUsageNotSynced: 'Not synced',
 	        todayUsageNotRefreshed: 'Not refreshed',
 	        todayUsageSourceMissing: 'Not refreshed or upstream usage unavailable',
-	        pendingSuggestion: 'Suggest {priority}',
+	        pendingSuggestion: 'Suggest {action}',
         noPendingSuggestion: 'No pending suggestion',
         empty: 'No candidates. Click "New Candidate" to start.',
         newCandidate: 'New Candidate',
@@ -2259,6 +2259,12 @@ export default {
           staleProbe: 'Probe stale',
           consecutiveFailures: 'Consecutive failures',
           successRateBelowThreshold: 'Success rate too low',
+          accountGateMissingFreshRate: 'Pause account: missing fresh rate',
+          accountGateLatestProbeFailed: 'Pause account: latest probe failed',
+          accountGateStaleProbe: 'Pause account: probe stale',
+          accountGateConsecutiveFailures: 'Pause account: consecutive failures',
+          accountGateSuccessRateBelowThreshold: 'Pause account: success rate too low',
+          accountGateRecovered: 'Resume account scheduling',
           priorityUnchanged: 'Priority unchanged'
         }
       },
@@ -2437,11 +2443,16 @@ export default {
         notSuccessNotice: 'Run #{id} is currently {status} and cannot be applied. Review the run error or generate suggestions again.',
         noSuggestionsNotice: 'Run #{id} was created on {date} and has no pending priority suggestions. It can be reviewed but not applied.',
         riskTotal: 'Total Suggestions',
+        riskPriority: 'Priority Suggestions',
+        riskPause: 'Account Pause Suggestions',
+        riskResume: 'Account Resume Suggestions',
         riskLowConfidence: 'Low / Unknown Confidence',
         riskFailedCandidates: 'Failed / Unprobed',
         riskConnectors: 'Connectors Affected',
         riskMaxDelta: 'Max Priority Change',
         colAccount: 'Account',
+        colAction: 'Action',
+        colChange: 'Change',
         colPriorityChange: 'Priority Change',
         colPriorityDelta: 'Priority Change',
         colRate: 'Rate',
@@ -2493,6 +2504,15 @@ export default {
       priorityDelta: {
         new: 'New',
         unchanged: 'Unchanged'
+      },
+      suggestionActions: {
+        priorityUpdate: 'Adjust priority',
+        accountPause: 'Pause account',
+        accountResume: 'Resume account'
+      },
+      schedulableStatus: {
+        enabled: 'Schedulable',
+        paused: 'Paused'
       },
       errorClass: {
         authFailed: 'Auth Failed',

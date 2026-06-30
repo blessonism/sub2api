@@ -2074,7 +2074,7 @@ export default {
 	        todayUsageNotSynced: '未同步',
 	        todayUsageNotRefreshed: '未刷新',
 	        todayUsageSourceMissing: '未刷新或上游 usage 不可用',
-	        pendingSuggestion: '建议 {priority}',
+	        pendingSuggestion: '建议 {action}',
         noPendingSuggestion: '暂无待应用建议',
         empty: '暂无候选映射，点击"新建候选"开始配置。',
         newCandidate: '新建候选',
@@ -2280,6 +2280,12 @@ export default {
           staleProbe: '探测已过期',
           consecutiveFailures: '连续失败',
           successRateBelowThreshold: '成功率不足',
+          accountGateMissingFreshRate: '建议暂停账号：缺少新鲜倍率',
+          accountGateLatestProbeFailed: '建议暂停账号：最近探测失败',
+          accountGateStaleProbe: '建议暂停账号：探测已过期',
+          accountGateConsecutiveFailures: '建议暂停账号：连续失败',
+          accountGateSuccessRateBelowThreshold: '建议暂停账号：成功率不足',
+          accountGateRecovered: '建议恢复账号承接',
           priorityUnchanged: 'Priority 无需调整'
         }
       },
@@ -2458,11 +2464,16 @@ export default {
         notSuccessNotice: 'Run #{id} 当前状态为 {status}，不能应用；请查看运行错误或重新生成建议。',
         noSuggestionsNotice: 'Run #{id} 创建于 {date}，没有待应用的 priority 建议，可保留查看但不能应用。',
         riskTotal: '建议总数',
+        riskPriority: 'Priority 建议',
+        riskPause: '暂停账号建议',
+        riskResume: '恢复账号建议',
         riskLowConfidence: '低置信/未知',
         riskFailedCandidates: '失败/未探测候选',
         riskConnectors: '涉及连接器',
         riskMaxDelta: '最大 Priority 变化',
         colAccount: '账号',
+        colAction: '动作',
+        colChange: '变化',
         colPriorityChange: 'Priority 变化',
         colPriorityDelta: 'Priority 变化',
         colRate: '倍率',
@@ -2514,6 +2525,15 @@ export default {
       priorityDelta: {
         new: '新增',
         unchanged: '不变'
+      },
+      suggestionActions: {
+        priorityUpdate: '调整 priority',
+        accountPause: '暂停账号',
+        accountResume: '恢复账号'
+      },
+      schedulableStatus: {
+        enabled: '可调度',
+        paused: '暂停'
       },
       errorClass: {
         authFailed: '认证失败',
