@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 import UpstreamRelayGroupMonitoringView from '../UpstreamRelayGroupMonitoringView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const {
   listConnectors,
@@ -45,6 +47,24 @@ const {
   listGroups: vi.fn(),
 }))
 
+const {
+  login,
+  login2FA,
+  logout,
+  getCurrentUser,
+  register,
+  refreshToken,
+  reportActivity,
+} = vi.hoisted(() => ({
+  login: vi.fn(),
+  login2FA: vi.fn(),
+  logout: vi.fn(),
+  getCurrentUser: vi.fn(),
+  register: vi.fn(),
+  refreshToken: vi.fn(),
+  reportActivity: vi.fn(),
+}))
+
 vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
   default: {
     listConnectors,
@@ -79,6 +99,19 @@ vi.mock('@/api/admin/groups', () => ({
   },
 }))
 
+vi.mock('@/api', () => ({
+  authAPI: {
+    login,
+    login2FA,
+    logout,
+    getCurrentUser,
+    register,
+    refreshToken,
+    reportActivity,
+  },
+  isTotp2FARequired: (response: { requires_2fa?: boolean }) => response?.requires_2fa === true,
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -92,18 +125,25 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+const mountedWrappers: VueWrapper[] = []
+
 function mountView() {
-  return mount(UpstreamRelayGroupMonitoringView, {
+  const wrapper = mount(UpstreamRelayGroupMonitoringView, {
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         Icon: true,
         LoadingSpinner: true,
         BaseDialog: {
-          props: ['show', 'closeOnEscape', 'closeOnClickOutside'],
-          template: '<div v-if="show" :data-close-on-escape="String(closeOnEscape)" :data-close-on-click-outside="String(closeOnClickOutside)"><slot /><slot name="footer" /></div>',
+          props: ['show', 'closeOnEscape', 'closeOnClickOutside', 'showCloseButton', 'animated'],
+          emits: ['close'],
+          template: '<div v-if="show" :data-close-on-escape="String(closeOnEscape)" :data-close-on-click-outside="String(closeOnClickOutside)" :data-show-close-button="String(showCloseButton)" :data-animated="String(animated)"><button type="button" data-testid="implicit-close" @click="$emit(\'close\')">implicit close</button><slot /><slot name="footer" /></div>',
         },
-        ConfirmDialog: true,
+        ConfirmDialog: {
+          props: ['show', 'title', 'message', 'danger'],
+          emits: ['confirm', 'cancel'],
+          template: '<div v-if="show" data-testid="confirm-dialog" :data-danger="String(danger)"><div data-testid="confirm-title">{{ title }}</div><div data-testid="confirm-message">{{ message }}</div><button type="button" data-testid="confirm-action" @click="$emit(\'confirm\')">confirm</button><button type="button" data-testid="confirm-cancel" @click="$emit(\'cancel\')">cancel</button></div>',
+        },
         AutoRefreshButton: true,
         HealthRateBar: true,
         RateSourceTag: true,
@@ -111,10 +151,12 @@ function mountView() {
       },
     },
   })
+  mountedWrappers.push(wrapper)
+  return wrapper
 }
 
 function mountViewWithRealDialog() {
-  return mount(UpstreamRelayGroupMonitoringView, {
+  const wrapper = mount(UpstreamRelayGroupMonitoringView, {
     attachTo: document.body,
     global: {
       stubs: {
@@ -129,6 +171,8 @@ function mountViewWithRealDialog() {
       },
     },
   })
+  mountedWrappers.push(wrapper)
+  return wrapper
 }
 
 function usageHistoryCalls() {
@@ -200,6 +244,7 @@ function recommendationRun(overrides: Record<string, unknown> = {}) {
 
 describe('UpstreamRelayGroupMonitoringView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     document.body.innerHTML = ''
     listConnectors.mockReset()
     listCandidates.mockReset()
@@ -220,6 +265,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     updateCandidate.mockReset()
     listAccounts.mockReset()
     listGroups.mockReset()
+    login.mockReset()
+    login2FA.mockReset()
+    logout.mockReset()
+    getCurrentUser.mockReset()
+    register.mockReset()
+    refreshToken.mockReset()
+    reportActivity.mockReset()
 
     listConnectors.mockResolvedValue({
       items: [{
@@ -299,6 +351,16 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       created_at: '2026-06-28T12:00:00Z',
       updated_at: '2026-06-29T12:00:00Z',
     })
+    logout.mockResolvedValue(undefined)
+    reportActivity.mockResolvedValue(undefined)
+  })
+
+  afterEach(async () => {
+    for (const wrapper of mountedWrappers.splice(0)) {
+      wrapper.unmount()
+    }
+    await useAuthStore().logout().catch(() => undefined)
+    document.body.innerHTML = ''
   })
 
   it('新建连接器选择账号密码登录时保持弹窗表单打开', async () => {
@@ -318,6 +380,12 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     const activeDialog = wrapper.find('[data-close-on-escape="false"]')
     expect(activeDialog.exists()).toBe(true)
     expect(activeDialog.attributes('data-close-on-click-outside')).toBe('false')
+    expect(activeDialog.attributes('data-show-close-button')).toBe('false')
+    expect(activeDialog.attributes('data-animated')).toBe('false')
+
+    await activeDialog.get('[data-testid="implicit-close"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-close-on-escape="false"]').exists()).toBe(true)
     expect(wrapper.find('input[type="email"]').exists()).toBe(true)
     expect(wrapper.find('input[type="password"][autocomplete="current-password"]').exists()).toBe(true)
 
@@ -351,7 +419,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(authPasswordButton).toBeTruthy()
 
     authPasswordButton.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.body.querySelector('input[autocomplete="username"]')).toBeNull()
+
+    authPasswordButton.dispatchEvent(new Event('pointerup', { bubbles: true }))
     authPasswordButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    authPasswordButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     authPasswordButton.click()
     await flushPromises()
 
@@ -363,18 +437,96 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(passwordInput).not.toBeNull()
 
     emailInput.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    emailInput.dispatchEvent(new Event('pointerup', { bubbles: true }))
     emailInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    emailInput.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     emailInput.value = 'relay@example.com'
     emailInput.dispatchEvent(new Event('input', { bubbles: true }))
     emailInput.dispatchEvent(new Event('change', { bubbles: true }))
     passwordInput.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    passwordInput.dispatchEvent(new Event('pointerup', { bubbles: true }))
     passwordInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    passwordInput.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     passwordInput.value = 'secret-value'
     passwordInput.dispatchEvent(new Event('input', { bubbles: true }))
     passwordInput.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(createConnector).not.toHaveBeenCalled()
+  })
+
+  it('真实弹窗中账号密码触摸事件链不会触发关闭', async () => {
+    const wrapper = mountViewWithRealDialog()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    const authPasswordButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('admin.upstreamRelayGroupMonitoring.connectorForm.authPassword')
+    ) as HTMLButtonElement
+    expect(authPasswordButton).toBeTruthy()
+
+    authPasswordButton.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    authPasswordButton.dispatchEvent(new Event('touchend', { bubbles: true }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.body.querySelector('input[type="email"]')).toBeNull()
+
+    authPasswordButton.click()
+    await flushPromises()
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.body.querySelector('input[type="email"]')).not.toBeNull()
+    expect(document.body.querySelector('input[type="password"][autocomplete="current-password"]')).not.toBeNull()
+    expect(createConnector).not.toHaveBeenCalled()
+  })
+
+  it('真实弹窗账号密码事件不会触发全局前台活跃上报', async () => {
+    login.mockResolvedValue({
+      access_token: 'test-token-123',
+      refresh_token: 'refresh-token-456',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      user: {
+        id: 1,
+        username: 'admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        balance: 0,
+        concurrency: 1,
+        status: 'active',
+        allowed_groups: null,
+        created_at: '2026-06-29T12:00:00Z',
+        updated_at: '2026-06-29T12:00:00Z',
+      },
+    })
+    const authStore = useAuthStore()
+    await authStore.login({ email: 'admin@example.com', password: 'secret-value' })
+    reportActivity.mockClear()
+
+    const wrapper = mountViewWithRealDialog()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    const authPasswordButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('admin.upstreamRelayGroupMonitoring.connectorForm.authPassword')
+    ) as HTMLButtonElement
+    expect(authPasswordButton).toBeTruthy()
+
+    authPasswordButton.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    authPasswordButton.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    authPasswordButton.click()
+    await flushPromises()
+
+    expect(reportActivity).not.toHaveBeenCalled()
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.body.querySelector('input[type="email"]')).not.toBeNull()
     expect(createConnector).not.toHaveBeenCalled()
   })
 
@@ -403,6 +555,55 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       bearer_token: 'manual-access-token',
       refresh_token: 'manual-refresh-token',
     }))
+  })
+
+  it('保存连接器失败时在弹窗内展示接口详细原因', async () => {
+    createConnector.mockRejectedValueOnce({
+      status: 400,
+      code: 'UPSTREAM_RELAY_PASSWORD_LOGIN_NEEDS_MANUAL_SESSION',
+      message: 'upstream login requires browser verification or 2FA; use manual_session instead',
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.newConnector'))!.trigger('click')
+    await flushPromises()
+
+    const inputs = wrapper.findAll('input')
+    await inputs.find((input) => input.attributes('type') === 'text')!.setValue('relay-manual')
+    await inputs.find((input) => input.attributes('type') === 'url')!.setValue('https://relay.example.com')
+    await wrapper.find('input[type="password"]').setValue('manual-access-token')
+
+    await wrapper.find('form#connector-form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    const formError = wrapper.get('[data-testid="connector-form-error"]')
+    expect(formError.text()).toContain('admin.upstreamRelayGroupMonitoring.connectorForm.saveFailedTitle')
+    expect(formError.text()).toContain('admin.upstreamRelayGroupMonitoring.connectorForm.passwordLoginNeedsManualSession.reason')
+    expect(formError.text()).toContain('admin.upstreamRelayGroupMonitoring.connectorForm.passwordLoginNeedsManualSession.action')
+    expect(formError.text()).toContain('upstream login requires browser verification or 2FA; use manual_session instead')
+    expect(wrapper.find('[data-close-on-escape="false"]').exists()).toBe(true)
+  })
+
+  it('编辑连接器点击账号密码也保持弹窗打开', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectors.edit'))!.trigger('click')
+    await flushPromises()
+
+    const connectorDialog = wrapper.find('[data-close-on-escape="false"]')
+    expect(connectorDialog.exists()).toBe(true)
+
+    await connectorDialog.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.connectorForm.authPassword'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-close-on-escape="false"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="email"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"][autocomplete="current-password"]').exists()).toBe(true)
   })
 
   it('编辑手动会话连接器可显式清空已保存的 refresh token', async () => {

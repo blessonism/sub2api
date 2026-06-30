@@ -18,6 +18,7 @@ const TOKEN_REFRESH_BUFFER = 120 * 1000 // 120 seconds before expiry to refresh 
 const ACTIVITY_HEARTBEAT_INTERVAL = 5 * 60 * 1000
 const RECENT_USER_INTERACTION_WINDOW = 2 * 60 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
+const ACTIVITY_IGNORE_SELECTOR = '[data-ignore-foreground-activity="true"]'
 
 let stopActiveActivityListeners: (() => void) | null = null
 
@@ -180,8 +181,19 @@ export const useAuthStore = defineStore('auth', () => {
     return lastUserInteractionAt > 0 && now - lastUserInteractionAt <= RECENT_USER_INTERACTION_WINDOW
   }
 
-  function markUserInteraction(): void {
+  function shouldIgnoreActivityEvent(event: Event): boolean {
+    const target = event.target
+    if (!(target instanceof Element)) {
+      return false
+    }
+    return Boolean(target.closest(ACTIVITY_IGNORE_SELECTOR))
+  }
+
+  function markUserInteraction(event: Event): void {
     if (!isDocumentVisible()) {
+      return
+    }
+    if (shouldIgnoreActivityEvent(event)) {
       return
     }
     lastUserInteractionAt = Date.now()

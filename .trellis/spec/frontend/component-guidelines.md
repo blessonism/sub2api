@@ -60,9 +60,9 @@ Questions to answer:
 
 **Symptom**: Browser password managers, credential pickers, or local auth-mode buttons may close a `BaseDialog` form while users select credential-related options, causing unsaved input to be lost.
 
-**Cause**: `BaseDialog` closes on Escape by default, and credential forms often include mode-switch buttons plus username/password fields inside a form. If pointer/mouse/click/input/change events from browser credential UI are allowed to propagate, real browser behavior can misclassify local credential selection as a modal-close interaction.
+**Cause**: `BaseDialog` closes on Escape by default, and credential forms often include mode-switch buttons plus username/password fields inside a form. If pointer/mouse/touch/click/input/change events from browser credential UI are allowed to propagate, real browser behavior can misclassify local credential selection as a modal-close interaction. Global foreground-activity listeners can also observe credential input events and trigger refresh/reporting chains that reset local dialog state.
 
-**Fix**: For credential-entry dialogs, pass `:close-on-escape="false"` and `:close-on-click-outside="false"`, stop propagation on local mode-switch controls, and isolate username/password fields from pointer/mouse/click/input/change propagation. Keep explicit close controls such as cancel, close button, or successful submit.
+**Fix**: For credential-entry dialogs, pass `:close-on-escape="false"` and `:close-on-click-outside="false"`, mark the credential form with `data-ignore-foreground-activity="true"`, stop propagation on local mode-switch controls, and isolate username/password fields from pointer/mouse/touch/click/input/change propagation. Keep explicit close controls such as cancel, close button, or successful submit.
 
 ```vue
 <BaseDialog
@@ -71,20 +71,26 @@ Questions to answer:
   :close-on-click-outside="false"
   @close="closeCredentialDialog"
 >
-  <button
-    type="button"
-    @pointerdown.stop
-    @mousedown.stop
-    @click.stop.prevent="setCredentialMode('password')"
-  >
-    账号密码
-  </button>
+  <form data-ignore-foreground-activity="true" @pointerdown.stop @touchstart.stop @click.stop>
+    <button
+      type="button"
+      @pointerdown.stop.prevent="setCredentialMode('password')"
+      @pointerup.stop
+      @mousedown.stop
+      @mouseup.stop
+      @touchstart.stop.prevent="setCredentialMode('password')"
+      @touchend.stop
+      @click.stop.prevent="setCredentialMode('password')"
+    >
+      账号密码
+    </button>
 
-  <div @pointerdown.stop @mousedown.stop @click.stop @input.stop @change.stop>
-    <input autocomplete="username" />
-    <input type="password" autocomplete="current-password" />
-  </div>
+    <div @pointerdown.stop @pointerup.stop @mousedown.stop @mouseup.stop @touchstart.stop @touchend.stop @click.stop @input.stop @change.stop>
+      <input autocomplete="username" />
+      <input type="password" autocomplete="current-password" />
+    </div>
+  </form>
 </BaseDialog>
 ```
 
-**Prevention**: Add a view test that opens the dialog, dispatches pointer/mouse/click events on the credential mode switch and credential inputs, dispatches input/change events, enters values, and asserts the dialog remains visible.
+**Prevention**: Add a view test that opens the dialog, dispatches pointer/mouse/touch/click events on the credential mode switch and credential inputs, dispatches input/change events, enters values, and asserts the dialog remains visible. Add a store test for any global activity listener to ensure events inside `data-ignore-foreground-activity="true"` do not trigger reporting.
