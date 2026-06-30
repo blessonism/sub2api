@@ -249,7 +249,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	tokenUsageAutoPolicyService := service.ProvideTokenUsageAutoPolicyService(tokenUsageAutoPolicyRepository, apiKeyAuthCacheInvalidator)
 	tokenUsagePolicyHandler := admin.NewTokenUsagePolicyHandler(tokenUsageAutoPolicyService)
 	upstreamRelayRepository := repository.NewUpstreamRelayRepository(db)
-	upstreamRelayGroupMonitoringService := service.NewUpstreamRelayGroupMonitoringService(upstreamRelayRepository, accountRepository, secretEncryptor)
+	upstreamRelayGroupMonitoringService := service.ProvideUpstreamRelayGroupMonitoringService(upstreamRelayRepository, accountRepository, accountTestService, secretEncryptor)
 	upstreamRelayGroupMonitoringHandler := admin.NewUpstreamRelayGroupMonitoringHandler(upstreamRelayGroupMonitoringService)
 	conversationRepository := repository.NewConversationCaptureRepository(db)
 	conversationCaptureWorkerPool := service.NewConversationCaptureWorkerPool(configConfig)

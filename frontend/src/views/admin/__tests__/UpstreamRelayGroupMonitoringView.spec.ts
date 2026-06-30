@@ -1765,6 +1765,46 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(expansion.text()).not.toContain('admin.upstreamRelayGroupMonitoring.candidates.delete')
   })
 
+  it('连接器展开区展示未绑定候选的上游倍率快照', async () => {
+    listSnapshots.mockResolvedValue([{
+      id: 501,
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+      name: 'Team Alpha',
+      platform: 'claude',
+      status: 'active',
+      default_rate_multiplier: 1,
+      final_rate_multiplier: 1.75,
+      today_actual_cost: 2.5,
+      today_total_tokens: 2_500_000,
+      source: 'login_available_groups',
+      last_seen_at: '2026-06-28T12:00:00Z',
+    }])
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label')?.includes('connectors.expandGroups'))!
+      .trigger('click')
+    await flushPromises()
+
+    const expansion = wrapper.find('[data-testid="connector-group-expansion"]')
+    expect(expansion.exists()).toBe(true)
+    expect(expansion.findAll('[data-testid="connector-group-item"]')).toHaveLength(1)
+    expect(expansion.text()).toContain('Team Alpha')
+    expect(expansion.text()).toContain('team-alpha')
+    expect(expansion.text()).toContain('1.75')
+    expect(expansion.text()).toContain('$2.50')
+    expect(expansion.text()).toContain('2.50M')
+    expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.connectors.notBoundCandidate')
+    expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.connectors.createCandidate')
+    expect(expansion.text()).not.toContain('admin.upstreamRelayGroupMonitoring.connectors.noGroups')
+  })
+
   it('保存候选失败时展示接口返回的详细原因', async () => {
     createCandidate.mockRejectedValue({
       status: 400,

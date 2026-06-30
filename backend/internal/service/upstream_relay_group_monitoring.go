@@ -19,6 +19,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -570,10 +571,11 @@ type UpstreamRelayRepository interface {
 }
 
 type UpstreamRelayGroupMonitoringService struct {
-	repo        UpstreamRelayRepository
-	accountRepo AccountRepository
-	encryptor   SecretEncryptor
-	httpClient  *http.Client
+	repo               UpstreamRelayRepository
+	accountRepo        AccountRepository
+	accountTestService *AccountTestService
+	encryptor          SecretEncryptor
+	httpClient         *http.Client
 }
 
 func NewUpstreamRelayGroupMonitoringService(repo UpstreamRelayRepository, accountRepo AccountRepository, encryptor SecretEncryptor) *UpstreamRelayGroupMonitoringService {
@@ -583,6 +585,13 @@ func NewUpstreamRelayGroupMonitoringService(repo UpstreamRelayRepository, accoun
 		encryptor:   encryptor,
 		httpClient:  &http.Client{Timeout: upstreamRelayHTTPTimeout},
 	}
+}
+
+// ProvideUpstreamRelayGroupMonitoringService 注入账号测试服务，让监控探测复用账号管理的测试路径。
+func ProvideUpstreamRelayGroupMonitoringService(repo UpstreamRelayRepository, accountRepo AccountRepository, accountTestService *AccountTestService, encryptor SecretEncryptor) *UpstreamRelayGroupMonitoringService {
+	svc := NewUpstreamRelayGroupMonitoringService(repo, accountRepo, encryptor)
+	svc.accountTestService = accountTestService
+	return svc
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ListConnectors(ctx context.Context, page, pageSize int, filters UpstreamRelayConnectorListFilters) ([]UpstreamRelayConnector, *pagination.PaginationResult, error) {
@@ -615,9 +624,10 @@ func (s *UpstreamRelayGroupMonitoringService) CreateConnector(ctx context.Contex
 		return nil, err
 	}
 	if !input.SkipImmediateSync {
-		if _, err := s.SyncConnector(ctx, created.ID); err != nil {
+		if err := s.syncConnectorAfterSave(ctx, created.ID); err != nil {
 			return nil, err
 		}
+		return s.GetConnector(ctx, created.ID)
 	}
 	if !credentialsUpdated {
 		s.prepareConnectorResponse(created)
@@ -641,11 +651,20 @@ func (s *UpstreamRelayGroupMonitoringService) UpdateConnector(ctx context.Contex
 		return nil, err
 	}
 	if !input.SkipImmediateSync {
-		if _, err := s.SyncConnector(ctx, updated.ID); err != nil {
+		if err := s.syncConnectorAfterSave(ctx, updated.ID); err != nil {
 			return nil, err
 		}
 	}
 	return s.GetConnector(ctx, updated.ID)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) syncConnectorAfterSave(ctx context.Context, connectorID int64) error {
+	if _, err := s.SyncConnector(ctx, connectorID); err != nil {
+		if _, getErr := s.repo.GetConnector(ctx, connectorID); getErr != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) DeleteConnector(ctx context.Context, id int64) error {
@@ -2075,40 +2094,37 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 		result.ErrorMessage = "account not found"
 		return result
 	}
-	apiKey := upstreamRelayAPIKeyFromAccount(account)
-	if apiKey == "" {
-		result.ErrorClass = "missing_api_key"
-		result.ErrorMessage = "bound account has no usable api key"
+	if s.accountTestService == nil {
+		result.ErrorClass = "probe_unavailable"
+		result.ErrorMessage = "account test service is not configured"
 		return result
 	}
-	endpoint := resolveProbeEndpoint(account)
-	if endpoint == "" {
-		result.ErrorClass = "missing_endpoint"
-		result.ErrorMessage = "bound account has no supported endpoint"
-		return result
-	}
-	provider := upstreamRelayProviderFromAccount(account)
-	if provider == "" {
-		result.ErrorClass = "unsupported_platform"
-		result.ErrorMessage = "bound account platform is not supported by phase 1 probe"
-		return result
-	}
-	opts := &CheckOptions{APIMode: candidate.ProbeProtocol}
 	start := time.Now()
-	_, rawBody, status, err := callProvider(ctx, provider, endpoint, apiKey, candidate.ProbeModel, "answer: 2", opts)
+	testAccount := accountForUpstreamRelayProbe(account, candidate.ProbeProtocol)
+	testResult, err := s.accountTestService.RunAccountTestBackground(ctx, testAccount, candidate.ProbeModel, "answer: 2", AccountTestModeDefault)
 	latency := int(time.Since(start) / time.Millisecond)
 	result.LatencyMs = &latency
-	if status > 0 {
-		result.HTTPStatus = &status
-	}
 	if err != nil {
-		result.ErrorClass = classifyProbeError(status, err.Error())
+		result.ErrorClass = classifyProbeError(0, err.Error())
 		result.ErrorMessage = truncateRelayMessage(sanitizeUpstreamRelayError(err.Error()))
 		return result
 	}
-	if status < 200 || status >= 300 {
-		result.ErrorClass = classifyProbeError(status, rawBody)
-		result.ErrorMessage = truncateRelayMessage(sanitizeUpstreamRelayError(rawBody))
+	if testResult == nil {
+		result.ErrorClass = "probe_unavailable"
+		result.ErrorMessage = "account test returned no result"
+		return result
+	}
+	if testResult.LatencyMs > 0 {
+		latency = int(testResult.LatencyMs)
+		result.LatencyMs = &latency
+	}
+	if testResult.Status != "success" {
+		message := strings.TrimSpace(testResult.ErrorMessage)
+		if message == "" {
+			message = "account test failed"
+		}
+		result.ErrorClass = classifyProbeError(0, message)
+		result.ErrorMessage = truncateRelayMessage(sanitizeUpstreamRelayError(message))
 		return result
 	}
 	result.Success = true
@@ -2117,15 +2133,23 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 	return result
 }
 
-func upstreamRelayAPIKeyFromAccount(account *Account) string {
-	if account == nil {
-		return ""
+func accountForUpstreamRelayProbe(account *Account, protocol string) *Account {
+	if account == nil || !account.IsOpenAI() || account.Type != AccountTypeAPIKey {
+		return account
 	}
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if apiKey == "" && account.IsOpenAI() {
-		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
+	copied := *account
+	extra := make(map[string]any, len(account.Extra)+1)
+	for key, value := range account.Extra {
+		extra[key] = value
 	}
-	return apiKey
+	switch protocol {
+	case MonitorAPIModeChatCompletions:
+		extra[openai_compat.ExtraKeyResponsesMode] = string(openai_compat.ResponsesSupportModeForceChatCompletions)
+	case MonitorAPIModeResponses:
+		extra[openai_compat.ExtraKeyResponsesMode] = string(openai_compat.ResponsesSupportModeForceResponses)
+	}
+	copied.Extra = extra
+	return &copied
 }
 
 func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id int64, operatorID int64) (*UpstreamRelayCandidate, error) {
@@ -2942,6 +2966,17 @@ func parseUsageSnapshot(body []byte) (*upstreamRelayUsageSnapshot, error) {
 		return nil, fmt.Errorf("usage response missing cost or actual_cost")
 	}
 	return &upstreamRelayUsageSnapshot{Cost: cost, ActualCost: actualCost}, nil
+}
+
+func upstreamRelayAPIKeyFromAccount(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" && account.IsOpenAI() {
+		apiKey = strings.TrimSpace(account.GetOpenAIAccessToken())
+	}
+	return apiKey
 }
 
 func buildUsageDeltaSample(candidate UpstreamRelayCandidate, probe *UpstreamRelayProbeResult, before *upstreamRelayUsageSnapshot, beforeErr error, after *upstreamRelayUsageSnapshot, afterErr error) *UpstreamRelayUsageDeltaSample {

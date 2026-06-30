@@ -2112,6 +2112,9 @@ export default {
         expandGroups: '展开',
         collapseGroups: '收起',
         noGroups: '该连接器暂无候选分组',
+        snapshotOnly: '已同步',
+        notBoundCandidate: '未绑定候选',
+        createCandidate: '创建候选',
         delete: '删除'
       },
       recommendations: {
