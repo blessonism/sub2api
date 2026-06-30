@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "确认下游 fork 分支与任务记录边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "确认上游监控前端字段与类型安全约束"}
