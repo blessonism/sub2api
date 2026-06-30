@@ -374,7 +374,16 @@ func (h *UpstreamRelayGroupMonitoringHandler) GenerateRecommendations(c *gin.Con
 
 func (h *UpstreamRelayGroupMonitoringHandler) ListRecommendationRuns(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	runs, pageResult, err := h.svc.ListRecommendationRuns(c.Request.Context(), page, pageSize)
+	filters := service.UpstreamRelayRecommendationRunListFilters{}
+	if hasSuggestions := c.Query("has_suggestions"); hasSuggestions != "" {
+		v, err := strconv.ParseBool(hasSuggestions)
+		if err != nil {
+			response.BadRequest(c, "invalid has_suggestions")
+			return
+		}
+		filters.HasSuggestions = &v
+	}
+	runs, pageResult, err := h.svc.ListRecommendationRuns(c.Request.Context(), page, pageSize, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -406,6 +415,42 @@ func (h *UpstreamRelayGroupMonitoringHandler) ApplyRecommendationRun(c *gin.Cont
 		return
 	}
 	run, err := h.svc.ApplyRecommendationRun(c.Request.Context(), id, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, run)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) CloseRecommendationRun(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, ok := parseRelayID(c, "id")
+	if !ok {
+		return
+	}
+	run, err := h.svc.CloseRecommendationRun(c.Request.Context(), id, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, run)
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) RestoreRecommendationRun(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, ok := parseRelayID(c, "id")
+	if !ok {
+		return
+	}
+	run, err := h.svc.RestoreRecommendationRun(c.Request.Context(), id, subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

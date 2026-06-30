@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -921,19 +922,34 @@ func (r *upstreamRelayRepository) GetRecommendationRun(ctx context.Context, id i
 	return run, nil
 }
 
-func (r *upstreamRelayRepository) ListRecommendationRuns(ctx context.Context, params pagination.PaginationParams) ([]service.UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
+func (r *upstreamRelayRepository) ListRecommendationRuns(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayRecommendationRunListFilters) ([]service.UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
 	page, pageSize := normalizePolicyPagination(params)
+	conditions := []string{"1=1"}
+	args := []any{}
+	if filters.HasSuggestions != nil {
+		if *filters.HasSuggestions {
+			conditions = append(conditions, "suggestion_count > 0")
+		} else {
+			conditions = append(conditions, "suggestion_count = 0")
+		}
+	}
+	whereClause := strings.Join(conditions, " AND ")
 	var total int64
-	if err := scanSingleRow(ctx, r.db, `SELECT COUNT(*) FROM upstream_relay_recommendation_runs`, nil, &total); err != nil {
+	if err := scanSingleRow(ctx, r.db, fmt.Sprintf(`SELECT COUNT(*) FROM upstream_relay_recommendation_runs WHERE %s`, whereClause), args, &total); err != nil {
 		return nil, nil, err
 	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
+	limitPlaceholder := len(queryArgs) - 1
+	offsetPlaceholder := len(queryArgs)
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, status, total_candidates, suggestion_count, applied, applied_by,
-		       applied_at, COALESCE(error_message, ''), COALESCE(created_by, 0), created_at
+		       applied_at, closed, closed_by, closed_at, COALESCE(error_message, ''), COALESCE(created_by, 0), created_at
 		FROM upstream_relay_recommendation_runs
+		WHERE `+whereClause+`
 		ORDER BY created_at DESC, id DESC
-		LIMIT $1 OFFSET $2
-	`, pageSize, (page-1)*pageSize)
+		LIMIT $`+strconv.Itoa(limitPlaceholder)+` OFFSET $`+strconv.Itoa(offsetPlaceholder)+`
+	`, queryArgs...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -960,9 +976,10 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	defer func() { _ = tx.Rollback() }()
 	var status string
 	var applied bool
+	var closed bool
 	if err := scanSingleRow(ctx, tx, `
-		SELECT status, applied FROM upstream_relay_recommendation_runs WHERE id=$1 FOR UPDATE
-	`, []any{runID}, &status, &applied); err != nil {
+		SELECT status, applied, closed FROM upstream_relay_recommendation_runs WHERE id=$1 FOR UPDATE
+	`, []any{runID}, &status, &applied, &closed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, service.ErrUpstreamRelayRunNotFound
 		}
@@ -973,6 +990,9 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 	}
 	if applied {
 		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_APPLIED", "recommendation run already applied")
+	}
+	if closed {
+		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_CLOSED", "recommendation run already closed")
 	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT candidate_id, account_id, old_priority, new_priority
@@ -1041,6 +1061,85 @@ func (r *upstreamRelayRepository) ApplyRecommendationRun(ctx context.Context, ru
 		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 			return nil, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetRecommendationRun(ctx, runID)
+}
+
+func (r *upstreamRelayRepository) CloseRecommendationRun(ctx context.Context, runID, operatorID int64) (*service.UpstreamRelayRecommendationRun, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var status string
+	var applied bool
+	var closed bool
+	if err := scanSingleRow(ctx, tx, `
+		SELECT status, applied, closed FROM upstream_relay_recommendation_runs WHERE id=$1 FOR UPDATE
+	`, []any{runID}, &status, &applied, &closed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrUpstreamRelayRunNotFound
+		}
+		return nil, err
+	}
+	if status != service.UpstreamRelayRunStatusSuccess {
+		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_RUN_NOT_SUCCESS", "only successful recommendation runs can be closed")
+	}
+	if applied {
+		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_APPLIED", "applied recommendation run cannot be closed")
+	}
+	if closed {
+		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_CLOSED", "recommendation run already closed")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE upstream_relay_recommendation_runs
+		SET closed=TRUE, closed_by=$2, closed_at=NOW()
+		WHERE id=$1
+	`, runID, operatorID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetRecommendationRun(ctx, runID)
+}
+
+func (r *upstreamRelayRepository) RestoreRecommendationRun(ctx context.Context, runID, operatorID int64) (*service.UpstreamRelayRecommendationRun, error) {
+	_ = operatorID
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var status string
+	var applied bool
+	var closed bool
+	if err := scanSingleRow(ctx, tx, `
+		SELECT status, applied, closed FROM upstream_relay_recommendation_runs WHERE id=$1 FOR UPDATE
+	`, []any{runID}, &status, &applied, &closed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrUpstreamRelayRunNotFound
+		}
+		return nil, err
+	}
+	if status != service.UpstreamRelayRunStatusSuccess {
+		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_RUN_NOT_SUCCESS", "only successful recommendation runs can be restored")
+	}
+	if applied {
+		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_ALREADY_APPLIED", "applied recommendation run cannot be restored")
+	}
+	if !closed {
+		return nil, infraerrors.Conflict("UPSTREAM_RELAY_RUN_NOT_CLOSED", "recommendation run is not closed")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE upstream_relay_recommendation_runs
+		SET closed=FALSE, closed_by=NULL, closed_at=NULL
+		WHERE id=$1
+	`, runID); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -1354,7 +1453,7 @@ func scanRelayRecommendationPolicy(rows *sql.Rows) (service.UpstreamRelayRecomme
 func (r *upstreamRelayRepository) getRelayRunSummary(ctx context.Context, q sqlQueryer, id int64) (*service.UpstreamRelayRecommendationRun, error) {
 	row, err := q.QueryContext(ctx, `
 		SELECT id, status, total_candidates, suggestion_count, applied, applied_by,
-		       applied_at, COALESCE(error_message, ''), COALESCE(created_by, 0), created_at
+		       applied_at, closed, closed_by, closed_at, COALESCE(error_message, ''), COALESCE(created_by, 0), created_at
 		FROM upstream_relay_recommendation_runs
 		WHERE id=$1
 	`, id)
@@ -1374,12 +1473,13 @@ func (r *upstreamRelayRepository) getRelayRunSummary(ctx context.Context, q sqlQ
 
 func scanRelayRun(rows *sql.Rows) (service.UpstreamRelayRecommendationRun, error) {
 	var run service.UpstreamRelayRecommendationRun
-	var appliedBy sql.NullInt64
+	var appliedBy, closedBy sql.NullInt64
 	if err := rows.Scan(&run.ID, &run.Status, &run.TotalCandidates, &run.SuggestionCount, &run.Applied,
-		&appliedBy, &run.AppliedAt, &run.ErrorMessage, &run.CreatedBy, &run.CreatedAt); err != nil {
+		&appliedBy, &run.AppliedAt, &run.Closed, &closedBy, &run.ClosedAt, &run.ErrorMessage, &run.CreatedBy, &run.CreatedAt); err != nil {
 		return run, err
 	}
 	run.AppliedBy = nullInt64Ptr(appliedBy)
+	run.ClosedBy = nullInt64Ptr(closedBy)
 	return run, nil
 }
 

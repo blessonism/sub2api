@@ -188,6 +188,8 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.GET("/recommendations", h.Admin.UpstreamRelayMonitoring.ListRecommendationRuns)
 		relay.GET("/recommendations/:id", h.Admin.UpstreamRelayMonitoring.GetRecommendationRun)
 		relay.POST("/recommendations/:id/apply", h.Admin.UpstreamRelayMonitoring.ApplyRecommendationRun)
+		relay.POST("/recommendations/:id/close", h.Admin.UpstreamRelayMonitoring.CloseRecommendationRun)
+		relay.POST("/recommendations/:id/restore", h.Admin.UpstreamRelayMonitoring.RestoreRecommendationRun)
 		relay.DELETE("/recommendations/:id", h.Admin.UpstreamRelayMonitoring.DeleteRecommendationRun)
 	}
 }

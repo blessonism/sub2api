@@ -435,6 +435,32 @@ func TestUpstreamRelayRepositoryCreateRecommendationRunPersistsPhase2ReasonField
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpstreamRelayRepositoryListRecommendationRunsFiltersSuggestions(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	hasSuggestions := true
+	now := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM upstream_relay_recommendation_runs WHERE 1=1 AND suggestion_count > 0").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(21)))
+	mock.ExpectQuery("FROM upstream_relay_recommendation_runs").
+		WithArgs(20, 20).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
+			"applied_at", "closed", "closed_by", "closed_at", "error_message", "created_by", "created_at",
+		}).AddRow(int64(55), service.UpstreamRelayRunStatusSuccess, 3, 2, false, nil, nil, false, nil, nil, "", int64(88), now))
+
+	runs, pageResult, err := repo.ListRecommendationRuns(ctx, pagination.PaginationParams{Page: 2, PageSize: 20}, service.UpstreamRelayRecommendationRunListFilters{HasSuggestions: &hasSuggestions})
+
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, int64(55), runs[0].ID)
+	require.Equal(t, int64(21), pageResult.Total)
+	require.Equal(t, 2, pageResult.Page)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpstreamRelayRepositoryUpsertsRecommendationPolicy(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUpstreamRelayRepository(db)
@@ -535,10 +561,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunUpdatesPriorityAndAudit(t 
 	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT status, applied FROM upstream_relay_recommendation_runs").
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "applied"}).
-			AddRow(service.UpstreamRelayRunStatusSuccess, false))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
 	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
@@ -582,10 +608,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunUsesSuggestionSnapshotWith
 	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT status, applied FROM upstream_relay_recommendation_runs").
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "applied"}).
-			AddRow(service.UpstreamRelayRunStatusSuccess, false))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
 	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
@@ -618,10 +644,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsStalePriority(t *te
 	ctx := context.Background()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT status, applied FROM upstream_relay_recommendation_runs").
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "applied"}).
-			AddRow(service.UpstreamRelayRunStatusSuccess, false))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
 	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}).
@@ -650,10 +676,10 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsEmptyPendingSuggest
 	ctx := context.Background()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT status, applied FROM upstream_relay_recommendation_runs").
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
 		WithArgs(int64(44)).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "applied"}).
-			AddRow(service.UpstreamRelayRunStatusSuccess, false))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
 	mock.ExpectQuery("SELECT candidate_id, account_id, old_priority, new_priority").
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{"candidate_id", "account_id", "old_priority", "new_priority"}))
@@ -663,6 +689,117 @@ func TestUpstreamRelayRepositoryApplyRecommendationRunRejectsEmptyPendingSuggest
 
 	require.ErrorIs(t, err, service.ErrUpstreamRelayNoPendingSuggestions)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryCloseRecommendationRunPreservesHistory(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, false))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_runs").
+		WithArgs(int64(44), int64(99)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectUpstreamRelayRunDetailClosed(mock, now)
+
+	run, err := repo.CloseRecommendationRun(ctx, 44, 99)
+
+	require.NoError(t, err)
+	require.True(t, run.Closed)
+	require.False(t, run.Applied)
+	require.Len(t, run.Suggestions, 2)
+	require.False(t, run.Suggestions[0].Applied)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryRestoreRecommendationRunReopensClosedRun(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+			AddRow(service.UpstreamRelayRunStatusSuccess, false, true))
+	mock.ExpectExec("UPDATE upstream_relay_recommendation_runs").
+		WithArgs(int64(44)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectUpstreamRelayRunDetail(mock, now, false)
+
+	run, err := repo.RestoreRecommendationRun(ctx, 44, 99)
+
+	require.NoError(t, err)
+	require.False(t, run.Closed)
+	require.False(t, run.Applied)
+	require.Len(t, run.Suggestions, 2)
+	require.False(t, run.Suggestions[0].Applied)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryRestoreRecommendationRunRejectsInvalidStates(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     string
+		applied    bool
+		closed     bool
+		wantCode   int
+		wantReason string
+	}{
+		{
+			name:       "non success",
+			status:     service.UpstreamRelayRunStatusFailed,
+			applied:    false,
+			closed:     true,
+			wantCode:   http.StatusBadRequest,
+			wantReason: "UPSTREAM_RELAY_RUN_NOT_SUCCESS",
+		},
+		{
+			name:       "already applied",
+			status:     service.UpstreamRelayRunStatusSuccess,
+			applied:    true,
+			closed:     true,
+			wantCode:   http.StatusConflict,
+			wantReason: "UPSTREAM_RELAY_RUN_ALREADY_APPLIED",
+		},
+		{
+			name:       "not closed",
+			status:     service.UpstreamRelayRunStatusSuccess,
+			applied:    false,
+			closed:     false,
+			wantCode:   http.StatusConflict,
+			wantReason: "UPSTREAM_RELAY_RUN_NOT_CLOSED",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock := newSQLMock(t)
+			repo := NewUpstreamRelayRepository(db)
+			ctx := context.Background()
+
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT status, applied, closed FROM upstream_relay_recommendation_runs").
+				WithArgs(int64(44)).
+				WillReturnRows(sqlmock.NewRows([]string{"status", "applied", "closed"}).
+					AddRow(tt.status, tt.applied, tt.closed))
+			mock.ExpectRollback()
+
+			_, err := repo.RestoreRecommendationRun(ctx, 44, 99)
+
+			require.Error(t, err)
+			require.Equal(t, tt.wantCode, infraerrors.Code(err))
+			require.Equal(t, tt.wantReason, infraerrors.Reason(err))
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestUpstreamRelayRepositoryInsertUsageDeltaSamplePersistsAndReadsLatest(t *testing.T) {
@@ -799,9 +936,9 @@ func expectUpstreamRelayRunDetail(mock sqlmock.Sqlmock, now time.Time, applied b
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
-			"applied_at", "error_message", "created_by", "created_at",
+			"applied_at", "closed", "closed_by", "closed_at", "error_message", "created_by", "created_at",
 		}).AddRow(
-			int64(44), service.UpstreamRelayRunStatusSuccess, 2, 2, applied, int64(99), now, "", int64(88), now,
+			int64(44), service.UpstreamRelayRunStatusSuccess, 2, 2, applied, int64(99), now, false, nil, nil, "", int64(88), now,
 		))
 	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
 		WithArgs(int64(44)).
@@ -816,14 +953,36 @@ func expectUpstreamRelayRunDetail(mock sqlmock.Sqlmock, now time.Time, applied b
 			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", applied, int64(99), now, now))
 }
 
+func expectUpstreamRelayRunDetailClosed(mock sqlmock.Sqlmock, now time.Time) {
+	mock.ExpectQuery("SELECT id, status, total_candidates, suggestion_count").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
+			"applied_at", "closed", "closed_by", "closed_at", "error_message", "created_by", "created_at",
+		}).AddRow(
+			int64(44), service.UpstreamRelayRunStatusSuccess, 2, 2, false, nil, nil, true, int64(99), now, "", int64(88), now,
+		))
+	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "run_id", "candidate_id", "connector_id", "connector_name",
+			"account_id", "account_name", "upstream_group_id", "upstream_group_name",
+			"old_priority", "new_priority", "final_rate_multiplier", "health_status", "reason_code", "confidence",
+			"health_summary", "rate_source", "reason", "applied", "applied_by",
+			"applied_at", "created_at",
+		}).
+			AddRow(int64(1), int64(44), int64(1), int64(10), "relay", int64(101), "account-a", "cheap", "cheap upstream", 50, 10, 0.8, "success", "rate_health_priority", "high", "成功率 100%", "login_user_group_rates", "rate", false, nil, nil, now).
+			AddRow(int64(2), int64(44), int64(2), int64(10), "relay", int64(102), "account-b", "fast", "fast upstream", 60, 20, 1.1, "success", "rate_health_priority", "medium", "成功率 100%", "login_available_groups", "rate", false, nil, nil, now))
+}
+
 func expectUpstreamRelayRunDetailSingle(mock sqlmock.Sqlmock, now time.Time) {
 	mock.ExpectQuery("SELECT id, status, total_candidates, suggestion_count").
 		WithArgs(int64(44)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "status", "total_candidates", "suggestion_count", "applied", "applied_by",
-			"applied_at", "error_message", "created_by", "created_at",
+			"applied_at", "closed", "closed_by", "closed_at", "error_message", "created_by", "created_at",
 		}).AddRow(
-			int64(44), service.UpstreamRelayRunStatusSuccess, 1, 1, false, nil, nil, "", int64(88), now,
+			int64(44), service.UpstreamRelayRunStatusSuccess, 1, 1, false, nil, nil, false, nil, nil, "", int64(88), now,
 		))
 	mock.ExpectQuery("SELECT s\\.id, s\\.run_id, s\\.candidate_id").
 		WithArgs(int64(44)).

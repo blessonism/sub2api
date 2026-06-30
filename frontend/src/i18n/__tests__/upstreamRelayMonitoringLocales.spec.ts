@@ -54,6 +54,11 @@ describe('upstream relay monitoring locales', () => {
     expect(enRecommendations.appliedByManual).toBe('Applied manually')
   })
 
+  it('escapes connector email placeholders for vue-i18n message syntax', () => {
+    expect(zh.admin.upstreamRelayGroupMonitoring.connectorForm.placeholderEmail).toBe("admin{'@'}example.com")
+    expect(en.admin.upstreamRelayGroupMonitoring.connectorForm.placeholderEmail).toBe("admin{'@'}example.com")
+  })
+
   it('contains usage history tab and table labels in both locales', () => {
     const zhFeature = zh.admin.upstreamRelayGroupMonitoring
     const enFeature = en.admin.upstreamRelayGroupMonitoring
@@ -122,7 +127,13 @@ describe('upstream relay monitoring locales', () => {
     expect(enFeature.usageHistory.colCost).toBe('Actual Cost')
     expect(enFeature.usageHistory.colTokens).toBe('Tokens')
     expect(enFeature.usageHistory.colCheckedAt).toBe('Checked At')
-    expect(zhFeature.applyDialog.confirmationText).toContain('批量修改账号 priority')
-    expect(enFeature.applyDialog.confirmationText).toContain('changes account priority in bulk')
+    expect(zhFeature.applyDialog.closeSuggestion).toBe('关闭建议')
+    expect(enFeature.applyDialog.closeSuggestion).toBe('Close Suggestion')
+    expect(zhFeature.applyDialog.restoreSuggestion).toBe('恢复建议')
+    expect(enFeature.applyDialog.restoreSuggestion).toBe('Restore Suggestion')
+    expect(zhFeature.applyDialog.closedNotice).toContain('仍保留')
+    expect(enFeature.applyDialog.closedNotice).toContain('remain available')
+    expect(zhFeature.errors.restoreRecommendationFailed).toContain('恢复')
+    expect(enFeature.errors.restoreRecommendationFailed).toContain('restore')
   })
 })

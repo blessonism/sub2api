@@ -15,14 +15,17 @@ vi.mock('@/api/client', () => ({
 }))
 
 import {
+  closeRecommendationRun,
   generateRecommendations,
   getMonitoringPolicy,
   getRecommendationPolicy,
   listConnectorAPIKeys,
+  listRecommendationRuns,
   listUsageHistory,
   probeAllCandidates,
   previewRecommendations,
   refreshConnectorMetrics,
+  restoreRecommendationRun,
   syncAllConnectors,
   updateMonitoringPolicy,
   updateRecommendationPolicy,
@@ -120,6 +123,48 @@ describe('admin upstream relay group monitors api', () => {
 
     await expect(generateRecommendations()).resolves.toEqual(run)
     expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/recommendations')
+  })
+
+  it('loads recommendation runs with suggestion filter params', async () => {
+    const response = { items: [], total: 0, page: 1, page_size: 20, pages: 1 }
+    const params = { page: 1, page_size: 20, has_suggestions: true }
+    get.mockResolvedValue({ data: response })
+
+    await expect(listRecommendationRuns(params)).resolves.toEqual(response)
+    expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/recommendations', { params })
+  })
+
+  it('closes a recommendation run without deleting its history', async () => {
+    const run = {
+      id: 7,
+      status: 'success',
+      total_candidates: 2,
+      suggestion_count: 1,
+      applied: false,
+      closed: true,
+      closed_at: '2026-06-30T12:00:00Z',
+      created_at: '2026-06-28T12:00:00Z'
+    }
+    post.mockResolvedValue({ data: run })
+
+    await expect(closeRecommendationRun(7)).resolves.toEqual(run)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/recommendations/7/close')
+  })
+
+  it('restores a closed recommendation run without touching its suggestions', async () => {
+    const run = {
+      id: 7,
+      status: 'success',
+      total_candidates: 2,
+      suggestion_count: 1,
+      applied: false,
+      closed: false,
+      created_at: '2026-06-28T12:00:00Z'
+    }
+    post.mockResolvedValue({ data: run })
+
+    await expect(restoreRecommendationRun(7)).resolves.toEqual(run)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/recommendations/7/restore')
   })
 
   it('refreshes connector metrics without full connector sync', async () => {

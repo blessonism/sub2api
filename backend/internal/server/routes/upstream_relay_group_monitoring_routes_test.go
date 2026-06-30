@@ -48,6 +48,8 @@ func TestUpstreamRelayGroupMonitoringRoutesAreRegistered(t *testing.T) {
 		"POST /api/v1/admin/upstream-relay-group-monitors/recommendations/preview",
 		"POST /api/v1/admin/upstream-relay-group-monitors/recommendations",
 		"POST /api/v1/admin/upstream-relay-group-monitors/recommendations/:id/apply",
+		"POST /api/v1/admin/upstream-relay-group-monitors/recommendations/:id/close",
+		"POST /api/v1/admin/upstream-relay-group-monitors/recommendations/:id/restore",
 		"DELETE /api/v1/admin/upstream-relay-group-monitors/recommendations/:id",
 	} {
 		require.True(t, registered[route], "%s should be registered", route)

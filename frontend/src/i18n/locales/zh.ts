@@ -2118,6 +2118,9 @@ export default {
         title: 'Priority 建议',
         description: '应用前先查看风险摘要，避免低置信或陈旧建议被误用。',
         pendingCount: '{n} 条待应用建议',
+        pendingSummary: '待应用 {n} 条',
+        filterAllRuns: '全部记录',
+        filterOnlyWithSuggestions: '只看有建议',
         colRun: 'Run',
         colCandidates: '候选数',
         colSuggestions: '建议数',
@@ -2128,6 +2131,7 @@ export default {
         failed: '生成失败',
         running: '生成中',
         applied: '已应用',
+        closed: '已关闭',
         pending: '待确认',
         noSuggestions: '无建议',
         unknown: '状态未知',
@@ -2138,8 +2142,21 @@ export default {
         viewAndApply: '查看并应用',
         viewDetails: '查看详情',
         delete: '删除',
+        closeSuggestion: '关闭建议',
+        restoreSuggestion: '恢复建议',
         deleting: '删除中',
-        empty: '暂无建议'
+        onlyWithSuggestions: '仅看有建议',
+        pageInfo: '第 {page} / {pages} 页，共 {total} 条',
+        rangeInfo: '当前显示 {start}-{end} / {total}',
+        rangeEmpty: '当前没有建议记录',
+        rangeEmptyFiltered: '当前没有有建议的记录',
+        loadingPage: '正在加载建议历史...',
+        prev: '上一页',
+        next: '下一页',
+        emptyTitle: '暂无 Priority 建议记录',
+        empty: '生成建议后，历史记录会显示在这里。',
+        emptyFilteredTitle: '暂无有建议的记录',
+        emptyFiltered: '可取消“仅看有建议”查看无调整记录。'
       },
       monitoring: {
         title: '自动监控',
@@ -2405,6 +2422,7 @@ export default {
         detailTitle: '查看 priority 建议',
         warning: 'Run #{id} 创建于 {date}。应用前请确认低置信与未探测候选。',
         appliedNotice: 'Run #{id} 创建于 {date}，这次 priority 建议已应用，以下明细保留用于审计查看。',
+        closedNotice: 'Run #{id} 创建于 {date}，这次 priority 建议已关闭；以下明细仍保留用于历史查看。',
         appliedAt: '应用于 {date}。',
         successTitle: 'Priority 建议已成功应用',
         successDetail: 'Run #{id} 已应用 {count} 条 priority 建议，应用时间：{date}。',
@@ -2428,7 +2446,10 @@ export default {
         close: '关闭',
         applying: '应用中...',
         confirmApply: '确认应用',
-        confirmationText: '我确认要应用 Run #{id} 的 {count} 条 priority 建议，并理解这会批量修改账号 priority。'
+        closeSuggestion: '关闭建议',
+        closingSuggestion: '关闭中...',
+        restoreSuggestion: '恢复建议',
+        restoringSuggestion: '恢复中...'
       },
       confirmDeleteConnector: {
         title: '删除连接器',
@@ -2440,7 +2461,7 @@ export default {
       },
       confirmDeleteRecommendationRun: {
         title: '删除 Priority 建议',
-        message: '确认删除 Run #{id} 的 {count} 条建议？删除后无法再查看或应用这次建议。'
+        message: '确认删除 Run #{id} 的 {count} 条建议？删除后无法再查看这次建议。'
       },
       status: {
         active: '可用',
@@ -2495,6 +2516,9 @@ export default {
         loadApiKeysFailed: '加载上游 API Key 失败',
         loadSnapshotChangesFailed: '加载倍率快照变更失败',
         loadUsageHistoryFailed: '加载历史用量失败',
+        loadRecommendationsFailed: '加载 Priority 建议失败',
+        closeRecommendationFailed: '关闭 Priority 建议失败',
+        restoreRecommendationFailed: '恢复 Priority 建议失败',
         saveCandidateFailed: '保存候选失败',
         toggleCandidateFailed: '更新候选状态失败',
         probeFailed: '探测失败',
