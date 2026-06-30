@@ -3,14 +3,19 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type upstreamRelayTestEncryptor struct{}
@@ -85,6 +90,16 @@ func (r *upstreamRelayRecommendationServiceRepo) ApplyRecommendationRun(_ contex
 		Status:    UpstreamRelayRunStatusSuccess,
 		Applied:   true,
 		AppliedBy: &operatorID,
+	}, nil
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) RestoreRecommendationRun(_ context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
+	_ = operatorID
+	return &UpstreamRelayRecommendationRun{
+		ID:      runID,
+		Status:  UpstreamRelayRunStatusSuccess,
+		Applied: false,
+		Closed:  false,
 	}, nil
 }
 
@@ -2121,6 +2136,111 @@ func TestUpstreamRelayUsageDeltaSampleReliability(t *testing.T) {
 	)
 	require.Equal(t, "insufficient", insufficient.Status)
 	require.Contains(t, insufficient.UnreliableReason, "not positive")
+}
+
+func TestUpstreamRelayCandidateProbeReusesAccountTestService(t *testing.T) {
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"pong"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	accountTest := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: accountTest}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:          12,
+		ProbeModel:  "gpt-5.4",
+		AccountID:   account.ID,
+		ConnectorID: 3,
+	}, account)
+
+	require.True(t, result.Success)
+	require.Equal(t, int64(12), result.CandidateID)
+	require.Empty(t, result.ErrorClass)
+	require.NotNil(t, result.LatencyMs)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
+func TestUpstreamRelayCandidateProbeHonorsResponsesProtocolThroughAccountTest(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(`data: {"type":"response.output_text.delta","delta":"pong"}
+
+data: {"type":"response.completed"}
+
+`)),
+	}}
+	accountTest := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: accountTest}
+	account := &Account{
+		ID:          92,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:            13,
+		ProbeModel:    "gpt-5.4",
+		ProbeProtocol: MonitorAPIModeResponses,
+	}, account)
+
+	require.True(t, result.Success)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+}
+
+func TestUpstreamRelayCandidateProbeRequiresAccountTestService(t *testing.T) {
+	svc := &UpstreamRelayGroupMonitoringService{}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat-upstream.example"},
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{ID: 12, ProbeModel: "gpt-5.4"}, account)
+
+	require.False(t, result.Success)
+	require.Equal(t, "probe_unavailable", result.ErrorClass)
+	require.Contains(t, result.ErrorMessage, "account test service")
 }
 
 func TestUpstreamRelayClassifyProbeErrorPhase2Categories(t *testing.T) {

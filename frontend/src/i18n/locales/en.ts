@@ -2091,6 +2091,9 @@ export default {
         expandGroups: 'Expand',
         collapseGroups: 'Collapse',
         noGroups: 'No candidate groups for this connector',
+        snapshotOnly: 'Synced',
+        notBoundCandidate: 'No candidate bound',
+        createCandidate: 'Create Candidate',
         delete: 'Delete'
       },
       recommendations: {

@@ -347,30 +347,34 @@
                     <div class="overflow-hidden">
                       <div class="py-3">
                         <div
-                          v-if="connectorGroupItems(connector).length > 0"
+                          v-if="connectorGroupRows(connector).length > 0"
                           data-testid="connector-group-expansion"
                           class="grid gap-2"
                         >
                           <div
-                            v-for="candidate in connectorGroupItems(connector)"
-                            :key="candidate.id"
+                            v-for="row in connectorGroupRows(connector)"
+                            :key="row.key"
                             data-testid="connector-group-item"
                             class="grid grid-cols-[26%_12%_20%_16%_13%_13%] items-center rounded border border-gray-100 bg-white text-xs leading-5 dark:border-dark-700 dark:bg-dark-900"
                           >
                             <div class="min-w-0 px-4 py-2.5">
-                              <div class="truncate font-medium text-gray-900 dark:text-white">{{ candidateUpstreamGroupLabel(candidate) }}</div>
-                              <div class="truncate font-mono text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidate.upstream_group_id }}</div>
+                              <div class="truncate font-medium text-gray-900 dark:text-white">{{ connectorGroupRowName(row) }}</div>
+                              <div class="truncate font-mono text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ connectorGroupRowGroupID(row) }}</div>
                             </div>
                             <div class="px-4 py-2.5">
-                              <span :class="candidateHealthClass(candidate)" class="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium leading-4">{{ candidateHealthLabel(candidate) }}</span>
+                              <span :class="connectorGroupRowStatusClass(row)" class="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium leading-4">{{ connectorGroupRowStatusLabel(row) }}</span>
                             </div>
-                            <div class="px-4 py-2.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateRateLabel(candidate) }}</div>
-                            <div class="px-4 py-2.5 text-right tabular-nums text-gray-700 dark:text-gray-200">Priority {{ candidate.current_priority ?? '-' }}</div>
+                            <div class="px-4 py-2.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ connectorGroupRowRateLabel(row) }}</div>
+                            <div class="px-4 py-2.5 text-right tabular-nums text-gray-700 dark:text-gray-200">{{ connectorGroupRowPriorityLabel(row) }}</div>
                             <div class="min-w-0 px-4 py-2.5 text-right">
-                              <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ candidateTodayUsageCostLabel(candidate) }}</div>
-                              <div class="truncate text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ candidateTodayUsageCompactMetaLabel(candidate) }}</div>
+                              <div class="font-semibold tabular-nums text-gray-900 dark:text-white">{{ connectorGroupRowUsageCostLabel(row) }}</div>
+                              <div class="truncate text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ connectorGroupRowUsageMetaLabel(row) }}</div>
                             </div>
-                            <div class="px-4 py-2.5"></div>
+                            <div class="px-4 py-2.5 text-right">
+                              <button v-if="row.kind === 'snapshot'" class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" @click="createCandidateFromSnapshot(row.snapshot)">
+                                {{ tM('connectors.createCandidate') }}
+                              </button>
+                            </div>
                           </div>
                         </div>
                         <div v-else class="rounded-md border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
@@ -1437,6 +1441,9 @@ type UsageHistorySubtotal = {
   groups: number
   latestCheckedAt: string | null
 }
+type ConnectorGroupRow =
+  | { kind: 'candidate'; key: string; candidate: UpstreamRelayCandidate }
+  | { kind: 'snapshot'; key: string; snapshot: UpstreamRelayGroupRateSnapshot }
 type TodayUsageOverview = {
   loaded: boolean
   cost: number
@@ -3477,8 +3484,85 @@ function connectorGroupItems(connector: UpstreamRelayConnector) {
     })
 }
 
+function connectorSnapshotItems(connector: UpstreamRelayConnector) {
+  return overviewSnapshots.value
+    .filter((snapshot) => snapshot.connector_id === connector.id)
+    .slice()
+    .sort((a, b) => {
+      const rateA = Number.isFinite(a.final_rate_multiplier) ? a.final_rate_multiplier : Number.MAX_SAFE_INTEGER
+      const rateB = Number.isFinite(b.final_rate_multiplier) ? b.final_rate_multiplier : Number.MAX_SAFE_INTEGER
+      if (rateA !== rateB) return rateA - rateB
+      return snapshotGroupLabel(a).localeCompare(snapshotGroupLabel(b))
+    })
+}
+
+function connectorGroupRows(connector: UpstreamRelayConnector): ConnectorGroupRow[] {
+  const rows: ConnectorGroupRow[] = []
+  const mappedGroups = new Set<string>()
+  for (const candidate of connectorGroupItems(connector)) {
+    mappedGroups.add(candidate.upstream_group_id)
+    rows.push({ kind: 'candidate', key: `candidate-${candidate.id}`, candidate })
+  }
+  for (const snapshot of connectorSnapshotItems(connector)) {
+    if (mappedGroups.has(snapshot.upstream_group_id)) continue
+    rows.push({ kind: 'snapshot', key: `snapshot-${snapshot.id}`, snapshot })
+  }
+  return rows
+}
+
 function candidateUpstreamGroupLabel(candidate: UpstreamRelayCandidate) {
   return candidate.upstream_group_name || candidate.upstream_group_id
+}
+
+function snapshotGroupLabel(snapshot: UpstreamRelayGroupRateSnapshot) {
+  return snapshot.name || snapshot.upstream_group_id
+}
+
+function connectorGroupRowName(row: ConnectorGroupRow) {
+  return row.kind === 'candidate' ? candidateUpstreamGroupLabel(row.candidate) : snapshotGroupLabel(row.snapshot)
+}
+
+function connectorGroupRowGroupID(row: ConnectorGroupRow) {
+  return row.kind === 'candidate' ? row.candidate.upstream_group_id : row.snapshot.upstream_group_id
+}
+
+function connectorGroupRowStatusLabel(row: ConnectorGroupRow) {
+  if (row.kind === 'candidate') return candidateHealthLabel(row.candidate)
+  return row.snapshot.status || tM('connectors.snapshotOnly')
+}
+
+function connectorGroupRowStatusClass(row: ConnectorGroupRow) {
+  if (row.kind === 'candidate') return candidateHealthClass(row.candidate)
+  if (row.snapshot.status === 'active') return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
+  return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+}
+
+function connectorGroupRowRateLabel(row: ConnectorGroupRow) {
+  return row.kind === 'candidate'
+    ? candidateRateLabel(row.candidate)
+    : formatRate(row.snapshot.final_rate_multiplier)
+}
+
+function connectorGroupRowPriorityLabel(row: ConnectorGroupRow) {
+  return row.kind === 'candidate'
+    ? `Priority ${row.candidate.current_priority ?? '-'}`
+    : tM('connectors.notBoundCandidate')
+}
+
+function connectorGroupRowUsageCostLabel(row: ConnectorGroupRow) {
+  if (row.kind === 'candidate') return candidateTodayUsageCostLabel(row.candidate)
+  if (row.snapshot.today_actual_cost === null || row.snapshot.today_actual_cost === undefined) {
+    return tM('candidates.todayUsageNotRefreshed')
+  }
+  return formatUsageCost(row.snapshot.today_actual_cost)
+}
+
+function connectorGroupRowUsageMetaLabel(row: ConnectorGroupRow) {
+  if (row.kind === 'candidate') return candidateTodayUsageCompactMetaLabel(row.candidate)
+  if (row.snapshot.today_total_tokens === null || row.snapshot.today_total_tokens === undefined) {
+    return tM('candidates.todayUsageSourceMissing')
+  }
+  return formatUsageTokenMillions(row.snapshot.today_total_tokens)
 }
 
 function candidateAccountLabel(candidate: Pick<UpstreamRelayCandidate, 'account_id' | 'account_name'>) {

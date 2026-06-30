@@ -179,6 +179,15 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 
+	return s.TestAccountConnectionWithAccount(c, account, modelID, prompt, mode)
+}
+
+// TestAccountConnectionWithAccount 使用已加载账号执行与账号管理测试相同的探测流程。
+func (s *AccountTestService) TestAccountConnectionWithAccount(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+	if account == nil {
+		return s.sendErrorAndEnd(c, "Account not found")
+	}
+
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
@@ -1691,8 +1700,22 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 
-	finishedAt := time.Now()
-	body := w.Body.String()
+	return s.parseBackgroundTestResult(startedAt, time.Now(), w.Body.String(), testErr)
+}
+
+func (s *AccountTestService) RunAccountTestBackground(ctx context.Context, account *Account, modelID string, prompt string, mode string) (*ScheduledTestResult, error) {
+	startedAt := time.Now()
+
+	w := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(w)
+	ginCtx.Request = (&http.Request{}).WithContext(ctx)
+
+	testErr := s.TestAccountConnectionWithAccount(ginCtx, account, modelID, prompt, mode)
+
+	return s.parseBackgroundTestResult(startedAt, time.Now(), w.Body.String(), testErr)
+}
+
+func (s *AccountTestService) parseBackgroundTestResult(startedAt time.Time, finishedAt time.Time, body string, testErr error) (*ScheduledTestResult, error) {
 	responseText, errMsg := parseTestSSEOutput(body)
 
 	status := "success"
