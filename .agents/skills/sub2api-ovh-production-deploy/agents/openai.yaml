@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sub2API OVH 部署"
+  short_description: "安全更新 OVH 生产实例到 custom/main"
+  default_prompt: "Use $sub2api-ovh-production-deploy to deploy the latest Sub2API custom/main build to the OVH production host."
+
+policy:
+  allow_implicit_invocation: true
