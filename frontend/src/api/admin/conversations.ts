@@ -33,6 +33,7 @@ export interface ConversationSession {
   id: number
   session_id: string
   user_id: number
+  user_email?: string
   api_key_id: number
   account_id?: number | null
   provider: string

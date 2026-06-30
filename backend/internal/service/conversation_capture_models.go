@@ -93,6 +93,7 @@ type ConversationSession struct {
 	ID                 int64          `json:"id"`
 	SessionID          string         `json:"session_id"`
 	UserID             int64          `json:"user_id"`
+	UserEmail          string         `json:"user_email,omitempty"`
 	APIKeyID           int64          `json:"api_key_id"`
 	AccountID          *int64         `json:"account_id,omitempty"`
 	Provider           string         `json:"provider"`
