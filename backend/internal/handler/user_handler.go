@@ -69,7 +69,7 @@ func (h *UserHandler) GetMyPlatformQuotas(c *gin.Context) {
 	response.Success(c, map[string]any{"platform_quotas": out})
 }
 
-// ReportActivity 由前端在页面前台可见且近期有用户交互时上报活跃。
+// ReportActivity 由前端在登录态页面进入前台或用户交互时上报活跃。
 // POST /api/v1/user/activity
 func (h *UserHandler) ReportActivity(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)

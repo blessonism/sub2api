@@ -16,7 +16,6 @@ const PENDING_AUTH_SESSION_KEY = 'pending_auth_session'
 const AUTO_REFRESH_INTERVAL = 60 * 1000 // 60 seconds for user data refresh
 const TOKEN_REFRESH_BUFFER = 120 * 1000 // 120 seconds before expiry to refresh token
 const ACTIVITY_HEARTBEAT_INTERVAL = 5 * 60 * 1000
-const RECENT_USER_INTERACTION_WINDOW = 2 * 60 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const
 const ACTIVITY_IGNORE_SELECTOR = '[data-ignore-foreground-activity="true"]'
 
@@ -85,8 +84,6 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
-  let activityHeartbeatIntervalId: ReturnType<typeof setInterval> | null = null
-  let lastUserInteractionAt = 0
   let lastActivityReportAttemptAt: number | null = null
   let activityReportInFlight = false
   let activityListenersStarted = false
@@ -177,10 +174,6 @@ export const useAuthStore = defineStore('auth', () => {
     return typeof document === 'undefined' || document.visibilityState === 'visible'
   }
 
-  function hasRecentUserInteraction(now = Date.now()): boolean {
-    return lastUserInteractionAt > 0 && now - lastUserInteractionAt <= RECENT_USER_INTERACTION_WINDOW
-  }
-
   function shouldIgnoreActivityEvent(event: Event): boolean {
     const target = event.target
     if (!(target instanceof Element)) {
@@ -196,7 +189,6 @@ export const useAuthStore = defineStore('auth', () => {
     if (shouldIgnoreActivityEvent(event)) {
       return
     }
-    lastUserInteractionAt = Date.now()
     void reportForegroundActivity()
   }
 
@@ -208,7 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function reportForegroundActivity(): Promise<void> {
     const now = Date.now()
-    if (!token.value || !user.value || !isDocumentVisible() || !hasRecentUserInteraction(now)) {
+    if (!token.value || !user.value || !isDocumentVisible()) {
       return
     }
     if (lastActivityReportAttemptAt !== null && now - lastActivityReportAttemptAt < ACTIVITY_HEARTBEAT_INTERVAL) {
@@ -247,16 +239,10 @@ export const useAuthStore = defineStore('auth', () => {
       stopActiveActivityListeners = stopActivityHeartbeat
     }
 
-    activityHeartbeatIntervalId = setInterval(() => {
-      void reportForegroundActivity()
-    }, ACTIVITY_HEARTBEAT_INTERVAL)
+    void reportForegroundActivity()
   }
 
   function stopActivityHeartbeat(): void {
-    if (activityHeartbeatIntervalId) {
-      clearInterval(activityHeartbeatIntervalId)
-      activityHeartbeatIntervalId = null
-    }
     if (activityListenersStarted && typeof window !== 'undefined' && typeof document !== 'undefined') {
       ACTIVITY_EVENTS.forEach((eventName) => {
         window.removeEventListener(eventName, markUserInteraction)
@@ -267,7 +253,6 @@ export const useAuthStore = defineStore('auth', () => {
     if (stopActiveActivityListeners === stopActivityHeartbeat) {
       stopActiveActivityListeners = null
     }
-    lastUserInteractionAt = 0
     lastActivityReportAttemptAt = null
     activityReportInFlight = false
   }
