@@ -120,6 +120,31 @@
           </div>
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.count', { total: candidates.length, enabled: enabledCandidateCount }) }}</span>
         </div>
+        <div
+          v-if="candidateProbeFeedback"
+          data-testid="candidate-probe-feedback"
+          class="border-b px-4 py-3 text-sm"
+          :class="candidateProbeFeedbackPanelClass"
+        >
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <Icon :name="candidateProbeFeedbackIcon" size="sm" :class="candidateProbeFeedbackIconClass" />
+                <span class="font-semibold">{{ candidateProbeFeedbackTitle }}</span>
+                <span class="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium dark:bg-black/20">
+                  {{ candidateProbeFeedback.status === 'running' ? tM('candidates.probeStatusRunning') : candidateProbeFeedback.success ? tM('candidates.probeStatusSuccess') : tM('candidates.probeStatusFailed') }}
+                </span>
+              </div>
+              <div class="mt-1 text-xs leading-5">{{ candidateProbeFeedbackDetail }}</div>
+              <div v-if="candidateProbeFeedbackError" class="mt-2 break-words rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
+                {{ candidateProbeFeedbackError }}
+              </div>
+            </div>
+            <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="candidateProbeFeedback = null">
+              {{ tM('candidates.dismissProbeFeedback') }}
+            </button>
+          </div>
+        </div>
         <div v-if="loading" class="flex min-h-56 items-center justify-center">
           <LoadingSpinner />
         </div>
@@ -1210,7 +1235,13 @@
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamGroupId') }}</span>
-        <input v-model.trim="candidateForm.upstream_group_id" class="input w-full" type="text" />
+        <select class="input w-full" :value="candidateGroupSelectValue" :disabled="!candidateForm.connector_id" @change="selectCandidateGroupOption">
+          <option value="">{{ candidateGroupOptions.length > 0 ? tM('candidateForm.placeholderGroup') : tM('candidateForm.placeholderGroupEmpty') }}</option>
+          <option v-for="option in candidateGroupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          <option :value="MANUAL_CANDIDATE_GROUP_OPTION">{{ tM('candidateForm.manualGroupId') }}</option>
+        </select>
+        <input v-model.trim="candidateForm.upstream_group_id" class="input w-full" type="text" :placeholder="tM('candidateForm.placeholderManualGroupId')" @input="syncCandidateGroupManualInput" />
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ candidateGroupSelectHint }}</p>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamApiKey') }}</span>
@@ -1444,6 +1475,10 @@ type UsageHistorySubtotal = {
 type ConnectorGroupRow =
   | { kind: 'candidate'; key: string; candidate: UpstreamRelayCandidate }
   | { kind: 'snapshot'; key: string; snapshot: UpstreamRelayGroupRateSnapshot }
+type CandidateGroupOption = {
+  value: string
+  label: string
+}
 type TodayUsageOverview = {
   loaded: boolean
   cost: number
@@ -1455,10 +1490,24 @@ type MetricsRefreshResultState = {
   updatedAt: string
   expanded: boolean
 }
+type CandidateProbeFeedback = {
+  status: 'running' | 'done'
+  candidateId: number
+  accountLabel: string
+  mappingLabel: string
+  startedAt: string
+  completedAt?: string
+  success?: boolean
+  latencyMs?: number | null
+  httpStatus?: number | null
+  errorClass?: string
+  errorMessage?: string
+}
 
 const METRICS_REFRESH_LOCAL_BINDING_ERROR = 'connector has no local account bindings'
 const USAGE_HISTORY_STALE_MS = 24 * 60 * 60 * 1000
 const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
+const MANUAL_CANDIDATE_GROUP_OPTION = '__manual__'
 
 const loading = ref(false)
 const error = ref('')
@@ -1505,6 +1554,7 @@ const policyPreviewResultRef = ref<HTMLElement | null>(null)
 const monitoringPolicySavedAt = ref<string | null>(null)
 const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
 const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
+const candidateProbeFeedback = ref<CandidateProbeFeedback | null>(null)
 const activeSection = ref<SectionKey>('candidates')
 const connectorDialogOpen = ref(false)
 const connectorFormError = ref('')
@@ -1682,6 +1732,79 @@ const candidateCurrentAPIKeyOption = computed<UpstreamRelayAPIKeyOption | null>(
     masked_key: candidateForm.upstream_api_key_masked || undefined
   }
 })
+const candidateGroupOptions = computed<CandidateGroupOption[]>(() => {
+  const connectorId = Number(candidateForm.connector_id || 0)
+  if (!connectorId) return []
+  const snapshotsByGroupId = new Map<string, UpstreamRelayGroupRateSnapshot>()
+  for (const snapshot of [...overviewSnapshots.value, ...snapshots.value]) {
+    if (snapshot.connector_id !== connectorId || !snapshot.upstream_group_id) continue
+    snapshotsByGroupId.set(snapshot.upstream_group_id, snapshot)
+  }
+  return Array.from(snapshotsByGroupId.values())
+    .sort((a, b) => snapshotGroupLabel(a).localeCompare(snapshotGroupLabel(b)))
+    .map((snapshot) => ({
+      value: snapshot.upstream_group_id,
+      label: candidateGroupOptionLabel(snapshot)
+    }))
+})
+const candidateGroupSelectValue = computed(() => {
+  const groupId = candidateForm.upstream_group_id.trim()
+  if (!groupId) return ''
+  return candidateGroupOptions.value.some((option) => option.value === groupId)
+    ? groupId
+    : MANUAL_CANDIDATE_GROUP_OPTION
+})
+const candidateGroupSelectHint = computed(() => {
+  if (!candidateForm.connector_id) return tM('candidateForm.groupHintSelectConnector')
+  if (candidateGroupOptions.value.length === 0) return tM('candidateForm.groupHintNoSnapshots')
+  return tM('candidateForm.groupHintOptions', { count: candidateGroupOptions.value.length })
+})
+const candidateProbeFeedbackPanelClass = computed(() => {
+  if (candidateProbeFeedback.value?.status === 'running') {
+    return 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100'
+  }
+  return candidateProbeFeedback.value?.success
+    ? 'border-emerald-100 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-red-100 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
+})
+const candidateProbeFeedbackIcon = computed(() => {
+  if (candidateProbeFeedback.value?.status === 'running') return 'refresh'
+  return candidateProbeFeedback.value?.success ? 'check' : 'x'
+})
+const candidateProbeFeedbackIconClass = computed(() => (
+  candidateProbeFeedback.value?.status === 'running'
+    ? 'animate-spin text-blue-500 dark:text-blue-200'
+    : ''
+))
+const candidateProbeFeedbackTitle = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback) return ''
+  if (feedback.status === 'running') return tM('candidates.probeRunningTitle', { account: feedback.accountLabel })
+  return feedback.success
+    ? tM('candidates.probeSuccessTitle', { account: feedback.accountLabel })
+    : tM('candidates.probeFailedTitle', { account: feedback.accountLabel })
+})
+const candidateProbeFeedbackDetail = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback) return ''
+  if (feedback.status === 'running') {
+    return tM('candidates.probeRunningDetail', {
+      mapping: feedback.mappingLabel,
+      time: formatDate(feedback.startedAt)
+    })
+  }
+  return tM('candidates.probeCompletedDetail', {
+    mapping: feedback.mappingLabel,
+    latency: formatProbeLatency(feedback.latencyMs),
+    http: feedback.httpStatus ?? '-',
+    time: formatDate(feedback.completedAt || feedback.startedAt)
+  })
+})
+const candidateProbeFeedbackError = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback || feedback.status === 'running' || feedback.success) return ''
+  return feedback.errorMessage || feedback.errorClass || tM('candidates.probeFailedUnknown')
+})
 
 const sections = computed((): Array<{ key: SectionKey; label: string; badge?: number }> => [
   { key: 'candidates', label: tM('tabs.candidates') },
@@ -1696,6 +1819,8 @@ const sections = computed((): Array<{ key: SectionKey; label: string; badge?: nu
 watch(() => candidateForm.connector_id, async (connectorId, previousConnectorId) => {
   if (!candidateDialogOpen.value) return
   if (connectorId !== previousConnectorId) {
+    candidateForm.upstream_group_id = ''
+    candidateSourceSnapshot.value = null
     candidateForm.upstream_api_key_id = null
     candidateForm.upstream_api_key_name = ''
     candidateForm.upstream_api_key_masked = ''
@@ -2749,11 +2874,54 @@ function syncSelectedCandidateAPIKey() {
   }
 }
 
+function selectCandidateGroupOption(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  if (!value) {
+    candidateForm.upstream_group_id = ''
+    candidateSourceSnapshot.value = null
+    return
+  }
+  if (value === MANUAL_CANDIDATE_GROUP_OPTION) {
+    candidateSourceSnapshot.value = null
+    return
+  }
+  candidateForm.upstream_group_id = value
+  candidateSourceSnapshot.value = candidateSnapshotByGroupId(candidateForm.connector_id, value)
+}
+
+function syncCandidateGroupManualInput(event: Event) {
+  const groupId = (event.target as HTMLInputElement).value.trim()
+  candidateSourceSnapshot.value = groupId
+    ? candidateSnapshotByGroupId(candidateForm.connector_id, groupId)
+    : null
+}
+
 async function probe(candidate: UpstreamRelayCandidate) {
   probingId.value = candidate.id
   error.value = ''
+  candidateProbeFeedback.value = {
+    status: 'running',
+    candidateId: candidate.id,
+    accountLabel: candidateAccountLabel(candidate),
+    mappingLabel: candidateMappingLabel(candidate),
+    startedAt: new Date().toISOString()
+  }
   try {
     const result = await upstreamRelayAPI.probeCandidate(candidate.id)
+    const completedAt = result.probed_at || new Date().toISOString()
+    candidateProbeFeedback.value = {
+      status: 'done',
+      candidateId: candidate.id,
+      accountLabel: candidateAccountLabel(candidate),
+      mappingLabel: candidateMappingLabel(candidate),
+      startedAt: candidateProbeFeedback.value?.startedAt || completedAt,
+      completedAt,
+      success: result.success,
+      latencyMs: result.latency_ms,
+      httpStatus: result.http_status,
+      errorClass: result.error_class,
+      errorMessage: result.error_message
+    }
     // 即时更新行内探测结果，无需整页刷新
     candidates.value = candidates.value.map((c) =>
       c.id === candidate.id ? { ...c, latest_probe: result } : c
@@ -2761,7 +2929,17 @@ async function probe(candidate: UpstreamRelayCandidate) {
     // 后台静默刷新健康聚合数据
     refreshCandidatesSilent()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.probeFailed')
+    const message = extractApiErrorMessage(err, tM('errors.probeFailed'))
+    candidateProbeFeedback.value = {
+      status: 'done',
+      candidateId: candidate.id,
+      accountLabel: candidateAccountLabel(candidate),
+      mappingLabel: candidateMappingLabel(candidate),
+      startedAt: candidateProbeFeedback.value?.startedAt || new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      success: false,
+      errorMessage: message
+    }
   } finally {
     probingId.value = null
   }
@@ -3518,6 +3696,15 @@ function snapshotGroupLabel(snapshot: UpstreamRelayGroupRateSnapshot) {
   return snapshot.name || snapshot.upstream_group_id
 }
 
+function candidateSnapshotByGroupId(connectorId: number, groupId: string) {
+  return [...overviewSnapshots.value, ...snapshots.value]
+    .find((snapshot) => snapshot.connector_id === connectorId && snapshot.upstream_group_id === groupId) || null
+}
+
+function candidateGroupOptionLabel(snapshot: UpstreamRelayGroupRateSnapshot) {
+  return `${snapshotGroupLabel(snapshot)} · ${snapshot.upstream_group_id} · ${formatRate(snapshot.final_rate_multiplier)}`
+}
+
 function connectorGroupRowName(row: ConnectorGroupRow) {
   return row.kind === 'candidate' ? candidateUpstreamGroupLabel(row.candidate) : snapshotGroupLabel(row.snapshot)
 }
@@ -3571,6 +3758,10 @@ function candidateAccountLabel(candidate: Pick<UpstreamRelayCandidate, 'account_
 
 function candidateMappingLabel(candidate: UpstreamRelayCandidate) {
   return `${candidateUpstreamGroupLabel(candidate)} → ${candidateAccountLabel(candidate)}`
+}
+
+function formatProbeLatency(value?: number | null) {
+  return value === null || value === undefined ? '-' : `${value}ms`
 }
 
 function suggestionMappingLabel(suggestion: Pick<UpstreamRelayRecommendationSuggestion, 'account_id' | 'account_name' | 'upstream_group_id' | 'upstream_group_name'>) {
