@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查本次改动未偏离 custom/main 下游二开边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查历史用量表格新增列与 i18n key 约束"}

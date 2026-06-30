@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "本仓库为下游二开 fork，修改仓库文件时必须遵守 custom/main 与上游同步边界。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "候选一键探测反馈属于上游 Relay 监控前端，需保持 API 字段和前端类型契约一致。"}
