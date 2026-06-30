@@ -2097,6 +2097,9 @@ export default {
         title: 'Priority Suggestions',
         description: 'Review the risk summary before applying to avoid low-confidence or stale suggestions.',
         pendingCount: '{n} pending suggestions',
+        pendingSummary: '{n} pending',
+        filterAllRuns: 'All runs',
+        filterOnlyWithSuggestions: 'Suggestions only',
         colRun: 'Run',
         colCandidates: 'Candidates',
         colSuggestions: 'Suggestions',
@@ -2107,6 +2110,7 @@ export default {
         failed: 'Failed',
         running: 'Running',
         applied: 'Applied',
+        closed: 'Closed',
         pending: 'Pending',
         noSuggestions: 'No suggestions',
         unknown: 'Unknown',
@@ -2117,8 +2121,21 @@ export default {
         viewAndApply: 'Review & Apply',
         viewDetails: 'View Details',
         delete: 'Delete',
+        closeSuggestion: 'Close Suggestion',
+        restoreSuggestion: 'Restore Suggestion',
         deleting: 'Deleting...',
-        empty: 'No suggestions'
+        onlyWithSuggestions: 'Only with suggestions',
+        pageInfo: 'Page {page} / {pages}, {total} total',
+        rangeInfo: 'Showing {start}-{end} of {total}',
+        rangeEmpty: 'No suggestion runs available',
+        rangeEmptyFiltered: 'No runs with suggestions available',
+        loadingPage: 'Loading suggestion history...',
+        prev: 'Previous',
+        next: 'Next',
+        emptyTitle: 'No priority suggestion runs',
+        empty: 'Generated suggestion runs will appear here.',
+        emptyFilteredTitle: 'No runs with suggestions',
+        emptyFiltered: 'Turn off "Only with suggestions" to review no-change runs.'
       },
       monitoring: {
         title: 'Auto Monitoring',
@@ -2384,6 +2401,7 @@ export default {
         detailTitle: 'View Priority Suggestions',
         warning: 'Run #{id} created on {date}. Review low-confidence and unprobed candidates before applying.',
         appliedNotice: 'Run #{id} was created on {date}. These priority suggestions have been applied and remain available for audit review.',
+        closedNotice: 'Run #{id} was created on {date}. These priority suggestions were closed and remain available for history review.',
         appliedAt: 'Applied on {date}.',
         successTitle: 'Priority suggestions applied successfully',
         successDetail: 'Run #{id} applied {count} priority suggestion(s) at {date}.',
@@ -2407,7 +2425,10 @@ export default {
         close: 'Close',
         applying: 'Applying...',
         confirmApply: 'Confirm Apply',
-        confirmationText: 'I confirm applying {count} priority suggestions from Run #{id}, and understand this changes account priority in bulk.'
+        closeSuggestion: 'Close Suggestion',
+        closingSuggestion: 'Closing...',
+        restoreSuggestion: 'Restore Suggestion',
+        restoringSuggestion: 'Restoring...'
       },
       confirmDeleteConnector: {
         title: 'Delete Connector',
@@ -2419,7 +2440,7 @@ export default {
       },
       confirmDeleteRecommendationRun: {
         title: 'Delete Priority Suggestions',
-        message: 'Delete {count} suggestions from Run #{id}? This run can no longer be reviewed or applied after deletion.'
+        message: 'Delete {count} suggestions from Run #{id}? This run can no longer be reviewed after deletion.'
       },
       status: {
         active: 'Active',
@@ -2474,6 +2495,9 @@ export default {
         loadApiKeysFailed: 'Failed to load upstream API keys',
         loadSnapshotChangesFailed: 'Failed to load snapshot changes',
         loadUsageHistoryFailed: 'Failed to load usage history',
+        loadRecommendationsFailed: 'Failed to load priority suggestions',
+        closeRecommendationFailed: 'Failed to close priority suggestions',
+        restoreRecommendationFailed: 'Failed to restore priority suggestions',
         saveCandidateFailed: 'Failed to save candidate',
         toggleCandidateFailed: 'Failed to update candidate status',
         probeFailed: 'Probe failed',

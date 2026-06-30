@@ -36,7 +36,10 @@ type upstreamRelayHandlerRepo struct {
 	usageHistoryFilters   service.UpstreamRelayUsageHistoryListFilters
 	usageHistoryParams    pagination.PaginationParams
 	usageHistoryRows      []service.UpstreamRelayGroupUsageHistory
+	recommendationFilters service.UpstreamRelayRecommendationRunListFilters
+	recommendationParams  pagination.PaginationParams
 	syncStatus            string
+	syncError             string
 	usageByGroup          map[string]service.UpstreamRelayGroupTodayUsage
 	usageCheckedAt        *time.Time
 }
@@ -134,8 +137,13 @@ func (r *upstreamRelayHandlerRepo) ListUsageHistory(_ context.Context, params pa
 	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
 }
 
-func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, _ string) error {
+func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, errMessage string) error {
 	r.syncStatus = status
+	r.syncError = errMessage
+	if r.created != nil {
+		r.created.Status = status
+		r.created.LastError = errMessage
+	}
 	return nil
 }
 
@@ -227,12 +235,46 @@ func (r *upstreamRelayHandlerRepo) GetRecommendationRun(context.Context, int64) 
 	return nil, service.ErrUpstreamRelayRunNotFound
 }
 
-func (r *upstreamRelayHandlerRepo) ListRecommendationRuns(context.Context, pagination.PaginationParams) ([]service.UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
-	return nil, &pagination.PaginationResult{Total: 0, Page: 1, PageSize: 20, Pages: 1}, nil
+func (r *upstreamRelayHandlerRepo) ListRecommendationRuns(_ context.Context, params pagination.PaginationParams, filters service.UpstreamRelayRecommendationRunListFilters) ([]service.UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
+	r.recommendationParams = params
+	r.recommendationFilters = filters
+	return []service.UpstreamRelayRecommendationRun{
+		{
+			ID:              55,
+			Status:          service.UpstreamRelayRunStatusSuccess,
+			TotalCandidates: 3,
+			SuggestionCount: 2,
+			CreatedAt:       time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC),
+		},
+	}, &pagination.PaginationResult{Total: 21, Page: params.Page, PageSize: params.PageSize, Pages: 2}, nil
 }
 
 func (r *upstreamRelayHandlerRepo) ApplyRecommendationRun(context.Context, int64, int64) (*service.UpstreamRelayRecommendationRun, error) {
 	return nil, service.ErrUpstreamRelayRunNotFound
+}
+
+func (r *upstreamRelayHandlerRepo) CloseRecommendationRun(_ context.Context, runID int64, operatorID int64) (*service.UpstreamRelayRecommendationRun, error) {
+	closedAt := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
+	return &service.UpstreamRelayRecommendationRun{
+		ID:              runID,
+		Status:          service.UpstreamRelayRunStatusSuccess,
+		TotalCandidates: 3,
+		SuggestionCount: 2,
+		Closed:          true,
+		ClosedBy:        &operatorID,
+		ClosedAt:        &closedAt,
+	}, nil
+}
+
+func (r *upstreamRelayHandlerRepo) RestoreRecommendationRun(_ context.Context, runID int64, operatorID int64) (*service.UpstreamRelayRecommendationRun, error) {
+	_ = operatorID
+	return &service.UpstreamRelayRecommendationRun{
+		ID:              runID,
+		Status:          service.UpstreamRelayRunStatusSuccess,
+		TotalCandidates: 3,
+		SuggestionCount: 2,
+		Closed:          false,
+	}, nil
 }
 
 func (r *upstreamRelayHandlerRepo) DeleteRecommendationRun(context.Context, int64) error {
@@ -350,6 +392,44 @@ func TestUpstreamRelayHandlerCreatePasswordLoginConnectorRedactsCredentials(t *t
 	require.NotContains(t, w.Body.String(), "admin@example.com")
 }
 
+func TestUpstreamRelayHandlerCreateConnectorSucceedsWhenImmediateSyncFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary upstream outage", http.StatusBadGateway)
+	}))
+	defer upstream.Close()
+
+	body := bytes.NewBufferString(`{
+		"name":"relay",
+		"base_url":"` + upstream.URL + `",
+		"auth_mode":"manual_session",
+		"bearer_token":"sk-handler-secret"
+	}`)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/upstream-relay-group-monitors/connectors", body)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 77})
+
+	handler.CreateConnector(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, service.UpstreamRelayConnectorStatusNeedsReauth, repo.syncStatus)
+	require.Contains(t, repo.syncError, "upstream HTTP 502")
+
+	var envelope struct {
+		Data service.UpstreamRelayConnector `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(42), envelope.Data.ID)
+	require.Equal(t, service.UpstreamRelayConnectorStatusNeedsReauth, envelope.Data.Status)
+	require.Contains(t, envelope.Data.LastError, "upstream HTTP 502")
+	require.NotContains(t, w.Body.String(), "sk-handler-secret")
+}
+
 func TestUpstreamRelayHandlerListSnapshotChangesReturnsPaginatedShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &upstreamRelayHandlerRepo{}
@@ -414,4 +494,81 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
 	require.Equal(t, 1.25, envelope.Data.Items[0].ActualCost)
+}
+
+func TestUpstreamRelayHandlerListRecommendationRunsParsesSuggestionFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/upstream-relay-group-monitors/recommendations?page=2&page_size=20&has_suggestions=true", nil)
+
+	handler.ListRecommendationRuns(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 2, repo.recommendationParams.Page)
+	require.Equal(t, 20, repo.recommendationParams.PageSize)
+	require.NotNil(t, repo.recommendationFilters.HasSuggestions)
+	require.True(t, *repo.recommendationFilters.HasSuggestions)
+	var envelope struct {
+		Data struct {
+			Items []service.UpstreamRelayRecommendationRun `json:"items"`
+			Total int64                                    `json:"total"`
+			Page  int                                      `json:"page"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(21), envelope.Data.Total)
+	require.Equal(t, 2, envelope.Data.Page)
+	require.Len(t, envelope.Data.Items, 1)
+	require.Equal(t, int64(55), envelope.Data.Items[0].ID)
+}
+
+func TestUpstreamRelayHandlerCloseRecommendationRunReturnsClosedDetail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/upstream-relay-group-monitors/recommendations/55/close", nil)
+	c.Params = gin.Params{{Key: "id", Value: "55"}}
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 77})
+
+	handler.CloseRecommendationRun(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope struct {
+		Data service.UpstreamRelayRecommendationRun `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(55), envelope.Data.ID)
+	require.True(t, envelope.Data.Closed)
+	require.NotNil(t, envelope.Data.ClosedBy)
+	require.Equal(t, int64(77), *envelope.Data.ClosedBy)
+}
+
+func TestUpstreamRelayHandlerRestoreRecommendationRunReturnsRestoredDetail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &upstreamRelayHandlerRepo{}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/upstream-relay-group-monitors/recommendations/55/restore", nil)
+	c.Params = gin.Params{{Key: "id", Value: "55"}}
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 77})
+
+	handler.RestoreRecommendationRun(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope struct {
+		Data service.UpstreamRelayRecommendationRun `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, int64(55), envelope.Data.ID)
+	require.False(t, envelope.Data.Closed)
+	require.False(t, envelope.Data.Applied)
 }

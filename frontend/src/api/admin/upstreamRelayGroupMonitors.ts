@@ -318,6 +318,9 @@ export interface UpstreamRelayRecommendationRun {
   applied: boolean
   applied_by?: number | null
   applied_at?: string | null
+  closed: boolean
+  closed_by?: number | null
+  closed_at?: string | null
   error_message?: string
   created_by?: number
   created_at: string
@@ -511,6 +514,7 @@ export async function generateRecommendations(): Promise<UpstreamRelayRecommenda
 export async function listRecommendationRuns(params?: {
   page?: number
   page_size?: number
+  has_suggestions?: boolean
 }): Promise<PaginatedResponse<UpstreamRelayRecommendationRun>> {
   const { data } = await apiClient.get<PaginatedResponse<UpstreamRelayRecommendationRun>>(`${base}/recommendations`, { params })
   return data
@@ -523,6 +527,16 @@ export async function getRecommendationRun(id: number): Promise<UpstreamRelayRec
 
 export async function applyRecommendationRun(id: number): Promise<UpstreamRelayRecommendationRun> {
   const { data } = await apiClient.post<UpstreamRelayRecommendationRun>(`${base}/recommendations/${id}/apply`)
+  return data
+}
+
+export async function closeRecommendationRun(id: number): Promise<UpstreamRelayRecommendationRun> {
+  const { data } = await apiClient.post<UpstreamRelayRecommendationRun>(`${base}/recommendations/${id}/close`)
+  return data
+}
+
+export async function restoreRecommendationRun(id: number): Promise<UpstreamRelayRecommendationRun> {
+  const { data } = await apiClient.post<UpstreamRelayRecommendationRun>(`${base}/recommendations/${id}/restore`)
   return data
 }
 
@@ -558,6 +572,8 @@ export const upstreamRelayGroupMonitorsAPI = {
   listRecommendationRuns,
   getRecommendationRun,
   applyRecommendationRun,
+  closeRecommendationRun,
+  restoreRecommendationRun,
   deleteRecommendationRun
 }
 

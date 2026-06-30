@@ -11,6 +11,8 @@ const {
   listRecommendationRuns,
   getRecommendationRun,
   applyRecommendationRun,
+  closeRecommendationRun,
+  restoreRecommendationRun,
   getMonitoringPolicy,
   updateMonitoringPolicy,
   getRecommendationPolicy,
@@ -31,6 +33,8 @@ const {
   listRecommendationRuns: vi.fn(),
   getRecommendationRun: vi.fn(),
   applyRecommendationRun: vi.fn(),
+  closeRecommendationRun: vi.fn(),
+  restoreRecommendationRun: vi.fn(),
   getMonitoringPolicy: vi.fn(),
   updateMonitoringPolicy: vi.fn(),
   getRecommendationPolicy: vi.fn(),
@@ -72,6 +76,8 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     listRecommendationRuns,
     getRecommendationRun,
     applyRecommendationRun,
+    closeRecommendationRun,
+    restoreRecommendationRun,
     getMonitoringPolicy,
     updateMonitoringPolicy,
     getRecommendationPolicy,
@@ -214,6 +220,7 @@ function recommendationRun(overrides: Record<string, unknown> = {}) {
     total_candidates: 1,
     suggestion_count: 1,
     applied: false,
+    closed: false,
     created_by: 42,
     created_at: '2026-06-28T12:00:00Z',
     suggestions: [{
@@ -251,6 +258,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     listRecommendationRuns.mockReset()
     getRecommendationRun.mockReset()
     applyRecommendationRun.mockReset()
+    closeRecommendationRun.mockReset()
+    restoreRecommendationRun.mockReset()
     getMonitoringPolicy.mockReset()
     updateMonitoringPolicy.mockReset()
     getRecommendationPolicy.mockReset()
@@ -1993,6 +2002,93 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('recommendations.appliedByManual')
   })
 
+  it('推荐历史支持翻页查看更多旧记录', async () => {
+    listRecommendationRuns.mockResolvedValueOnce({
+      items: [recommendationRun({ id: 77 })],
+      total: 21,
+      page: 1,
+      page_size: 20,
+      pages: 2,
+    }).mockResolvedValueOnce({
+      items: [recommendationRun({ id: 55, created_at: '2026-06-27T12:00:00Z' })],
+      total: 21,
+      page: 2,
+      page_size: 20,
+      pages: 2,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.next'))!.trigger('click')
+    await flushPromises()
+
+    expect(listRecommendationRuns).toHaveBeenLastCalledWith({ page: 2, page_size: 20, has_suggestions: undefined })
+    expect(wrapper.text()).toContain('#55')
+  })
+
+  it('推荐历史可一键过滤无建议记录', async () => {
+    listRecommendationRuns.mockResolvedValueOnce({
+      items: [
+        recommendationRun({ id: 77, suggestion_count: 1 }),
+        recommendationRun({ id: 78, suggestion_count: 0 }),
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    }).mockResolvedValueOnce({
+      items: [recommendationRun({ id: 77, suggestion_count: 1 })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    const suggestionFilter = wrapper.findAll('label').find((label) => label.text().includes('recommendations.onlyWithSuggestions'))!
+    await suggestionFilter.get('input[type="checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(listRecommendationRuns).toHaveBeenLastCalledWith({ page: 1, page_size: 20, has_suggestions: true })
+    expect(wrapper.text()).toContain('#77')
+    expect(wrapper.text()).not.toContain('#78')
+  })
+
+  it('关闭的建议不会被当作最新待处理建议补全详情', async () => {
+    const closedRun = recommendationRun({
+      id: 88,
+      closed: true,
+      created_at: '2026-06-29T12:00:00Z',
+      suggestions: undefined,
+    })
+    const pendingRun = recommendationRun({
+      id: 77,
+      created_at: '2026-06-28T12:00:00Z',
+      suggestions: undefined,
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [closedRun, pendingRun],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(recommendationRun({ id: 77 }))
+
+    mountView()
+    await flushPromises()
+
+    expect(getRecommendationRun).toHaveBeenCalledTimes(1)
+    expect(getRecommendationRun).toHaveBeenCalledWith(77)
+  })
+
   it('已应用的 Priority 建议仍可打开并查看明细', async () => {
     const appliedRun = recommendationRun({
       applied: true,
@@ -2061,10 +2157,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
     await flushPromises()
     const applyButton = wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!
-    expect(applyButton.attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-testid="apply-confirmation-control"]').text()).toContain('applyDialog.confirmationText')
-    await wrapper.find('[data-testid="apply-confirmation-control"] input').setValue(true)
-    await flushPromises()
+    expect(wrapper.find('[data-testid="apply-confirmation-control"]').exists()).toBe(false)
     expect(applyButton.attributes('disabled')).toBeUndefined()
     await applyButton.trigger('click')
     await flushPromises()
@@ -2097,8 +2190,6 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
     await flushPromises()
-    await wrapper.find('[data-testid="apply-confirmation-control"] input').setValue(true)
-    await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.confirmApply'))!.trigger('click')
     await flushPromises()
 
@@ -2110,6 +2201,122 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('Team Alpha')
     expect(wrapper.html()).not.toContain('rate-source-tag-stub')
     expect(wrapper.text()).toContain('applyDialog.confirmApply')
+  })
+
+  it('应用弹窗中可以关闭待应用建议并保留历史详情', async () => {
+    const pendingRun = recommendationRun()
+    const closedRun = recommendationRun({
+      closed: true,
+      closed_by: 42,
+      closed_at: '2026-06-30T12:00:00Z',
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [pendingRun],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(pendingRun)
+    closeRecommendationRun.mockResolvedValue(closedRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewAndApply'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="apply-confirmation-control"]').exists()).toBe(false)
+    await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.closeSuggestion'))!.trigger('click')
+    await flushPromises()
+
+    expect(closeRecommendationRun).toHaveBeenCalledWith(77)
+    expect(applyRecommendationRun).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="recommendation-run-status-77"]').text()).toContain('recommendations.closed')
+    expect(wrapper.text()).toContain('applyDialog.closedNotice')
+    expect(wrapper.text()).toContain('Team Alpha')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('applyDialog.confirmApply'))).toBe(false)
+  })
+
+  it('关闭建议后保留当前列表排序位置', async () => {
+    const firstRun = recommendationRun({ id: 88, created_at: '2026-06-29T12:00:00Z' })
+    const pendingRun = recommendationRun({ id: 77, created_at: '2026-06-28T12:00:00Z' })
+    const closedRun = recommendationRun({
+      id: 77,
+      created_at: '2026-06-28T12:00:00Z',
+      closed: true,
+      closed_by: 42,
+      closed_at: '2026-06-30T12:00:00Z',
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [firstRun, pendingRun],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    closeRecommendationRun.mockResolvedValue(closedRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').filter((button) => button.text().includes('recommendations.closeSuggestion')).at(1)!.trigger('click')
+    await flushPromises()
+
+    expect(closeRecommendationRun).toHaveBeenCalledWith(77)
+    const runCells = wrapper.findAll('tbody tr td.font-mono').map((cell) => cell.text())
+    expect(runCells).toEqual(['#88', '#77'])
+    expect(wrapper.find('[data-testid="recommendation-run-status-77"]').text()).toContain('recommendations.closed')
+  })
+
+  it('恢复关闭建议后保留详情并恢复可应用状态', async () => {
+    const newerRun = recommendationRun({ id: 88, created_at: '2026-06-29T12:00:00Z' })
+    const closedRun = recommendationRun({
+      id: 77,
+      closed: true,
+      closed_by: 42,
+      closed_at: '2026-06-30T12:00:00Z',
+      created_at: '2026-06-28T12:00:00Z',
+    })
+    const restoredRun = recommendationRun({
+      id: 77,
+      closed: false,
+      closed_by: null,
+      closed_at: null,
+      created_at: '2026-06-28T12:00:00Z',
+    })
+    listRecommendationRuns.mockResolvedValue({
+      items: [newerRun, closedRun],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getRecommendationRun.mockResolvedValue(closedRun)
+    restoreRecommendationRun.mockResolvedValue(restoredRun)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.recommendations'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('recommendations.viewDetails'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('applyDialog.restoreSuggestion')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('applyDialog.restoreSuggestion'))!.trigger('click')
+    await flushPromises()
+
+    expect(restoreRecommendationRun).toHaveBeenCalledWith(77)
+    expect(wrapper.text()).toContain('Team Alpha')
+    expect(wrapper.text()).toContain('applyDialog.confirmApply')
+    expect(wrapper.find('[data-testid="recommendation-run-status-77"]').text()).toContain('recommendations.pending')
+    const runCells = wrapper.findAll('tbody tr td.font-mono').map((cell) => cell.text())
+    expect(runCells).toEqual(['#88', '#77'])
   })
 
   it('自动监控页调用批量同步和批量探测接口并展示失败摘要', async () => {

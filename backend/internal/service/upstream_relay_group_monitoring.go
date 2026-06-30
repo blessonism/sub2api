@@ -377,10 +377,17 @@ type UpstreamRelayRecommendationRun struct {
 	Applied         bool                                    `json:"applied"`
 	AppliedBy       *int64                                  `json:"applied_by,omitempty"`
 	AppliedAt       *time.Time                              `json:"applied_at,omitempty"`
+	Closed          bool                                    `json:"closed"`
+	ClosedBy        *int64                                  `json:"closed_by,omitempty"`
+	ClosedAt        *time.Time                              `json:"closed_at,omitempty"`
 	ErrorMessage    string                                  `json:"error_message,omitempty"`
 	CreatedBy       int64                                   `json:"created_by,omitempty"`
 	CreatedAt       time.Time                               `json:"created_at"`
 	Suggestions     []UpstreamRelayRecommendationSuggestion `json:"suggestions,omitempty"`
+}
+
+type UpstreamRelayRecommendationRunListFilters struct {
+	HasSuggestions *bool
 }
 
 type UpstreamRelayRecommendationSuggestion struct {
@@ -555,8 +562,10 @@ type UpstreamRelayRepository interface {
 	UpsertRecommendationPolicy(ctx context.Context, policy UpstreamRelayRecommendationPolicy, operatorID int64) (*UpstreamRelayRecommendationPolicy, error)
 	CreateRecommendationRun(ctx context.Context, run UpstreamRelayRecommendationRun, suggestions []UpstreamRelayRecommendationSuggestion) (*UpstreamRelayRecommendationRun, error)
 	GetRecommendationRun(ctx context.Context, id int64) (*UpstreamRelayRecommendationRun, error)
-	ListRecommendationRuns(ctx context.Context, params pagination.PaginationParams) ([]UpstreamRelayRecommendationRun, *pagination.PaginationResult, error)
+	ListRecommendationRuns(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelayRecommendationRunListFilters) ([]UpstreamRelayRecommendationRun, *pagination.PaginationResult, error)
 	ApplyRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error)
+	CloseRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error)
+	RestoreRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error)
 	DeleteRecommendationRun(ctx context.Context, runID int64) error
 }
 
@@ -1303,12 +1312,20 @@ func (s *UpstreamRelayGroupMonitoringService) GetRecommendationRun(ctx context.C
 	return s.repo.GetRecommendationRun(ctx, id)
 }
 
-func (s *UpstreamRelayGroupMonitoringService) ListRecommendationRuns(ctx context.Context, page, pageSize int) ([]UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
-	return s.repo.ListRecommendationRuns(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize})
+func (s *UpstreamRelayGroupMonitoringService) ListRecommendationRuns(ctx context.Context, page, pageSize int, filters UpstreamRelayRecommendationRunListFilters) ([]UpstreamRelayRecommendationRun, *pagination.PaginationResult, error) {
+	return s.repo.ListRecommendationRuns(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ApplyRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
 	return s.repo.ApplyRecommendationRun(ctx, runID, operatorID)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) CloseRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
+	return s.repo.CloseRecommendationRun(ctx, runID, operatorID)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) RestoreRecommendationRun(ctx context.Context, runID, operatorID int64) (*UpstreamRelayRecommendationRun, error) {
+	return s.repo.RestoreRecommendationRun(ctx, runID, operatorID)
 }
 
 func (s *UpstreamRelayGroupMonitoringService) DeleteRecommendationRun(ctx context.Context, runID int64) error {

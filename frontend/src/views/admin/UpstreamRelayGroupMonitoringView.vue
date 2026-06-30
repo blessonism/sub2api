@@ -658,7 +658,27 @@
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ tM('recommendations.title') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('recommendations.description') }}</p>
           </div>
-          <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('recommendations.pendingCount', { n: pendingSuggestionCount }) }}</span>
+          <div class="flex flex-wrap items-center gap-3 sm:justify-end">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                {{ tM('recommendations.pendingSummary', { n: pendingSuggestionCount }) }}
+              </span>
+              <span class="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                {{ recommendationFilterSummary }}
+              </span>
+            </div>
+            <label
+              class="inline-flex cursor-pointer items-center gap-2 text-xs font-medium transition"
+              :class="recommendationOnlyWithSuggestions ? 'text-primary-700 dark:text-primary-200' : 'text-gray-600 dark:text-gray-300'"
+            >
+              <input v-model="recommendationOnlyWithSuggestions" type="checkbox" class="sr-only" @change="reloadRecommendationRuns" />
+              <span class="relative inline-flex h-5 w-9 items-center rounded-full transition" :class="recommendationOnlyWithSuggestions ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'">
+                <span class="inline-block h-4 w-4 rounded-full bg-white shadow transition" :class="recommendationOnlyWithSuggestions ? 'translate-x-4' : 'translate-x-0.5'"></span>
+              </span>
+              {{ tM('recommendations.onlyWithSuggestions') }}
+            </label>
+          </div>
         </div>
         <div v-if="loading" class="flex min-h-56 items-center justify-center">
           <LoadingSpinner />
@@ -698,17 +718,39 @@
                     <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="openApplyDialog(run)">
                       {{ canApplyRecommendationRun(run) ? tM('recommendations.viewAndApply') : tM('recommendations.viewDetails') }}
                     </button>
-                    <button class="btn btn-danger whitespace-nowrap px-3 py-1.5 text-xs" type="button" :disabled="run.applied || deletingRecommendationRunId === run.id" @click="removeRecommendationRun(run)">
-                      {{ deletingRecommendationRunId === run.id ? tM('recommendations.deleting') : tM('recommendations.delete') }}
+                    <button v-if="canApplyRecommendationRun(run)" class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" :disabled="closingRecommendationRun || restoringRecommendationRun" @click="closeRecommendationRunFromList(run)">
+                      {{ closingRecommendationRun ? tM('applyDialog.closingSuggestion') : tM('recommendations.closeSuggestion') }}
+                    </button>
+                    <button v-if="canRestoreRecommendationRun(run)" class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" :disabled="closingRecommendationRun || restoringRecommendationRun" @click="restoreRecommendationRunFromList(run)">
+                      {{ restoringRecommendationRun ? tM('applyDialog.restoringSuggestion') : tM('recommendations.restoreSuggestion') }}
                     </button>
                   </div>
                 </td>
               </tr>
               <tr v-if="recommendationRuns.length === 0">
-                <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">{{ tM('recommendations.empty') }}</td>
+                <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                  <div class="font-medium text-gray-700 dark:text-gray-200">
+                    {{ recommendationOnlyWithSuggestions ? tM('recommendations.emptyFilteredTitle') : tM('recommendations.emptyTitle') }}
+                  </div>
+                  <div class="mt-1 text-sm">
+                    {{ recommendationOnlyWithSuggestions ? tM('recommendations.emptyFiltered') : tM('recommendations.empty') }}
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="flex flex-col gap-3 border-t border-gray-100 bg-gray-50/70 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-0.5">
+            <div class="font-medium text-gray-700 dark:text-gray-200">
+              {{ recommendationRunsLoading ? tM('recommendations.loadingPage') : recommendationPageStatus }}
+            </div>
+            <div class="text-xs">{{ recommendationRangeStatus }}</div>
+          </div>
+          <div class="inline-flex w-fit overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
+            <button class="px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:text-gray-200 dark:hover:bg-dark-800 dark:disabled:text-gray-600" type="button" :disabled="recommendationRunsLoading || recommendationRunPage <= 1" @click="changeRecommendationRunPage(recommendationRunPage - 1)">{{ tM('recommendations.prev') }}</button>
+            <button class="border-l border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:border-dark-700 dark:text-gray-200 dark:hover:bg-dark-800 dark:disabled:text-gray-600" type="button" :disabled="recommendationRunsLoading || recommendationRunPage >= recommendationRunPages" @click="changeRecommendationRunPage(recommendationRunPage + 1)">{{ tM('recommendations.next') }}</button>
+          </div>
         </div>
       </section>
 
@@ -1271,10 +1313,6 @@
           <div class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.value }}</div>
         </div>
       </div>
-      <label v-if="canApplySelectedRun" data-testid="apply-confirmation-control" class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-        <input v-model="applyConfirmationChecked" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-primary-600" />
-        <span>{{ tM('applyDialog.confirmationText', { id: applyRun?.id, count: applyRun?.suggestion_count ?? 0 }) }}</span>
-      </label>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[860px] text-sm">
           <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
@@ -1316,7 +1354,13 @@
     <template #footer>
       <div class="flex justify-end gap-2">
         <button class="btn btn-secondary" type="button" @click="applyDialogOpen = false">{{ tM('applyDialog.close') }}</button>
-        <button v-if="canApplySelectedRun" class="btn btn-primary" type="button" :disabled="applying || !applyConfirmationChecked" @click="applySelectedRun">
+        <button v-if="canApplySelectedRun" class="btn btn-secondary" type="button" :disabled="applying || closingRecommendationRun || restoringRecommendationRun" @click="closeSelectedRecommendationRun">
+          {{ closingRecommendationRun ? tM('applyDialog.closingSuggestion') : tM('applyDialog.closeSuggestion') }}
+        </button>
+        <button v-if="canRestoreSelectedRun" class="btn btn-secondary" type="button" :disabled="applying || closingRecommendationRun || restoringRecommendationRun" @click="restoreSelectedRecommendationRun">
+          {{ restoringRecommendationRun ? tM('applyDialog.restoringSuggestion') : tM('applyDialog.restoreSuggestion') }}
+        </button>
+        <button v-if="canApplySelectedRun" class="btn btn-primary" type="button" :disabled="applying" @click="applySelectedRun">
           {{ applying ? tM('applyDialog.applying') : tM('applyDialog.confirmApply') }}
         </button>
       </div>
@@ -1343,14 +1387,6 @@
     @cancel="pendingDeleteCandidate = null"
   />
 
-  <ConfirmDialog
-    :show="!!pendingDeleteRecommendationRun"
-    :title="tM('confirmDeleteRecommendationRun.title')"
-    :message="tM('confirmDeleteRecommendationRun.message', { id: pendingDeleteRecommendationRun?.id, count: pendingDeleteRecommendationRun?.suggestion_count ?? 0 })"
-    :danger="true"
-    @confirm="confirmDeleteRecommendationRun"
-    @cancel="pendingDeleteRecommendationRun = null"
-  />
 </template>
 
 <script setup lang="ts">
@@ -1439,9 +1475,12 @@ const bulkSyncing = ref(false)
 const bulkProbing = ref(false)
 const generating = ref(false)
 const applying = ref(false)
+const closingRecommendationRun = ref(false)
+const restoringRecommendationRun = ref(false)
 const snapshotLoading = ref(false)
 const snapshotChangesLoading = ref(false)
 const usageHistoryLoading = ref(false)
+const recommendationRunsLoading = ref(false)
 const savingConnector = ref(false)
 const savingCandidate = ref(false)
 const loadingConnectorAPIKeys = ref(false)
@@ -1450,7 +1489,6 @@ const savingPolicy = ref(false)
 const previewLoading = ref(false)
 const applyDialogOpen = ref(false)
 const applyRun = ref<UpstreamRelayRecommendationRun | null>(null)
-const applyConfirmationChecked = ref(false)
 const lastAppliedRun = ref<UpstreamRelayRecommendationRun | null>(null)
 const lastApplyError = ref('')
 const successMessage = ref('')
@@ -1470,8 +1508,6 @@ const lastLoadedAt = ref<string | null>(null)
 const healthDialogCandidate = ref<UpstreamRelayCandidate | null>(null)
 const pendingDeleteConnector = ref<UpstreamRelayConnector | null>(null)
 const pendingDeleteCandidate = ref<UpstreamRelayCandidate | null>(null)
-const pendingDeleteRecommendationRun = ref<UpstreamRelayRecommendationRun | null>(null)
-const deletingRecommendationRunId = ref<number | null>(null)
 const candidateSourceSnapshot = ref<UpstreamRelayGroupRateSnapshot | null>(null)
 const expandedConnectorIds = ref<Set<number>>(new Set())
 const snapshotChangeConnectorId = ref(0)
@@ -1492,6 +1528,11 @@ const usageHistoryPageSize = 50
 const usageHistoryTotal = ref(0)
 const usageHistoryPages = ref(1)
 const usageHistoryFiltersDirty = ref(false)
+const recommendationRunPage = ref(1)
+const recommendationRunPageSize = 20
+const recommendationRunTotal = ref(0)
+const recommendationRunPages = ref(1)
+const recommendationOnlyWithSuggestions = ref(false)
 const appliedUsageHistoryFilters = reactive({
   connectorId: 0,
   startDate: usageHistoryStartDate.value,
@@ -1577,9 +1618,32 @@ const savedMonitoringPolicy = ref<UpstreamRelayMonitoringPolicy | null>(null)
 const activeConnectors = computed(() => connectors.value.filter((item) => item.status === 'active'))
 const enabledCandidateCount = computed(() => candidates.value.filter((item) => item.enabled).length)
 const failedCandidateCount = computed(() => candidates.value.filter((item) => candidateHealthSeverity(item) === 'failed').length)
-const pendingRuns = computed(() => recommendationRuns.value.filter((item) => item.status === 'success' && !item.applied && item.suggestion_count > 0))
+const pendingRuns = computed(() => recommendationRuns.value.filter((item) => item.status === 'success' && !item.applied && !item.closed && item.suggestion_count > 0))
 const pendingSuggestionCount = computed(() => pendingRuns.value.reduce((total, item) => total + item.suggestion_count, 0))
 const latestPendingRun = computed(() => pendingRuns.value[0] || null)
+const recommendationFilterSummary = computed(() => {
+  return recommendationOnlyWithSuggestions.value
+    ? tM('recommendations.filterOnlyWithSuggestions')
+    : tM('recommendations.filterAllRuns')
+})
+const recommendationPageStatus = computed(() => {
+  return tM('recommendations.pageInfo', {
+    page: recommendationRunPage.value,
+    pages: recommendationRunPages.value,
+    total: recommendationRunTotal.value
+  })
+})
+const recommendationRangeStatus = computed(() => {
+  const total = recommendationRunTotal.value
+  if (total <= 0) {
+    return recommendationOnlyWithSuggestions.value
+      ? tM('recommendations.rangeEmptyFiltered')
+      : tM('recommendations.rangeEmpty')
+  }
+  const start = Math.min((recommendationRunPage.value - 1) * recommendationRunPageSize + 1, total)
+  const end = Math.min(recommendationRunPage.value * recommendationRunPageSize, total)
+  return tM('recommendations.rangeInfo', { start, end, total })
+})
 const pendingSuggestionMap = computed(() => {
   const map = new Map<number, UpstreamRelayRecommendationSuggestion>()
   for (const suggestion of latestPendingRun.value?.suggestions || []) {
@@ -1897,11 +1961,15 @@ const applyRiskCards = computed(() => {
 })
 
 const canApplySelectedRun = computed(() => !!applyRun.value && canApplyRecommendationRun(applyRun.value))
+const canRestoreSelectedRun = computed(() => !!applyRun.value && canRestoreRecommendationRun(applyRun.value))
 const applyDialogTitle = computed(() => canApplySelectedRun.value ? tM('applyDialog.title') : tM('applyDialog.detailTitle'))
 const applyDialogNotice = computed(() => {
   if (!applyRun.value) return ''
   if (applyRun.value.applied) {
     return tM('applyDialog.appliedNotice', { id: applyRun.value.id, date: formatDate(applyRun.value.created_at) })
+  }
+  if (applyRun.value.closed) {
+    return tM('applyDialog.closedNotice', { id: applyRun.value.id, date: formatDate(applyRun.value.created_at) })
   }
   if (applyRun.value.status !== 'success') {
     return applyRun.value.error_message || tM('applyDialog.notSuccessNotice', { id: applyRun.value.id, status: applyRun.value.status })
@@ -1978,7 +2046,11 @@ async function loadAll() {
     const [connectorItems, candidateItems, runRes, accountRes, policy, monitoringPolicy, todayUsage] = await Promise.all([
       loadAllPages<UpstreamRelayConnector>((params) => upstreamRelayAPI.listConnectors(params)),
       loadAllPages<UpstreamRelayCandidate>((params) => upstreamRelayAPI.listCandidates(params)),
-      upstreamRelayAPI.listRecommendationRuns({ page: 1, page_size: 20 }),
+      upstreamRelayAPI.listRecommendationRuns({
+        page: recommendationRunPage.value,
+        page_size: recommendationRunPageSize,
+        has_suggestions: recommendationOnlyWithSuggestions.value || undefined
+      }),
       accountsAPI.list(1, 200, { status: 'active' }),
       upstreamRelayAPI.getRecommendationPolicy(),
       upstreamRelayAPI.getMonitoringPolicy(),
@@ -1987,6 +2059,9 @@ async function loadAll() {
     connectors.value = connectorItems
     candidates.value = candidateItems
     recommendationRuns.value = runRes.items
+    recommendationRunTotal.value = runRes.total
+    recommendationRunPages.value = runRes.pages || 1
+    recommendationRunPage.value = runRes.page || recommendationRunPage.value
     accounts.value = accountRes.items
     overviewTodayUsage.value = todayUsage
     assignPolicyForm(policy)
@@ -2218,8 +2293,39 @@ function changeUsageHistoryPage(page: number) {
   void loadUsageHistory()
 }
 
+async function loadRecommendationRuns() {
+  recommendationRunsLoading.value = true
+  error.value = ''
+  try {
+    const res = await upstreamRelayAPI.listRecommendationRuns({
+      page: recommendationRunPage.value,
+      page_size: recommendationRunPageSize,
+      has_suggestions: recommendationOnlyWithSuggestions.value || undefined
+    })
+    recommendationRuns.value = res.items
+    recommendationRunTotal.value = res.total
+    recommendationRunPages.value = res.pages || 1
+    recommendationRunPage.value = res.page || recommendationRunPage.value
+    await hydrateLatestPendingRun()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.loadRecommendationsFailed')
+  } finally {
+    recommendationRunsLoading.value = false
+  }
+}
+
+function reloadRecommendationRuns() {
+  recommendationRunPage.value = 1
+  void loadRecommendationRuns()
+}
+
+function changeRecommendationRunPage(page: number) {
+  recommendationRunPage.value = Math.max(1, Math.min(page, recommendationRunPages.value))
+  void loadRecommendationRuns()
+}
+
 async function hydrateLatestPendingRun() {
-  const run = recommendationRuns.value.find((item) => !item.applied && item.suggestion_count > 0)
+  const run = recommendationRuns.value.find((item) => canApplyRecommendationRun(item))
   if (!run || run.suggestions) return
   try {
     const detail = await upstreamRelayAPI.getRecommendationRun(run.id)
@@ -2708,24 +2814,32 @@ async function confirmDeleteCandidate() {
   await loadAll()
 }
 
-function removeRecommendationRun(run: UpstreamRelayRecommendationRun) {
-  pendingDeleteRecommendationRun.value = run
+function compareRecommendationRunsByBackendOrder(a: UpstreamRelayRecommendationRun, b: UpstreamRelayRecommendationRun) {
+  const aTime = new Date(a.created_at).getTime()
+  const bTime = new Date(b.created_at).getTime()
+  const safeATime = Number.isNaN(aTime) ? 0 : aTime
+  const safeBTime = Number.isNaN(bTime) ? 0 : bTime
+  if (safeATime !== safeBTime) return safeBTime - safeATime
+  return b.id - a.id
 }
 
-async function confirmDeleteRecommendationRun() {
-  if (!pendingDeleteRecommendationRun.value) return
-  const runId = pendingDeleteRecommendationRun.value.id
-  deletingRecommendationRunId.value = runId
-  error.value = ''
-  try {
-    await upstreamRelayAPI.deleteRecommendationRun(runId)
-    recommendationRuns.value = recommendationRuns.value.filter((item) => item.id !== runId)
-    pendingDeleteRecommendationRun.value = null
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.deleteRecommendationFailed')
-  } finally {
-    deletingRecommendationRunId.value = null
+function insertRecommendationRunByBackendOrder(run: UpstreamRelayRecommendationRun) {
+  const next = recommendationRuns.value.filter((item) => item.id !== run.id)
+  const insertAt = next.findIndex((item) => compareRecommendationRunsByBackendOrder(run, item) < 0)
+  if (insertAt === -1) {
+    recommendationRuns.value = [...next, run]
+    return
   }
+  recommendationRuns.value = [...next.slice(0, insertAt), run, ...next.slice(insertAt)]
+}
+
+function replaceRecommendationRunPreservingOrder(run: UpstreamRelayRecommendationRun) {
+  const existingIndex = recommendationRuns.value.findIndex((item) => item.id === run.id)
+  if (existingIndex === -1) {
+    insertRecommendationRunByBackendOrder(run)
+    return
+  }
+  recommendationRuns.value = recommendationRuns.value.map((item, index) => index === existingIndex ? run : item)
 }
 
 function assignPolicyForm(policy: UpstreamRelayRecommendationPolicy) {
@@ -2860,7 +2974,7 @@ async function generateRun() {
   try {
     const run = await upstreamRelayAPI.generateRecommendations()
     const detail = await upstreamRelayAPI.getRecommendationRun(run.id)
-    recommendationRuns.value = [detail, ...recommendationRuns.value.filter((item) => item.id !== detail.id)]
+    insertRecommendationRunByBackendOrder(detail)
     activeSection.value = 'recommendations'
   } catch (err) {
     error.value = err instanceof Error ? err.message : tM('errors.generateFailed')
@@ -2874,7 +2988,6 @@ async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
   successMessage.value = ''
   lastAppliedRun.value = null
   lastApplyError.value = ''
-  applyConfirmationChecked.value = false
   try {
     applyRun.value = await upstreamRelayAPI.getRecommendationRun(run.id)
     applyDialogOpen.value = true
@@ -2885,7 +2998,6 @@ async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
 
 async function applySelectedRun() {
   if (!applyRun.value) return
-  if (!applyConfirmationChecked.value) return
   applying.value = true
   error.value = ''
   successMessage.value = ''
@@ -2899,15 +3011,68 @@ async function applySelectedRun() {
       count: appliedRun.suggestion_count,
       date: formatDate(appliedRun.applied_at || appliedRun.created_at)
     })
-    recommendationRuns.value = [appliedRun, ...recommendationRuns.value.filter((item) => item.id !== appliedRun.id)]
+    replaceRecommendationRunPreservingOrder(appliedRun)
     await loadAll()
   } catch (err) {
     lastApplyError.value = err instanceof Error ? err.message : tM('errors.applyFailed')
     error.value = lastApplyError.value
   } finally {
     applying.value = false
-    applyConfirmationChecked.value = false
   }
+}
+
+async function closeRecommendationRun(runID: number) {
+  closingRecommendationRun.value = true
+  error.value = ''
+  try {
+    const closedRun = await upstreamRelayAPI.closeRecommendationRun(runID)
+    replaceRecommendationRunPreservingOrder(closedRun)
+    return closedRun
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.closeRecommendationFailed')
+    return null
+  } finally {
+    closingRecommendationRun.value = false
+  }
+}
+
+async function closeSelectedRecommendationRun() {
+  if (!applyRun.value) return
+  const closedRun = await closeRecommendationRun(applyRun.value.id)
+  if (closedRun) {
+    applyRun.value = closedRun
+  }
+}
+
+async function closeRecommendationRunFromList(run: UpstreamRelayRecommendationRun) {
+  await closeRecommendationRun(run.id)
+}
+
+async function restoreRecommendationRun(runID: number) {
+  restoringRecommendationRun.value = true
+  error.value = ''
+  try {
+    const restoredRun = await upstreamRelayAPI.restoreRecommendationRun(runID)
+    replaceRecommendationRunPreservingOrder(restoredRun)
+    return restoredRun
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.restoreRecommendationFailed')
+    return null
+  } finally {
+    restoringRecommendationRun.value = false
+  }
+}
+
+async function restoreSelectedRecommendationRun() {
+  if (!applyRun.value) return
+  const restoredRun = await restoreRecommendationRun(applyRun.value.id)
+  if (restoredRun) {
+    applyRun.value = restoredRun
+  }
+}
+
+async function restoreRecommendationRunFromList(run: UpstreamRelayRecommendationRun) {
+  await restoreRecommendationRun(run.id)
 }
 
 function connectorStatusLabel(status: string) {
@@ -2931,6 +3096,7 @@ function recommendationRunStatusLabel(run: UpstreamRelayRecommendationRun) {
   if (run.status === 'running') return tM('recommendations.running')
   if (run.status === 'success') {
     if (run.applied) return tM('recommendations.applied')
+    if (run.closed) return tM('recommendations.closed')
     if (run.suggestion_count === 0) return tM('recommendations.noSuggestions')
     return tM('recommendations.pending')
   }
@@ -2942,6 +3108,7 @@ function recommendationRunStatusClass(run: UpstreamRelayRecommendationRun) {
   if (run.status === 'running') return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
   if (run.status === 'success') {
     if (run.applied) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+    if (run.closed) return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
     if (run.suggestion_count === 0) return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
     return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
   }
@@ -2949,7 +3116,11 @@ function recommendationRunStatusClass(run: UpstreamRelayRecommendationRun) {
 }
 
 function canApplyRecommendationRun(run: UpstreamRelayRecommendationRun) {
-  return run.status === 'success' && !run.applied && run.suggestion_count > 0
+  return run.status === 'success' && !run.applied && !run.closed && run.suggestion_count > 0
+}
+
+function canRestoreRecommendationRun(run: UpstreamRelayRecommendationRun) {
+  return run.status === 'success' && !run.applied && run.closed && run.suggestion_count > 0
 }
 
 function recommendationRunCreatedByLabel(run: UpstreamRelayRecommendationRun) {
