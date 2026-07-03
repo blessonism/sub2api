@@ -12,23 +12,42 @@
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-2">
-              <span :class="pillClass(configForm.enabled ? 'success' : 'muted')" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                {{ captureStatusLabel }}
+              <template v-if="configLoaded">
+                <span :class="pillClass(configForm.enabled ? 'success' : 'muted')" class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+                  {{ captureStatusLabel }}
+                </span>
+              </template>
+              <span v-else class="inline-block h-6 w-20 animate-pulse rounded-full bg-gray-200 dark:bg-dark-600" />
+              <span v-if="savingConfig" class="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-300">
+                <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                {{ t('common.saving') }}
               </span>
-              <span v-if="savingConfig" class="text-xs text-primary-600 dark:text-primary-300">{{ t('common.saving') }}</span>
             </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ captureStatusDescription }}</p>
+            <p v-if="configLoaded" class="text-sm text-gray-500 dark:text-gray-400">{{ captureStatusDescription }}</p>
+            <div v-else class="h-4 w-64 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
           </div>
           <div class="flex items-center gap-3">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.conversations.enabled') }}</span>
-            <Toggle :model-value="configForm.enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('enabled', value)" />
+            <Toggle v-if="configLoaded" :model-value="configForm.enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('enabled', value)" />
+            <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
           </div>
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <div v-for="item in captureSummaryItems" :key="item.label" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
-            <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.value }}</div>
-          </div>
+          <template v-if="configLoaded">
+            <div v-for="item in captureSummaryItems" :key="item.label" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
+              <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.value }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <div v-for="n in 5" :key="n" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
+              <div class="mt-2 h-4 w-10 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
+            </div>
+          </template>
         </div>
       </section>
 
@@ -39,7 +58,11 @@
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.captureRules') }}</h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureRulesDescription') }}</p>
             </div>
-            <button class="btn btn-primary shrink-0" type="button" :disabled="savingConfig" @click="saveConfig">
+            <button class="btn btn-primary inline-flex shrink-0 items-center gap-1.5" type="button" :disabled="savingConfig" @click="saveConfig">
+              <svg v-if="savingConfig" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
               {{ savingConfig ? t('common.saving') : t('common.save') }}
             </button>
           </div>
@@ -64,13 +87,15 @@
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
               <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
             </label>
-            <div class="flex items-center justify-between gap-4">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureChatCompletions') }}</span>
-              <Toggle :model-value="configForm.capture_chat_completions" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_chat_completions', value)" />
+            <div class="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-800">
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.conversations.captureChatCompletions') }}</span>
+              <Toggle v-if="configLoaded" :model-value="configForm.capture_chat_completions" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_chat_completions', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
             </div>
-            <div class="flex items-center justify-between gap-4">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureResponses') }}</span>
-              <Toggle :model-value="configForm.capture_responses" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_responses', value)" />
+            <div class="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-800">
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.conversations.captureResponses') }}</span>
+              <Toggle v-if="configLoaded" :model-value="configForm.capture_responses" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_responses', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
             </div>
             <div class="space-y-2 md:col-span-2 xl:col-span-3">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.subjectFilterMode') }}</div>
@@ -111,17 +136,17 @@
                 <span
                   v-for="id in listValues(item.kind)"
                   :key="`${item.kind}-${id}`"
-                  class="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                  class="inline-flex items-center gap-0.5 rounded-full bg-primary-50 pl-2 pr-1 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
                   :data-test="`conversation-id-chip-${item.kind}-${id}`"
                 >
                   #{{ id }}
                   <button
                     type="button"
-                    class="rounded px-1 text-primary-500 hover:bg-primary-100 hover:text-primary-700 dark:text-primary-200 dark:hover:bg-primary-900/60"
+                    class="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-primary-400 hover:bg-primary-200 hover:text-primary-700 dark:text-primary-300 dark:hover:bg-primary-800 dark:hover:text-primary-100 transition-colors"
                     :aria-label="t('admin.conversations.removeSubjectId', { id })"
                     @click="removeListID(item.kind, id)"
                   >
-                    x
+                    <Icon name="x" size="xs" />
                   </button>
                 </span>
                 <input
@@ -151,7 +176,8 @@
                 <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.conversations.exportEnabled') }}</div>
                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportEnabledHint') }}</div>
               </div>
-              <Toggle :model-value="configForm.export_enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('export_enabled', value)" />
+              <Toggle v-if="configLoaded" :model-value="configForm.export_enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('export_enabled', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
             </div>
             <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
               <input v-model="exportOptions.redaction_enabled" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -209,8 +235,14 @@
                 <input v-model="filters.started_at_to" class="input" type="date" :placeholder="t('admin.conversations.dateTo')" />
               </div>
               <div class="flex justify-end gap-2">
-                <button v-if="hasActiveFilters" class="btn btn-secondary" type="button" @click="clearFilters">{{ t('admin.conversations.clearFilters') }}</button>
-                <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
+                <button v-if="hasActiveFilters" class="btn btn-secondary inline-flex items-center gap-1.5" type="button" @click="clearFilters">
+                  <Icon name="x" size="sm" />
+                  {{ t('admin.conversations.clearFilters') }}
+                </button>
+                <button class="btn btn-secondary inline-flex items-center gap-1.5" type="button" @click="applyFilters">
+                  <Icon name="search" size="sm" />
+                  {{ t('common.search') }}
+                </button>
               </div>
             </div>
           </div>
@@ -240,9 +272,8 @@
                 <tr
                   v-for="session in sessions"
                   :key="session.id"
-                  class="cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-800/70"
-                  :class="selectedSession?.id === session.id ? 'bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/30' : ''"
-                  @click="selectSession(session)"
+                  class="group cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-800/70"
+                  @click="router.push(`/admin/conversations/${session.id}`)"
                 >
                   <td class="px-4 py-3">
                     <div class="font-medium text-gray-900 dark:text-white">{{ shortId(session.session_id) }}</div>
@@ -259,17 +290,24 @@
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(session.total_tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(session.actual_cost) }}</td>
                   <td class="px-4 py-3">
-                    <span :class="pillClass(qualityKind(session.quality_status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ qualityLabel(session.quality_status) }}
-                    </span>
-                    <span v-if="!session.exportable" class="ml-1.5 inline-flex rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-gray-400">
-                      {{ t('admin.conversations.notExportable') }}
-                    </span>
+                    <div class="flex flex-wrap items-center gap-1">
+                      <span :class="pillClass(qualityKind(session.quality_status))" class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium">
+                        {{ qualityLabel(session.quality_status) }}
+                      </span>
+                      <span v-if="!session.exportable" class="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+                        {{ t('admin.conversations.notExportable') }}
+                      </span>
+                    </div>
                     <div v-if="formatQualityErrors(session.quality_errors)" class="mt-1 max-w-xs truncate text-xs text-amber-700 dark:text-amber-300">
                       {{ formatQualityErrors(session.quality_errors) }}
                     </div>
                   </td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateShort(session.ended_at) }}</td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-gray-600 dark:text-gray-300">{{ formatDateShort(session.ended_at) }}</span>
+                      <Icon name="chevronRight" size="sm" class="shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-dark-600 dark:group-hover:text-gray-400" />
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -284,273 +322,6 @@
           />
         </section>
 
-      <Teleport to="body">
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="translate-x-full"
-          enter-to-class="translate-x-0"
-          leave-active-class="transition duration-150 ease-in"
-          leave-from-class="translate-x-0"
-          leave-to-class="translate-x-full"
-        >
-          <aside v-if="selectedSession" class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col overflow-hidden bg-white shadow-2xl dark:bg-dark-900">
-          <div class="flex min-h-0 flex-1 flex-col">
-            <!-- Session header -->
-            <div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
-              <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <code class="max-w-[160px] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">
-                      {{ shortId(selectedSession.session_id) }}
-                    </code>
-                    <span :class="pillClass(qualityKind(selectedSession.quality_status))" class="inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium">
-                      {{ qualityLabel(selectedSession.quality_status) }}
-                    </span>
-                    <span
-                      class="inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium"
-                      :class="selectedSession.exportable
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                        : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'"
-                    >
-                      {{ selectedSession.exportable ? t('admin.conversations.exportable') : t('admin.conversations.notExportable') }}
-                    </span>
-                  </div>
-                  <div class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                    <span class="rounded bg-primary-50 px-1.5 py-0.5 font-mono text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ selectedSession.model }}</span>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ selectedSession.provider }} · {{ selectedSession.session_source }}</span>
-                  </div>
-                  <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                    {{ formatDateShort(selectedSession.started_at) }}
-                    <span v-if="selectedSession.ended_at"> → {{ formatTimeOnly(selectedSession.ended_at) }}</span>
-                    <span v-if="sessionDuration(selectedSession)" class="ml-1 text-gray-300 dark:text-dark-600">({{ sessionDuration(selectedSession) }})</span>
-                  </div>
-                </div>
-                <button type="button" class="ml-1 shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200" @click="closeSession()">
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- Stats row -->
-            <div class="shrink-0 grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100 dark:divide-dark-700 dark:border-dark-700">
-              <div class="px-2 py-2 text-center">
-                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ selectedSession.turn_count }}</div>
-                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.turns') }}</div>
-              </div>
-              <div class="px-2 py-2 text-center">
-                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatNumberCompact(selectedSession.input_tokens) }}</div>
-                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.inputTokens') }}</div>
-              </div>
-              <div class="px-2 py-2 text-center">
-                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatNumberCompact(selectedSession.output_tokens) }}</div>
-                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.outputTokens') }}</div>
-              </div>
-              <div class="px-2 py-2 text-center">
-                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatCostCompact(selectedSession.actual_cost) }}</div>
-                <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.cost') }}</div>
-              </div>
-            </div>
-
-            <!-- Identity row -->
-            <div class="shrink-0 flex divide-x divide-gray-100 border-b border-gray-100 dark:divide-dark-700 dark:border-dark-700">
-              <div class="min-w-0 flex-1 px-3 py-2">
-                <div class="text-xs text-gray-400 dark:text-gray-500">User</div>
-                <div class="mt-0.5 truncate text-xs font-medium text-gray-900 dark:text-white">{{ selectedSession.user_email || `#${selectedSession.user_id}` }}</div>
-                <div v-if="selectedSession.user_email" class="text-xs text-gray-400 dark:text-gray-500">#{{ selectedSession.user_id }}</div>
-              </div>
-              <div class="flex-1 px-3 py-2">
-                <div class="text-xs text-gray-400 dark:text-gray-500">API Key</div>
-                <div class="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">#{{ selectedSession.api_key_id }}</div>
-              </div>
-              <div class="flex-1 px-3 py-2">
-                <div class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.retentionUntil') }}</div>
-                <div class="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">{{ formatDateShort(selectedSession.retention_until) }}</div>
-              </div>
-            </div>
-
-            <!-- Quality actions -->
-            <div class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
-              <div class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.qualitySection') }}</div>
-              <div class="flex gap-1.5">
-                <button
-                  type="button"
-                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
-                  :class="selectedSession.quality_status === 'clean'
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-emerald-700'"
-                  @click="markSessionQuality(selectedSession, 'clean')"
-                >{{ t('admin.conversations.markClean') }}</button>
-                <button
-                  type="button"
-                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
-                  :class="selectedSession.quality_status === 'needs_review'
-                    ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-amber-700'"
-                  @click="markSessionQuality(selectedSession, 'needs_review')"
-                >{{ t('admin.conversations.needsReview') }}</button>
-                <button
-                  type="button"
-                  class="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition"
-                  :class="selectedSession.quality_status === 'rejected'
-                    ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300 dark:hover:border-rose-700'"
-                  @click="markSessionQuality(selectedSession, 'rejected')"
-                >{{ t('admin.conversations.reject') }}</button>
-                <button
-                  type="button"
-                  class="rounded-md border px-2 py-1.5 text-xs font-medium transition"
-                  :class="selectedSession.exportable
-                    ? 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400'
-                    : 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'"
-                  @click="toggleSessionExportable(selectedSession)"
-                >{{ selectedSession.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}</button>
-              </div>
-              <div class="mt-2 flex gap-1.5">
-                <input v-model="mergeSourceIDsText" class="input min-w-0 flex-1 text-xs" :placeholder="t('admin.conversations.mergeSourceIds')" />
-                <button class="btn btn-secondary shrink-0 px-2 py-1 text-xs" type="button" @click="mergeIntoSelectedSession">
-                  {{ t('admin.conversations.merge') }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Turn list -->
-            <div v-if="turnsLoading" class="flex shrink-0 min-h-40 items-center justify-center">
-              <LoadingSpinner />
-            </div>
-            <div v-else-if="turns.length === 0" class="flex shrink-0 min-h-20 items-center justify-center text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.conversations.noTurns') }}
-            </div>
-            <div v-else class="flex-1 min-h-0 divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
-              <div v-for="turn in turns" :key="turn.id">
-                <!-- Turn row -->
-                <button
-                  type="button"
-                  class="flex w-full items-start gap-2 px-3 py-2.5 text-left transition hover:bg-gray-50 dark:hover:bg-dark-800/70"
-                  @click="toggleTurnExpanded(turn.id)"
-                >
-                  <span class="mt-0.5 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-                    #{{ turn.turn_index }}
-                  </span>
-                  <span :class="pillClass(qualityKind(turn.quality_status))" class="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs">
-                    {{ qualityLabel(turn.quality_status) }}
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span v-if="turnPreviewText(turn)" class="block truncate text-xs text-gray-600 dark:text-gray-300">{{ turnPreviewText(turn) }}</span>
-                    <span v-else class="block text-xs text-gray-400 dark:text-gray-500">—</span>
-                    <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0 text-xs text-gray-400 dark:text-gray-500">
-                      <span class="tabular-nums">{{ formatNumberCompact(turn.total_tokens) }} tok</span>
-                      <span v-if="turn.duplicate_count > 0" class="text-amber-600 dark:text-amber-400">×{{ turn.duplicate_count }} dup</span>
-                      <span v-if="turn.truncated" class="text-amber-600 dark:text-amber-400">trunc</span>
-                      <span v-if="turn.parse_status === 'failed'" class="text-rose-600 dark:text-rose-400">parse-err</span>
-                      <span v-if="turn.client_disconnect" class="text-gray-400 dark:text-gray-500">disconnect</span>
-                    </span>
-                  </span>
-                  <svg
-                    class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform"
-                    :class="expandedTurns.has(turn.id) ? 'rotate-180' : ''"
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                <!-- Turn expanded body -->
-                <div v-if="expandedTurns.has(turn.id)" class="border-t border-gray-100 bg-gray-50/50 dark:border-dark-700 dark:bg-dark-800/30">
-                  <!-- Turn meta bar -->
-                  <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-gray-100 px-3 py-1.5 dark:border-dark-700">
-                    <span class="font-mono text-xs text-gray-400 dark:text-gray-500">{{ shortId(turn.request_id) }}</span>
-                    <span class="text-xs text-gray-300 dark:text-dark-600">·</span>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatCostCompact(turn.actual_cost) }}</span>
-                    <span class="text-xs text-gray-300 dark:text-dark-600">·</span>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateShort(turn.created_at) }}</span>
-                  </div>
-
-                  <!-- Messages -->
-                  <div class="space-y-1.5 p-3">
-                    <div v-if="turnDetailLoading.has(turn.id)" class="flex items-center justify-center py-4">
-                      <LoadingSpinner />
-                    </div>
-                    <div v-else-if="turnDetailErrors[turn.id]" class="flex items-center gap-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">
-                      <span>{{ t('admin.conversations.loadDetailFailed') }}</span>
-                      <button type="button" class="ml-auto shrink-0 underline hover:no-underline" @click="fetchTurnDetail(turn.id)">{{ t('common.retry') }}</button>
-                    </div>
-                    <template v-else-if="selectedTurnDetails[turn.id]">
-                      <div
-                        v-for="(msg, i) in [...selectedTurnDetails[turn.id].request_messages, ...selectedTurnDetails[turn.id].response_messages]"
-                        :key="i"
-                        class="rounded-md px-3 py-2 text-xs"
-                        :class="String(msg.role) === 'user'
-                          ? 'bg-blue-50 text-blue-900 dark:bg-blue-900/20 dark:text-blue-200'
-                          : String(msg.role) === 'assistant'
-                            ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-200'
-                            : 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-200'"
-                      >
-                        <div class="mb-1 font-semibold capitalize">{{ msg.role }}</div>
-                        <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words font-sans">{{ getTextContent(msg.content) }}</pre>
-                      </div>
-                    </template>
-                    <div v-else class="max-h-40 overflow-auto rounded-md bg-gray-100 p-2.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">
-                      <pre class="whitespace-pre-wrap break-words font-sans">{{ turn.payload_preview || '-' }}</pre>
-                    </div>
-                  </div>
-
-                  <!-- Turn actions -->
-                  <div class="border-t border-gray-100 px-3 py-2.5 dark:border-dark-700">
-                    <div class="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
-                        :class="turn.quality_status === 'clean'
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300'"
-                        @click="markTurnQuality(turn, 'clean')"
-                      >{{ t('admin.conversations.markClean') }}</button>
-                      <button
-                        type="button"
-                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
-                        :class="turn.quality_status === 'rejected'
-                          ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300'"
-                        @click="markTurnQuality(turn, 'rejected')"
-                      >{{ t('admin.conversations.reject') }}</button>
-                      <button
-                        type="button"
-                        class="rounded-md border px-2 py-1 text-xs font-medium transition"
-                        :class="turn.exportable
-                          ? 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400'
-                          : 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'"
-                        @click="toggleTurnExportable(turn)"
-                      >{{ turn.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}</button>
-                      <button class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-300" type="button" @click="splitFromTurn(turn.id)">
-                        {{ t('admin.conversations.splitHere') }}
-                      </button>
-                    </div>
-                    <div class="mt-1.5 flex gap-1.5">
-                      <input v-model.number="moveTargets[turn.id]" class="input min-w-0 flex-1 text-xs" type="number" min="1" :placeholder="t('admin.conversations.moveTarget')" />
-                      <button class="btn btn-secondary shrink-0 px-2 py-1 text-xs" type="button" @click="moveTurnToSession(turn.id)">
-                        {{ t('admin.conversations.move') }}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          </aside>
-        </Transition>
-        <Transition
-          enter-active-class="transition duration-200"
-          enter-from-class="opacity-0"
-          enter-to-class="opacity-100"
-          leave-active-class="transition duration-150"
-          leave-from-class="opacity-100"
-          leave-to-class="opacity-0"
-        >
-          <div v-if="selectedSession" class="fixed inset-0 z-40 bg-black/30 dark:bg-black/50" @click="closeSession()" />
-        </Transition>
-      </Teleport>
 
       <section class="card p-4">
         <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -601,7 +372,7 @@
                   </div>
                 </td>
                 <td class="px-4 py-3">
-                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium">
                     {{ job.status }}
                   </span>
                   <div v-if="job.error_message" class="mt-1 max-w-sm truncate text-xs text-rose-600 dark:text-rose-300">
@@ -612,11 +383,23 @@
                 <td class="px-4 py-3 text-right tabular-nums">{{ formatBytes(job.file_size) }}</td>
                 <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateShort(job.expires_at) }}</td>
                 <td class="px-4 py-3">
-                  <div class="flex justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status !== 'completed'" @click="downloadExportJob(job.id)">
+                  <div class="flex justify-end gap-1.5">
+                    <button
+                      class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500 dark:hover:bg-dark-700 dark:hover:text-white"
+                      type="button"
+                      :disabled="job.status !== 'completed'"
+                      @click="downloadExportJob(job.id)"
+                    >
+                      <Icon name="download" size="xs" />
                       {{ t('admin.conversations.downloadJob') }}
                     </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status === 'running'" @click="deleteExportJob(job.id)">
+                    <button
+                      class="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:border-rose-900/50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400"
+                      type="button"
+                      :disabled="job.status === 'running'"
+                      @click="openDeleteJobDialog(job.id)"
+                    >
+                      <Icon name="trash" size="xs" />
                       {{ t('common.delete') }}
                     </button>
                   </div>
@@ -627,17 +410,31 @@
         </div>
       </section>
     </div>
+
+    <ConfirmDialog
+      :show="showDeleteJobDialog"
+      :title="t('admin.conversations.deleteJobTitle')"
+      :message="t('admin.conversations.confirmDeleteJob')"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="executeDeleteJob"
+      @cancel="showDeleteJobDialog = false"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import conversationsAPI, {
   type ConversationCaptureConfig,
@@ -647,11 +444,11 @@ import conversationsAPI, {
   type ConversationSession,
   type ConversationSessionFilters,
   type ConversationSubjectFilterMode,
-  type ConversationTurn,
-  type ConversationTurnSummary,
 } from '@/api/admin/conversations'
 
 const { t } = useI18n()
+const router = useRouter()
+const appStore = useAppStore()
 
 const defaultConfig: ConversationCaptureConfig = {
   enabled: false,
@@ -684,52 +481,16 @@ const idListDrafts = reactive<Record<ConversationIDListKind, string>>({
   included_user_ids: '',
   included_api_key_ids: '',
 })
-const expandedTurns = ref(new Set<number>())
-const turnDetailLoading = ref(new Set<number>())
-const turnDetailErrors = reactive<Record<number, true>>({})
-
-function toggleTurnExpanded(id: number) {
-  if (expandedTurns.value.has(id)) {
-    expandedTurns.value.delete(id)
-  } else {
-    expandedTurns.value.add(id)
-    if (!selectedTurnDetails[id] && !turnDetailLoading.value.has(id)) void fetchTurnDetail(id)
-  }
-  expandedTurns.value = new Set(expandedTurns.value)
-}
-
-async function fetchTurnDetail(id: number) {
-  const sessionAtStart = selectedSession.value?.id
-  delete turnDetailErrors[id]
-  turnDetailLoading.value = new Set([...turnDetailLoading.value, id])
-  try {
-    const detail = await conversationsAPI.getTurn(id)
-    if (selectedSession.value?.id === sessionAtStart) {
-      selectedTurnDetails[id] = detail
-    }
-  } catch {
-    if (selectedSession.value?.id === sessionAtStart) {
-      turnDetailErrors[id] = true
-    }
-  } finally {
-    turnDetailLoading.value.delete(id)
-    turnDetailLoading.value = new Set(turnDetailLoading.value)
-  }
-}
-
 const loading = ref(false)
-const turnsLoading = ref(false)
 const jobsLoading = ref(false)
 const savingConfig = ref(false)
 const exporting = ref(false)
 const creatingJob = ref(false)
+const configLoaded = ref(false)
+const showDeleteJobDialog = ref(false)
+const deletingJobId = ref<number | null>(null)
 const sessions = ref<ConversationSession[]>([])
-const turns = ref<ConversationTurnSummary[]>([])
 const exportJobs = ref<ConversationExportJob[]>([])
-const selectedTurnDetails = reactive<Record<number, ConversationTurn>>({})
-const selectedSession = ref<ConversationSession | null>(null)
-const moveTargets = reactive<Record<number, number | null>>({})
-const mergeSourceIDsText = ref('')
 const filters = reactive({
   user_id: null as number | null,
   api_key_id: null as number | null,
@@ -830,6 +591,7 @@ async function loadConfig() {
   }
   Object.assign(configForm, normalized)
   syncIDLists(normalized)
+  configLoaded.value = true
 }
 
 async function saveConfig() {
@@ -991,117 +753,6 @@ function clearFilters() {
   applyFilters()
 }
 
-async function selectSession(session: ConversationSession) {
-  selectedSession.value = session
-  expandedTurns.value = new Set()
-  turnDetailLoading.value = new Set()
-  Object.keys(turnDetailErrors).forEach((key) => delete turnDetailErrors[Number(key)])
-  turnsLoading.value = true
-  try {
-    const response = await conversationsAPI.listSessionTurns(session.id, { page: 1, page_size: 50 })
-    turns.value = response.items
-    Object.keys(selectedTurnDetails).forEach((key) => delete selectedTurnDetails[Number(key)])
-    Object.keys(moveTargets).forEach((key) => delete moveTargets[Number(key)])
-    mergeSourceIDsText.value = ''
-  } finally {
-    turnsLoading.value = false
-  }
-}
-
-function closeSession() {
-  selectedSession.value = null
-  expandedTurns.value = new Set()
-  turnDetailLoading.value = new Set()
-  Object.keys(turnDetailErrors).forEach((key) => delete turnDetailErrors[Number(key)])
-}
-
-async function refreshSelectedSession() {
-  if (!selectedSession.value) return
-  const current = await conversationsAPI.getSession(selectedSession.value.id)
-  selectedSession.value = current
-  const index = sessions.value.findIndex((item) => item.id === current.id)
-  if (index >= 0) {
-    sessions.value[index] = current
-  }
-  await selectSession(current)
-}
-
-async function toggleSessionExportable(session: ConversationSession) {
-  const next = !session.exportable
-  await conversationsAPI.setSessionExportable(session.id, next)
-  session.exportable = next
-  if (selectedSession.value?.id === session.id) {
-    selectedSession.value.exportable = next
-  }
-}
-
-async function markSessionQuality(session: ConversationSession, quality_status: ConversationQualityStatus) {
-  await conversationsAPI.setSessionQuality(session.id, {
-    quality_status,
-    quality_errors: quality_status === 'clean' || quality_status === 'unchecked'
-      ? []
-      : [{ code: quality_status, message: quality_status, source: 'manual' }],
-  })
-  session.quality_status = quality_status
-  if (quality_status === 'rejected') {
-    session.exportable = false
-  }
-  if (selectedSession.value?.id === session.id) {
-    selectedSession.value.quality_status = quality_status
-    selectedSession.value.exportable = session.exportable
-  }
-}
-
-async function markTurnQuality(turn: ConversationTurnSummary | ConversationTurn, quality_status: ConversationQualityStatus) {
-  await conversationsAPI.setTurnQuality(turn.id, {
-    quality_status,
-    quality_errors: quality_status === 'clean' || quality_status === 'unchecked'
-      ? []
-      : [{ code: quality_status, message: quality_status, source: 'manual' }],
-  })
-  turn.quality_status = quality_status
-  if (quality_status === 'rejected' || quality_status === 'needs_review') {
-    turn.exportable = false
-  }
-  if (selectedTurnDetails[turn.id]) {
-    selectedTurnDetails[turn.id].quality_status = quality_status
-    selectedTurnDetails[turn.id].exportable = turn.exportable
-  }
-}
-
-async function toggleTurnExportable(turn: ConversationTurnSummary | ConversationTurn) {
-  const next = !turn.exportable
-  await conversationsAPI.setTurnExportable(turn.id, next)
-  turn.exportable = next
-  if (selectedTurnDetails[turn.id]) {
-    selectedTurnDetails[turn.id].exportable = next
-  }
-}
-
-async function mergeIntoSelectedSession() {
-  if (!selectedSession.value) return
-  const sourceIDs = parseIDs(mergeSourceIDsText.value).filter((id) => id !== selectedSession.value?.id)
-  if (sourceIDs.length === 0) return
-  await conversationsAPI.mergeSessions({
-    target_session_id: selectedSession.value.id,
-    source_session_ids: sourceIDs,
-  })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function splitFromTurn(turnId: number) {
-  if (!selectedSession.value) return
-  await conversationsAPI.splitSession(selectedSession.value.id, { turn_id: turnId })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function moveTurnToSession(turnId: number) {
-  const target = moveTargets[turnId]
-  if (!target || target <= 0) return
-  await conversationsAPI.moveTurn(turnId, { target_session_id: target })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
 async function exportJSONL() {
   exporting.value = true
   try {
@@ -1169,9 +820,23 @@ async function downloadExportJob(id: number) {
   await loadExportJobs()
 }
 
-async function deleteExportJob(id: number) {
-  await conversationsAPI.deleteExportJob(id)
-  await loadExportJobs()
+function openDeleteJobDialog(id: number) {
+  deletingJobId.value = id
+  showDeleteJobDialog.value = true
+}
+
+async function executeDeleteJob() {
+  if (deletingJobId.value === null) return
+  showDeleteJobDialog.value = false
+  const id = deletingJobId.value
+  deletingJobId.value = null
+  try {
+    await conversationsAPI.deleteExportJob(id)
+    await loadExportJobs()
+  } catch (error) {
+    appStore.showError(t('admin.conversations.deleteJobFailed'))
+    await loadExportJobs()
+  }
 }
 
 function onPageChange(page: number) {
@@ -1235,71 +900,12 @@ function formatDateShort(value: string): string {
   return new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function formatTimeOnly(value: string): string {
-  if (!value) return ''
-  return new Date(value).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })
-}
-
-function sessionDuration(session: { started_at: string; ended_at: string }): string {
-  if (!session.started_at || !session.ended_at) return ''
-  const ms = new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()
-  if (ms <= 0) return ''
-  const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
-}
-
-function formatNumberCompact(value: number): string {
-  if (!value) return '0'
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 10_000) return `${Math.round(value / 1_000)}K`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return String(value)
-}
-
-function formatCostCompact(value: number): string {
-  if (!value) return '$0'
-  if (value >= 1) return `$${value.toFixed(3)}`
-  if (value >= 0.001) return `$${value.toFixed(4)}`
-  return `$${value.toFixed(6)}`
-}
-
-function turnPreviewText(turn: { payload_preview?: string | null }): string {
-  if (!turn.payload_preview) return ''
-  const firstLine = turn.payload_preview.trim().split('\n')[0] || ''
-  return firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine
-}
-
 function formatQualityErrors(errors: Array<{ code?: string; message?: string }> | undefined): string {
   if (!errors?.length) return ''
   return errors
     .map((error) => error.message || error.code || '')
     .filter(Boolean)
     .join('; ')
-}
-
-function getTextContent(content: unknown): string {
-  if (content == null) return '-'
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content.map((block) => {
-      if (typeof block === 'string') return block
-      if (block && typeof block === 'object') {
-        const b = block as Record<string, unknown>
-        if (b.type === 'text') return String(b.text ?? '')
-        if (b.type === 'tool_use') return `[tool_use: ${b.name}]\n${JSON.stringify(b.input, null, 2)}`
-        if (b.type === 'tool_result') {
-          const c = typeof b.content === 'string' ? b.content : JSON.stringify(b.content, null, 2)
-          return `[tool_result: ${b.tool_use_id}]\n${c}`
-        }
-        if (b.type === 'image') return '[image]'
-        return JSON.stringify(b, null, 2)
-      }
-      return String(block)
-    }).filter(Boolean).join('\n\n')
-  }
-  return JSON.stringify(content, null, 2)
 }
 
 function pillClass(kind: 'success' | 'warn' | 'muted'): string {
