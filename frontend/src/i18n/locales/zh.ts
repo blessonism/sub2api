@@ -1705,6 +1705,7 @@ export default {
       actualCost: '实际扣除',
       accountCost: '账号成本',
       calibrationTokens: '管理员校准',
+      calibrationBalance: '余额校准',
       details: '明细',
       select: '选择',
       selectUser: '选择 {email}',

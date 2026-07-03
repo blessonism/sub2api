@@ -1684,6 +1684,7 @@ export default {
       actualCost: 'Actual Cost',
       accountCost: 'Account Cost',
       calibrationTokens: 'Admin Calibration',
+      calibrationBalance: 'Balance Calibration',
       details: 'Details',
       select: 'Select',
       selectUser: 'Select {email}',

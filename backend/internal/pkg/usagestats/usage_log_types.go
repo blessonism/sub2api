@@ -243,10 +243,11 @@ type AdminTokenLeaderboardModelUsage struct {
 
 // AdminTokenLeaderboardUserDetails 表示管理员展开单个用户后的多维明细。
 type AdminTokenLeaderboardUserDetails struct {
-	CalibrationTokens int64                              `json:"calibration_tokens"`
-	APIKeys           []AdminTokenLeaderboardAPIKeyUsage `json:"api_keys"`
-	Groups            []AdminTokenLeaderboardGroupUsage  `json:"groups"`
-	Models            []AdminTokenLeaderboardModelUsage  `json:"models"`
+	CalibrationTokens       int64                              `json:"calibration_tokens"`
+	CalibrationBalanceDelta float64                            `json:"calibration_balance_delta"`
+	APIKeys                 []AdminTokenLeaderboardAPIKeyUsage `json:"api_keys"`
+	Groups                  []AdminTokenLeaderboardGroupUsage  `json:"groups"`
+	Models                  []AdminTokenLeaderboardModelUsage  `json:"models"`
 }
 
 // UserTokenLeaderboardRow 是仓储返回的内部排行榜行，包含完整邮箱，禁止直接作为普通用户响应返回。
