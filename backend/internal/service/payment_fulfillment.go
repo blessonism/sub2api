@@ -280,6 +280,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 			return err
 		}
+		if err := s.recordCampaignRechargeForOrder(ctx, o); err != nil {
+			slog.Warn("campaign recharge record failed for completed redeem code", "order_id", o.ID, "err", err.Error())
+		}
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
@@ -290,14 +293,15 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
-	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
+	redeemCtx := ContextSkipRedeemCampaign(ContextSkipRedeemAffiliate(ctx))
+	if _, err := s.redeemService.Redeem(redeemCtx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
 	if err := s.recordCampaignRechargeForOrder(ctx, o); err != nil {
-		return err
+		slog.Warn("campaign recharge record failed after balance fulfillment", "order_id", o.ID, "err", err.Error())
 	}
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 }
