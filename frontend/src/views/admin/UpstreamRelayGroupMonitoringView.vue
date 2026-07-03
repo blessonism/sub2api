@@ -1307,12 +1307,26 @@
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamGroupId') }}</span>
-        <select class="input w-full" :value="candidateGroupSelectValue" :disabled="!candidateForm.connector_id" @change="selectCandidateGroupOption">
-          <option value="">{{ candidateGroupOptions.length > 0 ? tM('candidateForm.placeholderGroup') : tM('candidateForm.placeholderGroupEmpty') }}</option>
+        <select
+          class="input w-full"
+          data-testid="candidate-upstream-group-select"
+          :value="candidateGroupSelectValue"
+          :disabled="!candidateForm.connector_id"
+          @change="selectCandidateGroupOption"
+        >
+          <option value="">{{ candidateGroupPlaceholder }}</option>
           <option v-for="option in candidateGroupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           <option :value="MANUAL_CANDIDATE_GROUP_OPTION">{{ tM('candidateForm.manualGroupId') }}</option>
         </select>
-        <input v-model.trim="candidateForm.upstream_group_id" class="input w-full" type="text" :placeholder="tM('candidateForm.placeholderManualGroupId')" @input="syncCandidateGroupManualInput" />
+        <input
+          v-if="candidateGroupManualInputVisible"
+          v-model.trim="candidateForm.upstream_group_id"
+          class="input w-full"
+          data-testid="candidate-upstream-group-manual-input"
+          type="text"
+          :placeholder="tM('candidateForm.placeholderManualGroupId')"
+          @input="syncCandidateGroupManualInput"
+        />
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ candidateGroupSelectHint }}</p>
       </label>
       <label class="block space-y-1">
@@ -1855,9 +1869,18 @@ const candidateGroupSelectValue = computed(() => {
     ? groupId
     : MANUAL_CANDIDATE_GROUP_OPTION
 })
+const candidateGroupManualInputVisible = computed(() => {
+  const groupId = candidateForm.upstream_group_id.trim()
+  return !candidateGroupOptions.value.some((option) => option.value === groupId)
+})
+const candidateGroupPlaceholder = computed(() => {
+  if (candidateGroupOptions.value.length > 0) return tM('candidateForm.placeholderGroup')
+  return candidateForm.connector_id ? tM('candidateForm.placeholderGroupEmpty') : tM('candidateForm.placeholderSelect')
+})
 const candidateGroupSelectHint = computed(() => {
   if (!candidateForm.connector_id) return tM('candidateForm.groupHintSelectConnector')
   if (candidateGroupOptions.value.length === 0) return tM('candidateForm.groupHintNoSnapshots')
+  if (candidateGroupManualInputVisible.value) return tM('candidateForm.groupHintManual', { count: candidateGroupOptions.value.length })
   return tM('candidateForm.groupHintOptions', { count: candidateGroupOptions.value.length })
 })
 const candidateProbeFeedbackPanelClass = computed(() => {
