@@ -353,13 +353,13 @@ type CampaignRepository interface {
 
 	GetInviterByAffiliateCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	RecordInviteRegistration(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, inviter *AffiliateSummary, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error)
-	RecordRecharge(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, input CampaignRechargeInput) (*CampaignInviteRecord, error)
+	RecordRecharge(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, input CampaignRechargeInput, poolAmountCents int64) (*CampaignInviteRecord, bool, error)
 	ListInviteRecords(ctx context.Context, campaignID, inviterUserID int64, page, pageSize int) ([]CampaignInviteRecord, int64, error)
 	GetParticipantStats(ctx context.Context, campaignID, userID int64) (*CampaignParticipant, error)
 	ListLeaderboardRows(ctx context.Context, campaignID int64, limit int) ([]CampaignLeaderboardRow, error)
+	GetLeaderboardRowForUser(ctx context.Context, campaignID, userID int64) (*CampaignLeaderboardRow, error)
 	ListRewardEligibleRows(ctx context.Context, campaignID int64) ([]CampaignLeaderboardRow, error)
 
-	InsertPoolEntry(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, invite *CampaignInviteRecord, input CampaignRechargeInput, poolAmountCents int64) (bool, error)
 	AddPoolAdjustment(ctx context.Context, campaignID int64, input CampaignPoolAdjustmentInput) error
 	GetPoolSummary(ctx context.Context, campaignID int64) (*CampaignPoolSummary, error)
 	InsertPoolDeduction(ctx context.Context, input CampaignDeductionInput) (bool, error)
@@ -369,6 +369,7 @@ type CampaignRepository interface {
 	ListRewardResults(ctx context.Context, campaignID int64, status string) ([]CampaignRewardResult, error)
 
 	CreatePayoutBatch(ctx context.Context, campaignID int64, batchNo string, operatorID *int64, results []CampaignRewardResult) (*CampaignPayoutBatch, error)
+	GetPayoutBatchForRewardResult(ctx context.Context, campaignID, rewardResultID int64) (*CampaignPayoutBatch, error)
 	MarkPayoutItemSuccess(ctx context.Context, itemID int64, before, after float64) error
 	MarkPayoutItemFailed(ctx context.Context, itemID int64, errMessage string) error
 	ListPayoutItems(ctx context.Context, batchID int64) ([]CampaignPayoutItem, error)
@@ -457,14 +458,17 @@ func (s *CampaignService) PublishCampaign(ctx context.Context, campaignID int64,
 	if campaign.Status != CampaignStatusDraft && campaign.Status != CampaignStatusWarmup {
 		return nil, ErrCampaignImmutableRule
 	}
-	hasActive, err := s.repo.HasActiveCampaign(ctx, campaignID)
-	if err != nil {
-		return nil, err
+	now := time.Now()
+	if !now.Before(campaign.StartAt) && now.Before(campaign.EndAt) {
+		hasActive, err := s.repo.HasActiveCampaign(ctx, campaignID)
+		if err != nil {
+			return nil, err
+		}
+		if hasActive {
+			return nil, ErrCampaignDuplicateActive
+		}
 	}
-	if hasActive {
-		return nil, ErrCampaignDuplicateActive
-	}
-	return s.repo.PublishCampaign(ctx, campaignID, operatorID, time.Now())
+	return s.repo.PublishCampaign(ctx, campaignID, operatorID, now)
 }
 
 func (s *CampaignService) CreateConfigVersion(ctx context.Context, campaignID int64, input CampaignConfigVersionInput) (*CampaignConfigVersion, error) {
@@ -614,6 +618,19 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 			break
 		}
 	}
+	if result.CurrentRank == nil {
+		row, err := s.repo.GetLeaderboardRowForUser(ctx, campaignID, userID)
+		if err != nil && !errors.Is(err, ErrCampaignNotFound) {
+			return nil, err
+		}
+		if row != nil {
+			rank := row.Rank
+			result.CurrentRank = &rank
+			result.ValidInviteCount = row.ValidInviteCount
+			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
+			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
+		}
+	}
 	if result.ValidInviteCount > 0 && previousCount > result.ValidInviteCount {
 		result.DistanceToPrevious = previousCount - result.ValidInviteCount
 	}
@@ -697,12 +714,11 @@ func (s *CampaignService) RecordRecharge(ctx context.Context, input CampaignRech
 	if err != nil {
 		return nil, err
 	}
-	invite, err := s.repo.RecordRecharge(ctx, campaign, cfg, input)
-	if err != nil || invite == nil {
-		return invite, err
+	if strings.TrimSpace(input.SourceType) == "" || strings.TrimSpace(input.SourceID) == "" {
+		return nil, ErrCampaignInvalidConfig
 	}
 	poolAmount := calculatePoolInjectionCents(input.RechargeAmountCents, cfg.PoolInjectionRate)
-	_, err = s.repo.InsertPoolEntry(ctx, campaign, cfg, invite, input, poolAmount)
+	invite, _, err := s.repo.RecordRecharge(ctx, campaign, cfg, input, poolAmount)
 	return invite, err
 }
 
@@ -802,8 +818,14 @@ func (s *CampaignService) Payout(ctx context.Context, campaignID int64, operator
 	if s.balanceGrant == nil {
 		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "balance grant service unavailable")
 	}
+	var retryBatch *CampaignPayoutBatch
 	if paid, err := s.repo.GetSuccessfulPayoutBatch(ctx, campaignID); err == nil && paid != nil {
-		return nil, ErrCampaignAlreadyPaid
+		switch paid.Status {
+		case "success", "processing":
+			return nil, ErrCampaignAlreadyPaid
+		case "partial_success", "failed":
+			retryBatch = paid
+		}
 	}
 	results, err := s.repo.ListRewardResults(ctx, campaignID, CampaignCalculationFinal)
 	if err != nil {
@@ -812,22 +834,36 @@ func (s *CampaignService) Payout(ctx context.Context, campaignID int64, operator
 	payable := make([]CampaignRewardResult, 0, len(results))
 	for _, result := range results {
 		if result.FinalPayoutAmountCents > 0 {
+			existing, err := s.repo.GetPayoutBatchForRewardResult(ctx, campaignID, result.ID)
+			if err != nil && !errors.Is(err, ErrCampaignNotFound) {
+				return nil, err
+			}
+			if existing != nil && (retryBatch == nil || existing.ID != retryBatch.ID) {
+				return nil, ErrCampaignAlreadyPaid
+			}
 			payable = append(payable, result)
 		}
 	}
 	if len(payable) == 0 {
 		return nil, ErrCampaignNoFinalSettlement
 	}
-	batchNo := fmt.Sprintf("campaign-%d-%d", campaignID, time.Now().UnixNano())
-	batch, err := s.repo.CreatePayoutBatch(ctx, campaignID, batchNo, operatorID, payable)
-	if err != nil {
-		return nil, err
+	batch := retryBatch
+	if batch == nil {
+		batchNo := fmt.Sprintf("campaign-%d-%d", campaignID, time.Now().UnixNano())
+		var err error
+		batch, err = s.repo.CreatePayoutBatch(ctx, campaignID, batchNo, operatorID, payable)
+		if err != nil {
+			return nil, err
+		}
 	}
 	items, err := s.repo.ListPayoutItems(ctx, batch.ID)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range items {
+		if item.Status == "success" {
+			continue
+		}
 		amount := centsToYuanFloat(item.AmountCents)
 		results, grantErr := s.balanceGrant.GrantUserBalances(ctx, []BalanceGrantInput{{UserID: item.UserID, Amount: amount}}, "邀请奖励活动一键发放")
 		if grantErr != nil {
@@ -1001,6 +1037,13 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 			CalculatedAt:                  time.Now(),
 		}
 		results = append(results, result)
+	}
+	var totalGross int64
+	for _, result := range results {
+		totalGross += result.GrossRewardAmountCents
+	}
+	if residual := finalPoolCents - totalGross; residual > 0 && len(results) > 0 {
+		results[0].RoundingResidualCents += residual
 	}
 	summary := &CampaignCalculationSummary{
 		CampaignID:            campaignID,

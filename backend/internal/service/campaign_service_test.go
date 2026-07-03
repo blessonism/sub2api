@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -69,6 +71,43 @@ func TestCalculateCampaignRewardsWithholdsBelowMinimumPayout(t *testing.T) {
 	}
 }
 
+func TestCalculateCampaignRewardsTracksRoundingResidual(t *testing.T) {
+	cfg := campaignTestConfig(0)
+	rows := []CampaignLeaderboardRow{
+		campaignTestLeaderboardRow(1, 1, 10_000),
+		campaignTestLeaderboardRow(2, 1, 10_000),
+		campaignTestLeaderboardRow(3, 1, 10_000),
+	}
+
+	summary := calculateCampaignRewards(7, cfg, 101, rows, CampaignCalculationFinal, "batch")
+
+	if summary.TotalRoundingResidualCents <= 0 {
+		t.Fatalf("向下取整产生的尾差应被记录，实际=%d", summary.TotalRoundingResidualCents)
+	}
+	if summary.TotalGrossRewardCents+summary.TotalRoundingResidualCents != summary.FinalPoolCents {
+		t.Fatalf("总奖励与尾差应可对账：gross=%d residual=%d pool=%d", summary.TotalGrossRewardCents, summary.TotalRoundingResidualCents, summary.FinalPoolCents)
+	}
+}
+
+func TestCampaignPayoutRejectsAlreadyPaidRewardResult(t *testing.T) {
+	repo := &campaignPayoutRepoStub{
+		results: []CampaignRewardResult{{
+			ID:                     101,
+			CampaignID:             7,
+			UserID:                 21,
+			FinalPayoutAmountCents: 500,
+		}},
+		existingResultBatch: &CampaignPayoutBatch{ID: 9, CampaignID: 7, Status: "failed"},
+	}
+	svc := NewCampaignService(repo, nil)
+	svc.balanceGrant = campaignGrantStub{}
+
+	_, err := svc.Payout(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignAlreadyPaid) {
+		t.Fatalf("已有 reward_result 发放记录时应拒绝重复发放，实际 err=%v", err)
+	}
+}
+
 func campaignTestConfig(minPayoutCents int64) *CampaignConfigVersion {
 	return &CampaignConfigVersion{
 		ID:                       11,
@@ -81,6 +120,48 @@ func campaignTestConfig(minPayoutCents int64) *CampaignConfigVersion {
 		RankWeights:              []int64{30, 20, 15, 10, 8, 6, 4, 3, 2, 2},
 		MinPayoutAmountCents:     minPayoutCents,
 	}
+}
+
+type campaignPayoutRepoStub struct {
+	CampaignRepository
+	results             []CampaignRewardResult
+	existingResultBatch *CampaignPayoutBatch
+}
+
+func (r *campaignPayoutRepoStub) GetSuccessfulPayoutBatch(context.Context, int64) (*CampaignPayoutBatch, error) {
+	return nil, ErrCampaignNotFound
+}
+
+func (r *campaignPayoutRepoStub) ListRewardResults(context.Context, int64, string) ([]CampaignRewardResult, error) {
+	return r.results, nil
+}
+
+func (r *campaignPayoutRepoStub) GetPayoutBatchForRewardResult(context.Context, int64, int64) (*CampaignPayoutBatch, error) {
+	if r.existingResultBatch != nil {
+		return r.existingResultBatch, nil
+	}
+	return nil, ErrCampaignNotFound
+}
+
+type campaignGrantStub struct{}
+
+func (campaignGrantStub) ListUsers(context.Context, int, int, UserListFilters, string, string) ([]User, int64, error) {
+	return nil, 0, nil
+}
+
+func (campaignGrantStub) GetUser(context.Context, int64) (*User, error) { return nil, nil }
+func (campaignGrantStub) GetUserIncludeDeleted(context.Context, int64) (*User, error) {
+	return nil, nil
+}
+func (campaignGrantStub) CreateUser(context.Context, *CreateUserInput) (*User, error) {
+	return nil, nil
+}
+func (campaignGrantStub) UpdateUser(context.Context, int64, *UpdateUserInput) (*User, error) {
+	return nil, nil
+}
+func (campaignGrantStub) DeleteUser(context.Context, int64) error { return nil }
+func (campaignGrantStub) GrantUserBalances(context.Context, []BalanceGrantInput, string) ([]BalanceGrantResult, error) {
+	return nil, nil
 }
 
 func campaignTestLeaderboardRow(userID int64, validInvites int, rechargeCents int64) CampaignLeaderboardRow {

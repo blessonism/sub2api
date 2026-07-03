@@ -149,18 +149,28 @@ LIMIT $1 OFFSET $2`, pageSize, offset)
 
 func (r *campaignRepository) GetActiveCampaign(ctx context.Context, now time.Time) (*service.Campaign, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, name, description, cover_url, rules_text, status, warmup_start_at, start_at, end_at,
-	audit_start_at, audit_end_at, publicity_start_at, publicity_end_at, payout_due_at,
-	published_config_version_id, created_by, updated_by, created_at, updated_at
-FROM campaigns
-WHERE status = 'active'
-  AND start_at <= $1
-  AND end_at > $1
-ORDER BY start_at DESC
-LIMIT 1`, now)
+	SELECT id, name, description, cover_url, rules_text, status, warmup_start_at, start_at, end_at,
+		audit_start_at, audit_end_at, publicity_start_at, publicity_end_at, payout_due_at,
+		published_config_version_id, created_by, updated_by, created_at, updated_at
+	FROM campaigns
+	WHERE status IN ('active', 'warmup')
+	  AND start_at <= $1
+	  AND end_at > $1
+	ORDER BY start_at DESC
+	LIMIT 1`, now)
 	campaign, err := scanCampaign(row)
 	if err != nil {
 		return nil, campaignRepoErr(err)
+	}
+	if campaign.Status == service.CampaignStatusWarmup {
+		_, err := r.db.ExecContext(ctx, `UPDATE campaigns SET status = 'active', updated_at = NOW() WHERE id = $1 AND status = 'warmup'`, campaign.ID)
+		if err != nil {
+			if strings.Contains(err.Error(), "campaigns_single_active_idx") {
+				return nil, service.ErrCampaignDuplicateActive
+			}
+			return nil, err
+		}
+		return r.GetCampaign(ctx, campaign.ID)
 	}
 	return campaign, nil
 }
@@ -225,12 +235,16 @@ LIMIT 1`, campaignID).Scan(&publishedID); err != nil {
 		return nil, campaignRepoErr(err)
 	}
 	if _, err := r.db.ExecContext(ctx, `
-UPDATE campaigns
-SET status = $2,
-	published_config_version_id = COALESCE(published_config_version_id, $3),
-	updated_by = $4,
-	updated_at = NOW()
-WHERE id = $1`, campaignID, status, publishedID, nullableInt64(operatorID)); err != nil {
+	UPDATE campaigns
+	SET status = CASE
+			WHEN $5 < start_at THEN 'warmup'
+			WHEN $5 >= end_at THEN 'auditing'
+			ELSE $2
+		END,
+		published_config_version_id = COALESCE(published_config_version_id, $3),
+		updated_by = $4,
+		updated_at = NOW()
+	WHERE id = $1`, campaignID, status, publishedID, nullableInt64(operatorID), now); err != nil {
 		if strings.Contains(err.Error(), "campaigns_single_active_idx") {
 			return nil, service.ErrCampaignDuplicateActive
 		}
@@ -310,15 +324,44 @@ RETURNING id, campaign_id, config_version_id, inviter_user_id, invitee_user_id, 
 	return record, nil
 }
 
-func (r *campaignRepository) RecordRecharge(ctx context.Context, campaign *service.Campaign, _ *service.CampaignConfigVersion, input service.CampaignRechargeInput) (*service.CampaignInviteRecord, error) {
+func (r *campaignRepository) RecordRecharge(ctx context.Context, campaign *service.Campaign, cfg *service.CampaignConfigVersion, input service.CampaignRechargeInput, poolAmountCents int64) (*service.CampaignInviteRecord, bool, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
 	row := tx.QueryRowContext(ctx, `
-UPDATE campaign_invite_records
-SET effective_recharge_amount_cents = effective_recharge_amount_cents + $3,
+	SELECT id, campaign_id, config_version_id, inviter_user_id, invitee_user_id, invite_source,
+		threshold_snapshot_cents, registered_at, qualified_at, effective_recharge_amount_cents,
+		status, risk_level, invalid_reason, audit_status, audit_by, audit_at, audit_note
+	FROM campaign_invite_records
+	WHERE campaign_id = $1
+	  AND invitee_user_id = $2
+	  AND registered_at >= $3
+	  AND registered_at < $4
+	FOR UPDATE`,
+		campaign.ID, input.InviteeUserID, campaign.StartAt, campaign.EndAt,
+	)
+	current, err := scanCampaignInviteRecord(row)
+	if err != nil {
+		return nil, false, campaignRepoErr(err)
+	}
+
+	inserted, err := insertPoolEntryTx(ctx, tx, campaign, cfg, current, input, poolAmountCents)
+	if err != nil {
+		return nil, false, err
+	}
+	if !inserted {
+		if err := tx.Commit(); err != nil {
+			return nil, false, err
+		}
+		return current, false, nil
+	}
+
+	row = tx.QueryRowContext(ctx, `
+	UPDATE campaign_invite_records
+	SET effective_recharge_amount_cents = effective_recharge_amount_cents + $3,
 	status = CASE
 		WHEN effective_recharge_amount_cents + $3 >= threshold_snapshot_cents THEN 'effective'
 		ELSE 'recharge_unqualified'
@@ -343,15 +386,15 @@ RETURNING id, campaign_id, config_version_id, inviter_user_id, invitee_user_id, 
 	)
 	record, err := scanCampaignInviteRecord(row)
 	if err != nil {
-		return nil, campaignRepoErr(err)
+		return nil, false, campaignRepoErr(err)
 	}
 	if err := refreshCampaignParticipantStats(ctx, tx, campaign.ID, record.InviterUserID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return record, nil
+	return record, true, nil
 }
 
 func (r *campaignRepository) ListInviteRecords(ctx context.Context, campaignID, inviterUserID int64, page, pageSize int) ([]service.CampaignInviteRecord, int64, error) {
@@ -421,6 +464,22 @@ func (r *campaignRepository) ListLeaderboardRows(ctx context.Context, campaignID
 	return scanCampaignLeaderboardRows(rows)
 }
 
+func (r *campaignRepository) GetLeaderboardRowForUser(ctx context.Context, campaignID, userID int64) (*service.CampaignLeaderboardRow, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT * FROM (`+campaignLeaderboardSQL()+`) ranked WHERE user_id = $2 LIMIT 1`, campaignID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items, err := scanCampaignLeaderboardRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, service.ErrCampaignNotFound
+	}
+	return &items[0], nil
+}
+
 func (r *campaignRepository) ListRewardEligibleRows(ctx context.Context, campaignID int64) ([]service.CampaignLeaderboardRow, error) {
 	rows, err := r.db.QueryContext(ctx, campaignLeaderboardSQL(), campaignID)
 	if err != nil {
@@ -438,6 +497,24 @@ INSERT INTO campaign_pool_entries (
 	pool_status, confirmed_at, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10, 'confirmed', NOW(), NOW(), NOW())
 ON CONFLICT (campaign_id, source_type, source_id) DO NOTHING`,
+		campaign.ID, cfg.ID, invite.ID, input.InviteeUserID, input.SourceType, input.SourceID,
+		input.SourceSuccessAt, input.RechargeAmountCents, cfg.PoolInjectionRate.String(), poolAmountCents,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func insertPoolEntryTx(ctx context.Context, tx *sql.Tx, campaign *service.Campaign, cfg *service.CampaignConfigVersion, invite *service.CampaignInviteRecord, input service.CampaignRechargeInput, poolAmountCents int64) (bool, error) {
+	res, err := tx.ExecContext(ctx, `
+	INSERT INTO campaign_pool_entries (
+		campaign_id, config_version_id, invite_record_id, invitee_user_id, source_type, source_id,
+		source_success_at, effective_recharge_amount_cents, injection_rate_snapshot, pool_amount_cents,
+		pool_status, confirmed_at, created_at, updated_at
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10, 'confirmed', NOW(), NOW(), NOW())
+	ON CONFLICT (campaign_id, source_type, source_id) DO NOTHING`,
 		campaign.ID, cfg.ID, invite.ID, input.InviteeUserID, input.SourceType, input.SourceID,
 		input.SourceSuccessAt, input.RechargeAmountCents, cfg.PoolInjectionRate.String(), poolAmountCents,
 	)
@@ -614,7 +691,7 @@ RETURNING id`, campaignID, batchNo, nullableInt64(operatorID), len(results), tot
 		return nil, err
 	}
 	for _, result := range results {
-		key := fmt.Sprintf("campaign:%d:payout:%d:%s", campaignID, result.UserID, batchNo)
+		key := fmt.Sprintf("campaign:%d:payout-result:%d", campaignID, result.ID)
 		_, err := tx.ExecContext(ctx, `
 INSERT INTO campaign_payout_items (
 	batch_id, campaign_id, user_id, reward_result_id, amount_cents, status, idempotency_key, created_at
@@ -630,6 +707,22 @@ ON CONFLICT (idempotency_key) DO NOTHING`,
 		return nil, err
 	}
 	return r.UpdatePayoutBatchSummary(ctx, batchID)
+}
+
+func (r *campaignRepository) GetPayoutBatchForRewardResult(ctx context.Context, campaignID, rewardResultID int64) (*service.CampaignPayoutBatch, error) {
+	row := r.db.QueryRowContext(ctx, `
+	SELECT b.id, b.campaign_id, b.batch_no, b.status, b.operator_id, b.total_users, b.total_amount_cents,
+		b.success_count, b.failed_count, b.started_at, b.finished_at, b.created_at
+	FROM campaign_payout_batches b
+	JOIN campaign_payout_items i ON i.batch_id = b.id
+	WHERE b.campaign_id = $1 AND i.reward_result_id = $2
+	ORDER BY b.id DESC
+	LIMIT 1`, campaignID, rewardResultID)
+	batch, err := scanCampaignPayoutBatch(row)
+	if err != nil {
+		return nil, campaignRepoErr(err)
+	}
+	return batch, nil
 }
 
 func (r *campaignRepository) MarkPayoutItemSuccess(ctx context.Context, itemID int64, before, after float64) error {
@@ -713,7 +806,7 @@ func (r *campaignRepository) GetSuccessfulPayoutBatch(ctx context.Context, campa
 SELECT id, campaign_id, batch_no, status, operator_id, total_users, total_amount_cents,
 	success_count, failed_count, started_at, finished_at, created_at
 FROM campaign_payout_batches
-WHERE campaign_id = $1 AND status IN ('processing', 'partial_success', 'success')
+WHERE campaign_id = $1 AND status IN ('processing', 'partial_success', 'success', 'failed')
 ORDER BY id DESC
 LIMIT 1`, campaignID)
 	batch, err := scanCampaignPayoutBatch(row)

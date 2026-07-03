@@ -104,7 +104,7 @@
                     <select v-model="adjustForm.adjustment_type" class="input">
                       <option value="additional_bonus">{{ t('admin.campaignRewards.additionalBonus') }}</option>
                       <option value="manual_compensation">{{ t('admin.campaignRewards.manualCompensation') }}</option>
-                      <option value="manual_deduction">{{ t('admin.campaignRewards.manualDeduction') }}</option>
+                      <option value="exception_deduction">{{ t('admin.campaignRewards.manualDeduction') }}</option>
                     </select>
                   </label>
                   <label class="space-y-1">
@@ -339,7 +339,7 @@ async function payoutSelected(): Promise<void> {
 
 async function submitPoolAdjustment(): Promise<void> {
   if (!selectedCampaign.value || adjustAmountYuan.value === 0) return
-  const sign = adjustForm.adjustment_type === 'manual_deduction' ? -1 : 1
+  const sign = adjustForm.adjustment_type === 'exception_deduction' ? -1 : 1
   await runAction(async () => {
     await adminAPI.campaigns.addPoolAdjustment(selectedCampaign.value!.id, {
       adjustment_type: adjustForm.adjustment_type,

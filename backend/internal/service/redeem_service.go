@@ -31,12 +31,17 @@ const (
 )
 
 type ctxKeySkipRedeemAffiliate struct{}
+type ctxKeySkipRedeemCampaign struct{}
 
 // ContextSkipRedeemAffiliate returns a context that suppresses the redeem-level
 // affiliate rebate. Used by payment fulfillment which handles rebate separately
 // via applyAffiliateRebateForOrder (with audit-log deduplication).
 func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
+}
+
+func ContextSkipRedeemCampaign(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKeySkipRedeemCampaign{}, true)
 }
 
 // RedeemCache defines cache operations for redeem service
@@ -521,6 +526,9 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 func (s *RedeemService) tryRecordCampaignRechargeForRedeem(ctx context.Context, userID int64, redeemCode *RedeemCode) {
 	if s == nil || s.campaignService == nil || redeemCode == nil || redeemCode.Value <= 0 {
+		return
+	}
+	if skip, _ := ctx.Value(ctxKeySkipRedeemCampaign{}).(bool); skip {
 		return
 	}
 	sourceID := redeemCode.Code
