@@ -35,6 +35,7 @@ import adminComplianceAPI from './compliance'
 import tokenUsagePoliciesAPI from './tokenUsagePolicies'
 import upstreamRelayGroupMonitorsAPI from './upstreamRelayGroupMonitors'
 import conversationsAPI from './conversations'
+import campaignsAPI from './campaigns'
 
 /**
  * Unified admin API object for convenient access
@@ -71,7 +72,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   tokenUsagePolicies: tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitors: upstreamRelayGroupMonitorsAPI,
-  conversations: conversationsAPI
+  conversations: conversationsAPI,
+  campaigns: campaignsAPI
 }
 
 export {
@@ -106,7 +108,8 @@ export {
   adminComplianceAPI,
   tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitorsAPI,
-  conversationsAPI
+  conversationsAPI,
+  campaignsAPI
 }
 
 export default adminAPI

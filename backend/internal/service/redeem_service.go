@@ -144,6 +144,7 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	campaignService      *CampaignService
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -166,6 +167,12 @@ func NewRedeemService(
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 		affiliateService:     affiliateService,
+	}
+}
+
+func (s *RedeemService) SetCampaignService(campaignService *CampaignService) {
+	if s != nil {
+		s.campaignService = campaignService
 	}
 }
 
@@ -500,6 +507,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
 		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
+		s.tryRecordCampaignRechargeForRedeem(ctx, userID, redeemCode)
 	}
 
 	// 重新获取更新后的兑换码
@@ -509,6 +517,25 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	}
 
 	return redeemCode, nil
+}
+
+func (s *RedeemService) tryRecordCampaignRechargeForRedeem(ctx context.Context, userID int64, redeemCode *RedeemCode) {
+	if s == nil || s.campaignService == nil || redeemCode == nil || redeemCode.Value <= 0 {
+		return
+	}
+	sourceID := redeemCode.Code
+	if redeemCode.ID > 0 {
+		sourceID = fmt.Sprintf("%d", redeemCode.ID)
+	}
+	if _, err := s.campaignService.RecordRecharge(ctx, CampaignRechargeInput{
+		InviteeUserID:       userID,
+		SourceType:          "redeem_code",
+		SourceID:            sourceID,
+		SourceSuccessAt:     time.Now(),
+		RechargeAmountCents: centsFromYuan(redeemCode.Value),
+	}); err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] campaign recharge record failed for user %d amount %.2f: %v", userID, redeemCode.Value, err)
+	}
 }
 
 // invalidateRedeemCaches 失效兑换相关的缓存
