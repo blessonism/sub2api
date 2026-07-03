@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查本次前端修复仍位于二开分支边界内。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查上游 Relay 监控前端类型和字段命名未漂移。"}

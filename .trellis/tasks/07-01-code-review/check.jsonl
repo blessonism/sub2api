@@ -1,0 +1,5 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"检查是否遵守下游 fork 分支边界"}
+{"file":".trellis/spec/backend/index.md","reason":"检查后端修复是否符合后端规范入口"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"检查迁移约束和仓储事务行为"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查延迟建议应用流程的快照、事务与测试覆盖"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查本轮未破坏上游监控 API 类型约定"}

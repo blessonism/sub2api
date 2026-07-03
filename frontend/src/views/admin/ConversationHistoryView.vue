@@ -12,23 +12,42 @@
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-2">
-              <span :class="pillClass(configForm.enabled ? 'success' : 'muted')" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                {{ captureStatusLabel }}
+              <template v-if="configLoaded">
+                <span :class="pillClass(configForm.enabled ? 'success' : 'muted')" class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
+                  {{ captureStatusLabel }}
+                </span>
+              </template>
+              <span v-else class="inline-block h-6 w-20 animate-pulse rounded-full bg-gray-200 dark:bg-dark-600" />
+              <span v-if="savingConfig" class="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-300">
+                <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                {{ t('common.saving') }}
               </span>
-              <span v-if="savingConfig" class="text-xs text-primary-600 dark:text-primary-300">{{ t('common.saving') }}</span>
             </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ captureStatusDescription }}</p>
+            <p v-if="configLoaded" class="text-sm text-gray-500 dark:text-gray-400">{{ captureStatusDescription }}</p>
+            <div v-else class="h-4 w-64 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
           </div>
           <div class="flex items-center gap-3">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.conversations.enabled') }}</span>
-            <Toggle :model-value="configForm.enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('enabled', value)" />
+            <Toggle v-if="configLoaded" :model-value="configForm.enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('enabled', value)" />
+            <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
           </div>
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <div v-for="item in captureSummaryItems" :key="item.label" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
-            <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.value }}</div>
-          </div>
+          <template v-if="configLoaded">
+            <div v-for="item in captureSummaryItems" :key="item.label" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
+              <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.value }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <div v-for="n in 5" :key="n" class="rounded-md border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
+              <div class="mt-2 h-4 w-10 animate-pulse rounded bg-gray-200 dark:bg-dark-600" />
+            </div>
+          </template>
         </div>
       </section>
 
@@ -39,7 +58,11 @@
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.conversations.captureRules') }}</h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.conversations.captureRulesDescription') }}</p>
             </div>
-            <button class="btn btn-primary shrink-0" type="button" :disabled="savingConfig" @click="saveConfig">
+            <button class="btn btn-primary inline-flex shrink-0 items-center gap-1.5" type="button" :disabled="savingConfig" @click="saveConfig">
+              <svg v-if="savingConfig" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
               {{ savingConfig ? t('common.saving') : t('common.save') }}
             </button>
           </div>
@@ -64,6 +87,16 @@
               <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.retentionDays') }}</span>
               <input v-model.number="configForm.retention_days" class="input w-full" min="1" type="number" />
             </label>
+            <div class="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-800">
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.conversations.captureChatCompletions') }}</span>
+              <Toggle v-if="configLoaded" :model-value="configForm.capture_chat_completions" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_chat_completions', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
+            </div>
+            <div class="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-800">
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.conversations.captureResponses') }}</span>
+              <Toggle v-if="configLoaded" :model-value="configForm.capture_responses" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('capture_responses', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
+            </div>
             <div class="space-y-2 md:col-span-2 xl:col-span-3">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.conversations.subjectFilterMode') }}</div>
               <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -103,17 +136,17 @@
                 <span
                   v-for="id in listValues(item.kind)"
                   :key="`${item.kind}-${id}`"
-                  class="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                  class="inline-flex items-center gap-0.5 rounded-full bg-primary-50 pl-2 pr-1 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
                   :data-test="`conversation-id-chip-${item.kind}-${id}`"
                 >
                   #{{ id }}
                   <button
                     type="button"
-                    class="rounded px-1 text-primary-500 hover:bg-primary-100 hover:text-primary-700 dark:text-primary-200 dark:hover:bg-primary-900/60"
+                    class="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-primary-400 hover:bg-primary-200 hover:text-primary-700 dark:text-primary-300 dark:hover:bg-primary-800 dark:hover:text-primary-100 transition-colors"
                     :aria-label="t('admin.conversations.removeSubjectId', { id })"
                     @click="removeListID(item.kind, id)"
                   >
-                    x
+                    <Icon name="x" size="xs" />
                   </button>
                 </span>
                 <input
@@ -143,7 +176,8 @@
                 <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.conversations.exportEnabled') }}</div>
                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.conversations.exportEnabledHint') }}</div>
               </div>
-              <Toggle :model-value="configForm.export_enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('export_enabled', value)" />
+              <Toggle v-if="configLoaded" :model-value="configForm.export_enabled" :disabled="savingConfig" @update:modelValue="(value) => updateConfigFlag('export_enabled', value)" />
+              <div v-else class="h-6 w-11 rounded-full bg-gray-200 dark:bg-dark-600" />
             </div>
             <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
               <input v-model="exportOptions.redaction_enabled" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -161,7 +195,6 @@
         </section>
       </div>
 
-      <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section class="card overflow-hidden">
           <div class="border-b border-gray-100 p-4 dark:border-dark-700">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -178,24 +211,39 @@
                 </button>
               </div>
             </div>
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-7">
-              <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
-              <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
-              <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
-              <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
-              <select v-model="filters.quality_status" class="input">
-                <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
-                <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
-                <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
-                <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
-                <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
-              </select>
-              <select v-model="filters.exportable" class="input">
-                <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
-                <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
-                <option value="false">{{ t('admin.conversations.notExportable') }}</option>
-              </select>
-              <button class="btn btn-secondary" type="button" @click="applyFilters">{{ t('common.search') }}</button>
+            <div class="mt-4 space-y-2">
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <input v-model.number="filters.user_id" class="input" data-test="conversation-filter-user-id" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
+                <input v-model.number="filters.api_key_id" class="input" data-test="conversation-filter-api-key-id" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
+                <input v-model.trim="filters.model" class="input" data-test="conversation-filter-model" :placeholder="t('admin.conversations.model')" />
+                <input v-model.trim="filters.request_id" class="input" data-test="conversation-filter-request-id" :placeholder="t('admin.conversations.requestId')" />
+              </div>
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <select v-model="filters.quality_status" class="input" data-test="conversation-filter-quality-status">
+                  <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
+                  <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
+                  <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
+                  <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
+                  <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
+                </select>
+                <select v-model="filters.exportable" class="input" data-test="conversation-filter-exportable">
+                  <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
+                  <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
+                  <option value="false">{{ t('admin.conversations.notExportable') }}</option>
+                </select>
+                <input v-model="filters.started_at_from" class="input" type="date" :placeholder="t('admin.conversations.dateFrom')" />
+                <input v-model="filters.started_at_to" class="input" type="date" :placeholder="t('admin.conversations.dateTo')" />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button v-if="hasActiveFilters" class="btn btn-secondary inline-flex items-center gap-1.5" type="button" @click="clearFilters">
+                  <Icon name="x" size="sm" />
+                  {{ t('admin.conversations.clearFilters') }}
+                </button>
+                <button class="btn btn-secondary inline-flex items-center gap-1.5" type="button" @click="applyFilters">
+                  <Icon name="search" size="sm" />
+                  {{ t('common.search') }}
+                </button>
+              </div>
             </div>
           </div>
           <div v-if="loading" class="flex min-h-64 items-center justify-center">
@@ -208,7 +256,7 @@
             :description="emptyStateDescription"
           />
           <div v-else class="overflow-x-auto">
-            <table class="w-full min-w-[1080px] text-sm">
+            <table class="w-full min-w-[900px] text-sm">
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.session') }}</th>
@@ -218,11 +266,15 @@
                   <th class="px-4 py-3 text-right">{{ t('admin.conversations.cost') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.status') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.conversations.updated') }}</th>
-                  <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                <tr v-for="session in sessions" :key="session.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+                <tr
+                  v-for="session in sessions"
+                  :key="session.id"
+                  class="group cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-800/70"
+                  @click="router.push(`/admin/conversations/${session.id}`)"
+                >
                   <td class="px-4 py-3">
                     <div class="font-medium text-gray-900 dark:text-white">{{ shortId(session.session_id) }}</div>
                     <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -231,39 +283,29 @@
                     </div>
                   </td>
                   <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                    <div>user #{{ session.user_id }}</div>
+                    <div>{{ session.user_email || `user #${session.user_id}` }}</div>
                     <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">key #{{ session.api_key_id }}</div>
                   </td>
                   <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ session.model }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(session.total_tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(session.actual_cost) }}</td>
                   <td class="px-4 py-3">
-                    <span :class="pillClass(session.exportable ? 'success' : 'muted')" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.exportable ? t('admin.conversations.exportable') : t('admin.conversations.notExportable') }}
-                    </span>
-                    <span :class="pillClass(session.capture_status === 'captured' ? 'success' : 'warn')" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.capture_status }}
-                    </span>
-                    <span :class="pillClass(qualityKind(session.quality_status))" class="ml-2 inline-flex rounded-md px-2 py-1 text-xs font-medium">
-                      {{ session.quality_status }}
-                    </span>
+                    <div class="flex flex-wrap items-center gap-1">
+                      <span :class="pillClass(qualityKind(session.quality_status))" class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium">
+                        {{ qualityLabel(session.quality_status) }}
+                      </span>
+                      <span v-if="!session.exportable" class="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+                        {{ t('admin.conversations.notExportable') }}
+                      </span>
+                    </div>
                     <div v-if="formatQualityErrors(session.quality_errors)" class="mt-1 max-w-xs truncate text-xs text-amber-700 dark:text-amber-300">
                       {{ formatQualityErrors(session.quality_errors) }}
                     </div>
                   </td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(session.ended_at) }}</td>
                   <td class="px-4 py-3">
-                    <div class="flex justify-end gap-2">
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="selectSession(session)">{{ t('common.view') }}</button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="toggleSessionExportable(session)">
-                        {{ session.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}
-                      </button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="markSessionQuality(session, 'clean')">
-                        {{ t('admin.conversations.markClean') }}
-                      </button>
-                      <button class="btn btn-secondary px-2 py-1" type="button" @click="markSessionQuality(session, 'rejected')">
-                        {{ t('admin.conversations.reject') }}
-                      </button>
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-gray-600 dark:text-gray-300">{{ formatDateShort(session.ended_at) }}</span>
+                      <Icon name="chevronRight" size="sm" class="shrink-0 text-gray-300 transition-colors group-hover:text-gray-500 dark:text-dark-600 dark:group-hover:text-gray-400" />
                     </div>
                   </td>
                 </tr>
@@ -280,105 +322,6 @@
           />
         </section>
 
-        <aside class="card min-h-[360px] self-start p-4">
-          <div v-if="!selectedSession" class="flex h-full min-h-[320px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-            {{ t('admin.conversations.selectHint') }}
-          </div>
-          <div v-else class="space-y-4">
-            <div>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ shortId(selectedSession.session_id) }}</h2>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ selectedSession.request_path }} · {{ selectedSession.session_source }}
-              </p>
-            </div>
-            <div class="grid grid-cols-1 gap-2 text-xs">
-              <div class="flex flex-wrap gap-2">
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'clean')">
-                  {{ t('admin.conversations.markClean') }}
-                </button>
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'needs_review')">
-                  {{ t('admin.conversations.needsReview') }}
-                </button>
-                <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markSessionQuality(selectedSession, 'rejected')">
-                  {{ t('admin.conversations.reject') }}
-                </button>
-              </div>
-              <label class="space-y-1">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.conversations.mergeSourceIds') }}</span>
-                <div class="flex gap-2">
-                  <input v-model="mergeSourceIDsText" class="input w-full" placeholder="12,13" />
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="mergeIntoSelectedSession">
-                    {{ t('admin.conversations.merge') }}
-                  </button>
-                </div>
-              </label>
-            </div>
-            <div v-if="turnsLoading" class="flex min-h-40 items-center justify-center">
-              <LoadingSpinner />
-            </div>
-            <div v-else class="space-y-3">
-              <article v-for="turn in turns" :key="turn.id" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      #{{ turn.turn_index }} · {{ turn.parse_status }}
-                    </div>
-                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {{ turn.request_id }} · {{ turn.stream ? 'stream' : 'non-stream' }}
-                      <span v-if="turn.duplicate_count > 0"> · {{ t('admin.conversations.duplicate') }}</span>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="toggleTurnExportable(turn)">
-                      {{ turn.exportable ? t('admin.conversations.unmark') : t('admin.conversations.markExportable') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markTurnQuality(turn, 'clean')">
-                      {{ t('admin.conversations.markClean') }}
-                    </button>
-                    <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="markTurnQuality(turn, 'rejected')">
-                      {{ t('admin.conversations.reject') }}
-                    </button>
-                  </div>
-                </div>
-                <div class="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-300">
-                  <div v-if="selectedTurnDetails[turn.id]" class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.userMessages') }}</div>
-                    <pre class="whitespace-pre-wrap break-words">{{ renderMessages(selectedTurnDetails[turn.id].request_messages) }}</pre>
-                  </div>
-                  <div v-if="selectedTurnDetails[turn.id]" class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.assistantMessages') }}</div>
-                    <pre class="whitespace-pre-wrap break-words">{{ renderMessages(selectedTurnDetails[turn.id].response_messages) }}</pre>
-                  </div>
-                  <div v-else class="rounded bg-gray-50 p-2 dark:bg-dark-800">
-                    <div class="mb-1 font-medium">{{ t('admin.conversations.preview') }}</div>
-                    <pre class="max-h-40 whitespace-pre-wrap break-words overflow-auto">{{ turn.payload_preview || '-' }}</pre>
-                  </div>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                  <span :class="pillClass(turn.truncated ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.truncated ? 'truncated' : 'complete' }}</span>
-                  <span :class="pillClass(turn.client_disconnect ? 'warn' : 'success')" class="rounded-md px-2 py-1">{{ turn.client_disconnect ? 'disconnect' : 'connected' }}</span>
-                  <span :class="pillClass(qualityKind(turn.quality_status))" class="rounded-md px-2 py-1">{{ turn.quality_status }}</span>
-                  <span v-if="formatQualityErrors(turn.quality_errors)" class="rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                    {{ formatQualityErrors(turn.quality_errors) }}
-                  </span>
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="loadTurnDetail(turn.id)">
-                    {{ selectedTurnDetails[turn.id] ? t('admin.conversations.hideDetail') : t('admin.conversations.loadDetail') }}
-                  </button>
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="splitFromTurn(turn.id)">
-                    {{ t('admin.conversations.splitHere') }}
-                  </button>
-                </div>
-                <div class="mt-2 flex gap-2">
-                  <input v-model.number="moveTargets[turn.id]" class="input min-w-0 flex-1 text-xs" type="number" min="1" :placeholder="t('admin.conversations.moveTarget')" />
-                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="moveTurnToSession(turn.id)">
-                    {{ t('admin.conversations.move') }}
-                  </button>
-                </div>
-              </article>
-            </div>
-          </div>
-        </aside>
-      </div>
 
       <section class="card p-4">
         <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -429,7 +372,7 @@
                   </div>
                 </td>
                 <td class="px-4 py-3">
-                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                  <span :class="pillClass(jobStatusKind(job.status))" class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium">
                     {{ job.status }}
                   </span>
                   <div v-if="job.error_message" class="mt-1 max-w-sm truncate text-xs text-rose-600 dark:text-rose-300">
@@ -438,13 +381,25 @@
                 </td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(job.turn_count) }}</td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ formatBytes(job.file_size) }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDate(job.expires_at) }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ formatDateShort(job.expires_at) }}</td>
                 <td class="px-4 py-3">
-                  <div class="flex justify-end gap-2">
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status !== 'completed'" @click="downloadExportJob(job.id)">
+                  <div class="flex justify-end gap-1.5">
+                    <button
+                      class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500 dark:hover:bg-dark-700 dark:hover:text-white"
+                      type="button"
+                      :disabled="job.status !== 'completed'"
+                      @click="downloadExportJob(job.id)"
+                    >
+                      <Icon name="download" size="xs" />
                       {{ t('admin.conversations.downloadJob') }}
                     </button>
-                    <button class="btn btn-secondary px-2 py-1" type="button" :disabled="job.status === 'running'" @click="deleteExportJob(job.id)">
+                    <button
+                      class="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:border-rose-900/50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400"
+                      type="button"
+                      :disabled="job.status === 'running'"
+                      @click="openDeleteJobDialog(job.id)"
+                    >
+                      <Icon name="trash" size="xs" />
                       {{ t('common.delete') }}
                     </button>
                   </div>
@@ -455,17 +410,31 @@
         </div>
       </section>
     </div>
+
+    <ConfirmDialog
+      :show="showDeleteJobDialog"
+      :title="t('admin.conversations.deleteJobTitle')"
+      :message="t('admin.conversations.confirmDeleteJob')"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="executeDeleteJob"
+      @cancel="showDeleteJobDialog = false"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import conversationsAPI, {
   type ConversationCaptureConfig,
@@ -475,11 +444,11 @@ import conversationsAPI, {
   type ConversationSession,
   type ConversationSessionFilters,
   type ConversationSubjectFilterMode,
-  type ConversationTurn,
-  type ConversationTurnSummary,
 } from '@/api/admin/conversations'
 
 const { t } = useI18n()
+const router = useRouter()
+const appStore = useAppStore()
 
 const defaultConfig: ConversationCaptureConfig = {
   enabled: false,
@@ -513,18 +482,15 @@ const idListDrafts = reactive<Record<ConversationIDListKind, string>>({
   included_api_key_ids: '',
 })
 const loading = ref(false)
-const turnsLoading = ref(false)
 const jobsLoading = ref(false)
 const savingConfig = ref(false)
 const exporting = ref(false)
 const creatingJob = ref(false)
+const configLoaded = ref(false)
+const showDeleteJobDialog = ref(false)
+const deletingJobId = ref<number | null>(null)
 const sessions = ref<ConversationSession[]>([])
-const turns = ref<ConversationTurnSummary[]>([])
 const exportJobs = ref<ConversationExportJob[]>([])
-const selectedTurnDetails = reactive<Record<number, ConversationTurn>>({})
-const selectedSession = ref<ConversationSession | null>(null)
-const moveTargets = reactive<Record<number, number | null>>({})
-const mergeSourceIDsText = ref('')
 const filters = reactive({
   user_id: null as number | null,
   api_key_id: null as number | null,
@@ -532,6 +498,8 @@ const filters = reactive({
   request_id: '',
   quality_status: '',
   exportable: '',
+  started_at_from: '',
+  started_at_to: '',
 })
 const exportOptions = reactive({
   redaction_enabled: true,
@@ -555,6 +523,8 @@ const hasActiveFilters = computed(() => Boolean(
   || filters.request_id
   || filters.quality_status
   || filters.exportable
+  || filters.started_at_from
+  || filters.started_at_to
 ))
 const captureSummaryItems = computed(() => [
   { label: t('admin.conversations.samplePercent'), value: `${configForm.sample_percent}%` },
@@ -621,6 +591,7 @@ async function loadConfig() {
   }
   Object.assign(configForm, normalized)
   syncIDLists(normalized)
+  configLoaded.value = true
 }
 
 async function saveConfig() {
@@ -645,7 +616,7 @@ async function saveConfig() {
   }
 }
 
-async function updateConfigFlag(field: 'enabled' | 'export_enabled', value: boolean) {
+async function updateConfigFlag(field: 'enabled' | 'export_enabled' | 'capture_chat_completions' | 'capture_responses', value: boolean) {
   configForm[field] = value
   try {
     await saveConfig()
@@ -760,6 +731,8 @@ function buildFilters(): ConversationSessionFilters {
     request_id: filters.request_id || undefined,
     quality_status: filters.quality_status || undefined,
     exportable: filters.exportable === '' ? undefined : filters.exportable === 'true',
+    started_at_from: filters.started_at_from || undefined,
+    started_at_to: filters.started_at_to || undefined,
   }
 }
 
@@ -768,113 +741,16 @@ function applyFilters() {
   void loadSessions()
 }
 
-async function selectSession(session: ConversationSession) {
-  selectedSession.value = session
-  turnsLoading.value = true
-  try {
-    const response = await conversationsAPI.listSessionTurns(session.id, { page: 1, page_size: 50 })
-    turns.value = response.items
-    Object.keys(selectedTurnDetails).forEach((key) => delete selectedTurnDetails[Number(key)])
-    Object.keys(moveTargets).forEach((key) => delete moveTargets[Number(key)])
-    mergeSourceIDsText.value = ''
-  } finally {
-    turnsLoading.value = false
-  }
-}
-
-async function refreshSelectedSession() {
-  if (!selectedSession.value) return
-  const current = await conversationsAPI.getSession(selectedSession.value.id)
-  selectedSession.value = current
-  const index = sessions.value.findIndex((item) => item.id === current.id)
-  if (index >= 0) {
-    sessions.value[index] = current
-  }
-  await selectSession(current)
-}
-
-async function toggleSessionExportable(session: ConversationSession) {
-  const next = !session.exportable
-  await conversationsAPI.setSessionExportable(session.id, next)
-  session.exportable = next
-  if (selectedSession.value?.id === session.id) {
-    selectedSession.value.exportable = next
-  }
-}
-
-async function markSessionQuality(session: ConversationSession, quality_status: ConversationQualityStatus) {
-  await conversationsAPI.setSessionQuality(session.id, {
-    quality_status,
-    quality_errors: quality_status === 'clean' || quality_status === 'unchecked'
-      ? []
-      : [{ code: quality_status, message: quality_status, source: 'manual' }],
-  })
-  session.quality_status = quality_status
-  if (quality_status === 'rejected') {
-    session.exportable = false
-  }
-  if (selectedSession.value?.id === session.id) {
-    selectedSession.value.quality_status = quality_status
-    selectedSession.value.exportable = session.exportable
-  }
-}
-
-async function markTurnQuality(turn: ConversationTurnSummary | ConversationTurn, quality_status: ConversationQualityStatus) {
-  await conversationsAPI.setTurnQuality(turn.id, {
-    quality_status,
-    quality_errors: quality_status === 'clean' || quality_status === 'unchecked'
-      ? []
-      : [{ code: quality_status, message: quality_status, source: 'manual' }],
-  })
-  turn.quality_status = quality_status
-  if (quality_status === 'rejected' || quality_status === 'needs_review') {
-    turn.exportable = false
-  }
-  if (selectedTurnDetails[turn.id]) {
-    selectedTurnDetails[turn.id].quality_status = quality_status
-    selectedTurnDetails[turn.id].exportable = turn.exportable
-  }
-}
-
-async function toggleTurnExportable(turn: ConversationTurnSummary | ConversationTurn) {
-  const next = !turn.exportable
-  await conversationsAPI.setTurnExportable(turn.id, next)
-  turn.exportable = next
-  if (selectedTurnDetails[turn.id]) {
-    selectedTurnDetails[turn.id].exportable = next
-  }
-}
-
-async function mergeIntoSelectedSession() {
-  if (!selectedSession.value) return
-  const sourceIDs = parseIDs(mergeSourceIDsText.value).filter((id) => id !== selectedSession.value?.id)
-  if (sourceIDs.length === 0) return
-  await conversationsAPI.mergeSessions({
-    target_session_id: selectedSession.value.id,
-    source_session_ids: sourceIDs,
-  })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function splitFromTurn(turnId: number) {
-  if (!selectedSession.value) return
-  await conversationsAPI.splitSession(selectedSession.value.id, { turn_id: turnId })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function moveTurnToSession(turnId: number) {
-  const target = moveTargets[turnId]
-  if (!target || target <= 0) return
-  await conversationsAPI.moveTurn(turnId, { target_session_id: target })
-  await Promise.all([loadSessions(), refreshSelectedSession()])
-}
-
-async function loadTurnDetail(id: number) {
-  if (selectedTurnDetails[id]) {
-    delete selectedTurnDetails[id]
-    return
-  }
-  selectedTurnDetails[id] = await conversationsAPI.getTurn(id)
+function clearFilters() {
+  filters.user_id = null
+  filters.api_key_id = null
+  filters.model = ''
+  filters.request_id = ''
+  filters.quality_status = ''
+  filters.exportable = ''
+  filters.started_at_from = ''
+  filters.started_at_to = ''
+  applyFilters()
 }
 
 async function exportJSONL() {
@@ -944,9 +820,23 @@ async function downloadExportJob(id: number) {
   await loadExportJobs()
 }
 
-async function deleteExportJob(id: number) {
-  await conversationsAPI.deleteExportJob(id)
-  await loadExportJobs()
+function openDeleteJobDialog(id: number) {
+  deletingJobId.value = id
+  showDeleteJobDialog.value = true
+}
+
+async function executeDeleteJob() {
+  if (deletingJobId.value === null) return
+  showDeleteJobDialog.value = false
+  const id = deletingJobId.value
+  deletingJobId.value = null
+  try {
+    await conversationsAPI.deleteExportJob(id)
+    await loadExportJobs()
+  } catch (error) {
+    appStore.showError(t('admin.conversations.deleteJobFailed'))
+    await loadExportJobs()
+  }
 }
 
 function onPageChange(page: number) {
@@ -1005,20 +895,9 @@ function formatMinutes(value: number): string {
   return t('admin.conversations.minutesValue', { count: value || 0 })
 }
 
-function formatDate(value: string): string {
+function formatDateShort(value: string): string {
   if (!value) return '-'
-  return new Date(value).toLocaleString()
-}
-
-function renderMessages(messages: Array<Record<string, unknown>>): string {
-  if (!messages?.length) return '-'
-  return messages
-    .map((message) => {
-      const role = String(message.role || 'message')
-      const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? message)
-      return `${role}: ${content}`
-    })
-    .join('\n\n')
+  return new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function formatQualityErrors(errors: Array<{ code?: string; message?: string }> | undefined): string {
@@ -1039,6 +918,17 @@ function qualityKind(status: ConversationQualityStatus | string): 'success' | 'w
   if (status === 'clean') return 'success'
   if (status === 'needs_review' || status === 'rejected') return 'warn'
   return 'muted'
+}
+
+const qualityLabelMap = computed(() => ({
+  clean: t('admin.conversations.qualityClean'),
+  needs_review: t('admin.conversations.qualityNeedsReview'),
+  rejected: t('admin.conversations.qualityRejected'),
+  unchecked: t('admin.conversations.qualityUnchecked'),
+}))
+
+function qualityLabel(status: string): string {
+  return qualityLabelMap.value[status as keyof typeof qualityLabelMap.value] || status
 }
 
 function jobStatusKind(status: ConversationExportJob['status']): 'success' | 'warn' | 'muted' {

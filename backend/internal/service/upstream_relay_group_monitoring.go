@@ -39,6 +39,10 @@ const (
 	UpstreamRelayRunStatusSuccess = "success"
 	UpstreamRelayRunStatusFailed  = "failed"
 
+	UpstreamRelaySuggestionActionPriorityUpdate = "priority_update"
+	UpstreamRelaySuggestionActionAccountPause   = "account_pause"
+	UpstreamRelaySuggestionActionAccountResume  = "account_resume"
+
 	upstreamRelayDefaultPriorityStart            = 10
 	upstreamRelayPriorityStep                    = 10
 	upstreamRelayDefaultSyncInterval             = 480
@@ -287,6 +291,8 @@ type UpstreamRelayCandidate struct {
 	AccountID            int64                           `json:"account_id"`
 	AccountName          string                          `json:"account_name,omitempty"`
 	AccountPlatform      string                          `json:"account_platform,omitempty"`
+	AccountSchedulable   bool                            `json:"account_schedulable"`
+	AccountGateActive    bool                            `json:"account_gate_active,omitempty"`
 	UpstreamGroupID      string                          `json:"upstream_group_id"`
 	UpstreamGroupName    string                          `json:"upstream_group_name,omitempty"`
 	UpstreamAPIKeyID     *int64                          `json:"upstream_api_key_id,omitempty"`
@@ -394,6 +400,7 @@ type UpstreamRelayRecommendationRunListFilters struct {
 type UpstreamRelayRecommendationSuggestion struct {
 	ID                  int64      `json:"id,omitempty"`
 	RunID               int64      `json:"run_id,omitempty"`
+	ActionType          string     `json:"action_type"`
 	CandidateID         int64      `json:"candidate_id"`
 	ConnectorID         int64      `json:"connector_id"`
 	ConnectorName       string     `json:"connector_name,omitempty"`
@@ -402,7 +409,9 @@ type UpstreamRelayRecommendationSuggestion struct {
 	UpstreamGroupID     string     `json:"upstream_group_id"`
 	UpstreamGroupName   string     `json:"upstream_group_name,omitempty"`
 	OldPriority         *int       `json:"old_priority,omitempty"`
-	NewPriority         int        `json:"new_priority"`
+	NewPriority         *int       `json:"new_priority,omitempty"`
+	OldSchedulable      *bool      `json:"old_schedulable,omitempty"`
+	NewSchedulable      *bool      `json:"new_schedulable,omitempty"`
 	FinalRateMultiplier float64    `json:"final_rate_multiplier"`
 	HealthStatus        string     `json:"health_status"`
 	ReasonCode          string     `json:"reason_code"`
@@ -468,15 +477,20 @@ type UpstreamRelayBulkOperationResult struct {
 }
 
 type UpstreamRelayBulkOperationItem struct {
-	ID            int64  `json:"id"`
-	ConnectorID   int64  `json:"connector_id,omitempty"`
-	ConnectorName string `json:"connector_name,omitempty"`
-	CandidateID   int64  `json:"candidate_id,omitempty"`
-	AccountID     int64  `json:"account_id,omitempty"`
-	AccountName   string `json:"account_name,omitempty"`
-	Success       bool   `json:"success"`
-	Count         int    `json:"count,omitempty"`
-	ErrorReason   string `json:"error_reason,omitempty"`
+	ID            int64      `json:"id"`
+	ConnectorID   int64      `json:"connector_id,omitempty"`
+	ConnectorName string     `json:"connector_name,omitempty"`
+	CandidateID   int64      `json:"candidate_id,omitempty"`
+	AccountID     int64      `json:"account_id,omitempty"`
+	AccountName   string     `json:"account_name,omitempty"`
+	Success       bool       `json:"success"`
+	Count         int        `json:"count,omitempty"`
+	ErrorReason   string     `json:"error_reason,omitempty"`
+	ProbeResultID *int64     `json:"probe_result_id,omitempty"`
+	LatencyMs     *int       `json:"latency_ms,omitempty"`
+	HTTPStatus    *int       `json:"http_status,omitempty"`
+	ErrorClass    string     `json:"error_class,omitempty"`
+	ProbedAt      *time.Time `json:"probed_at,omitempty"`
 }
 
 type UpstreamRelayRecommendationPreview struct {
@@ -1087,9 +1101,14 @@ func (s *UpstreamRelayGroupMonitoringService) ProbeAllCandidates(ctx context.Con
 			item.ErrorReason = sanitizeUpstreamRelayError(err.Error())
 		} else if probe == nil || !probe.Success {
 			if probe != nil {
+				item.ProbeResultID = &probe.ID
+				item.LatencyMs = probe.LatencyMs
+				item.HTTPStatus = probe.HTTPStatus
+				item.ErrorClass = strings.TrimSpace(probe.ErrorClass)
+				item.ProbedAt = &probe.ProbedAt
 				item.ErrorReason = strings.TrimSpace(probe.ErrorMessage)
 				if item.ErrorReason == "" {
-					item.ErrorReason = strings.TrimSpace(probe.ErrorClass)
+					item.ErrorReason = item.ErrorClass
 				}
 			}
 			if item.ErrorReason == "" {
@@ -1098,6 +1117,11 @@ func (s *UpstreamRelayGroupMonitoringService) ProbeAllCandidates(ctx context.Con
 		} else {
 			item.Success = true
 			item.Count = 1
+			item.ProbeResultID = &probe.ID
+			item.LatencyMs = probe.LatencyMs
+			item.HTTPStatus = probe.HTTPStatus
+			item.ErrorClass = strings.TrimSpace(probe.ErrorClass)
+			item.ProbedAt = &probe.ProbedAt
 		}
 		result.Items[index] = item
 	})
@@ -2351,9 +2375,26 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 	now := time.Now()
 	eligible := make([]UpstreamRelayCandidate, 0, len(candidates))
 	exclusions := make([]UpstreamRelayRecommendationExclusion, 0)
+	accountGateSuggestions := make([]UpstreamRelayRecommendationSuggestion, 0)
+	schedulableByPlatform := countSchedulableRelayAccountsByPlatform(candidates)
+	seenGateAccounts := map[int64]struct{}{}
 	for _, candidate := range candidates {
 		if exclusion, ok := evaluateUpstreamRelayCandidateExclusion(candidate, now, normalized); ok {
+			if suggestion, ok := buildRelayAccountGatePauseSuggestion(candidate, exclusion, schedulableByPlatform); ok {
+				if _, seen := seenGateAccounts[suggestion.AccountID]; !seen {
+					accountGateSuggestions = append(accountGateSuggestions, suggestion)
+					seenGateAccounts[suggestion.AccountID] = struct{}{}
+					continue
+				}
+			}
 			exclusions = append(exclusions, exclusion)
+			continue
+		}
+		if suggestion, ok := buildRelayAccountGateResumeSuggestion(candidate, now, normalized); ok {
+			if _, seen := seenGateAccounts[suggestion.AccountID]; !seen {
+				accountGateSuggestions = append(accountGateSuggestions, suggestion)
+				seenGateAccounts[suggestion.AccountID] = struct{}{}
+			}
 			continue
 		}
 		eligible = append(eligible, candidate)
@@ -2363,6 +2404,17 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 	seenAccounts := make(map[int64]struct{}, len(eligible))
 	uniqueRank := 0
 	for _, candidate := range eligible {
+		if _, ok := seenGateAccounts[candidate.AccountID]; ok {
+			exclusions = append(exclusions, buildUpstreamRelayExclusion(
+				candidate,
+				now,
+				normalized,
+				"account_gate_suggestion_exists",
+				"同一账号已有暂停或恢复账号承接建议，避免同一轮同时生成 priority 调整",
+				nil,
+			))
+			continue
+		}
 		if _, ok := seenAccounts[candidate.AccountID]; ok {
 			exclusions = append(exclusions, buildUpstreamRelayExclusion(
 				candidate,
@@ -2385,6 +2437,7 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 		rate, rateSource, _ := effectiveRelayRateWithPolicy(candidate, now, normalized)
 		healthSummary := relayHealthSummary(candidate)
 		suggestions = append(suggestions, UpstreamRelayRecommendationSuggestion{
+			ActionType:          UpstreamRelaySuggestionActionPriorityUpdate,
 			CandidateID:         candidate.ID,
 			ConnectorID:         candidate.ConnectorID,
 			ConnectorName:       candidate.ConnectorName,
@@ -2393,7 +2446,7 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 			UpstreamGroupID:     candidate.UpstreamGroupID,
 			UpstreamGroupName:   candidate.UpstreamGroupName,
 			OldPriority:         candidate.CurrentPriority,
-			NewPriority:         newPriority,
+			NewPriority:         intPtr(newPriority),
 			FinalRateMultiplier: rate,
 			HealthStatus:        relayHealthStatus(candidate),
 			ReasonCode:          "rate_health_priority",
@@ -2403,6 +2456,7 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 			Reason:              fmt.Sprintf("上游倍率 %.4g，来源 %s，%s，按策略排序建议 priority=%d", rate, rateSource, healthSummary, newPriority),
 		})
 	}
+	suggestions = append(suggestions, accountGateSuggestions...)
 	return UpstreamRelayRecommendationPreview{
 		Policy:          normalized,
 		TotalCandidates: len(candidates),
@@ -2434,7 +2488,13 @@ func validateUpstreamRelayAutoApplyRun(run *UpstreamRelayRecommendationRun, poli
 		return "invalid_min_confidence"
 	}
 	for _, suggestion := range run.Suggestions {
-		if upstreamRelayPriorityDelta(suggestion.OldPriority, suggestion.NewPriority) > policy.MaxAutoApplyPriorityDelta {
+		if relaySuggestionActionOrDefault(suggestion.ActionType) != UpstreamRelaySuggestionActionPriorityUpdate {
+			return "account_gate_suggestion_requires_manual_apply"
+		}
+		if suggestion.NewPriority == nil {
+			return "invalid_priority_suggestion"
+		}
+		if upstreamRelayPriorityDelta(suggestion.OldPriority, *suggestion.NewPriority) > policy.MaxAutoApplyPriorityDelta {
 			return "priority_delta_exceeded"
 		}
 		confidenceRank, ok := upstreamRelayConfidenceRank(suggestion.Confidence)
@@ -2446,6 +2506,100 @@ func validateUpstreamRelayAutoApplyRun(run *UpstreamRelayRecommendationRun, poli
 		}
 	}
 	return ""
+}
+
+func countSchedulableRelayAccountsByPlatform(candidates []UpstreamRelayCandidate) map[string]int {
+	seen := map[int64]struct{}{}
+	out := map[string]int{}
+	for _, candidate := range candidates {
+		if !candidate.AccountSchedulable {
+			continue
+		}
+		if _, ok := seen[candidate.AccountID]; ok {
+			continue
+		}
+		seen[candidate.AccountID] = struct{}{}
+		out[candidate.AccountPlatform]++
+	}
+	return out
+}
+
+func buildRelayAccountGatePauseSuggestion(candidate UpstreamRelayCandidate, exclusion UpstreamRelayRecommendationExclusion, schedulableByPlatform map[string]int) (UpstreamRelayRecommendationSuggestion, bool) {
+	if !candidate.AccountSchedulable || candidate.AccountGateActive {
+		return UpstreamRelayRecommendationSuggestion{}, false
+	}
+	if schedulableByPlatform[candidate.AccountPlatform] <= 1 {
+		return UpstreamRelayRecommendationSuggestion{}, false
+	}
+	switch exclusion.ReasonCode {
+	case "missing_fresh_rate", "latest_probe_failed", "stale_probe", "consecutive_failures", "success_rate_below_threshold":
+	default:
+		return UpstreamRelayRecommendationSuggestion{}, false
+	}
+	rate := 0.0
+	if exclusion.FinalRateMultiplier != nil {
+		rate = *exclusion.FinalRateMultiplier
+	}
+	reason := fmt.Sprintf("%s；建议暂停账号承接，避免请求 fallback 到该高风险账号", exclusion.Reason)
+	return UpstreamRelayRecommendationSuggestion{
+		ActionType:          UpstreamRelaySuggestionActionAccountPause,
+		CandidateID:         candidate.ID,
+		ConnectorID:         candidate.ConnectorID,
+		ConnectorName:       candidate.ConnectorName,
+		AccountID:           candidate.AccountID,
+		AccountName:         candidate.AccountName,
+		UpstreamGroupID:     candidate.UpstreamGroupID,
+		UpstreamGroupName:   candidate.UpstreamGroupName,
+		OldPriority:         candidate.CurrentPriority,
+		OldSchedulable:      boolPtr(true),
+		NewSchedulable:      boolPtr(false),
+		FinalRateMultiplier: rate,
+		HealthStatus:        exclusion.HealthStatus,
+		ReasonCode:          "account_gate_" + exclusion.ReasonCode,
+		Confidence:          exclusion.Confidence,
+		HealthSummary:       exclusion.HealthSummary,
+		RateSource:          exclusion.RateSource,
+		Reason:              reason,
+	}, true
+}
+
+func buildRelayAccountGateResumeSuggestion(candidate UpstreamRelayCandidate, now time.Time, policy UpstreamRelayRecommendationPolicy) (UpstreamRelayRecommendationSuggestion, bool) {
+	if candidate.AccountSchedulable || !candidate.AccountGateActive {
+		return UpstreamRelayRecommendationSuggestion{}, false
+	}
+	if _, ok := evaluateUpstreamRelayCandidateExclusion(candidate, now, policy); ok {
+		return UpstreamRelayRecommendationSuggestion{}, false
+	}
+	rate, rateSource, _ := effectiveRelayRateWithPolicy(candidate, now, policy)
+	healthSummary := relayHealthSummary(candidate)
+	return UpstreamRelayRecommendationSuggestion{
+		ActionType:          UpstreamRelaySuggestionActionAccountResume,
+		CandidateID:         candidate.ID,
+		ConnectorID:         candidate.ConnectorID,
+		ConnectorName:       candidate.ConnectorName,
+		AccountID:           candidate.AccountID,
+		AccountName:         candidate.AccountName,
+		UpstreamGroupID:     candidate.UpstreamGroupID,
+		UpstreamGroupName:   candidate.UpstreamGroupName,
+		OldPriority:         candidate.CurrentPriority,
+		OldSchedulable:      boolPtr(false),
+		NewSchedulable:      boolPtr(true),
+		FinalRateMultiplier: rate,
+		HealthStatus:        relayHealthStatus(candidate),
+		ReasonCode:          "account_gate_recovered",
+		Confidence:          relayRateConfidence(rateSource),
+		HealthSummary:       healthSummary,
+		RateSource:          rateSource,
+		Reason:              fmt.Sprintf("账号由流量闸门暂停，当前上游倍率 %.4g，来源 %s，%s，建议恢复账号承接", rate, rateSource, healthSummary),
+	}, true
+}
+
+func relaySuggestionActionOrDefault(action string) string {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return UpstreamRelaySuggestionActionPriorityUpdate
+	}
+	return action
 }
 
 func upstreamRelayPriorityDelta(oldPriority *int, newPriority int) int {

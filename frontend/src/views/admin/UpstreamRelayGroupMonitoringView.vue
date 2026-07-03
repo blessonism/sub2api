@@ -97,6 +97,10 @@
             <Icon name="plus" size="sm" />
             {{ tM('connectors.newConnector') }}
           </button>
+          <button v-if="activeSection === 'snapshotChanges'" class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="bulkSyncing || connectors.length === 0" @click="syncAllConnectors">
+            <Icon name="refresh" size="sm" />
+            {{ bulkSyncing ? tM('fetchingSnapshots') : tM('fetchSnapshots') }}
+          </button>
           <button v-if="activeSection === 'monitoring'" class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="savingMonitoringPolicy" @click="saveMonitoringPolicy">
             <Icon name="save" size="sm" />
             {{ savingMonitoringPolicy ? tM('monitoring.saving') : tM('monitoring.save') }}
@@ -119,6 +123,70 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.description') }}</p>
           </div>
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.count', { total: candidates.length, enabled: enabledCandidateCount }) }}</span>
+        </div>
+        <div
+          v-if="candidateProbeFeedback"
+          data-testid="candidate-probe-feedback"
+          class="border-b px-4 py-3 text-sm"
+          :class="candidateProbeFeedbackPanelClass"
+        >
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <Icon :name="candidateProbeFeedbackIcon" size="sm" :class="candidateProbeFeedbackIconClass" />
+                <span class="font-semibold">{{ candidateProbeFeedbackTitle }}</span>
+                <span class="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium dark:bg-black/20">
+                  {{ candidateProbeFeedback.status === 'running' ? tM('candidates.probeStatusRunning') : candidateProbeFeedback.success ? tM('candidates.probeStatusSuccess') : tM('candidates.probeStatusFailed') }}
+                </span>
+              </div>
+              <div class="mt-1 text-xs leading-5">{{ candidateProbeFeedbackDetail }}</div>
+              <div v-if="candidateProbeFeedbackError" class="mt-2 break-words rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
+                {{ candidateProbeFeedbackError }}
+              </div>
+            </div>
+            <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="candidateProbeFeedback = null">
+              {{ tM('candidates.dismissProbeFeedback') }}
+            </button>
+          </div>
+        </div>
+        <div
+          v-if="candidateBulkProbeFeedback"
+          data-testid="candidate-bulk-probe-feedback"
+          class="border-b px-4 py-3 text-sm"
+          :class="candidateBulkProbeFeedbackPanelClass"
+        >
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <Icon :name="candidateBulkProbeFeedbackIcon" size="sm" :class="candidateBulkProbeFeedbackIconClass" />
+                <span class="font-semibold">{{ candidateBulkProbeFeedbackTitle }}</span>
+                <span class="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium dark:bg-black/20">{{ candidateBulkProbeFeedbackStatusLabel }}</span>
+              </div>
+              <div class="mt-1 text-xs leading-5">{{ candidateBulkProbeFeedbackDetail }}</div>
+              <ul v-if="candidateBulkProbeSuccessItems.length > 0" class="mt-2 space-y-1 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
+                <li class="font-medium text-emerald-700 dark:text-emerald-200">{{ tM('candidates.bulkProbeSuccessItemsTitle', { count: candidateBulkProbeSuccessTotal }) }}</li>
+                <li v-for="item in candidateBulkProbeSuccessItems" :key="bulkOperationItemKey(item)" class="break-words">
+                  <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
+                  <span class="text-gray-600 dark:text-gray-300"> · {{ bulkOperationItemSuccessDetail(item) }}</span>
+                </li>
+                <li v-if="candidateBulkProbeSuccessHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenSuccess', { count: candidateBulkProbeSuccessHiddenCount }) }}</li>
+              </ul>
+              <ul v-if="candidateBulkProbeFailedItems.length > 0" class="mt-2 space-y-1 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
+                <li class="font-medium text-red-700 dark:text-red-200">{{ tM('candidates.bulkProbeFailedItemsTitle', { count: candidateBulkProbeFailedTotal }) }}</li>
+                <li v-for="item in candidateBulkProbeFailedItems" :key="bulkOperationItemKey(item)" class="break-words">
+                  <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
+                  <span class="text-red-700 dark:text-red-200"> · {{ bulkOperationItemFailureDetail(item, tM('candidates.bulkProbeFailedUnknown')) }}</span>
+                </li>
+                <li v-if="candidateBulkProbeFailedHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenFailed', { count: candidateBulkProbeFailedHiddenCount }) }}</li>
+              </ul>
+              <div v-else-if="candidateBulkProbeFeedbackError" class="mt-2 break-words rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
+                {{ candidateBulkProbeFeedbackError }}
+              </div>
+            </div>
+            <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="candidateBulkProbeFeedback = null">
+              {{ tM('candidates.dismissProbeFeedback') }}
+            </button>
+          </div>
         </div>
         <div v-if="loading" class="flex min-h-56 items-center justify-center">
           <LoadingSpinner />
@@ -164,14 +232,17 @@
                     <span :class="candidateHealthClass(candidate)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ candidateHealthLabel(candidate) }}</span>
                     <span v-if="candidate.latest_probe" class="text-xs text-gray-500 dark:text-gray-400">{{ candidate.latest_probe.latency_ms ?? '-' }}ms</span>
                   </div>
+                  <div v-if="candidateLatestProbeErrorSummary(candidate)" class="mt-1 max-w-[240px] truncate text-xs text-red-500 dark:text-red-300">
+                    {{ candidateLatestProbeErrorSummary(candidate) }}
+                  </div>
                   <div class="mt-1.5"><HealthRateBar :rate="candidate.health?.success_rate ?? null" /></div>
                   <button class="mt-1 text-xs text-primary-600 hover:underline dark:text-primary-400" type="button" @click="healthDialogCandidate = candidate">{{ tM('candidates.healthDetail') }}</button>
                 </td>
                 <td class="px-4 py-3 text-right">
                   <div class="tabular-nums text-gray-900 dark:text-white">{{ candidate.current_priority ?? '-' }}</div>
                   <div v-if="candidatePendingSuggestion(candidate)" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-300">
-                    {{ tM('candidates.pendingSuggestion', { priority: candidatePendingSuggestion(candidate)?.new_priority }) }}
-                    <span class="text-gray-400 dark:text-gray-500">({{ priorityDeltaLabel(candidatePendingSuggestion(candidate)!) }})</span>
+                    {{ tM('candidates.pendingSuggestion', { action: suggestionActionLabel(candidatePendingSuggestion(candidate)!) }) }}
+                    <span class="text-gray-400 dark:text-gray-500">({{ suggestionChangeLabel(candidatePendingSuggestion(candidate)!) }})</span>
                   </div>
                   <div v-else class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ tM('candidates.noPendingSuggestion') }}</div>
                 </td>
@@ -297,7 +368,16 @@
                     </button>
                     <div class="min-w-0">
                       <div class="font-medium text-gray-900 dark:text-white">{{ connector.name }}</div>
-                      <div class="mt-1 max-w-[360px] truncate text-xs text-gray-500 dark:text-gray-400">{{ connector.base_url }}</div>
+                      <a
+                        v-if="connectorExternalUrl(connector)"
+                        :href="connectorExternalUrl(connector)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="mt-1 block max-w-[360px] truncate text-xs text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-300 dark:hover:text-primary-200"
+                      >
+                        {{ connector.base_url }}
+                      </a>
+                      <div v-else class="mt-1 max-w-[360px] truncate text-xs text-gray-500 dark:text-gray-400">{{ connector.base_url }}</div>
                     </div>
                   </div>
                 </td>
@@ -326,8 +406,8 @@
                 <td class="px-4 py-3">
                   <div class="flex flex-wrap justify-end gap-2">
                     <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" @click="editConnector(connector)">{{ tM('connectors.edit') }}</button>
-                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="syncingId === connector.id || refreshingMetrics" @click="sync(connector)">
-                      {{ syncingId === connector.id ? tM('connectors.syncing') : tM('connectors.syncAction') }}
+                    <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="manualSnapshotRefreshingId === connector.id || refreshingMetrics" @click="sync(connector)">
+                      {{ manualSnapshotRefreshingId === connector.id ? tM('connectors.fetchingSnapshots') : tM('connectors.fetchSnapshots') }}
                     </button>
                     <button class="btn btn-secondary whitespace-nowrap px-2 py-1 text-xs" type="button" :disabled="refreshingMetrics" @click="refreshMetricsForSingleConnector(connector)">
                       {{ connectorMetricsRefreshingLabel(connector) }}
@@ -530,13 +610,14 @@
               </div>
             </div>
             <div class="overflow-x-auto">
-              <table class="w-full min-w-[920px] text-sm">
+              <table class="w-full min-w-[1040px] text-sm">
                 <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
                     <th class="px-3 py-2 text-left">{{ tM('usageHistory.colDate') }}</th>
                     <th class="px-3 py-2 text-left">{{ tM('usageHistory.colGroup') }}</th>
                     <th class="px-3 py-2 text-right">{{ tM('usageHistory.colCost') }}</th>
                     <th class="px-3 py-2 text-right">{{ tM('usageHistory.colTokens') }}</th>
+                    <th class="px-3 py-2 text-right">{{ tM('usageHistory.colTokensPerQuota') }}</th>
                     <th class="px-3 py-2 text-left">{{ tM('usageHistory.colCheckedAt') }}</th>
                   </tr>
                 </thead>
@@ -559,6 +640,7 @@
                     </td>
                     <td class="px-3 py-3 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(item.actual_cost) }}</td>
                     <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillions(item.total_tokens) }}</td>
+                    <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillionsPerQuota(item.actual_cost, item.total_tokens) }}</td>
                     <td class="px-3 py-3 whitespace-nowrap">{{ formatDate(item.checked_at) }}</td>
                   </tr>
                 </tbody>
@@ -894,7 +976,7 @@
           <div class="grid gap-3 p-4 md:grid-cols-2">
             <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="bulkSyncing || connectors.length === 0" @click="syncAllConnectors">
               <Icon name="refresh" size="sm" />
-              {{ bulkSyncing ? tM('monitoring.syncAllRunning') : tM('monitoring.syncAll') }}
+              {{ bulkSyncing ? tM('monitoring.fetchSnapshotsAllRunning') : tM('monitoring.fetchSnapshotsAll') }}
             </button>
             <button class="btn btn-secondary inline-flex items-center justify-center gap-2" type="button" :disabled="bulkProbing || enabledCandidateCount === 0" @click="probeAllCandidates">
               <Icon name="play" size="sm" />
@@ -912,9 +994,20 @@
               <span :class="bulkOperationResult.result.failed > 0 ? 'text-red-600 dark:text-red-300' : ''">{{ tM('monitoring.resultFailed', { n: bulkOperationResult.result.failed }) }}</span>
             </div>
             <ul v-if="bulkFailedItems.length > 0" class="mt-3 space-y-1 text-xs text-red-600 dark:text-red-300">
+              <li class="font-medium">{{ tM('candidates.bulkProbeFailedItemsTitle', { count: bulkFailedTotal }) }}</li>
               <li v-for="item in bulkFailedItems" :key="bulkOperationItemKey(item)">
-                {{ bulkOperationItemLabel(item) }}: {{ item.error_reason || tM('monitoring.unknownFailure') }}
+                <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
+                <span> · {{ bulkOperationItemFailureDetail(item, tM('monitoring.unknownFailure')) }}</span>
               </li>
+              <li v-if="bulkFailedHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenFailed', { count: bulkFailedHiddenCount }) }}</li>
+            </ul>
+            <ul v-if="bulkOperationResult.kind === 'probe' && bulkSuccessItems.length > 0" class="mt-3 space-y-1 text-xs text-emerald-600 dark:text-emerald-300">
+              <li class="font-medium">{{ tM('candidates.bulkProbeSuccessItemsTitle', { count: bulkSuccessTotal }) }}</li>
+              <li v-for="item in bulkSuccessItems" :key="bulkOperationItemKey(item)">
+                <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
+                <span> · {{ bulkOperationItemSuccessDetail(item) }}</span>
+              </li>
+              <li v-if="bulkSuccessHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenSuccess', { count: bulkSuccessHiddenCount }) }}</li>
             </ul>
           </div>
         </div>
@@ -997,8 +1090,9 @@
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
+                  <th class="px-4 py-3 text-left">{{ tM('applyDialog.colAction') }}</th>
                   <th class="px-4 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
-                  <th class="px-4 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
+                  <th class="px-4 py-3 text-right">{{ tM('applyDialog.colChange') }}</th>
                   <th class="px-4 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ tM('policy.colReason') }}</th>
                 </tr>
@@ -1006,13 +1100,16 @@
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                 <tr v-for="suggestion in policyPreview.suggestions" :key="suggestion.candidate_id">
                   <td class="px-4 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
+                  <td class="px-4 py-3">
+                    <span :class="suggestionActionClass(suggestion)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ suggestionActionLabel(suggestion) }}</span>
+                  </td>
                   <td class="px-4 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
-                  <td class="px-4 py-3 text-right">{{ suggestion.old_priority ?? '-' }} → {{ suggestion.new_priority }}</td>
+                  <td class="px-4 py-3 text-right">{{ suggestionChangeLabel(suggestion) }}</td>
                   <td class="px-4 py-3 text-right">{{ formatRate(suggestion.final_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ suggestion.reason }}</td>
                 </tr>
                 <tr v-if="policyPreview.suggestions.length === 0">
-                  <td colspan="5" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">{{ tM('policy.noPreviewSuggestions') }}</td>
+                  <td colspan="6" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">{{ tM('policy.noPreviewSuggestions') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1210,7 +1307,27 @@
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamGroupId') }}</span>
-        <input v-model.trim="candidateForm.upstream_group_id" class="input w-full" type="text" />
+        <select
+          class="input w-full"
+          data-testid="candidate-upstream-group-select"
+          :value="candidateGroupSelectValue"
+          :disabled="!candidateForm.connector_id"
+          @change="selectCandidateGroupOption"
+        >
+          <option value="">{{ candidateGroupPlaceholder }}</option>
+          <option v-for="option in candidateGroupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          <option :value="MANUAL_CANDIDATE_GROUP_OPTION">{{ tM('candidateForm.manualGroupId') }}</option>
+        </select>
+        <input
+          v-if="candidateGroupManualInputVisible"
+          v-model.trim="candidateForm.upstream_group_id"
+          class="input w-full"
+          data-testid="candidate-upstream-group-manual-input"
+          type="text"
+          :placeholder="tM('candidateForm.placeholderManualGroupId')"
+          @input="syncCandidateGroupManualInput"
+        />
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ candidateGroupSelectHint }}</p>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamApiKey') }}</span>
@@ -1254,6 +1371,18 @@
   </BaseDialog>
 
   <BaseDialog :show="snapshotDialogOpen" :title="snapshotDialogTitle" width="extra-wide" @close="snapshotDialogOpen = false">
+    <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-gray-500 dark:text-gray-400">{{ tM('snapshotDialog.description') }}</p>
+      <button
+        class="btn btn-secondary inline-flex items-center justify-center gap-2"
+        type="button"
+        :disabled="!snapshotConnector || manualSnapshotRefreshingId === snapshotConnector.id"
+        @click="snapshotConnector && sync(snapshotConnector)"
+      >
+        <Icon name="refresh" size="sm" />
+        {{ snapshotConnector && manualSnapshotRefreshingId === snapshotConnector.id ? tM('snapshotDialog.fetching') : tM('snapshotDialog.fetchLatest') }}
+      </button>
+    </div>
     <div v-if="snapshotLoading" class="flex min-h-56 items-center justify-center">
       <LoadingSpinner />
     </div>
@@ -1322,8 +1451,9 @@
           <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
             <tr>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colAccount') }}</th>
+              <th class="px-3 py-3 text-left">{{ tM('applyDialog.colAction') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('candidates.colMapping') }}</th>
-              <th class="px-3 py-3 text-right">{{ tM('applyDialog.colPriorityDelta') }}</th>
+              <th class="px-3 py-3 text-right">{{ tM('applyDialog.colChange') }}</th>
               <th class="px-3 py-3 text-right">{{ tM('applyDialog.colRate') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colConfidence') }}</th>
               <th class="px-3 py-3 text-left">{{ tM('applyDialog.colSummary') }}</th>
@@ -1332,13 +1462,17 @@
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-for="suggestion in applyRun?.suggestions || []" :key="suggestion.id || suggestion.candidate_id">
               <td class="px-3 py-3">#{{ suggestion.account_id }} {{ suggestion.account_name || '-' }}</td>
+              <td class="px-3 py-3">
+                <span :class="suggestionActionClass(suggestion)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">{{ suggestionActionLabel(suggestion) }}</span>
+              </td>
               <td class="px-3 py-3">{{ suggestionMappingLabel(suggestion) }}</td>
               <td class="px-3 py-3 text-right">
-                <div class="inline-flex items-center gap-1 tabular-nums">
+                <div v-if="suggestionActionType(suggestion) === 'priority_update'" class="inline-flex items-center gap-1 tabular-nums">
                   <span class="text-gray-400 dark:text-gray-500">{{ suggestion.old_priority ?? '-' }}</span>
                   <Icon :name="(priorityDeltaIcon(suggestion) as 'arrowUp' | 'arrowDown' | 'arrowRight')" size="xs" :class="priorityDeltaClass(suggestion)" />
-                  <span class="font-semibold" :class="priorityDeltaClass(suggestion)">{{ suggestion.new_priority }}</span>
+                  <span class="font-semibold" :class="priorityDeltaClass(suggestion)">{{ suggestion.new_priority ?? '-' }}</span>
                 </div>
+                <span v-else :class="suggestionActionClass(suggestion)" class="font-medium">{{ suggestionSchedulableTransitionLabel(suggestion) }}</span>
               </td>
               <td class="px-3 py-3 text-right">
                 <div class="tabular-nums">{{ formatRate(suggestion.final_rate_multiplier) }}</div>
@@ -1407,6 +1541,7 @@ import RateSourceTag from '@/components/admin/upstreamRelay/RateSourceTag.vue'
 import CandidateHealthDialog from '@/components/admin/upstreamRelay/CandidateHealthDialog.vue'
 import accountsAPI from '@/api/admin/accounts'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
+import { sanitizeUrl } from '@/utils/url'
 import upstreamRelayAPI, {
   type UpstreamRelayCandidate,
   type UpstreamRelayConnector,
@@ -1423,6 +1558,7 @@ import upstreamRelayAPI, {
   type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayMonitoringPolicyInput,
   type UpstreamRelayProbeProtocol,
+  type UpstreamRelayRecommendationActionType,
   type UpstreamRelayRecommendationPolicy,
   type UpstreamRelayRecommendationPreview,
   type UpstreamRelayRecommendationSuggestion,
@@ -1435,6 +1571,7 @@ import type { Account, PaginatedResponse } from '@/types'
 type SectionKey = 'candidates' | 'connectors' | 'usageHistory' | 'snapshotChanges' | 'monitoring' | 'recommendations' | 'policy'
 type BulkOperationKind = 'sync' | 'probe'
 type UsageHistoryDateShortcutKey = 'today' | 'yesterday' | 'last7d' | 'last30d'
+type SuggestionActionType = UpstreamRelayRecommendationActionType
 type UsageHistorySubtotal = {
   cost: number
   tokens: number
@@ -1444,6 +1581,10 @@ type UsageHistorySubtotal = {
 type ConnectorGroupRow =
   | { kind: 'candidate'; key: string; candidate: UpstreamRelayCandidate }
   | { kind: 'snapshot'; key: string; snapshot: UpstreamRelayGroupRateSnapshot }
+type CandidateGroupOption = {
+  value: string
+  label: string
+}
 type TodayUsageOverview = {
   loaded: boolean
   cost: number
@@ -1455,10 +1596,32 @@ type MetricsRefreshResultState = {
   updatedAt: string
   expanded: boolean
 }
+type CandidateProbeFeedback = {
+  status: 'running' | 'done'
+  candidateId: number
+  accountLabel: string
+  mappingLabel: string
+  startedAt: string
+  completedAt?: string
+  success?: boolean
+  latencyMs?: number | null
+  httpStatus?: number | null
+  errorClass?: string
+  errorMessage?: string
+}
+type CandidateBulkProbeFeedback = {
+  status: 'running' | 'done'
+  startedAt: string
+  completedAt?: string
+  result?: UpstreamRelayBulkOperationResult
+  errorMessage?: string
+}
 
 const METRICS_REFRESH_LOCAL_BINDING_ERROR = 'connector has no local account bindings'
 const USAGE_HISTORY_STALE_MS = 24 * 60 * 60 * 1000
 const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
+const MANUAL_CANDIDATE_GROUP_OPTION = '__manual__'
+const BULK_OPERATION_DETAIL_LIMIT = 5
 
 const loading = ref(false)
 const error = ref('')
@@ -1473,7 +1636,7 @@ const recommendationRuns = ref<UpstreamRelayRecommendationRun[]>([])
 const accounts = ref<Account[]>([])
 const connectorAPIKeys = ref<UpstreamRelayAPIKeyOption[]>([])
 const selectedConnectorId = ref(0)
-const syncingId = ref<number | null>(null)
+const manualSnapshotRefreshingId = ref<number | null>(null)
 const refreshingMetrics = ref(false)
 const refreshingMetricsConnectorId = ref<number | null>(null)
 const probingId = ref<number | null>(null)
@@ -1505,6 +1668,8 @@ const policyPreviewResultRef = ref<HTMLElement | null>(null)
 const monitoringPolicySavedAt = ref<string | null>(null)
 const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
 const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
+const candidateProbeFeedback = ref<CandidateProbeFeedback | null>(null)
+const candidateBulkProbeFeedback = ref<CandidateBulkProbeFeedback | null>(null)
 const activeSection = ref<SectionKey>('candidates')
 const connectorDialogOpen = ref(false)
 const connectorFormError = ref('')
@@ -1682,6 +1847,161 @@ const candidateCurrentAPIKeyOption = computed<UpstreamRelayAPIKeyOption | null>(
     masked_key: candidateForm.upstream_api_key_masked || undefined
   }
 })
+const candidateGroupOptions = computed<CandidateGroupOption[]>(() => {
+  const connectorId = Number(candidateForm.connector_id || 0)
+  if (!connectorId) return []
+  const snapshotsByGroupId = new Map<string, UpstreamRelayGroupRateSnapshot>()
+  for (const snapshot of [...overviewSnapshots.value, ...snapshots.value]) {
+    if (snapshot.connector_id !== connectorId || !snapshot.upstream_group_id) continue
+    snapshotsByGroupId.set(snapshot.upstream_group_id, snapshot)
+  }
+  return Array.from(snapshotsByGroupId.values())
+    .sort((a, b) => snapshotGroupLabel(a).localeCompare(snapshotGroupLabel(b)))
+    .map((snapshot) => ({
+      value: snapshot.upstream_group_id,
+      label: candidateGroupOptionLabel(snapshot)
+    }))
+})
+const candidateGroupSelectValue = computed(() => {
+  const groupId = candidateForm.upstream_group_id.trim()
+  if (!groupId) return ''
+  return candidateGroupOptions.value.some((option) => option.value === groupId)
+    ? groupId
+    : MANUAL_CANDIDATE_GROUP_OPTION
+})
+const candidateGroupManualInputVisible = computed(() => {
+  const groupId = candidateForm.upstream_group_id.trim()
+  return !candidateGroupOptions.value.some((option) => option.value === groupId)
+})
+const candidateGroupPlaceholder = computed(() => {
+  if (candidateGroupOptions.value.length > 0) return tM('candidateForm.placeholderGroup')
+  return candidateForm.connector_id ? tM('candidateForm.placeholderGroupEmpty') : tM('candidateForm.placeholderSelect')
+})
+const candidateGroupSelectHint = computed(() => {
+  if (!candidateForm.connector_id) return tM('candidateForm.groupHintSelectConnector')
+  if (candidateGroupOptions.value.length === 0) return tM('candidateForm.groupHintNoSnapshots')
+  if (candidateGroupManualInputVisible.value) return tM('candidateForm.groupHintManual', { count: candidateGroupOptions.value.length })
+  return tM('candidateForm.groupHintOptions', { count: candidateGroupOptions.value.length })
+})
+const candidateProbeFeedbackPanelClass = computed(() => {
+  if (candidateProbeFeedback.value?.status === 'running') {
+    return 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100'
+  }
+  return candidateProbeFeedback.value?.success
+    ? 'border-emerald-100 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-red-100 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
+})
+const candidateProbeFeedbackIcon = computed(() => {
+  if (candidateProbeFeedback.value?.status === 'running') return 'refresh'
+  return candidateProbeFeedback.value?.success ? 'check' : 'x'
+})
+const candidateProbeFeedbackIconClass = computed(() => (
+  candidateProbeFeedback.value?.status === 'running'
+    ? 'animate-spin text-blue-500 dark:text-blue-200'
+    : ''
+))
+const candidateProbeFeedbackTitle = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback) return ''
+  if (feedback.status === 'running') return tM('candidates.probeRunningTitle', { account: feedback.accountLabel })
+  return feedback.success
+    ? tM('candidates.probeSuccessTitle', { account: feedback.accountLabel })
+    : tM('candidates.probeFailedTitle', { account: feedback.accountLabel })
+})
+const candidateProbeFeedbackDetail = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback) return ''
+  if (feedback.status === 'running') {
+    return tM('candidates.probeRunningDetail', {
+      mapping: feedback.mappingLabel,
+      time: formatDate(feedback.startedAt)
+    })
+  }
+  return tM('candidates.probeCompletedDetail', {
+    mapping: feedback.mappingLabel,
+    latency: formatProbeLatency(feedback.latencyMs),
+    http: feedback.httpStatus ?? '-',
+    time: formatDate(feedback.completedAt || feedback.startedAt)
+  })
+})
+const candidateProbeFeedbackError = computed(() => {
+  const feedback = candidateProbeFeedback.value
+  if (!feedback || feedback.status === 'running' || feedback.success) return ''
+  const reason = feedback.errorMessage || feedback.errorClass || tM('candidates.probeFailedUnknown')
+  return feedback.errorClass ? `${errorClassLabel(feedback.errorClass)}: ${reason}` : reason
+})
+const candidateBulkProbeFeedbackPanelClass = computed(() => {
+  if (candidateBulkProbeFeedback.value?.status === 'running') {
+    return 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100'
+  }
+  if (candidateBulkProbeFeedback.value?.errorMessage || (candidateBulkProbeFeedback.value?.result?.failed || 0) > 0) {
+    return (candidateBulkProbeFeedback.value?.result?.success || 0) > 0
+      ? 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100'
+      : 'border-red-100 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
+  }
+  return 'border-emerald-100 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+})
+const candidateBulkProbeFeedbackIcon = computed(() => {
+  if (candidateBulkProbeFeedback.value?.status === 'running') return 'refresh'
+  if (candidateBulkProbeFeedback.value?.errorMessage || (candidateBulkProbeFeedback.value?.result?.failed || 0) > 0) return 'x'
+  return 'check'
+})
+const candidateBulkProbeFeedbackIconClass = computed(() => (
+  candidateBulkProbeFeedback.value?.status === 'running'
+    ? 'animate-spin text-blue-500 dark:text-blue-200'
+    : ''
+))
+const candidateBulkProbeFeedbackStatusLabel = computed(() => {
+  const feedback = candidateBulkProbeFeedback.value
+  if (!feedback || feedback.status === 'running') return tM('candidates.bulkProbeStatusRunning')
+  if (feedback.errorMessage) return tM('candidates.bulkProbeStatusFailed')
+  if ((feedback.result?.failed || 0) > 0) return tM('candidates.bulkProbeStatusPartial')
+  return tM('candidates.bulkProbeStatusSuccess')
+})
+const candidateBulkProbeFeedbackTitle = computed(() => {
+  const feedback = candidateBulkProbeFeedback.value
+  if (!feedback || feedback.status === 'running') return tM('candidates.bulkProbeRunningTitle')
+  if (feedback.errorMessage) return tM('candidates.bulkProbeFailedTitle')
+  if ((feedback.result?.failed || 0) > 0) return tM('candidates.bulkProbePartialTitle')
+  return tM('candidates.bulkProbeSuccessTitle')
+})
+const candidateBulkProbeFeedbackDetail = computed(() => {
+  const feedback = candidateBulkProbeFeedback.value
+  if (!feedback) return ''
+  if (feedback.status === 'running') {
+    return tM('candidates.bulkProbeRunningDetail', {
+      total: enabledCandidateCount.value,
+      time: formatDate(feedback.startedAt)
+    })
+  }
+  const result = feedback.result
+  if (!result) {
+    return tM('candidates.bulkProbeRequestFailedDetail', {
+      time: formatDate(feedback.completedAt || feedback.startedAt)
+    })
+  }
+  return tM('candidates.bulkProbeCompletedDetail', {
+    total: result.total,
+    success: result.success,
+    failed: result.failed,
+    time: formatDate(feedback.completedAt || feedback.startedAt)
+  })
+})
+const candidateBulkProbeFailedItems = computed(() => {
+  return (candidateBulkProbeFeedback.value?.result?.items || [])
+    .filter((item) => !item.success)
+    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
+})
+const candidateBulkProbeSuccessItems = computed(() => {
+  return (candidateBulkProbeFeedback.value?.result?.items || [])
+    .filter((item) => item.success)
+    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
+})
+const candidateBulkProbeFailedTotal = computed(() => (candidateBulkProbeFeedback.value?.result?.items || []).filter((item) => !item.success).length)
+const candidateBulkProbeSuccessTotal = computed(() => (candidateBulkProbeFeedback.value?.result?.items || []).filter((item) => item.success).length)
+const candidateBulkProbeFailedHiddenCount = computed(() => Math.max(0, candidateBulkProbeFailedTotal.value - candidateBulkProbeFailedItems.value.length))
+const candidateBulkProbeSuccessHiddenCount = computed(() => Math.max(0, candidateBulkProbeSuccessTotal.value - candidateBulkProbeSuccessItems.value.length))
+const candidateBulkProbeFeedbackError = computed(() => candidateBulkProbeFeedback.value?.errorMessage || '')
 
 const sections = computed((): Array<{ key: SectionKey; label: string; badge?: number }> => [
   { key: 'candidates', label: tM('tabs.candidates') },
@@ -1696,6 +2016,8 @@ const sections = computed((): Array<{ key: SectionKey; label: string; badge?: nu
 watch(() => candidateForm.connector_id, async (connectorId, previousConnectorId) => {
   if (!candidateDialogOpen.value) return
   if (connectorId !== previousConnectorId) {
+    candidateForm.upstream_group_id = ''
+    candidateSourceSnapshot.value = null
     candidateForm.upstream_api_key_id = null
     candidateForm.upstream_api_key_name = ''
     candidateForm.upstream_api_key_masked = ''
@@ -1740,8 +2062,17 @@ const autoMonitoringStatusChips = computed(() => {
 const bulkFailedItems = computed(() => {
   return (bulkOperationResult.value?.result.items || [])
     .filter((item) => !item.success)
-    .slice(0, 5)
+    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
 })
+const bulkSuccessItems = computed(() => {
+  return (bulkOperationResult.value?.result.items || [])
+    .filter((item) => item.success)
+    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
+})
+const bulkFailedTotal = computed(() => (bulkOperationResult.value?.result.items || []).filter((item) => !item.success).length)
+const bulkSuccessTotal = computed(() => (bulkOperationResult.value?.result.items || []).filter((item) => item.success).length)
+const bulkFailedHiddenCount = computed(() => Math.max(0, bulkFailedTotal.value - bulkFailedItems.value.length))
+const bulkSuccessHiddenCount = computed(() => Math.max(0, bulkSuccessTotal.value - bulkSuccessItems.value.length))
 
 const metricsRefreshResultByConnectorId = computed(() => {
   const out = new Map<number, UpstreamRelayConnectorMetricsRefreshResult>()
@@ -1945,6 +2276,9 @@ const snapshotDialogTitle = computed(() =>
 
 const applyRiskCards = computed(() => {
   const suggestions = applyRun.value?.suggestions || []
+  const prioritySuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'priority_update').length
+  const pauseSuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'account_pause').length
+  const resumeSuggestionCount = suggestions.filter((item) => suggestionActionType(item) === 'account_resume').length
   const lowConfidenceCount = suggestions.filter((item) => item.confidence === 'low' || item.confidence === 'unknown').length
   const riskyCandidateIds = new Set(
     candidates.value
@@ -1954,12 +2288,17 @@ const applyRiskCards = computed(() => {
   const riskySuggestionCount = suggestions.filter((item) => riskyCandidateIds.has(item.candidate_id)).length
   const connectorCount = new Set(suggestions.map((item) => item.connector_id)).size
   const maxPriorityDelta = suggestions.reduce((max, item) => {
+    if (suggestionActionType(item) !== 'priority_update') return max
     if (item.old_priority === null || item.old_priority === undefined) return max
+    if (item.new_priority === null || item.new_priority === undefined) return max
     return Math.max(max, Math.abs(item.new_priority - item.old_priority))
   }, 0)
 
   return [
     { label: tM('applyDialog.riskTotal'), value: suggestions.length },
+    { label: tM('applyDialog.riskPriority'), value: prioritySuggestionCount },
+    { label: tM('applyDialog.riskPause'), value: pauseSuggestionCount },
+    { label: tM('applyDialog.riskResume'), value: resumeSuggestionCount },
     { label: tM('applyDialog.riskLowConfidence'), value: lowConfidenceCount },
     { label: tM('applyDialog.riskFailedCandidates'), value: riskySuggestionCount },
     { label: tM('applyDialog.riskConnectors'), value: connectorCount },
@@ -2432,14 +2771,16 @@ async function submitConnector() {
 }
 
 async function sync(connector: UpstreamRelayConnector) {
-  syncingId.value = connector.id
+  manualSnapshotRefreshingId.value = connector.id
   error.value = ''
+  successMessage.value = ''
   try {
     snapshots.value = await upstreamRelayAPI.syncConnector(connector.id)
     replaceOverviewSnapshotsForConnector(connector.id, snapshots.value)
     selectedConnectorId.value = connector.id
     snapshotConnector.value = connector
     snapshotDialogOpen.value = true
+    successMessage.value = tM('snapshotDialog.fetchSuccess', { count: snapshots.value.length })
     // 静默刷新连接器列表以更新 last_synced_at，不触发全页 loading
     connectors.value = await loadAllPages<UpstreamRelayConnector>((params) => upstreamRelayAPI.listConnectors(params))
     if (activeSection.value === 'snapshotChanges') {
@@ -2448,7 +2789,7 @@ async function sync(connector: UpstreamRelayConnector) {
   } catch (err) {
     error.value = err instanceof Error ? err.message : tM('errors.syncFailed')
   } finally {
-    syncingId.value = null
+    manualSnapshotRefreshingId.value = null
   }
 }
 
@@ -2456,6 +2797,7 @@ async function syncAllConnectors() {
   if (connectors.value.length === 0) return
   bulkSyncing.value = true
   error.value = ''
+  successMessage.value = ''
   try {
     const result = await upstreamRelayAPI.syncAllConnectors()
     bulkOperationResult.value = { kind: 'sync', result, updatedAt: new Date().toISOString() }
@@ -2465,6 +2807,8 @@ async function syncAllConnectors() {
     }
     if (result.failed > 0) {
       error.value = tM('errors.syncAllPartialFailed', { count: result.failed })
+    } else {
+      successMessage.value = tM('snapshotDialog.fetchAllSuccess', { success: result.success, total: result.total })
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : tM('errors.syncAllFailed')
@@ -2749,11 +3093,54 @@ function syncSelectedCandidateAPIKey() {
   }
 }
 
+function selectCandidateGroupOption(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  if (!value) {
+    candidateForm.upstream_group_id = ''
+    candidateSourceSnapshot.value = null
+    return
+  }
+  if (value === MANUAL_CANDIDATE_GROUP_OPTION) {
+    candidateSourceSnapshot.value = null
+    return
+  }
+  candidateForm.upstream_group_id = value
+  candidateSourceSnapshot.value = candidateSnapshotByGroupId(candidateForm.connector_id, value)
+}
+
+function syncCandidateGroupManualInput(event: Event) {
+  const groupId = (event.target as HTMLInputElement).value.trim()
+  candidateSourceSnapshot.value = groupId
+    ? candidateSnapshotByGroupId(candidateForm.connector_id, groupId)
+    : null
+}
+
 async function probe(candidate: UpstreamRelayCandidate) {
   probingId.value = candidate.id
   error.value = ''
+  candidateProbeFeedback.value = {
+    status: 'running',
+    candidateId: candidate.id,
+    accountLabel: candidateAccountLabel(candidate),
+    mappingLabel: candidateMappingLabel(candidate),
+    startedAt: new Date().toISOString()
+  }
   try {
     const result = await upstreamRelayAPI.probeCandidate(candidate.id)
+    const completedAt = result.probed_at || new Date().toISOString()
+    candidateProbeFeedback.value = {
+      status: 'done',
+      candidateId: candidate.id,
+      accountLabel: candidateAccountLabel(candidate),
+      mappingLabel: candidateMappingLabel(candidate),
+      startedAt: candidateProbeFeedback.value?.startedAt || completedAt,
+      completedAt,
+      success: result.success,
+      latencyMs: result.latency_ms,
+      httpStatus: result.http_status,
+      errorClass: result.error_class,
+      errorMessage: result.error_message
+    }
     // 即时更新行内探测结果，无需整页刷新
     candidates.value = candidates.value.map((c) =>
       c.id === candidate.id ? { ...c, latest_probe: result } : c
@@ -2761,7 +3148,17 @@ async function probe(candidate: UpstreamRelayCandidate) {
     // 后台静默刷新健康聚合数据
     refreshCandidatesSilent()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.probeFailed')
+    const message = extractApiErrorMessage(err, tM('errors.probeFailed'))
+    candidateProbeFeedback.value = {
+      status: 'done',
+      candidateId: candidate.id,
+      accountLabel: candidateAccountLabel(candidate),
+      mappingLabel: candidateMappingLabel(candidate),
+      startedAt: candidateProbeFeedback.value?.startedAt || new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      success: false,
+      errorMessage: message
+    }
   } finally {
     probingId.value = null
   }
@@ -2771,15 +3168,29 @@ async function probeAllCandidates() {
   if (enabledCandidateCount.value === 0) return
   bulkProbing.value = true
   error.value = ''
+  candidateBulkProbeFeedback.value = {
+    status: 'running',
+    startedAt: new Date().toISOString()
+  }
   try {
     const result = await upstreamRelayAPI.probeAllCandidates()
-    bulkOperationResult.value = { kind: 'probe', result, updatedAt: new Date().toISOString() }
-    await refreshCandidatesSilent()
-    if (result.failed > 0) {
-      error.value = tM('errors.probeAllPartialFailed', { count: result.failed })
+    const completedAt = new Date().toISOString()
+    bulkOperationResult.value = { kind: 'probe', result, updatedAt: completedAt }
+    candidateBulkProbeFeedback.value = {
+      status: 'done',
+      startedAt: candidateBulkProbeFeedback.value?.startedAt || completedAt,
+      completedAt,
+      result
     }
+    await refreshCandidatesSilent()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.probeAllFailed')
+    const message = extractApiErrorMessage(err, tM('errors.probeAllFailed'))
+    candidateBulkProbeFeedback.value = {
+      status: 'done',
+      startedAt: candidateBulkProbeFeedback.value?.startedAt || new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      errorMessage: message
+    }
   } finally {
     probingId.value = null
     bulkProbing.value = false
@@ -3087,6 +3498,10 @@ function connectorStatusLabel(status: string) {
   return map[status] || status
 }
 
+function connectorExternalUrl(connector: UpstreamRelayConnector) {
+  return sanitizeUrl(connector.base_url)
+}
+
 function authModeLabel(mode: string) {
   const map: Record<string, string> = { manual_session: tM('authMode.manualSession'), password_login: tM('authMode.passwordLogin') }
   return map[mode] || mode
@@ -3187,6 +3602,32 @@ function bulkOperationItemLabel(item: UpstreamRelayBulkOperationItem) {
   return `#${item.id}`
 }
 
+function bulkOperationItemProbeMeta(item: UpstreamRelayBulkOperationItem) {
+  const parts: string[] = []
+  if (item.latency_ms !== null && item.latency_ms !== undefined) {
+    parts.push(tM('candidates.bulkProbeItemLatency', { latency: formatProbeLatency(item.latency_ms) }))
+  }
+  if (item.http_status !== null && item.http_status !== undefined) {
+    parts.push(tM('candidates.bulkProbeItemHttp', { http: item.http_status }))
+  }
+  if (item.probed_at) {
+    parts.push(tM('candidates.bulkProbeItemTime', { time: formatDate(item.probed_at) }))
+  }
+  return parts.join(' · ')
+}
+
+function bulkOperationItemSuccessDetail(item: UpstreamRelayBulkOperationItem) {
+  return bulkOperationItemProbeMeta(item) || tM('candidates.bulkProbeSuccessNoDetail')
+}
+
+function bulkOperationItemFailureDetail(item: UpstreamRelayBulkOperationItem, fallback: string) {
+  const reason = item.error_reason || fallback
+  const errorClass = item.error_class ? errorClassLabel(item.error_class) : ''
+  const meta = bulkOperationItemProbeMeta(item)
+  const reasonText = errorClass ? `${errorClass}: ${reason}` : reason
+  return meta ? `${reasonText} · ${meta}` : reasonText
+}
+
 function snapshotChangeTypeLabel(change: UpstreamRelayGroupRateSnapshotChange) {
   if (change.change_type === 'added') return tM('snapshotChanges.typeAdded')
   if (change.change_type === 'removed') return tM('snapshotChanges.typeRemoved')
@@ -3245,6 +3686,13 @@ function formatUsageCost(value?: number | null) {
 function formatUsageTokenMillions(value?: number | null) {
   const numeric = Number(value ?? 0)
   return `${(Number.isFinite(numeric) ? numeric / 1_000_000 : 0).toFixed(2)}M`
+}
+
+function formatUsageTokenMillionsPerQuota(cost?: number | null, tokens?: number | null) {
+  const numericCost = Number(cost ?? 0)
+  const numericTokens = Number(tokens ?? 0)
+  if (!Number.isFinite(numericCost) || !Number.isFinite(numericTokens) || numericCost <= 0) return '-'
+  return `${(numericTokens / numericCost / 1_000_000).toFixed(2)}M`
 }
 
 function formatCostPerMillionTokens(cost?: number | null, tokens?: number | null) {
@@ -3449,6 +3897,15 @@ function candidateHealthLabel(candidate: UpstreamRelayCandidate) {
   return tM('health.unknown')
 }
 
+function candidateLatestProbeErrorSummary(candidate: UpstreamRelayCandidate) {
+  const probe = candidate.latest_probe
+  if (!probe || probe.success) return ''
+  const reason = probe.error_message || probe.error_class || ''
+  const errorClass = probe.error_class ? errorClassLabel(probe.error_class) : ''
+  if (errorClass && reason && reason !== probe.error_class) return `${errorClass}: ${reason}`
+  return errorClass || reason
+}
+
 function candidateHealthClass(candidate: UpstreamRelayCandidate) {
   const severity = candidateHealthSeverity(candidate)
   if (severity === 'success') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
@@ -3518,6 +3975,15 @@ function snapshotGroupLabel(snapshot: UpstreamRelayGroupRateSnapshot) {
   return snapshot.name || snapshot.upstream_group_id
 }
 
+function candidateSnapshotByGroupId(connectorId: number, groupId: string) {
+  return [...overviewSnapshots.value, ...snapshots.value]
+    .find((snapshot) => snapshot.connector_id === connectorId && snapshot.upstream_group_id === groupId) || null
+}
+
+function candidateGroupOptionLabel(snapshot: UpstreamRelayGroupRateSnapshot) {
+  return `${snapshotGroupLabel(snapshot)} · ${snapshot.upstream_group_id} · ${formatRate(snapshot.final_rate_multiplier)}`
+}
+
 function connectorGroupRowName(row: ConnectorGroupRow) {
   return row.kind === 'candidate' ? candidateUpstreamGroupLabel(row.candidate) : snapshotGroupLabel(row.snapshot)
 }
@@ -3573,8 +4039,49 @@ function candidateMappingLabel(candidate: UpstreamRelayCandidate) {
   return `${candidateUpstreamGroupLabel(candidate)} → ${candidateAccountLabel(candidate)}`
 }
 
+function formatProbeLatency(value?: number | null) {
+  return value === null || value === undefined ? '-' : `${value}ms`
+}
+
 function suggestionMappingLabel(suggestion: Pick<UpstreamRelayRecommendationSuggestion, 'account_id' | 'account_name' | 'upstream_group_id' | 'upstream_group_name'>) {
   return `${suggestion.upstream_group_name || suggestion.upstream_group_id} → ${candidateAccountLabel(suggestion)}`
+}
+
+function suggestionActionType(suggestion: UpstreamRelayRecommendationSuggestion): SuggestionActionType {
+  return suggestion.action_type || 'priority_update'
+}
+
+function suggestionActionLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  const map: Record<SuggestionActionType, string> = {
+    priority_update: tM('suggestionActions.priorityUpdate'),
+    account_pause: tM('suggestionActions.accountPause'),
+    account_resume: tM('suggestionActions.accountResume')
+  }
+  return map[suggestionActionType(suggestion)] || suggestion.action_type || '-'
+}
+
+function suggestionActionClass(suggestion: UpstreamRelayRecommendationSuggestion) {
+  const map: Record<SuggestionActionType, string> = {
+    priority_update: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200',
+    account_pause: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200',
+    account_resume: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+  }
+  return map[suggestionActionType(suggestion)] || 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
+}
+
+function schedulableStatusLabel(value?: boolean | null) {
+  if (value === true) return tM('schedulableStatus.enabled')
+  if (value === false) return tM('schedulableStatus.paused')
+  return '-'
+}
+
+function suggestionSchedulableTransitionLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  return `${schedulableStatusLabel(suggestion.old_schedulable)} → ${schedulableStatusLabel(suggestion.new_schedulable)}`
+}
+
+function suggestionChangeLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
+  if (suggestionActionType(suggestion) !== 'priority_update') return suggestionSchedulableTransitionLabel(suggestion)
+  return `${suggestion.old_priority ?? '-'} → ${suggestion.new_priority ?? '-'}`
 }
 
 function exclusionReasonLabel(reasonCode: string) {
@@ -3591,15 +4098,9 @@ function apiKeyOptionLabel(apiKey: UpstreamRelayAPIKeyOption) {
   return apiKey.masked_key ? `${name} · ${apiKey.masked_key}` : name
 }
 
-function priorityDeltaLabel(suggestion: UpstreamRelayRecommendationSuggestion) {
-  if (suggestion.old_priority === null || suggestion.old_priority === undefined) return tM('priorityDelta.new')
-  const delta = suggestion.new_priority - suggestion.old_priority
-  if (delta === 0) return tM('priorityDelta.unchanged')
-  return delta > 0 ? `+${delta}` : `${delta}`
-}
-
 function priorityDeltaIcon(suggestion: UpstreamRelayRecommendationSuggestion): string {
   if (suggestion.old_priority === null || suggestion.old_priority === undefined) return 'arrowRight'
+  if (suggestion.new_priority === null || suggestion.new_priority === undefined) return 'arrowRight'
   const delta = suggestion.new_priority - suggestion.old_priority
   if (delta > 0) return 'arrowUp'
   if (delta < 0) return 'arrowDown'
@@ -3608,6 +4109,7 @@ function priorityDeltaIcon(suggestion: UpstreamRelayRecommendationSuggestion): s
 
 function priorityDeltaClass(suggestion: UpstreamRelayRecommendationSuggestion): string {
   if (suggestion.old_priority === null || suggestion.old_priority === undefined) return 'text-primary-600 dark:text-primary-400'
+  if (suggestion.new_priority === null || suggestion.new_priority === undefined) return 'text-gray-400 dark:text-gray-500'
   const delta = suggestion.new_priority - suggestion.old_priority
   if (delta > 0) return 'text-primary-600 dark:text-primary-400'
   if (delta < 0) return 'text-amber-600 dark:text-amber-400'

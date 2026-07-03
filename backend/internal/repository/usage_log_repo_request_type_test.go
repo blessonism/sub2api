@@ -732,11 +732,15 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
 		WithArgs(userID, "2025-01-01", "2025-01-02").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(balance_delta\\), 0\\) FROM admin_usage_calibrations").
+		WithArgs(userID, start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(-2.5))
 
 	got, err := repo.GetAdminTokenLeaderboardUserDetails(context.Background(), start, end, userID, usagestats.AdminTokenLeaderboardFilters{})
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.AdminTokenLeaderboardUserDetails{
-		CalibrationTokens: -150,
+		CalibrationTokens:       -150,
+		CalibrationBalanceDelta: -2.5,
 		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
 			{APIKeyID: 11, APIKeyName: "prod-key", Requests: 3, Tokens: 900, Cost: 1.2, ActualCost: 1.1, AccountCost: 0.7},
 		},

@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查本次改动未偏离下游二开边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查连接器链接展示符合类型安全和前端约束"}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"下游 fork 分支与上游同步规则"}
+{"file":".trellis/spec/backend/index.md","reason":"后端推荐生成、仓储应用与迁移约束修复需遵守后端规范"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"迁移约束与仓储事务修复需要数据库规范"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"账号流量闸门属于延迟建议应用流程，需遵守快照与应用一致性要求"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"确认本轮不触碰前端类型时仍需校验上游监控 API 类型边界"}

@@ -245,6 +245,15 @@
                           {{ formatSignedTokens(detailsCache[row.user_id]?.calibration_tokens || 0) }}
                         </span>
                       </div>
+                      <div
+                        v-if="detailsCache[row.user_id]?.calibration_balance_delta"
+                        class="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900/60 dark:bg-amber-950/30"
+                      >
+                        <span class="font-medium text-amber-800 dark:text-amber-200">{{ t('admin.tokenLeaderboard.calibrationBalance') }}</span>
+                        <span class="font-semibold tabular-nums" :class="calibrationClass(detailsCache[row.user_id]?.calibration_balance_delta || 0)">
+                          {{ formatSignedCost(detailsCache[row.user_id]?.calibration_balance_delta || 0) }}
+                        </span>
+                      </div>
                       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
                         <section>
                           <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.tokenLeaderboard.apiKeyDetails') }}</h3>
@@ -588,6 +597,11 @@ function formatCost(value: number): string {
 function formatSignedTokens(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '-' : ''
   return `${sign}${formatNumber(Math.abs(value))}`
+}
+
+function formatSignedCost(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatCost(Math.abs(value))}`
 }
 
 function formatMultiplier(value: number): string {

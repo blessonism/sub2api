@@ -2825,6 +2825,9 @@ func (r *usageLogRepository) GetAdminTokenLeaderboardUserDetails(ctx context.Con
 		if out.CalibrationTokens, err = sumTokenAllocationsByDateRange(ctx, r.sql, userID, startDate, endDateExclusive); err != nil {
 			return nil, err
 		}
+		if out.CalibrationBalanceDelta, err = sumBalanceCalibrationsByTimeRange(ctx, r.sql, userID, startTime, endTime); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

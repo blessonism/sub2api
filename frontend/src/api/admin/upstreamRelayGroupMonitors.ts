@@ -7,6 +7,7 @@ export type UpstreamRelayProbeProtocol = 'chat_completions' | 'responses'
 export type UpstreamRelayRunStatus = 'running' | 'success' | 'failed'
 export type UpstreamRelaySnapshotChangeType = 'added' | 'removed' | 'rate_changed'
 export type UpstreamRelayRecommendationSortField = 'rate_asc' | 'success_rate_desc' | 'latency_asc'
+export type UpstreamRelayRecommendationActionType = 'priority_update' | 'account_pause' | 'account_resume'
 export type UpstreamRelayMetricsRefreshStatus = 'success' | 'partial' | 'failed' | 'skipped'
 
 export interface UpstreamRelayConnector {
@@ -183,6 +184,11 @@ export interface UpstreamRelayBulkOperationItem {
   success: boolean
   count?: number
   error_reason?: string
+  probe_result_id?: number
+  latency_ms?: number | null
+  http_status?: number | null
+  error_class?: string
+  probed_at?: string
 }
 
 export interface UpstreamRelayBulkOperationResult {
@@ -247,6 +253,8 @@ export interface UpstreamRelayCandidate {
   account_id: number
   account_name?: string
   account_platform?: string
+  account_schedulable?: boolean
+  account_gate_active?: boolean
   upstream_group_id: string
   upstream_group_name?: string
   upstream_api_key_id?: number | null
@@ -288,6 +296,7 @@ export interface UpstreamRelayAPIKeyOption {
 export interface UpstreamRelayRecommendationSuggestion {
   id?: number
   run_id?: number
+  action_type: UpstreamRelayRecommendationActionType
   candidate_id: number
   connector_id: number
   connector_name?: string
@@ -296,7 +305,9 @@ export interface UpstreamRelayRecommendationSuggestion {
   upstream_group_id: string
   upstream_group_name?: string
   old_priority?: number | null
-  new_priority: number
+  new_priority?: number | null
+  old_schedulable?: boolean | null
+  new_schedulable?: boolean | null
   final_rate_multiplier: number
   health_status: string
   reason_code: string

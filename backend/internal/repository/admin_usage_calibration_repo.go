@@ -658,6 +658,29 @@ func sumTokenAllocationsByDateRange(ctx context.Context, exec sqlQueryer, userID
 	return total, nil
 }
 
+func sumBalanceCalibrationsByTimeRange(ctx context.Context, exec sqlQueryer, userID int64, startTime, endTime time.Time) (float64, error) {
+	conditions := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if userID > 0 {
+		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
+		args = append(args, userID)
+	}
+	if !startTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, startTime)
+	}
+	if !endTime.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
+		args = append(args, endTime)
+	}
+	query := "SELECT COALESCE(SUM(balance_delta), 0) FROM admin_usage_calibrations " + buildWhere(conditions)
+	var total float64
+	if err := scanSingleRow(ctx, exec, query, args, &total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 func scanAdminUsageCalibrationRow(ctx context.Context, exec sqlQueryer, query string, args []any, out *service.AdminUsageCalibration) error {
 	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {

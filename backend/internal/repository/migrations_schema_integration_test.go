@@ -101,6 +101,26 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "scheduler_outbox", "dedup_key", "text", 0, true)
 	requireIndex(t, tx, "scheduler_outbox", "idx_scheduler_outbox_pending_dedup_key")
 
+	// upstream relay recommendations: action payloads must match their write target.
+	requireColumn(t, tx, "upstream_relay_recommendation_suggestions", "action_type", "character varying", 40, false)
+	requireColumn(t, tx, "upstream_relay_recommendation_suggestions", "old_schedulable", "boolean", 0, true)
+	requireColumn(t, tx, "upstream_relay_recommendation_suggestions", "new_schedulable", "boolean", 0, true)
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"upstream_relay_recommendation_suggestions",
+		"chk_upstream_relay_recommendation_suggestion_action_payload",
+		"action_type",
+		"'priority_update'",
+		"new_priority IS NOT NULL",
+		"'account_pause'",
+		"old_schedulable = true",
+		"new_schedulable = false",
+		"'account_resume'",
+		"old_schedulable = false",
+		"new_schedulable = true",
+	)
+
 	// user_allowed_groups table should exist
 	var uagRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))
