@@ -213,20 +213,20 @@
             </div>
             <div class="mt-4 space-y-2">
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <input v-model.number="filters.user_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
-                <input v-model.number="filters.api_key_id" class="input" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
-                <input v-model.trim="filters.model" class="input" :placeholder="t('admin.conversations.model')" />
-                <input v-model.trim="filters.request_id" class="input" :placeholder="t('admin.conversations.requestId')" />
+                <input v-model.number="filters.user_id" class="input" data-test="conversation-filter-user-id" type="number" min="1" :placeholder="t('admin.conversations.userId')" />
+                <input v-model.number="filters.api_key_id" class="input" data-test="conversation-filter-api-key-id" type="number" min="1" :placeholder="t('admin.conversations.apiKeyId')" />
+                <input v-model.trim="filters.model" class="input" data-test="conversation-filter-model" :placeholder="t('admin.conversations.model')" />
+                <input v-model.trim="filters.request_id" class="input" data-test="conversation-filter-request-id" :placeholder="t('admin.conversations.requestId')" />
               </div>
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <select v-model="filters.quality_status" class="input">
+                <select v-model="filters.quality_status" class="input" data-test="conversation-filter-quality-status">
                   <option :value="''">{{ t('admin.conversations.allQuality') }}</option>
                   <option value="clean">{{ t('admin.conversations.qualityClean') }}</option>
                   <option value="needs_review">{{ t('admin.conversations.qualityNeedsReview') }}</option>
                   <option value="rejected">{{ t('admin.conversations.qualityRejected') }}</option>
                   <option value="unchecked">{{ t('admin.conversations.qualityUnchecked') }}</option>
                 </select>
-                <select v-model="filters.exportable" class="input">
+                <select v-model="filters.exportable" class="input" data-test="conversation-filter-exportable">
                   <option :value="''">{{ t('admin.conversations.allExportable') }}</option>
                   <option value="true">{{ t('admin.conversations.exportableOnly') }}</option>
                   <option value="false">{{ t('admin.conversations.notExportable') }}</option>

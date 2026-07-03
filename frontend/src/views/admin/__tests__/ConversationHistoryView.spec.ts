@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 import ConversationHistoryView from '../ConversationHistoryView.vue'
 import type {
@@ -26,6 +27,10 @@ const {
   getTurn: vi.fn(),
   listExportJobs: vi.fn(),
   exportMessagesJSONL: vi.fn(),
+}))
+
+const { routerPush } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
 }))
 
 vi.mock('@/api/admin/conversations', () => ({
@@ -65,6 +70,12 @@ vi.mock('vue-i18n', async () => {
     }),
   }
 })
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush,
+  }),
+}))
 
 const baseConfig = (overrides: Partial<ConversationCaptureConfig> = {}): ConversationCaptureConfig => ({
   enabled: false,
@@ -159,14 +170,12 @@ async function setDataBrowserFilters(wrapper: ReturnType<typeof mountView>, valu
   qualityStatus?: string
   exportable?: string
 }) {
-  const fields = wrapper.findAll('input').slice(-4)
-  if (values.userId !== undefined) await fields[0].setValue(values.userId)
-  if (values.apiKeyId !== undefined) await fields[1].setValue(values.apiKeyId)
-  if (values.model !== undefined) await fields[2].setValue(values.model)
-  if (values.requestId !== undefined) await fields[3].setValue(values.requestId)
-  const selects = wrapper.findAll('select').slice(-2)
-  if (values.qualityStatus !== undefined) await selects[0].setValue(values.qualityStatus)
-  if (values.exportable !== undefined) await selects[1].setValue(values.exportable)
+  if (values.userId !== undefined) await wrapper.find('[data-test="conversation-filter-user-id"]').setValue(values.userId)
+  if (values.apiKeyId !== undefined) await wrapper.find('[data-test="conversation-filter-api-key-id"]').setValue(values.apiKeyId)
+  if (values.model !== undefined) await wrapper.find('[data-test="conversation-filter-model"]').setValue(values.model)
+  if (values.requestId !== undefined) await wrapper.find('[data-test="conversation-filter-request-id"]').setValue(values.requestId)
+  if (values.qualityStatus !== undefined) await wrapper.find('[data-test="conversation-filter-quality-status"]').setValue(values.qualityStatus)
+  if (values.exportable !== undefined) await wrapper.find('[data-test="conversation-filter-exportable"]').setValue(values.exportable)
 }
 
 function mountView() {
@@ -179,6 +188,7 @@ function mountView() {
         LoadingSpinner: { template: '<div data-test="loading"></div>' },
         Pagination: true,
         Toggle: ToggleStub,
+        ConfirmDialog: true,
       },
     },
   })
@@ -186,6 +196,7 @@ function mountView() {
 
 describe('ConversationHistoryView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     getConfig.mockReset()
     updateConfig.mockReset()
     listSessions.mockReset()
@@ -193,6 +204,7 @@ describe('ConversationHistoryView', () => {
     getTurn.mockReset()
     listExportJobs.mockReset()
     exportMessagesJSONL.mockReset()
+    routerPush.mockReset()
 
     getConfig.mockResolvedValue(baseConfig())
     updateConfig.mockImplementation(async (payload: ConversationCaptureConfig) => payload)
@@ -368,59 +380,20 @@ describe('ConversationHistoryView', () => {
     }))
   })
 
-  it('toggles a loaded turn detail back to preview mode', async () => {
+  it('navigates from the session list to the conversation detail page', async () => {
     listSessions.mockResolvedValue({ items: [baseSession()], total: 1, page: 1, page_size: 20, pages: 1 })
-    listSessionTurns.mockResolvedValue({
-      items: [{
-        id: 11,
-        session_id: 'session_1234567890',
-        request_id: 'req-1',
-        turn_index: 1,
-        provider: 'openai',
-        model: 'gpt-5',
-        request_path: '/v1/chat/completions',
-        input_tokens: 1,
-        output_tokens: 1,
-        total_tokens: 2,
-        actual_cost: 0.001,
-        stream: false,
-        client_disconnect: false,
-        truncated: false,
-        quality_status: 'unchecked',
-        quality_errors: [],
-        exportable: true,
-        parse_status: 'success',
-        dedupe_hash: 'hash-1',
-        duplicate_count: 0,
-        payload_preview: 'preview text',
-        retention_until: '2026-07-01T00:00:00Z',
-        created_at: '2026-06-27T00:00:00Z',
-      }],
-      total: 1,
-      page: 1,
-      page_size: 50,
-      pages: 1,
-    })
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.findAll('button').find((button) => button.text() === 'common.view')!.trigger('click')
+    await wrapper.find('tbody tr').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('preview text')
 
-    await wrapper.findAll('button').find((button) => button.text() === 'admin.conversations.loadDetail')!.trigger('click')
-    await flushPromises()
-    expect(getTurn).toHaveBeenCalledWith(11)
-    expect(wrapper.text()).toContain('user: hello')
-    expect(wrapper.text()).toContain('admin.conversations.hideDetail')
-
-    await wrapper.findAll('button').find((button) => button.text() === 'admin.conversations.hideDetail')!.trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain('preview text')
-    expect(wrapper.text()).not.toContain('user: hello')
+    expect(routerPush).toHaveBeenCalledWith('/admin/conversations/1')
+    expect(listSessionTurns).not.toHaveBeenCalled()
+    expect(getTurn).not.toHaveBeenCalled()
   })
 
-  it('shows quality error reasons for sessions and turns', async () => {
+  it('shows quality error reasons for sessions', async () => {
     listSessions.mockResolvedValue({
       items: [baseSession({
         quality_status: 'needs_review',
@@ -431,43 +404,9 @@ describe('ConversationHistoryView', () => {
       page_size: 20,
       pages: 1,
     })
-    listSessionTurns.mockResolvedValue({
-      items: [{
-        id: 11,
-        session_id: 'session_1234567890',
-        request_id: 'req-1',
-        turn_index: 1,
-        provider: 'openai',
-        model: 'gpt-5',
-        request_path: '/v1/chat/completions',
-        input_tokens: 1,
-        output_tokens: 1,
-        total_tokens: 2,
-        actual_cost: 0.001,
-        stream: false,
-        client_disconnect: false,
-        truncated: false,
-        quality_status: 'needs_review',
-        quality_errors: [{ code: 'empty_assistant_output', message: 'assistant output is empty', source: 'auto' }],
-        exportable: false,
-        parse_status: 'success',
-        dedupe_hash: 'hash-1',
-        duplicate_count: 0,
-        payload_preview: 'preview text',
-        retention_until: '2026-07-01T00:00:00Z',
-        created_at: '2026-06-27T00:00:00Z',
-      }],
-      total: 1,
-      page: 1,
-      page_size: 50,
-      pages: 1,
-    })
     const wrapper = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('session was inferred heuristically')
-    await wrapper.findAll('button').find((button) => button.text() === 'common.view')!.trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain('assistant output is empty')
   })
 })
