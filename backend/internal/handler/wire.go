@@ -39,6 +39,7 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	campaignHandler *admin.CampaignHandler,
 	complianceHandler *admin.ComplianceHandler,
 	tokenUsagePolicyHandler *admin.TokenUsagePolicyHandler,
 	upstreamRelayMonitoringHandler *admin.UpstreamRelayGroupMonitoringHandler,
@@ -75,6 +76,7 @@ func ProvideAdminHandlers(
 		ContentModeration:       contentModerationHandler,
 		Payment:                 paymentHandler,
 		Affiliate:               affiliateHandler,
+		Campaign:                campaignHandler,
 		Compliance:              complianceHandler,
 		TokenUsagePolicy:        tokenUsagePolicyHandler,
 		UpstreamRelayMonitoring: upstreamRelayMonitoringHandler,
@@ -135,7 +137,11 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.TokenUsageAutoPolicyRunner,
+	campaignService *service.CampaignService,
 ) *Handlers {
+	if userHandler != nil {
+		userHandler.SetCampaignService(campaignService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
@@ -206,6 +212,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
+	admin.NewCampaignHandler,
 	admin.NewComplianceHandler,
 	admin.NewTokenUsagePolicyHandler,
 	admin.NewUpstreamRelayGroupMonitoringHandler,

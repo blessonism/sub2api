@@ -112,6 +112,9 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 限时邀请奖励活动
+		registerCampaignRoutes(admin, h)
 	}
 }
 
@@ -766,5 +769,22 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	campaigns := admin.Group("/campaigns")
+	{
+		campaigns.GET("", h.Admin.Campaign.List)
+		campaigns.POST("", h.Admin.Campaign.Create)
+		campaigns.GET("/:id", h.Admin.Campaign.Get)
+		campaigns.POST("/:id/publish", h.Admin.Campaign.Publish)
+		campaigns.POST("/:id/config-versions", h.Admin.Campaign.CreateConfigVersion)
+		campaigns.GET("/:id/pool", h.Admin.Campaign.Pool)
+		campaigns.POST("/:id/pool-adjustments", h.Admin.Campaign.AddPoolAdjustment)
+		campaigns.GET("/:id/leaderboard", h.Admin.Campaign.Leaderboard)
+		campaigns.POST("/:id/freeze", h.Admin.Campaign.Freeze)
+		campaigns.POST("/:id/recalculate", h.Admin.Campaign.Recalculate)
+		campaigns.POST("/:id/payout", h.Admin.Campaign.Payout)
 	}
 }
