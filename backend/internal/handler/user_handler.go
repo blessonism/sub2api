@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type UserHandler struct {
 	emailService          *service.EmailService
 	emailCache            service.EmailCache
 	affiliateService      *service.AffiliateService
+	campaignService       *service.CampaignService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository
 }
 
@@ -41,6 +43,108 @@ func NewUserHandler(
 		affiliateService:      affiliateService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
+}
+
+func (h *UserHandler) SetCampaignService(campaignService *service.CampaignService) {
+	if h != nil {
+		h.campaignService = campaignService
+	}
+}
+
+// GetActiveCampaign 返回当前进行中的邀请奖励活动。
+func (h *UserHandler) GetActiveCampaign(c *gin.Context) {
+	if h.campaignService == nil {
+		response.Success(c, gin.H{"campaign": nil})
+		return
+	}
+	home, err := h.campaignService.GetActiveHome(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, home)
+}
+
+// GetCampaignMe 返回当前用户在活动中的邀请与预估奖励数据。
+func (h *UserHandler) GetCampaignMe(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	data, err := h.campaignService.GetMyData(c.Request.Context(), campaignID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+// ListCampaignInvites 返回当前用户在活动中的邀请记录。
+func (h *UserHandler) ListCampaignInvites(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, total, err := h.campaignService.ListInviteRecords(c.Request.Context(), campaignID, subject.UserID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+// GetCampaignLeaderboard 返回活动排行榜。
+func (h *UserHandler) GetCampaignLeaderboard(c *gin.Context) {
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	limit := 50
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	rows, err := h.campaignService.Leaderboard(c.Request.Context(), campaignID, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": rows})
+}
+
+// GetCampaignRules 返回活动规则文本。
+func (h *UserHandler) GetCampaignRules(c *gin.Context) {
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	campaign, err := h.campaignService.GetCampaign(c.Request.Context(), campaignID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"rules_text": campaign.RulesText})
+}
+
+func parseCampaignIDParam(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid campaign id")
+		return 0, false
+	}
+	return id, true
 }
 
 // GetMyPlatformQuotas GET /user/platform-quotas

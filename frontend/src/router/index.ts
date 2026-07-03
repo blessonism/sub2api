@@ -254,6 +254,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/campaign-rewards',
+    name: 'CampaignRewards',
+    component: () => import('@/views/user/CampaignRewardsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Campaign Rewards',
+      titleKey: 'campaignRewards.title',
+      descriptionKey: 'campaignRewards.description'
+    }
+  },
+  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     component: () => import('@/views/user/AvailableChannelsView.vue'),
@@ -424,6 +436,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Token Usage Policies',
       titleKey: 'admin.tokenUsagePolicies.title',
       descriptionKey: 'admin.tokenUsagePolicies.description'
+    }
+  },
+  {
+    path: '/admin/campaign-rewards',
+    name: 'AdminCampaignRewards',
+    component: () => import('@/views/admin/CampaignRewardsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Campaign Rewards',
+      titleKey: 'admin.campaignRewards.title',
+      descriptionKey: 'admin.campaignRewards.description'
     }
   },
   {

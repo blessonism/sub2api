@@ -56,6 +56,15 @@ func RegisterUserRoutes(
 			}
 		}
 
+		campaigns := authenticated.Group("/campaigns")
+		{
+			campaigns.GET("/active", h.User.GetActiveCampaign)
+			campaigns.GET("/:id/me", h.User.GetCampaignMe)
+			campaigns.GET("/:id/invites", h.User.ListCampaignInvites)
+			campaigns.GET("/:id/leaderboard", h.User.GetCampaignLeaderboard)
+			campaigns.GET("/:id/rules", h.User.GetCampaignRules)
+		}
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

@@ -73,6 +73,7 @@ type AuthService struct {
 	emailQueueService     *EmailQueueService
 	promoService          *PromoService
 	affiliateService      *AffiliateService
+	campaignService       *CampaignService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
@@ -126,6 +127,12 @@ func (s *AuthService) EntClient() *dbent.Client {
 		return nil
 	}
 	return s.entClient
+}
+
+func (s *AuthService) SetCampaignService(campaignService *CampaignService) {
+	if s != nil {
+		s.campaignService = campaignService
+	}
 }
 
 // Register 用户注册，返回token和用户
@@ -240,6 +247,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, code); err != nil {
 				// 邀请返利码绑定失败不影响注册，只记录日志
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
+			} else if s.campaignService != nil {
+				if _, err := s.campaignService.RegisterInvite(ctx, CampaignRegisterInviteInput{
+					InviteeUserID: user.ID,
+					AffiliateCode: code,
+					RegisteredAt:  time.Now(),
+					InviteSource:  "affiliate_code",
+				}); err != nil {
+					logger.LegacyPrintf("service.auth", "[Auth] Failed to record campaign invite for user %d: %v", user.ID, err)
+				}
 			}
 		}
 	}
