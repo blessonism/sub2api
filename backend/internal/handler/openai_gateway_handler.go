@@ -337,6 +337,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			requireCompact,
 		)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			reqLog.Warn("openai.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -787,6 +790,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			false,
 		)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			reqLog.Warn("openai_messages.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -1371,6 +1377,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			false,
 		)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			reqLog.Warn("openai.websocket_account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),

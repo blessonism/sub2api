@@ -112,8 +112,10 @@ SELECT s.id, s.session_id, s.user_id, s.api_key_id, s.account_id, s.provider, s.
            ) d
        ), 0) AS duplicate_turn_count,
        s.capture_status, s.session_source, s.retention_until,
-       s.started_at, s.ended_at, s.created_at, s.updated_at
-FROM conversation_sessions s `+where+`
+       s.started_at, s.ended_at, s.created_at, s.updated_at,
+       COALESCE(u.email, '') AS user_email
+FROM conversation_sessions s
+LEFT JOIN users u ON u.id = s.user_id `+where+`
 ORDER BY s.started_at DESC, s.id DESC
 LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -147,8 +149,11 @@ SELECT s.id, s.session_id, s.user_id, s.api_key_id, s.account_id, s.provider, s.
            ) d
        ), 0) AS duplicate_turn_count,
        s.capture_status, s.session_source, s.retention_until,
-       s.started_at, s.ended_at, s.created_at, s.updated_at
-FROM conversation_sessions s WHERE s.id = $1`, id)
+       s.started_at, s.ended_at, s.created_at, s.updated_at,
+       COALESCE(u.email, '') AS user_email
+FROM conversation_sessions s
+LEFT JOIN users u ON u.id = s.user_id
+WHERE s.id = $1`, id)
 	item, err := scanConversationSession(row)
 	if err != nil {
 		return nil, err
@@ -412,11 +417,14 @@ func (r *conversationCaptureRepository) SplitSessionFromTurn(ctx context.Context
 	}
 	defer func() { _ = tx.Rollback() }()
 	source, err := scanConversationSession(tx.QueryRowContext(ctx, `
-SELECT id, session_id, user_id, api_key_id, account_id, provider, model, request_path, status,
-       turn_count, source_request_count, input_tokens, output_tokens, total_tokens, actual_cost,
-       quality_status, quality_errors, exportable, 0::bigint AS duplicate_turn_count, capture_status, session_source, retention_until,
-       started_at, ended_at, created_at, updated_at
-FROM conversation_sessions WHERE id = $1 FOR UPDATE`, sessionID))
+SELECT s.id, s.session_id, s.user_id, s.api_key_id, s.account_id, s.provider, s.model, s.request_path, s.status,
+       s.turn_count, s.source_request_count, s.input_tokens, s.output_tokens, s.total_tokens, s.actual_cost,
+       s.quality_status, s.quality_errors, s.exportable, 0::bigint AS duplicate_turn_count, s.capture_status, s.session_source, s.retention_until,
+       s.started_at, s.ended_at, s.created_at, s.updated_at,
+       COALESCE(u.email, '') AS user_email
+FROM conversation_sessions s
+LEFT JOIN users u ON u.id = s.user_id
+WHERE s.id = $1 FOR UPDATE`, sessionID))
 	if err != nil {
 		return nil, err
 	}
@@ -467,11 +475,14 @@ WHERE session_id = $1 AND turn_index >= $2`, source.SessionID, splitIndex, newSe
 		return nil, err
 	}
 	item, err := scanConversationSession(tx.QueryRowContext(ctx, `
-SELECT id, session_id, user_id, api_key_id, account_id, provider, model, request_path, status,
-       turn_count, source_request_count, input_tokens, output_tokens, total_tokens, actual_cost,
-       quality_status, quality_errors, exportable, 0::bigint AS duplicate_turn_count, capture_status, session_source, retention_until,
-       started_at, ended_at, created_at, updated_at
-FROM conversation_sessions WHERE session_id = $1`, newSessionID))
+SELECT s.id, s.session_id, s.user_id, s.api_key_id, s.account_id, s.provider, s.model, s.request_path, s.status,
+       s.turn_count, s.source_request_count, s.input_tokens, s.output_tokens, s.total_tokens, s.actual_cost,
+       s.quality_status, s.quality_errors, s.exportable, 0::bigint AS duplicate_turn_count, s.capture_status, s.session_source, s.retention_until,
+       s.started_at, s.ended_at, s.created_at, s.updated_at,
+       COALESCE(u.email, '') AS user_email
+FROM conversation_sessions s
+LEFT JOIN users u ON u.id = s.user_id
+WHERE s.session_id = $1`, newSessionID))
 	if err != nil {
 		return nil, err
 	}
@@ -1032,7 +1043,7 @@ func scanConversationSession(row rowScanner) (service.ConversationSession, error
 		&item.ID, &item.SessionID, &item.UserID, &item.APIKeyID, &accountID, &item.Provider, &item.Model, &item.RequestPath, &item.Status,
 		&item.TurnCount, &item.SourceRequestCount, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.ActualCost,
 		&item.QualityStatus, &qualityErrors, &item.Exportable, &item.DuplicateTurnCount, &item.CaptureStatus, &item.SessionSource, &item.RetentionUntil,
-		&item.StartedAt, &item.EndedAt, &item.CreatedAt, &item.UpdatedAt,
+		&item.StartedAt, &item.EndedAt, &item.CreatedAt, &item.UpdatedAt, &item.UserEmail,
 	)
 	if accountID.Valid {
 		item.AccountID = &accountID.Int64
