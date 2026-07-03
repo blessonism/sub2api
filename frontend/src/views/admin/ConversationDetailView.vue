@@ -8,7 +8,7 @@
     </div>
     <template v-else>
       <!-- Sticky header -->
-      <div class="sticky top-0 z-20 -mx-4 -mt-4 mb-6 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/95 md:-mx-6 md:-mt-6 md:px-6 lg:-mx-8 lg:-mt-8 lg:px-8">
+      <div class="sticky top-0 z-30 -mx-4 -mt-4 mb-6 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/95 md:-mx-6 md:-mt-6 md:px-6 lg:-mx-8 lg:-mt-8 lg:px-8">
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -52,7 +52,7 @@
             </button>
             <div
               v-if="openSessionMenu"
-              class="absolute left-0 top-full z-30 mt-1 min-w-[140px] rounded-md border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+              class="absolute left-0 top-full z-40 mt-1 min-w-[140px] rounded-md border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
             >
               <button
                 v-for="s in qualityStatuses"
@@ -78,7 +78,7 @@
             </button>
             <div
               v-if="openMoreMenu"
-              class="absolute right-0 top-full z-30 mt-1 min-w-[200px] rounded-md border border-gray-100 bg-white p-3 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+              class="absolute right-0 top-full z-40 mt-1 min-w-[200px] rounded-md border border-gray-100 bg-white p-3 shadow-lg dark:border-dark-700 dark:bg-dark-800"
             >
               <div class="mb-1 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.conversations.mergeSourceIds') }}</div>
               <div class="flex gap-1.5">
@@ -155,7 +155,7 @@
               </button>
               <div
                 v-if="openTurnMenu === turn.id"
-                class="absolute right-0 top-full z-30 mt-1 min-w-[160px] rounded-md border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                class="absolute right-0 top-full z-40 mt-1 min-w-[160px] rounded-md border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
               >
                 <button
                   type="button"
@@ -299,7 +299,7 @@
     </template>
 
     <!-- Click-outside overlay for menus -->
-    <div v-if="openSessionMenu || openMoreMenu || openTurnMenu !== null" class="fixed inset-0 z-20" @click="closeMenus" />
+    <div v-if="openSessionMenu || openMoreMenu || openTurnMenu !== null" class="fixed inset-0 z-10" @click="closeMenus" />
   </AppLayout>
 </template>
 
