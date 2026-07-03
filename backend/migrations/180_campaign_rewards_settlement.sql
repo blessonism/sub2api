@@ -1,4 +1,4 @@
--- 179_campaign_rewards_settlement.sql
+-- 180_campaign_rewards_settlement.sql
 -- 限时邀请奖励活动：活动、版本、邀请、奖金池、结算、发放与追偿审计表。
 
 CREATE TABLE IF NOT EXISTS campaigns (
