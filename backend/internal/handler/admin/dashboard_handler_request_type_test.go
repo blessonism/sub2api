@@ -159,6 +159,7 @@ func (s *dashboardUsageRepoCapture) GetAdminTokenLeaderboardUserDetails(
 	s.tokenDetailsUser = userID
 	s.tokenFilters = filters
 	return &usagestats.AdminTokenLeaderboardUserDetails{
+		CalibrationBalanceDelta: -2.5,
 		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
 			{APIKeyID: 3, APIKeyName: "prod", Requests: 2, Tokens: 800, ActualCost: 0.8},
 		},
@@ -358,6 +359,7 @@ func TestAdminTokenLeaderboardDetailsParsesUserID(t *testing.T) {
 	require.Equal(t, int64(42), repo.tokenDetailsUser)
 	require.Equal(t, 50, repo.tokenFilters.Limit)
 	require.Contains(t, rec.Body.String(), "\"api_key_name\":\"prod\"")
+	require.Contains(t, rec.Body.String(), "\"calibration_balance_delta\":-2.5")
 }
 
 func TestAdminTokenLeaderboardGrantBalanceUsesTop10AndAdminBalance(t *testing.T) {

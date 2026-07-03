@@ -879,13 +879,14 @@ func (h *DashboardHandler) GetAdminTokenLeaderboardUserDetails(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"api_keys":           details.APIKeys,
-		"calibration_tokens": details.CalibrationTokens,
-		"groups":             details.Groups,
-		"models":             details.Models,
-		"start_date":         startTime.Format("2006-01-02"),
-		"end_date":           endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-		"user_id":            userID,
+		"api_keys":                  details.APIKeys,
+		"calibration_balance_delta": details.CalibrationBalanceDelta,
+		"calibration_tokens":        details.CalibrationTokens,
+		"groups":                    details.Groups,
+		"models":                    details.Models,
+		"start_date":                startTime.Format("2006-01-02"),
+		"end_date":                  endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"user_id":                   userID,
 	})
 }
 
