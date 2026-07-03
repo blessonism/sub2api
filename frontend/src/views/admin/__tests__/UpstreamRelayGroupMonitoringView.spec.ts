@@ -1898,6 +1898,56 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.saveCandidateFailed')
   })
 
+  it('候选映射编辑可从已同步上游分组下拉选择并提交 Group ID', async () => {
+    listSnapshots.mockResolvedValue([{
+      id: 501,
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+      name: 'Team Alpha',
+      platform: 'claude',
+      status: 'active',
+      default_rate_multiplier: 1,
+      final_rate_multiplier: 1.25,
+      source: 'login_available_groups',
+      last_seen_at: '2026-06-28T12:00:00Z',
+    }])
+    createCandidate.mockResolvedValue({
+      id: 101,
+      connector_id: 7,
+      account_id: 42,
+      upstream_group_id: 'team-alpha',
+      probe_model: 'gpt-4o-mini',
+      probe_protocol: 'chat_completions',
+      enabled: true,
+      notes: '',
+      created_at: '2026-06-28T12:00:00Z',
+      updated_at: '2026-06-28T12:00:00Z',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('candidates.newCandidate'))!.trigger('click')
+    await flushPromises()
+
+    const groupSelect = wrapper.get('[data-testid="candidate-upstream-group-select"]')
+    expect(groupSelect.text()).toContain('Team Alpha')
+    expect(groupSelect.text()).toContain('team-alpha')
+    expect(wrapper.find('[data-testid="candidate-upstream-group-manual-input"]').exists()).toBe(true)
+
+    await groupSelect.setValue('team-alpha')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="candidate-upstream-group-manual-input"]').exists()).toBe(false)
+    await wrapper.find('#candidate-form').trigger('submit')
+    await flushPromises()
+
+    expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+    }))
+  })
+
   it('自动监控页展示派生阈值并保存配置', async () => {
     const wrapper = mountView()
     await flushPromises()
