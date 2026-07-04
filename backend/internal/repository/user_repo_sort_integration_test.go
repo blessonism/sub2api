@@ -14,15 +14,23 @@ func (s *UserRepoSuite) mustInsertUsageLog(userID int64, createdAt time.Time) {
 	s.T().Helper()
 
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "usage-log-account"})
+	s.mustInsertUsageLogCost(userID, account, 0.01, createdAt)
+}
+
+func (s *UserRepoSuite) mustInsertUsageLogCost(userID int64, account *service.Account, actualCost float64, createdAt time.Time) {
+	s.T().Helper()
+
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userID})
 
 	_, err := integrationDB.ExecContext(
 		s.ctx,
 		`INSERT INTO usage_logs (user_id, api_key_id, account_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
-		 VALUES ($1, $2, $3, 'gpt-test', 1, 1, 0.01, 0.01, $4)`,
+		 VALUES ($1, $2, $3, 'gpt-test', 1, 1, $4, $5, $6)`,
 		userID,
 		apiKey.ID,
 		account.ID,
+		actualCost,
+		actualCost,
 		createdAt.UTC(),
 	)
 	s.Require().NoError(err)
@@ -159,6 +167,73 @@ func (s *UserRepoSuite) TestListWithFilters_SortByLastUsedAtDesc_UsesUsageLogsNo
 	s.Require().Equal(rightSource.ID, users[0].ID)
 	s.Require().Equal(wrongSource.ID, users[1].ID)
 	s.Require().Equal(nilUsage.ID, users[2].ID)
+}
+
+func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalDescBeforePagination() {
+	low := s.mustCreateUser(&service.User{Email: "usage-low@example.com"})
+	high := s.mustCreateUser(&service.User{Email: "usage-high@example.com"})
+	mid := s.mustCreateUser(&service.User{Email: "usage-mid@example.com"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "usage-sort-account"})
+	now := time.Now().UTC()
+
+	s.mustInsertUsageLogCost(low.ID, account, 1.00, now)
+	s.mustInsertUsageLogCost(high.ID, account, 9.00, now)
+	s.mustInsertUsageLogCost(mid.ID, account, 5.00, now)
+
+	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  1,
+		SortBy:    "usage_total",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(int64(3), page.Total)
+	s.Require().Equal(high.ID, users[0].ID)
+
+	users, _, err = s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      2,
+		PageSize:  1,
+		SortBy:    "usage_total",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(mid.ID, users[0].ID)
+}
+
+func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalIncludesBalanceCalibrationSpend() {
+	logOnly := s.mustCreateUser(&service.User{Email: "usage-log-only@example.com"})
+	calibrated := s.mustCreateUser(&service.User{Email: "usage-calibrated@example.com"})
+	admin := s.mustCreateUser(&service.User{Email: "usage-calibration-admin@example.com", Role: service.RoleAdmin})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "usage-calibration-sort-account"})
+	now := time.Now().UTC()
+
+	s.mustInsertUsageLogCost(logOnly.ID, account, 7.00, now)
+	s.mustInsertUsageLogCost(calibrated.ID, account, 1.00, now)
+	_, err := integrationDB.ExecContext(
+		s.ctx,
+		`INSERT INTO admin_usage_calibrations (
+			target_user_id, admin_user_id, reason,
+			balance_mode, balance_input_value, balance_before_value, balance_after_value, balance_delta,
+			created_at
+		) VALUES ($1, $2, 'sort calibration spend', 'delta', -10, 20, 10, -10, $3)`,
+		calibrated.ID,
+		admin.ID,
+		now,
+	)
+	s.Require().NoError(err)
+
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  10,
+		SortBy:    "usage_total",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 3)
+	s.Require().Equal(calibrated.ID, users[0].ID)
+	s.Require().Equal(logOnly.ID, users[1].ID)
 }
 
 func TestUserRepoSortSuiteSmoke(_ *testing.T) {}

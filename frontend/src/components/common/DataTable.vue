@@ -369,6 +369,11 @@ interface Props {
   defaultSortKey?: string
   defaultSortOrder?: 'asc' | 'desc'
   /**
+   * 受控排序配置：传入后由父组件状态决定排序图标和下次点击方向。
+   */
+  sortKey?: string
+  sortOrder?: 'asc' | 'desc'
+  /**
    * Persist sort state (key + order) to localStorage using this key.
    * If provided, DataTable will load the stored sort state on mount.
    */
@@ -425,6 +430,13 @@ const normalizeSortOrder = (candidate: any): 'asc' | 'desc' => {
   return candidate === 'desc' ? 'desc' : 'asc'
 }
 
+const resolveControlledSortState = (): PersistedSortState | null => {
+  if (props.sortKey === undefined) return null
+  const key = normalizeSortKey(props.sortKey)
+  if (!key) return null
+  return { key, order: normalizeSortOrder(props.sortOrder) }
+}
+
 const readPersistedSortState = (): PersistedSortState | null => {
   if (!props.sortStorageKey) return null
   try {
@@ -450,6 +462,8 @@ const writePersistedSortState = (state: PersistedSortState) => {
 }
 
 const resolveInitialSortState = (): PersistedSortState | null => {
+  if (props.sortKey !== undefined) return resolveControlledSortState()
+
   const persisted = readPersistedSortState()
   if (persisted) return persisted
 
@@ -459,9 +473,8 @@ const resolveInitialSortState = (): PersistedSortState | null => {
 }
 
 const applySortState = (state: PersistedSortState | null) => {
-  if (!state) return
-  sortKey.value = state.key
-  sortOrder.value = state.order
+  sortKey.value = state?.key ?? ''
+  sortOrder.value = state?.order ?? 'asc'
 }
 
 const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''
@@ -690,6 +703,12 @@ onMounted(() => {
 watch(
   columnsSignature,
   () => {
+    const controlled = resolveControlledSortState()
+    if (props.sortKey !== undefined) {
+      applySortState(controlled)
+      return
+    }
+
     // If current sort key is no longer sortable/visible, fall back to default/persisted.
     const normalized = normalizeSortKey(sortKey.value)
     if (!sortKey.value) {
@@ -712,9 +731,19 @@ watch(
 )
 
 watch(
+  [() => props.sortKey, () => props.sortOrder],
+  () => {
+    if (props.sortKey === undefined) return
+    applySortState(resolveControlledSortState())
+  },
+  { flush: 'post' }
+)
+
+watch(
   [sortKey, sortOrder],
   ([nextKey, nextOrder]) => {
     if (!didInitSort.value) return
+    if (props.sortKey !== undefined) return
     if (!props.sortStorageKey) return
     const key = normalizeSortKey(nextKey)
     if (!key) return
