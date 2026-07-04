@@ -185,6 +185,19 @@ func (r *campaignRepository) CreateConfigVersion(ctx context.Context, campaignID
 	return insertCampaignConfigVersion(ctx, r.db, cfg)
 }
 
+func (r *campaignRepository) GetLatestConfigVersion(ctx context.Context, campaignID int64) (*service.CampaignConfigVersion, error) {
+	row := r.db.QueryRowContext(ctx, `
+SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
+	allow_accumulated_recharge, pool_injection_rate::text, rank_pool_ratio::text,
+	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
+	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
+FROM campaign_config_versions
+WHERE campaign_id = $1
+ORDER BY version DESC
+LIMIT 1`, campaignID)
+	return scanCampaignConfigVersion(row)
+}
+
 func (r *campaignRepository) GetLatestConfigVersionAt(ctx context.Context, campaignID int64, at time.Time) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
@@ -268,6 +281,46 @@ func (r *campaignRepository) HasActiveCampaign(ctx context.Context, excludeCampa
 	var count int
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM campaigns WHERE status = 'active' AND id <> $1`, excludeCampaignID).Scan(&count)
 	return count > 0, err
+}
+
+func (r *campaignRepository) GetCampaignDeleteImpact(ctx context.Context, campaignID int64) (*service.CampaignDeleteImpact, error) {
+	var impact service.CampaignDeleteImpact
+	err := r.db.QueryRowContext(ctx, `
+SELECT
+	(SELECT COUNT(*) FROM campaign_participants WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_invite_records WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_pool_entries WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_pool_adjustments WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_leaderboard_snapshots WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_reward_results WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_payout_batches WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_payout_items WHERE campaign_id = $1)`,
+		campaignID,
+	).Scan(
+		&impact.Participants,
+		&impact.InviteRecords,
+		&impact.PoolEntries,
+		&impact.PoolAdjustments,
+		&impact.LeaderboardSnapshots,
+		&impact.RewardResults,
+		&impact.PayoutBatches,
+		&impact.PayoutItems,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &impact, nil
+}
+
+func (r *campaignRepository) DeleteCampaign(ctx context.Context, campaignID int64) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM campaigns WHERE id = $1`, campaignID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return service.ErrCampaignNotFound
+	}
+	return nil
 }
 
 func (r *campaignRepository) GetInviterByAffiliateCode(ctx context.Context, code string) (*service.AffiliateSummary, error) {

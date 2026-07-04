@@ -95,6 +95,23 @@ export interface CampaignPayoutBatch {
   created_at: string
 }
 
+export interface CampaignDeleteImpact {
+  participants: number
+  invite_records: number
+  pool_entries: number
+  pool_adjustments: number
+  leaderboard_snapshots: number
+  reward_results: number
+  payout_batches: number
+  payout_items: number
+}
+
+export interface CampaignDeleteResult {
+  action: 'deleted' | 'archived'
+  campaign?: Campaign | null
+  impact: CampaignDeleteImpact
+}
+
 export async function listCampaigns(params: { page?: number; page_size?: number } = {}): Promise<PaginatedResponse<Campaign>> {
   const { data } = await apiClient.get<PaginatedResponse<Campaign>>('/admin/campaigns', {
     params: { page: params.page ?? 1, page_size: params.page_size ?? 20 },
@@ -107,8 +124,18 @@ export async function createCampaign(payload: CampaignCreateRequest): Promise<{ 
   return data
 }
 
+export async function copyCampaign(id: number): Promise<{ campaign: Campaign; config_version: CampaignConfigVersion }> {
+  const { data } = await apiClient.post<{ campaign: Campaign; config_version: CampaignConfigVersion }>(`/admin/campaigns/${id}/copy`)
+  return data
+}
+
 export async function getCampaign(id: number): Promise<Campaign> {
   const { data } = await apiClient.get<Campaign>(`/admin/campaigns/${id}`)
+  return data
+}
+
+export async function deleteCampaign(id: number): Promise<CampaignDeleteResult> {
+  const { data } = await apiClient.delete<CampaignDeleteResult>(`/admin/campaigns/${id}`)
   return data
 }
 
@@ -149,6 +176,11 @@ export async function recalculateRewards(id: number, status: 'preview' | 'frozen
   return data
 }
 
+export async function getFinalRewardResults(id: number): Promise<CampaignCalculationSummary> {
+  const { data } = await apiClient.get<CampaignCalculationSummary>(`/admin/campaigns/${id}/reward-results/final`)
+  return data
+}
+
 export async function payoutCampaign(id: number): Promise<CampaignPayoutBatch> {
   const { data } = await apiClient.post<CampaignPayoutBatch>(`/admin/campaigns/${id}/payout`)
   return data
@@ -157,7 +189,9 @@ export async function payoutCampaign(id: number): Promise<CampaignPayoutBatch> {
 export const campaignsAdminAPI = {
   listCampaigns,
   createCampaign,
+  copyCampaign,
   getCampaign,
+  deleteCampaign,
   publishCampaign,
   createConfigVersion,
   getPoolSummary,
@@ -165,6 +199,7 @@ export const campaignsAdminAPI = {
   getLeaderboard,
   freezeLeaderboard,
   recalculateRewards,
+  getFinalRewardResults,
   payoutCampaign,
 }
 

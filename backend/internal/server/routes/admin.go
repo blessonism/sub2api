@@ -778,6 +778,8 @@ func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		campaigns.GET("", h.Admin.Campaign.List)
 		campaigns.POST("", h.Admin.Campaign.Create)
 		campaigns.GET("/:id", h.Admin.Campaign.Get)
+		campaigns.DELETE("/:id", h.Admin.Campaign.Delete)
+		campaigns.POST("/:id/copy", h.Admin.Campaign.Copy)
 		campaigns.POST("/:id/publish", h.Admin.Campaign.Publish)
 		campaigns.POST("/:id/config-versions", h.Admin.Campaign.CreateConfigVersion)
 		campaigns.GET("/:id/pool", h.Admin.Campaign.Pool)
@@ -785,6 +787,7 @@ func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		campaigns.GET("/:id/leaderboard", h.Admin.Campaign.Leaderboard)
 		campaigns.POST("/:id/freeze", h.Admin.Campaign.Freeze)
 		campaigns.POST("/:id/recalculate", h.Admin.Campaign.Recalculate)
+		campaigns.GET("/:id/reward-results/final", h.Admin.Campaign.FinalRewardResults)
 		campaigns.POST("/:id/payout", h.Admin.Campaign.Payout)
 	}
 }
