@@ -85,6 +85,62 @@ func TestCampaignRepositoryRecordRechargeIsSourceIdempotent(t *testing.T) {
 	}
 }
 
+func TestCampaignRepositoryGetCampaignDeleteImpactCountsDependencies(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	campaignID := int64(7)
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT\n\t(SELECT COUNT(*) FROM campaign_participants WHERE campaign_id = $1)")).
+		WithArgs(campaignID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"participants", "invite_records", "pool_entries", "pool_adjustments",
+			"leaderboard_snapshots", "reward_results", "payout_batches", "payout_items",
+		}).AddRow(int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7), int64(8)))
+
+	impact, err := repo.GetCampaignDeleteImpact(ctx, campaignID)
+	if err != nil {
+		t.Fatalf("统计删除影响失败：%v", err)
+	}
+	if impact.Participants != 1 || impact.InviteRecords != 2 || impact.PayoutItems != 8 {
+		t.Fatalf("删除影响统计不符合预期：%+v", impact)
+	}
+	if !impact.HasBusinessData() {
+		t.Fatalf("存在依赖数据时应识别为有业务数据")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCampaignRepositoryDeleteCampaignDeletesRow(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	campaignID := int64(7)
+
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaigns WHERE id = $1")).
+		WithArgs(campaignID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := repo.DeleteCampaign(ctx, campaignID); err != nil {
+		t.Fatalf("删除活动失败：%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func campaignInviteRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "campaign_id", "config_version_id", "inviter_user_id", "invitee_user_id", "invite_source",

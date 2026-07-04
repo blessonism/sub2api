@@ -100,6 +100,32 @@ func (h *CampaignHandler) Get(c *gin.Context) {
 	response.Success(c, campaign)
 }
 
+func (h *CampaignHandler) Delete(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	result, err := h.svc.DeleteCampaign(c.Request.Context(), id, adminSubjectID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *CampaignHandler) Copy(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	campaign, version, err := h.svc.CopyCampaign(c.Request.Context(), id, adminSubjectID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"campaign": campaign, "config_version": version})
+}
+
 func (h *CampaignHandler) Publish(c *gin.Context) {
 	id, ok := parseAdminCampaignID(c)
 	if !ok {
@@ -216,6 +242,19 @@ func (h *CampaignHandler) Recalculate(c *gin.Context) {
 	}
 	status := c.DefaultQuery("status", service.CampaignCalculationPreview)
 	summary, err := h.svc.RecalculateRewards(c.Request.Context(), id, status)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
+}
+
+func (h *CampaignHandler) FinalRewardResults(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	summary, err := h.svc.GetFinalRewardResults(c.Request.Context(), id)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
