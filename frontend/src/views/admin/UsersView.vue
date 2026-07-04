@@ -255,13 +255,14 @@
       <template #table>
         <DataTable
           :columns="columns"
-          :data="sortedUsers"
+          :data="users"
           :loading="loading"
           :actions-count="7"
           :server-side-sort="true"
-          default-sort-key="created_at"
-          default-sort-order="desc"
-          :sort-storage-key="USER_SORT_STORAGE_KEY"
+          :default-sort-key="dataTableSortKey"
+          :default-sort-order="sortState.sort_order"
+          :sort-key="dataTableSortKey"
+          :sort-order="sortState.sort_order"
           @sort="handleSort"
         >
           <template #cell-email="{ value }">
@@ -513,9 +514,6 @@
                       />
                     </svg>
                   </button>
-                  <div class="mt-1 border-t border-gray-100 px-3 py-1 text-[10px] normal-case tracking-normal text-gray-400 dark:border-dark-700 dark:text-dark-500">
-                    {{ t('admin.users.sortCurrentPageOnly') }}
-                  </div>
                 </div>
               </div>
             </div>
@@ -998,15 +996,25 @@ const users = ref<AdminUser[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
+const USER_TABLE_SORT_KEYS = new Set([
+  'email', 'id', 'username', 'role', 'balance', 'concurrency', 'status',
+  'last_used_at', 'last_active_at', 'created_at'
+])
+const USER_USAGE_SORT_KEYS = new Set([
+  'usage_today', 'usage_total',
+  'usage_anthropic_today', 'usage_anthropic_total',
+  'usage_openai_today', 'usage_openai_total',
+  'usage_gemini_today', 'usage_gemini_total',
+  'usage_antigravity_today', 'usage_antigravity_total'
+])
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }
-  const sortable = new Set(['email', 'id', 'username', 'role', 'balance', 'concurrency', 'status', 'last_used_at', 'last_active_at', 'created_at'])
   try {
     const raw = localStorage.getItem(USER_SORT_STORAGE_KEY)
     if (!raw) return fallback
     const parsed = JSON.parse(raw) as { key?: string; order?: string }
     const key = typeof parsed.key === 'string' ? parsed.key : ''
-    if (!sortable.has(key)) return fallback
+    if (!USER_TABLE_SORT_KEYS.has(key) && !USER_USAGE_SORT_KEYS.has(key)) return fallback
     return {
       sort_by: key,
       sort_order: parsed.order === 'asc' ? 'asc' : 'desc'
@@ -1016,6 +1024,9 @@ const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' }
   }
 }
 const sortState = reactive(loadInitialSortState())
+const dataTableSortKey = computed(() =>
+  USER_TABLE_SORT_KEYS.has(sortState.sort_by) ? sortState.sort_by : ''
+)
 
 // Groups data for the groups column and the existing "authorised group" filter (active only)
 const allGroups = ref<AdminGroup[]>([])
@@ -1173,37 +1184,40 @@ const platformQuotaStats = ref<Record<number, PlatformQuotaItem[]>>({})
 const getPlatformUsage = (userId: number, platform: string) =>
   usageStats.value[userId]?.by_platform?.find((p) => p.platform === platform)
 
-// 用量列前端排序：DataTable 工作在 server-side-sort 模式，所有 sortable
-// 字段都会触发后端查询，而用量列数据是异步批量拉取后再合并到当前页，
-// 因此采用独立的前端排序状态对当前页 users 做本地排序。
-// 排序状态独立于后端 sortState 持久化；缺失数据按 0 处理（desc 沉底、asc 置顶）。
+// 用量列排序使用后端全量排序：切换菜单后写入列表查询的 sort_by/sort_order，
+// 由数据库先按全部用户聚合用量排序，再按分页返回当前页。这里的 total 沿用 UI 文案，
+// 内部实际语义是"近 30 天"，需与 DashboardService.GetBatchUserUsageStats 保持一致。
 type UsageMetric = 'today' | 'total'
 type UsageSortState = { key: string; metric: UsageMetric; order: 'asc' | 'desc' } | null
-const USAGE_SORT_STORAGE_KEY = 'admin-users-usage-sort'
+
+const toUsageSortBy = (key: string, metric: UsageMetric): string => {
+  const platform = USAGE_COLUMN_PLATFORMS[key]
+  if (platform === null) return metric === 'today' ? 'usage_today' : 'usage_total'
+  return `usage_${platform}_${metric}`
+}
+
+const fromUsageSortBy = (sortBy: string): UsageSortState => {
+  if (sortBy === 'usage_today') return { key: 'usage', metric: 'today', order: sortState.sort_order }
+  if (sortBy === 'usage_total') return { key: 'usage', metric: 'total', order: sortState.sort_order }
+  const match = sortBy.match(/^usage_(anthropic|openai|gemini|antigravity)_(today|total)$/)
+  if (!match) return null
+  const [, platform, metric] = match
+  const key = Object.entries(USAGE_COLUMN_PLATFORMS).find(([, value]) => value === platform)?.[0]
+  return key ? { key, metric: metric as UsageMetric, order: sortState.sort_order } : null
+}
 
 const loadInitialUsageSort = (): UsageSortState => {
-  try {
-    const raw = localStorage.getItem(USAGE_SORT_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<{ key: string; metric: string; order: string }>
-    if (!parsed.key || !USAGE_COLUMN_KEYS.includes(parsed.key)) return null
-    const metric: UsageMetric = parsed.metric === 'total' ? 'total' : 'today'
-    const order: 'asc' | 'desc' = parsed.order === 'asc' ? 'asc' : 'desc'
-    return { key: parsed.key, metric, order }
-  } catch {
-    return null
-  }
+  return fromUsageSortBy(sortState.sort_by)
 }
 const usageSort = ref<UsageSortState>(loadInitialUsageSort())
-const persistUsageSort = () => {
+const persistSortState = () => {
   try {
-    if (usageSort.value) {
-      localStorage.setItem(USAGE_SORT_STORAGE_KEY, JSON.stringify(usageSort.value))
-    } else {
-      localStorage.removeItem(USAGE_SORT_STORAGE_KEY)
-    }
+    localStorage.setItem(USER_SORT_STORAGE_KEY, JSON.stringify({
+      key: sortState.sort_by,
+      order: sortState.sort_order
+    }))
   } catch (e) {
-    console.error('Failed to persist usage sort:', e)
+    console.error('Failed to persist user sort:', e)
   }
 }
 
@@ -1221,8 +1235,17 @@ const toggleUsageSort = (key: string, metric: UsageMetric) => {
   } else {
     usageSort.value = { key, metric, order: 'desc' }
   }
-  persistUsageSort()
+  if (usageSort.value) {
+    sortState.sort_by = toUsageSortBy(usageSort.value.key, usageSort.value.metric)
+    sortState.sort_order = usageSort.value.order
+  } else {
+    sortState.sort_by = 'created_at'
+    sortState.sort_order = 'desc'
+  }
+  persistSortState()
+  pagination.page = 1
   openUsageSortMenu.value = null
+  loadUsers()
 }
 
 // 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
@@ -1231,34 +1254,6 @@ const openUsageSortMenu = ref<string | null>(null)
 const toggleUsageSortMenu = (key: string) => {
   openUsageSortMenu.value = openUsageSortMenu.value === key ? null : key
 }
-
-const getUsageValue = (userId: number, key: string, metric: UsageMetric): number => {
-  const stats = usageStats.value[userId]
-  if (!stats) return 0
-  const platform = USAGE_COLUMN_PLATFORMS[key]
-  if (platform === null) {
-    return metric === 'today' ? stats.today_actual_cost ?? 0 : stats.total_actual_cost ?? 0
-  }
-  const p = stats.by_platform?.find((x) => x.platform === platform)
-  if (!p) return 0
-  return metric === 'today' ? p.today_actual_cost ?? 0 : p.total_actual_cost ?? 0
-}
-
-// 在 server-side 排序结果之上叠加用量列的本地排序；无 usageSort 时直接透传原数组。
-// 稳定排序：等值按原 index 保序，避免拉取新用量数据时表行抖动。
-const sortedUsers = computed(() => {
-  const s = usageSort.value
-  if (!s) return users.value
-  return [...users.value]
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => {
-      const av = getUsageValue(a.row.id, s.key, s.metric)
-      const bv = getUsageValue(b.row.id, s.key, s.metric)
-      if (av !== bv) return s.order === 'asc' ? av - bv : bv - av
-      return a.index - b.index
-    })
-    .map((x) => x.row)
-})
 
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
@@ -1601,6 +1596,8 @@ const handlePageSizeChange = (pageSize: number) => {
 const handleSort = (key: string, order: 'asc' | 'desc') => {
   sortState.sort_by = key
   sortState.sort_order = order
+  usageSort.value = null
+  persistSortState()
   pagination.page = 1
   loadUsers()
 }
