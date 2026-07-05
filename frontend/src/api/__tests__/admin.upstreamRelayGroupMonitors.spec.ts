@@ -25,6 +25,7 @@ import {
   probeAllCandidates,
   previewRecommendations,
   refreshConnectorMetrics,
+  refreshMonitoringData,
   restoreRecommendationRun,
   syncAllConnectors,
   updateMonitoringPolicy,
@@ -187,6 +188,22 @@ describe('admin upstream relay group monitors api', () => {
 
     await expect(refreshConnectorMetrics(7)).resolves.toEqual(response)
     expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/metrics/refresh')
+  })
+
+  it('refreshes monitoring data through the aggregate endpoint', async () => {
+    const response = {
+      status: 'success',
+      total: 1,
+      success: 1,
+      partial: 0,
+      failed: 0,
+      items: [],
+      refreshed_at: '2026-06-28T12:00:00Z'
+    }
+    post.mockResolvedValue({ data: response })
+
+    await expect(refreshMonitoringData()).resolves.toEqual(response)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/refresh')
   })
 
   it('loads connector-visible upstream api keys for candidate binding', async () => {

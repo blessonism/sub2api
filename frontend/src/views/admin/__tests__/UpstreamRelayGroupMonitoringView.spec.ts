@@ -19,6 +19,7 @@ const {
   listSnapshots,
   listUsageHistory,
   refreshConnectorMetrics,
+  refreshMonitoringData,
   syncConnector,
   syncAllConnectors,
   probeAllCandidates,
@@ -42,6 +43,7 @@ const {
   listSnapshots: vi.fn(),
   listUsageHistory: vi.fn(),
   refreshConnectorMetrics: vi.fn(),
+  refreshMonitoringData: vi.fn(),
   syncConnector: vi.fn(),
   syncAllConnectors: vi.fn(),
   probeAllCandidates: vi.fn(),
@@ -86,6 +88,7 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     listSnapshots,
     listUsageHistory,
     refreshConnectorMetrics,
+    refreshMonitoringData,
     syncConnector,
     syncAllConnectors,
     probeAllCandidates,
@@ -216,6 +219,41 @@ function monitoringPolicy(overrides: Record<string, unknown> = {}) {
   }
 }
 
+type TestConnectorMetricsRefreshResult = {
+  connector: Record<string, unknown> & { id: number; name: string }
+  snapshots: Array<Record<string, unknown> & { connector_id: number }>
+  status: 'success' | 'partial' | 'failed'
+  balance_detail: Record<string, unknown>
+  usage_detail: Record<string, unknown>
+  balance_available: boolean
+  usage_available: boolean
+  balance_error?: string
+  usage_error?: string
+  refreshed_at: string
+}
+
+function monitoringRefreshResultFromMetrics(items: TestConnectorMetricsRefreshResult[]) {
+  return {
+    status: items.every((item) => item.status === 'success') ? 'success' : items.every((item) => item.status === 'failed') ? 'failed' : 'partial',
+    total: items.length,
+    success: items.filter((item) => item.status === 'success').length,
+    partial: items.filter((item) => item.status === 'partial').length,
+    failed: items.filter((item) => item.status === 'failed').length,
+    refreshed_at: '2026-06-28T12:05:00Z',
+    items: items.map((item) => ({
+      connector_id: item.connector.id,
+      connector_name: item.connector.name,
+      connector: item.connector,
+      status: item.status,
+      snapshot_status: item.snapshots.length > 0 ? 'success' : 'skipped',
+      snapshot_count: item.snapshots.length,
+      snapshots: item.snapshots,
+      metrics: item,
+      error_reason: item.usage_error || item.balance_error,
+    })),
+  }
+}
+
 function recommendationRun(overrides: Record<string, unknown> = {}) {
   return {
     id: 77,
@@ -270,6 +308,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     listSnapshots.mockReset()
     listUsageHistory.mockReset()
     refreshConnectorMetrics.mockReset()
+    refreshMonitoringData.mockReset()
     syncConnector.mockReset()
     syncAllConnectors.mockReset()
     probeAllCandidates.mockReset()
@@ -313,6 +352,46 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     getRecommendationRun.mockRejectedValue(new Error('not found'))
     applyRecommendationRun.mockRejectedValue(new Error('apply failed'))
     listSnapshots.mockResolvedValue([])
+    refreshMonitoringData.mockResolvedValue({
+      status: 'success',
+      total: 1,
+      success: 1,
+      partial: 0,
+      failed: 0,
+      refreshed_at: '2026-06-28T12:05:00Z',
+      items: [{
+        connector_id: 7,
+        connector_name: 'relay-a',
+        status: 'success',
+        snapshot_status: 'success',
+        snapshot_count: 0,
+        snapshots: [],
+        metrics: {
+          connector: {
+            id: 7,
+            name: 'relay-a',
+            base_url: 'https://relay.example.com',
+            auth_mode: 'manual_session',
+            status: 'active',
+            credential_version: 1,
+            has_bearer_token: true,
+            has_refresh_token: false,
+            has_login_email: false,
+            has_cookie: false,
+            has_user_agent: false,
+            created_at: '2026-06-28T12:00:00Z',
+            updated_at: '2026-06-28T12:05:00Z',
+          },
+          snapshots: [],
+          status: 'success',
+          balance_detail: { status: 'success', checked_at: '2026-06-28T12:05:00Z' },
+          usage_detail: { status: 'success', total_groups: 0, updated_groups: 0, missing_groups: [] },
+          balance_available: true,
+          usage_available: true,
+          refreshed_at: '2026-06-28T12:05:00Z',
+        },
+      }],
+    })
     syncConnector.mockResolvedValue([])
     listUsageHistory.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50, pages: 1 })
     getRecommendationPolicy.mockResolvedValue({
@@ -374,6 +453,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     for (const wrapper of mountedWrappers.splice(0)) {
       wrapper.unmount()
     }
+    vi.useRealTimers()
     await useAuthStore().logout().catch(() => undefined)
     document.body.innerHTML = ''
   })
@@ -999,7 +1079,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('connectors.refreshMetrics'))!.trigger('click')
     await flushPromises()
 
     expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
@@ -1367,10 +1449,11 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('$2.50')
 
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
     await flushPromises()
 
-    expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
+    expect(refreshMonitoringData).toHaveBeenCalled()
+    expect(refreshConnectorMetrics).not.toHaveBeenCalled()
     expect(usageHistoryTabCalls()).toHaveLength(2)
     expect(wrapper.text()).toContain('$3.75')
     expect(wrapper.text()).toContain('2.50M')
@@ -1420,10 +1503,11 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await controls.find((input) => input.attributes('type') === 'date')!.setValue('2026-06-27')
     await flushPromises()
 
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
     await flushPromises()
 
-    expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
+    expect(refreshMonitoringData).toHaveBeenCalled()
+    expect(refreshConnectorMetrics).not.toHaveBeenCalled()
     expect(usageHistoryTabCalls()).toHaveLength(1)
     expect(wrapper.text()).toContain('usageHistory.resultUsesAppliedFilters')
   })
@@ -1482,7 +1566,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('connectors.refreshMetrics'))!.trigger('click')
     await flushPromises()
 
     const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
@@ -1534,8 +1618,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page_size: 100,
       pages: 1,
     })
-    refreshConnectorMetrics
-      .mockResolvedValueOnce({
+    refreshMonitoringData.mockResolvedValueOnce(monitoringRefreshResultFromMetrics([
+      {
         connector: {
           id: 7,
           name: 'relay-a',
@@ -1560,8 +1644,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
         balance_available: true,
         usage_available: true,
         refreshed_at: '2026-06-28T12:05:00Z',
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         connector: {
           id: 8,
           name: 'relay-b',
@@ -1593,16 +1677,19 @@ describe('UpstreamRelayGroupMonitoringView', () => {
         usage_available: false,
         usage_error: 'connector has no local account bindings',
         refreshed_at: '2026-06-28T12:05:00Z',
-      })
+      },
+    ]))
 
     const wrapper = mountView()
     await flushPromises()
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
     await flushPromises()
 
+    expect(refreshMonitoringData).toHaveBeenCalled()
+    expect(refreshConnectorMetrics).not.toHaveBeenCalled()
     const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
     expect(summary.exists()).toBe(true)
     expect(summary.text()).toContain('metricsRefresh.summaryTitle')
@@ -1657,7 +1744,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('connectors.refreshMetrics'))!.trigger('click')
     await flushPromises()
 
     const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
@@ -1707,7 +1794,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('connectors.refreshMetrics'))!.trigger('click')
     await flushPromises()
 
     const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
@@ -1758,7 +1845,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMetrics'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('connectors.refreshMetrics'))!.trigger('click')
     await flushPromises()
 
     const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
@@ -1875,6 +1962,183 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.connectors.notBoundCandidate')
     expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.connectors.createCandidate')
     expect(expansion.text()).not.toContain('admin.upstreamRelayGroupMonitoring.connectors.noGroups')
+  })
+
+  it('自动刷新有连接器但没有 active connector 时仍调用统一监控刷新', async () => {
+    listConnectors.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'needs_reauth',
+        credential_version: 1,
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+    vi.useFakeTimers()
+    const wrapper = mountView()
+    await flushPromises()
+    refreshMonitoringData.mockClear()
+    refreshConnectorMetrics.mockClear()
+
+    const autoRefresh = wrapper.findComponent({ name: 'AutoRefreshButton' })
+    autoRefresh.vm.$emit('update:interval', 15)
+    autoRefresh.vm.$emit('update:enabled', true)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+
+    expect(refreshMonitoringData).toHaveBeenCalledTimes(1)
+    expect(refreshConnectorMetrics).not.toHaveBeenCalled()
+  })
+
+  it('统一刷新快照同步成功且返回空 snapshots 时清空该连接器旧概览快照', async () => {
+    listSnapshots.mockResolvedValue([{
+      id: 501,
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+      name: 'Team Alpha',
+      platform: 'claude',
+      status: 'active',
+      default_rate_multiplier: 1,
+      final_rate_multiplier: 1.75,
+      source: 'login_available_groups',
+      last_seen_at: '2026-06-28T12:00:00Z',
+    }])
+    refreshMonitoringData.mockResolvedValueOnce({
+      status: 'success',
+      total: 1,
+      success: 1,
+      partial: 0,
+      failed: 0,
+      refreshed_at: '2026-06-28T12:05:00Z',
+      items: [{
+        connector_id: 7,
+        connector_name: 'relay-a',
+        status: 'success',
+        snapshot_status: 'success',
+        snapshot_count: 0,
+        snapshots: [],
+        metrics: {
+          connector: {
+            id: 7,
+            name: 'relay-a',
+            base_url: 'https://relay.example.com',
+            auth_mode: 'manual_session',
+            status: 'active',
+            credential_version: 1,
+            has_bearer_token: true,
+            has_refresh_token: false,
+            has_login_email: false,
+            has_cookie: false,
+            has_user_agent: false,
+            created_at: '2026-06-28T12:00:00Z',
+            updated_at: '2026-06-28T12:05:00Z',
+          },
+          snapshots: [],
+          status: 'success',
+          balance_detail: { status: 'success', checked_at: '2026-06-28T12:05:00Z' },
+          usage_detail: { status: 'success', total_groups: 0, updated_groups: 0, missing_groups: [] },
+          balance_available: true,
+          usage_available: true,
+          refreshed_at: '2026-06-28T12:05:00Z',
+        },
+      }],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.attributes('aria-label')?.includes('connectors.expandGroups'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="connector-group-expansion"]').text()).toContain('Team Alpha')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
+    await flushPromises()
+
+    expect(refreshMonitoringData).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="connector-group-expansion"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.upstreamRelayGroupMonitoring.connectors.noGroups')
+  })
+
+  it('统一刷新快照同步失败且未返回 snapshots 时保留旧概览快照', async () => {
+    listSnapshots.mockResolvedValue([{
+      id: 501,
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+      name: 'Team Alpha',
+      platform: 'claude',
+      status: 'active',
+      default_rate_multiplier: 1,
+      final_rate_multiplier: 1.75,
+      source: 'login_available_groups',
+      last_seen_at: '2026-06-28T12:00:00Z',
+    }])
+    refreshMonitoringData.mockResolvedValueOnce({
+      status: 'partial',
+      total: 1,
+      success: 0,
+      partial: 1,
+      failed: 0,
+      refreshed_at: '2026-06-28T12:05:00Z',
+      items: [{
+        connector_id: 7,
+        connector_name: 'relay-a',
+        status: 'partial',
+        snapshot_status: 'failed',
+        snapshot_count: 0,
+        snapshot_error: 'sync failed',
+        metrics: {
+          connector: {
+            id: 7,
+            name: 'relay-a',
+            base_url: 'https://relay.example.com',
+            auth_mode: 'manual_session',
+            status: 'active',
+            credential_version: 1,
+            has_bearer_token: true,
+            has_refresh_token: false,
+            has_login_email: false,
+            has_cookie: false,
+            has_user_agent: false,
+            created_at: '2026-06-28T12:00:00Z',
+            updated_at: '2026-06-28T12:05:00Z',
+          },
+          snapshots: [],
+          status: 'success',
+          balance_detail: { status: 'success', checked_at: '2026-06-28T12:05:00Z' },
+          usage_detail: { status: 'success', total_groups: 0, updated_groups: 0, missing_groups: [] },
+          balance_available: true,
+          usage_available: true,
+          refreshed_at: '2026-06-28T12:05:00Z',
+        },
+      }],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.attributes('aria-label')?.includes('connectors.expandGroups'))!.trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
+    await flushPromises()
+
+    const expansion = wrapper.find('[data-testid="connector-group-expansion"]')
+    expect(refreshMonitoringData).toHaveBeenCalled()
+    expect(expansion.text()).toContain('Team Alpha')
+    expect(expansion.findAll('[data-testid="connector-group-item"]')).toHaveLength(1)
   })
 
   it('保存候选失败时展示接口返回的详细原因', async () => {

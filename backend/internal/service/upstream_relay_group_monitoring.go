@@ -230,6 +230,29 @@ type UpstreamRelayConnectorMetricsRefreshResult struct {
 	RefreshedAt      time.Time                         `json:"refreshed_at"`
 }
 
+type UpstreamRelayMonitoringRefreshResult struct {
+	Status      string                               `json:"status"`
+	Total       int                                  `json:"total"`
+	Success     int                                  `json:"success"`
+	Partial     int                                  `json:"partial"`
+	Failed      int                                  `json:"failed"`
+	Items       []UpstreamRelayMonitoringRefreshItem `json:"items"`
+	RefreshedAt time.Time                            `json:"refreshed_at"`
+}
+
+type UpstreamRelayMonitoringRefreshItem struct {
+	ConnectorID    int64                                       `json:"connector_id"`
+	ConnectorName  string                                      `json:"connector_name,omitempty"`
+	Connector      *UpstreamRelayConnector                     `json:"connector,omitempty"`
+	Status         string                                      `json:"status"`
+	SnapshotStatus string                                      `json:"snapshot_status"`
+	SnapshotCount  int                                         `json:"snapshot_count"`
+	SnapshotError  string                                      `json:"snapshot_error,omitempty"`
+	Snapshots      []UpstreamRelayGroupRateSnapshot            `json:"snapshots"`
+	Metrics        *UpstreamRelayConnectorMetricsRefreshResult `json:"metrics,omitempty"`
+	ErrorReason    string                                      `json:"error_reason,omitempty"`
+}
+
 type UpstreamRelayMetricsBalanceDetail struct {
 	Status    string     `json:"status"`
 	Value     *float64   `json:"value,omitempty"`
@@ -803,6 +826,88 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	return result, nil
 }
 
+func (s *UpstreamRelayGroupMonitoringService) RefreshMonitoringData(ctx context.Context) (*UpstreamRelayMonitoringRefreshResult, error) {
+	policy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	connectors, err := s.listAllConnectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := &UpstreamRelayMonitoringRefreshResult{
+		Total:       len(connectors),
+		Items:       make([]UpstreamRelayMonitoringRefreshItem, len(connectors)),
+		RefreshedAt: time.Now(),
+	}
+	limit := positiveOrDefault(policy.SyncConcurrency, upstreamRelayDefaultSyncLimit)
+	s.runLimited(len(connectors), limit, func(index int) {
+		result.Items[index] = s.refreshMonitoringConnector(ctx, connectors[index])
+	})
+	result.summarize()
+	return result, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) refreshMonitoringConnector(ctx context.Context, connector UpstreamRelayConnector) UpstreamRelayMonitoringRefreshItem {
+	item := UpstreamRelayMonitoringRefreshItem{
+		ConnectorID:    connector.ID,
+		ConnectorName:  connector.Name,
+		Connector:      &connector,
+		Status:         upstreamRelayMetricsRefreshStatusFailed,
+		SnapshotStatus: upstreamRelayMetricsRefreshStatusFailed,
+		Snapshots:      []UpstreamRelayGroupRateSnapshot{},
+	}
+
+	snapshots, syncErr := s.SyncConnector(ctx, connector.ID)
+	if syncErr != nil {
+		item.SnapshotError = sanitizeUpstreamRelayError(syncErr.Error())
+	} else {
+		item.SnapshotStatus = upstreamRelayMetricsRefreshStatusSuccess
+		item.SnapshotCount = len(snapshots)
+		item.Snapshots = snapshots
+	}
+
+	metrics, metricsErr := s.RefreshConnectorMetrics(ctx, connector.ID)
+	if metricsErr == nil {
+		item.Metrics = metrics
+		if metrics.Connector != nil {
+			item.Connector = metrics.Connector
+			item.ConnectorName = metrics.Connector.Name
+		}
+		if len(metrics.Snapshots) > 0 {
+			item.Snapshots = metrics.Snapshots
+		}
+	}
+
+	item.Status = buildUpstreamRelayMonitoringRefreshItemStatus(item.SnapshotStatus, item.Metrics)
+	item.ErrorReason = firstNonEmpty(item.SnapshotError, monitoringMetricsError(metricsErr, item.Metrics))
+	return item
+}
+
+func buildUpstreamRelayMonitoringRefreshItemStatus(snapshotStatus string, metrics *UpstreamRelayConnectorMetricsRefreshResult) string {
+	metricsStatus := upstreamRelayMetricsRefreshStatusFailed
+	if metrics != nil {
+		metricsStatus = metrics.Status
+	}
+	if snapshotStatus == upstreamRelayMetricsRefreshStatusSuccess && metricsStatus == upstreamRelayMetricsRefreshStatusSuccess {
+		return upstreamRelayMetricsRefreshStatusSuccess
+	}
+	if snapshotStatus == upstreamRelayMetricsRefreshStatusFailed && metricsStatus == upstreamRelayMetricsRefreshStatusFailed {
+		return upstreamRelayMetricsRefreshStatusFailed
+	}
+	return upstreamRelayMetricsRefreshStatusPartial
+}
+
+func monitoringMetricsError(err error, metrics *UpstreamRelayConnectorMetricsRefreshResult) string {
+	if err != nil {
+		return sanitizeUpstreamRelayError(err.Error())
+	}
+	if metrics == nil {
+		return ""
+	}
+	return firstNonEmpty(metrics.BalanceError, metrics.UsageError)
+}
+
 func buildUpstreamRelayMetricsBalanceDetail(available bool, value *float64, checkedAt *time.Time, errText string) UpstreamRelayMetricsBalanceDetail {
 	if !available {
 		return UpstreamRelayMetricsBalanceDetail{
@@ -1197,6 +1302,34 @@ func (r *UpstreamRelayBulkOperationResult) summarize() {
 			r.Failed++
 		}
 	}
+}
+
+func (r *UpstreamRelayMonitoringRefreshResult) summarize() {
+	if r == nil {
+		return
+	}
+	r.Success = 0
+	r.Partial = 0
+	r.Failed = 0
+	for _, item := range r.Items {
+		switch item.Status {
+		case upstreamRelayMetricsRefreshStatusSuccess:
+			r.Success++
+		case upstreamRelayMetricsRefreshStatusPartial, upstreamRelayMetricsRefreshStatusSkipped:
+			r.Partial++
+		default:
+			r.Failed++
+		}
+	}
+	if r.Total == 0 || (r.Success == r.Total && r.Partial == 0 && r.Failed == 0) {
+		r.Status = upstreamRelayMetricsRefreshStatusSuccess
+		return
+	}
+	if r.Failed == r.Total {
+		r.Status = upstreamRelayMetricsRefreshStatusFailed
+		return
+	}
+	r.Status = upstreamRelayMetricsRefreshStatusPartial
 }
 
 func positiveOrDefault(value int, fallback int) int {

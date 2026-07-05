@@ -165,6 +165,7 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 	{
 		relay.GET("/connectors", h.Admin.UpstreamRelayMonitoring.ListConnectors)
 		relay.POST("/connectors", h.Admin.UpstreamRelayMonitoring.CreateConnector)
+		relay.POST("/refresh", h.Admin.UpstreamRelayMonitoring.RefreshMonitoringData)
 		relay.POST("/connectors/sync-all", h.Admin.UpstreamRelayMonitoring.SyncAllConnectors)
 		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
 		relay.DELETE("/connectors/:id", h.Admin.UpstreamRelayMonitoring.DeleteConnector)

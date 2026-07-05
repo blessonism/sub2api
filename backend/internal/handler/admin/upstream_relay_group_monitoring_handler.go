@@ -101,6 +101,15 @@ func (h *UpstreamRelayGroupMonitoringHandler) SyncAllConnectors(c *gin.Context) 
 	response.Success(c, result)
 }
 
+func (h *UpstreamRelayGroupMonitoringHandler) RefreshMonitoringData(c *gin.Context) {
+	result, err := h.svc.RefreshMonitoringData(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *UpstreamRelayGroupMonitoringHandler) RefreshConnectorMetrics(c *gin.Context) {
 	id, ok := parseRelayID(c, "id")
 	if !ok {
