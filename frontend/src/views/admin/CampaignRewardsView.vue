@@ -1,19 +1,25 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div class="flex flex-wrap justify-end gap-2">
-        <button class="btn btn-secondary inline-flex items-center gap-2" type="button" @click="loadCampaigns">
-          <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
-          {{ t('admin.campaignRewards.refresh') }}
-        </button>
-        <button class="btn btn-primary inline-flex items-center gap-2" type="button" @click="openCreateDialog">
-          <Icon name="plus" size="sm" />
-          {{ t('admin.campaignRewards.createDefault') }}
-        </button>
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.pageTitle') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.pageDesc') }}</p>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <button class="btn btn-secondary inline-flex items-center gap-2" type="button" @click="loadCampaigns">
+            <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
+            {{ t('admin.campaignRewards.refresh') }}
+          </button>
+          <button class="btn btn-primary inline-flex items-center gap-2 whitespace-nowrap" type="button" @click="openCreateDialog">
+            <Icon name="plus" size="sm" />
+            {{ t('admin.campaignRewards.createCampaign') }}
+          </button>
+        </div>
       </div>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.4fr)]">
-        <div class="card overflow-hidden">
+      <div class="grid gap-6 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <div class="card overflow-hidden xl:sticky xl:top-6 xl:self-start">
           <div class="border-b border-gray-100 p-4 dark:border-dark-700">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.listTitle') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.listDesc') }}</p>
@@ -24,7 +30,7 @@
           <div v-else-if="campaigns.length === 0" class="p-4">
             <EmptyState :title="t('admin.campaignRewards.noCampaigns')" :description="t('admin.campaignRewards.noCampaignsDesc')" />
           </div>
-          <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+          <div v-else class="divide-y divide-gray-100 dark:divide-dark-700 xl:max-h-[calc(100dvh-14rem)] xl:overflow-y-auto">
             <button
               v-for="campaign in campaigns"
               :key="campaign.id"
@@ -34,7 +40,7 @@
               @click="selectCampaign(campaign.id)"
             >
               <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ campaign.name }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                     {{ formatDateTime(campaign.start_at) }} → {{ formatDateTime(campaign.end_at) }}
@@ -43,7 +49,7 @@
                     {{ campaignLifecycleSummary(campaign) }}
                   </p>
                 </div>
-                <span class="rounded-md px-2 py-1 text-xs font-medium" :class="statusClass(campaign.status)">
+                <span class="shrink-0 rounded-md px-2 py-1 text-xs font-medium" :class="statusClass(campaign.status)">
                   {{ statusLabel(campaign.status) }}
                 </span>
               </div>
@@ -62,8 +68,8 @@
           <template v-else>
             <div class="card p-5">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ selectedCampaign.name }}</h1>
+                <div class="min-w-0">
+                  <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ selectedCampaign.name }}</h2>
                   <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ selectedCampaign.description || t('admin.campaignRewards.defaultDescription') }}</p>
                   <div class="mt-3 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-dark-400">
                     <span>{{ formatDateTime(selectedCampaign.start_at) }}</span>
@@ -71,26 +77,27 @@
                     <span>{{ formatDateTime(selectedCampaign.end_at) }}</span>
                   </div>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  <button class="btn btn-secondary" type="button" :disabled="selectedCampaign.status !== 'draft'" @click="publishSelected">
+                <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+                  <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canPublish" @click="publishSelected">
                     {{ t('admin.campaignRewards.publish') }}
                   </button>
-                  <button class="btn btn-secondary" type="button" @click="freezeSelected">
+                  <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canFreeze" :title="canFreeze ? undefined : t('admin.campaignRewards.freezeDisabledHint')" @click="freezeSelected">
                     {{ t('admin.campaignRewards.freeze') }}
                   </button>
-                  <button class="btn btn-secondary" type="button" @click="previewRewards">
+                  <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canPreview" :title="canPreview ? undefined : t('admin.campaignRewards.previewDisabledHint')" @click="previewRewards">
                     {{ t('admin.campaignRewards.preview') }}
                   </button>
-                  <button class="btn btn-primary" type="button" @click="finalizeRewards">
+                  <button class="btn btn-primary whitespace-nowrap" type="button" :disabled="!canFinalize" :title="canFinalize ? undefined : t('admin.campaignRewards.finalizeDisabledHint')" @click="finalizeRewards">
                     {{ t('admin.campaignRewards.finalize') }}
                   </button>
-                  <button class="btn btn-primary" type="button" :disabled="!hasFinalCalculation" :title="payoutDisabledHint" @click="payoutSelected">
+                  <button class="btn btn-primary whitespace-nowrap" type="button" :disabled="!canPayout" :title="canPayout ? undefined : (selectedCampaign?.status === 'paid' ? t('admin.campaignRewards.payoutAlreadyPaid') : payoutDisabledHint)" @click="payoutSelected">
                     {{ t('admin.campaignRewards.payout') }}
                   </button>
-                  <button class="btn btn-secondary" type="button" @click="copySelected">
+                  <span class="hidden h-5 w-px bg-gray-200 dark:bg-dark-600 sm:block" aria-hidden="true" />
+                  <button class="btn btn-secondary whitespace-nowrap" type="button" @click="copySelected">
                     {{ t('admin.campaignRewards.copyAsDraft') }}
                   </button>
-                  <button class="btn border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/20" type="button" @click="deleteSelected">
+                  <button class="btn whitespace-nowrap border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/20" type="button" @click="deleteSelected">
                     {{ t('admin.campaignRewards.deleteOrArchive') }}
                   </button>
                 </div>
@@ -115,7 +122,7 @@
                     {{ statusLabel(selectedCampaign.status) }}
                   </span>
                 </div>
-                <div class="mt-4 grid gap-3 md:grid-cols-5">
+                <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                   <div
                     v-for="step in lifecycleSteps"
                     :key="step.key"
@@ -134,7 +141,7 @@
               </div>
             </div>
 
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div class="grid gap-6 xl:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
               <div class="card p-4">
                 <div class="flex items-start justify-between gap-4">
                   <div>
@@ -180,7 +187,7 @@
             <div class="grid gap-6 xl:grid-cols-2">
               <div class="card p-4">
                 <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.adjustPool') }}</h2>
-                <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(120px,0.5fr)_minmax(140px,0.5fr)_minmax(0,1fr)_auto] sm:items-end">
+                <div class="mt-4 grid gap-3 lg:grid-cols-2 lg:items-end">
                   <label class="space-y-1">
                     <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.adjustType') }}</span>
                     <select v-model="adjustForm.adjustment_type" class="input">
@@ -197,7 +204,7 @@
                     <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.reason') }}</span>
                     <input v-model.trim="adjustForm.reason" class="input" type="text" />
                   </label>
-                  <button class="btn btn-secondary" type="button" @click="submitPoolAdjustment">
+                  <button class="btn btn-secondary w-full whitespace-nowrap lg:w-auto" type="button" @click="submitPoolAdjustment">
                     {{ t('common.submit') }}
                   </button>
                 </div>
@@ -226,7 +233,7 @@
 
               <div class="card p-4">
                 <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.versioning') }}</h2>
-                <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(130px,0.5fr)_minmax(120px,0.4fr)_minmax(0,1fr)_auto] sm:items-end">
+                <div class="mt-4 grid gap-3 lg:grid-cols-2 lg:items-end">
                   <label class="space-y-1">
                     <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.thresholdYuan') }}</span>
                     <input v-model.number="versionThresholdYuan" class="input" type="number" step="0.01" />
@@ -239,72 +246,77 @@
                     <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.reason') }}</span>
                     <input v-model.trim="versionReason" class="input" type="text" />
                   </label>
-                  <button class="btn btn-secondary" type="button" @click="submitVersion">
+                  <button class="btn btn-secondary w-full whitespace-nowrap lg:w-auto" type="button" @click="submitVersion">
                     {{ t('admin.campaignRewards.createVersion') }}
                   </button>
                 </div>
               </div>
             </div>
 
-            <div v-if="calculation" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.rankPool') }}</div>
-                <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.rank_pool_cents) }}</div>
+            <template v-if="calculation">
+              <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+                <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.settlementSection') }}</h2>
+                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                    <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.rankPool') }}</div>
+                    <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.rank_pool_cents) }}</div>
+                  </div>
+                  <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                    <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.contributionPool') }}</div>
+                    <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.contribution_pool_cents) }}</div>
+                  </div>
+                  <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                    <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.finalPayout') }}</div>
+                    <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.total_final_payout_cents) }}</div>
+                  </div>
+                  <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                    <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.withheld') }}</div>
+                    <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.total_withheld_cents) }}</div>
+                  </div>
+                </div>
               </div>
-              <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.contributionPool') }}</div>
-                <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.contribution_pool_cents) }}</div>
-              </div>
-              <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.finalPayout') }}</div>
-                <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.total_final_payout_cents) }}</div>
-              </div>
-              <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500">{{ t('admin.campaignRewards.withheld') }}</div>
-                <div class="mt-2 text-xl font-semibold">{{ formatCents(calculation.total_withheld_cents) }}</div>
-              </div>
-            </div>
 
-            <div v-if="calculation" class="card overflow-hidden">
-              <div class="border-b border-gray-100 p-4 dark:border-dark-700">
-                <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.rewardResults') }}</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rewardResultsDesc') }}</p>
+              <div class="card overflow-hidden">
+                <div class="border-b border-gray-100 p-4 dark:border-dark-700">
+                  <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.rewardResults') }}</h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rewardResultsDesc') }}</p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-[980px] text-sm">
+                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+                      <tr>
+                        <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.user') }}</th>
+                        <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.rank') }}</th>
+                        <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.rankRewardAmount') }}</th>
+                        <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.contributionRewardAmount') }}</th>
+                        <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.grossReward') }}</th>
+                        <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.finalPayout') }}</th>
+                        <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.withheld') }}</th>
+                        <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.withheldReason') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                      <tr v-for="result in calculationRows" :key="result.id" :class="{ 'bg-amber-50/50 dark:bg-amber-900/10': result.withheld_amount_cents > 0 }">
+                        <td class="px-4 py-3">{{ userDisplayMap.get(result.user_id) ?? `#${result.user_id}` }}</td>
+                        <td class="px-4 py-3">{{ result.rank ? `#${result.rank}` : '-' }}</td>
+                        <td class="px-4 py-3 text-right">{{ formatCents(result.rank_reward_amount_cents) }}</td>
+                        <td class="px-4 py-3 text-right">{{ formatCents(result.contribution_reward_amount_cents) }}</td>
+                        <td class="px-4 py-3 text-right">{{ formatCents(result.gross_reward_amount_cents) }}</td>
+                        <td class="px-4 py-3 text-right font-semibold">{{ formatCents(result.final_payout_amount_cents) }}</td>
+                        <td class="px-4 py-3 text-right">{{ formatCents(result.withheld_amount_cents) }}</td>
+                        <td class="px-4 py-3">{{ result.withheld_reason || '-' }}</td>
+                      </tr>
+                      <tr v-if="calculationRows.length === 0">
+                        <td colspan="8" class="px-4 py-10 text-center text-gray-500">{{ t('admin.campaignRewards.noRewardResults') }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div v-if="rewardResultsHiddenCount > 0" class="border-t border-gray-100 px-4 py-3 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                  {{ t('admin.campaignRewards.rewardResultsHidden', { count: rewardResultsHiddenCount }) }}
+                </div>
               </div>
-              <div class="overflow-x-auto">
-                <table class="w-full min-w-[980px] text-sm">
-                  <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
-                    <tr>
-                      <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.user') }}</th>
-                      <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.rank') }}</th>
-                      <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.rankRewardAmount') }}</th>
-                      <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.contributionRewardAmount') }}</th>
-                      <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.grossReward') }}</th>
-                      <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.finalPayout') }}</th>
-                      <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.withheld') }}</th>
-                      <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.withheldReason') }}</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                    <tr v-for="result in calculationRows" :key="result.id" :class="{ 'bg-amber-50/50 dark:bg-amber-900/10': result.withheld_amount_cents > 0 }">
-                      <td class="px-4 py-3">#{{ result.user_id }}</td>
-                      <td class="px-4 py-3">{{ result.rank ? `#${result.rank}` : '-' }}</td>
-                      <td class="px-4 py-3 text-right">{{ formatCents(result.rank_reward_amount_cents) }}</td>
-                      <td class="px-4 py-3 text-right">{{ formatCents(result.contribution_reward_amount_cents) }}</td>
-                      <td class="px-4 py-3 text-right">{{ formatCents(result.gross_reward_amount_cents) }}</td>
-                      <td class="px-4 py-3 text-right font-semibold">{{ formatCents(result.final_payout_amount_cents) }}</td>
-                      <td class="px-4 py-3 text-right">{{ formatCents(result.withheld_amount_cents) }}</td>
-                      <td class="px-4 py-3">{{ result.withheld_reason || '-' }}</td>
-                    </tr>
-                    <tr v-if="calculationRows.length === 0">
-                      <td colspan="8" class="px-4 py-10 text-center text-gray-500">{{ t('admin.campaignRewards.noRewardResults') }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div v-if="rewardResultsHiddenCount > 0" class="border-t border-gray-100 px-4 py-3 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-400">
-                {{ t('admin.campaignRewards.rewardResultsHidden', { count: rewardResultsHiddenCount }) }}
-              </div>
-            </div>
+            </template>
 
             <div class="card overflow-hidden">
               <div class="border-b border-gray-100 p-4 dark:border-dark-700">
@@ -512,6 +524,14 @@ const poolMetrics = computed(() => [
 
 const calculationRows = computed(() => calculation.value?.results?.slice(0, 20) || [])
 
+const userDisplayMap = computed(() => {
+  const map = new Map<number, string>()
+  for (const row of leaderboard.value) {
+    map.set(row.user_id, row.username || row.masked_email || `#${row.user_id}`)
+  }
+  return map
+})
+
 const rewardResultsHiddenCount = computed(() => Math.max((calculation.value?.results?.length || 0) - calculationRows.value.length, 0))
 
 const backendNoFinalSettlementCodes = new Set(['CAMPAIGN_NO_FINAL_SETTLEMENT', 'CAMPAIGN_NOT_FOUND'])
@@ -541,16 +561,22 @@ const createValidationMessage = computed(() => {
 
 const hasFinalCalculation = computed(() => calculation.value?.calculation_status === 'final')
 
+const canPublish = computed(() => selectedCampaign.value?.status === 'draft')
+const canFreeze = computed(() => selectedCampaign.value?.status === 'active')
+const canPreview = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'draft')
+const canFinalize = computed(() => ['active', 'frozen', 'auditing', 'publicizing'].includes(selectedCampaign.value?.status ?? ''))
+const canPayout = computed(() => hasFinalCalculation.value && selectedCampaign.value?.status !== 'paid')
+
 const lifecycleLocale = computed(() => locale.value === 'zh' ? 'zh' : 'en')
 
 const payoutDisabledHint = computed(() => t('admin.campaignRewards.payoutNeedsFinalLocal'))
 
 const lifecycleStageIndex = computed(() => {
   const status = selectedCampaign.value?.status
-  if (status === 'paid') return 4
-  if (hasFinalCalculation.value || status === 'pending_payout') return 3
-  if (status === 'auditing' || status === 'publicizing') return 2
-  if (status === 'active') return 1
+  if (status === 'paid') return 5
+  if (hasFinalCalculation.value || status === 'pending_payout' || status === 'auditing' || status === 'publicizing') return 4
+  if (status === 'frozen') return 3
+  if (status === 'active') return 2
   if (status === 'warmup') return 1
   return 0
 })
@@ -559,6 +585,7 @@ const lifecycleSteps = computed(() => {
   const current = lifecycleStageIndex.value
   return [
     { key: 'draft', label: t('admin.campaignRewards.lifecycleDraft'), description: t('admin.campaignRewards.lifecycleDraftDesc') },
+    { key: 'warmup', label: t('admin.campaignRewards.lifecycleWarmup'), description: t('admin.campaignRewards.lifecycleWarmupDesc') },
     { key: 'active', label: t('admin.campaignRewards.lifecycleActive'), description: t('admin.campaignRewards.lifecycleActiveDesc') },
     { key: 'frozen', label: t('admin.campaignRewards.lifecycleFrozen'), description: t('admin.campaignRewards.lifecycleFrozenDesc') },
     { key: 'settled', label: t('admin.campaignRewards.lifecycleSettled'), description: t('admin.campaignRewards.lifecycleSettledDesc') },
@@ -573,6 +600,7 @@ const lifecycleSteps = computed(() => {
 const lifecycleHint = computed(() => {
   if (!selectedCampaign.value) return ''
   if (selectedCampaign.value.status === 'draft') return t('admin.campaignRewards.lifecycleHintDraft')
+  if (selectedCampaign.value.status === 'warmup') return t('admin.campaignRewards.lifecycleHintWarmup')
   if (selectedCampaign.value.status === 'active') return t('admin.campaignRewards.lifecycleHintActive')
   if (hasFinalCalculation.value) return t('admin.campaignRewards.lifecycleHintSettled')
   if (selectedCampaign.value.status === 'paid') return t('admin.campaignRewards.lifecycleHintPaid')
@@ -670,7 +698,7 @@ const timelineItems = computed(() => {
     ...item,
     missing: !item.raw,
     timeText: item.raw ? formatDateTime(item.raw) : t('admin.campaignRewards.timelineMissing'),
-  }))
+  })).filter(item => item.raw || item.active)
 })
 
 const adjustmentPreviewCents = computed(() => {
