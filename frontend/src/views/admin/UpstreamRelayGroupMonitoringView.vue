@@ -1346,6 +1346,7 @@
           <select v-model="candidateForm.probe_protocol" class="input w-full">
             <option value="chat_completions">chat_completions</option>
             <option value="responses">responses</option>
+            <option value="anthropic">anthropic</option>
           </select>
         </label>
       </div>
@@ -1748,7 +1749,7 @@ const candidateForm = reactive({
   upstream_api_key_name: '',
   upstream_api_key_masked: '',
   probe_model: '',
-  probe_protocol: 'chat_completions' as 'chat_completions' | 'responses',
+  probe_protocol: 'chat_completions' as UpstreamRelayProbeProtocol,
   enabled: true,
   notes: ''
 })

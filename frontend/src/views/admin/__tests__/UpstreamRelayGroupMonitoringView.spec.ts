@@ -2194,6 +2194,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('candidates.newCandidate'))!.trigger('click')
     await flushPromises()
 
+    const protocolSelect = wrapper.findAll('#candidate-form select').find((select) => select.text().includes('anthropic'))
+    expect(protocolSelect?.text()).toContain('anthropic')
+
     const groupSelect = wrapper.get('[data-testid="candidate-upstream-group-select"]')
     expect(groupSelect.text()).toContain('Team Alpha')
     expect(groupSelect.text()).toContain('team-alpha')

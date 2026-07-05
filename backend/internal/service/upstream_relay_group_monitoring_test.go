@@ -1063,6 +1063,19 @@ func TestNormalizeUpstreamRelayCandidateMasksAPIKeyDisplayValue(t *testing.T) {
 	require.Equal(t, "sk-liv***ue-a", candidate.UpstreamAPIKeyMasked)
 }
 
+func TestNormalizeUpstreamRelayCandidateAcceptsAnthropicProbeProtocol(t *testing.T) {
+	candidate, err := normalizeUpstreamRelayCandidateInput(UpstreamRelayCandidateInput{
+		ConnectorID:     7,
+		AccountID:       10,
+		UpstreamGroupID: "g1",
+		ProbeModel:      "claude-sonnet-4-5",
+		ProbeProtocol:   UpstreamRelayProbeProtocolAnthropic,
+	}, 0, 88)
+
+	require.NoError(t, err)
+	require.Equal(t, UpstreamRelayProbeProtocolAnthropic, candidate.ProbeProtocol)
+}
+
 func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBinding(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
@@ -2585,6 +2598,69 @@ data: {"type":"response.completed"}
 	require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+}
+
+func TestUpstreamRelayCandidateProbeHonorsAnthropicProtocolThroughAccountTest(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"pong"}}
+
+data: {"type":"message_stop"}
+
+`)),
+	}}
+	accountTest := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: accountTest}
+	account := &Account{
+		ID:          93,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-ant-test",
+			"base_url": "https://anthropic-upstream.example",
+		},
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:            14,
+		ProbeModel:    "claude-sonnet-4-5",
+		ProbeProtocol: UpstreamRelayProbeProtocolAnthropic,
+	}, account)
+
+	require.True(t, result.Success)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://anthropic-upstream.example/v1/messages?beta=true", upstream.lastReq.URL.String())
+	require.Equal(t, "sk-ant-test", upstream.lastReq.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", upstream.lastReq.Header.Get("anthropic-version"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("anthropic-beta"))
+	require.Equal(t, "claude-sonnet-4-5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "system").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+}
+
+func TestUpstreamRelayCandidateProbeRejectsAnthropicProtocolForNonAnthropicAccount(t *testing.T) {
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: &AccountTestService{}}
+	account := &Account{
+		ID:       94,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:            15,
+		ProbeModel:    "claude-sonnet-4-5",
+		ProbeProtocol: UpstreamRelayProbeProtocolAnthropic,
+	}, account)
+
+	require.False(t, result.Success)
+	require.Equal(t, "invalid_request", result.ErrorClass)
+	require.Contains(t, result.ErrorMessage, "anthropic account")
 }
 
 func TestUpstreamRelayCandidateProbeRequiresAccountTestService(t *testing.T) {
