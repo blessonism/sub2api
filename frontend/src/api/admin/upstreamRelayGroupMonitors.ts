@@ -3,7 +3,7 @@ import type { PaginatedResponse } from '@/types'
 
 export type UpstreamRelayAuthMode = 'manual_session' | 'password_login'
 export type UpstreamRelayConnectorStatus = 'active' | 'needs_reauth' | 'invalid' | 'paused'
-export type UpstreamRelayProbeProtocol = 'chat_completions' | 'responses'
+export type UpstreamRelayProbeProtocol = 'chat_completions' | 'responses' | 'anthropic'
 export type UpstreamRelayRunStatus = 'running' | 'success' | 'failed'
 export type UpstreamRelaySnapshotChangeType = 'added' | 'removed' | 'rate_changed'
 export type UpstreamRelayRecommendationSortField = 'rate_asc' | 'success_rate_desc' | 'latency_asc'

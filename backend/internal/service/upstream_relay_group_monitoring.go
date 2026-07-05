@@ -43,6 +43,8 @@ const (
 	UpstreamRelaySuggestionActionAccountPause   = "account_pause"
 	UpstreamRelaySuggestionActionAccountResume  = "account_resume"
 
+	UpstreamRelayProbeProtocolAnthropic = MonitorProviderAnthropic
+
 	upstreamRelayDefaultPriorityStart            = 10
 	upstreamRelayPriorityStep                    = 10
 	upstreamRelayDefaultSyncInterval             = 480
@@ -2256,6 +2258,11 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 		result.ErrorMessage = "account test service is not configured"
 		return result
 	}
+	if candidate.ProbeProtocol == UpstreamRelayProbeProtocolAnthropic && !account.IsAnthropic() {
+		result.ErrorClass = "invalid_request"
+		result.ErrorMessage = "anthropic probe_protocol requires an anthropic account"
+		return result
+	}
 	start := time.Now()
 	testAccount := accountForUpstreamRelayProbe(account, candidate.ProbeProtocol)
 	testResult, err := s.accountTestService.RunAccountTestBackground(ctx, testAccount, candidate.ProbeModel, "answer: 2", AccountTestModeDefault)
@@ -2319,8 +2326,8 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 	if input.ConnectorID <= 0 || input.AccountID <= 0 || upstreamGroupID == "" || probeModel == "" {
 		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_CANDIDATE", "connector_id, account_id, upstream_group_id and probe_model are required")
 	}
-	if protocol != MonitorAPIModeChatCompletions && protocol != MonitorAPIModeResponses {
-		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_PROBE_PROTOCOL", "probe_protocol must be chat_completions or responses")
+	if !isValidUpstreamRelayProbeProtocol(protocol) {
+		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_PROBE_PROTOCOL", "probe_protocol must be chat_completions, responses or anthropic")
 	}
 	enabled := true
 	if input.Enabled != nil {
@@ -2345,6 +2352,15 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 		Notes:                strings.TrimSpace(input.Notes),
 		CreatedBy:            operatorID,
 	}, nil
+}
+
+func isValidUpstreamRelayProbeProtocol(protocol string) bool {
+	switch protocol {
+	case MonitorAPIModeChatCompletions, MonitorAPIModeResponses, UpstreamRelayProbeProtocolAnthropic:
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultUpstreamRelayRecommendationPolicy() UpstreamRelayRecommendationPolicy {
