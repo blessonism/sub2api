@@ -23,13 +23,9 @@
                 @update:enabled="autoRefreshEnabled = $event"
                 @update:interval="autoRefreshInterval = $event"
               />
-              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="loading" @click="loadAll">
+              <button class="btn btn-primary inline-flex items-center gap-2" type="button" :disabled="loading || refreshingMetrics || connectors.length === 0" @click="() => refreshMonitoringData()">
                 <Icon name="refresh" size="sm" />
-                {{ tM('refresh') }}
-              </button>
-              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="refreshingMetrics || activeConnectors.length === 0" @click="() => refreshMetricsForAllConnectors()">
-                <Icon name="refresh" size="sm" />
-                {{ refreshingMetrics ? tM('refreshingMetrics') : tM('refreshMetrics') }}
+                {{ refreshingMetrics ? tM('refreshingMonitoring') : tM('refreshMonitoring') }}
               </button>
             </div>
           </div>
@@ -299,28 +295,29 @@
           <div v-if="metricsRefreshResult.expanded" data-testid="metrics-refresh-details" class="mt-3 grid gap-2">
             <div
               v-for="item in metricsRefreshResult.items"
-              :key="item.connector.id"
+              :key="item.connector_id"
               class="rounded-md border border-gray-100 bg-white px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900"
             >
               <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div class="font-medium text-gray-900 dark:text-white">{{ item.connector.name || `Connector #${item.connector.id}` }}</div>
+                  <div class="font-medium text-gray-900 dark:text-white">{{ monitoringRefreshItemConnectorLabel(item) }}</div>
                   <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                    <span>{{ metricsBalanceDetailLabel(item) }}</span>
-                    <span>{{ metricsUsageDetailLabel(item) }}</span>
+                    <span>{{ monitoringSnapshotDetailLabel(item) }}</span>
+                    <span>{{ monitoringBalanceDetailLabel(item) }}</span>
+                    <span>{{ monitoringUsageDetailLabel(item) }}</span>
                   </div>
                 </div>
                 <span :class="metricsRefreshStatusClass(item.status)" class="inline-flex w-fit rounded-md px-2 py-1 text-xs font-medium">
                   {{ metricsRefreshStatusLabel(item.status) }}
                 </span>
               </div>
-              <div v-if="item.balance_detail.error || item.usage_detail.error" class="mt-2 text-xs text-red-600 dark:text-red-300">
-                {{ item.balance_detail.error || item.usage_detail.error }}
+              <div v-if="monitoringRefreshItemError(item)" class="mt-2 text-xs text-red-600 dark:text-red-300">
+                {{ monitoringRefreshItemError(item) }}
               </div>
-              <div v-if="metricsMissingGroups(item.usage_detail).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <div v-if="monitoringMissingGroups(item).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
                 <span
-                  v-for="group in metricsMissingGroups(item.usage_detail).slice(0, 6)"
-                  :key="`${item.connector.id}-${group.upstream_group_id}`"
+                  v-for="group in monitoringMissingGroups(item).slice(0, 6)"
+                  :key="`${item.connector_id}-${group.upstream_group_id}`"
                   class="inline-flex rounded bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
                 >
                   {{ group.name || group.upstream_group_id }} · {{ metricsMissingGroupReasonLabel(group.reason) }}
@@ -1555,6 +1552,8 @@ import upstreamRelayAPI, {
   type UpstreamRelayMetricsMissingGroupDetail,
   type UpstreamRelayMetricsUsageDetail,
   type UpstreamRelayMetricsRefreshStatus,
+  type UpstreamRelayMonitoringRefreshItem,
+  type UpstreamRelayMonitoringRefreshResult,
   type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayMonitoringPolicyInput,
   type UpstreamRelayProbeProtocol,
@@ -1592,7 +1591,7 @@ type TodayUsageOverview = {
   records: number
 }
 type MetricsRefreshResultState = {
-  items: UpstreamRelayConnectorMetricsRefreshResult[]
+  items: UpstreamRelayMonitoringRefreshItem[]
   updatedAt: string
   expanded: boolean
 }
@@ -2075,9 +2074,9 @@ const bulkFailedHiddenCount = computed(() => Math.max(0, bulkFailedTotal.value -
 const bulkSuccessHiddenCount = computed(() => Math.max(0, bulkSuccessTotal.value - bulkSuccessItems.value.length))
 
 const metricsRefreshResultByConnectorId = computed(() => {
-  const out = new Map<number, UpstreamRelayConnectorMetricsRefreshResult>()
+  const out = new Map<number, UpstreamRelayMonitoringRefreshItem>()
   for (const item of metricsRefreshResult.value?.items || []) {
-    out.set(item.connector.id, item)
+    out.set(item.connector_id, item)
   }
   return out
 })
@@ -2090,9 +2089,9 @@ const metricsRefreshSummary = computed(() => {
       if (item.status === 'success') summary.success++
       else if (item.status === 'partial') summary.partial++
       else summary.failed++
-      if (item.balance_detail.status === 'success') summary.balance++
-      if (item.usage_detail.status === 'success' || item.usage_detail.status === 'partial') summary.usage++
-      summary.missingGroups += metricsMissingGroups(item.usage_detail).length
+      if (item.metrics?.balance_detail.status === 'success') summary.balance++
+      if (item.metrics?.usage_detail.status === 'success' || item.metrics?.usage_detail.status === 'partial') summary.usage++
+      summary.missingGroups += monitoringMissingGroups(item).length
       return summary
     },
     { total: 0, success: 0, partial: 0, failed: 0, balance: 0, usage: 0, missingGroups: 0 }
@@ -2440,10 +2439,10 @@ function startAutoRefresh() {
     autoRefreshCountdown.value--
     if (autoRefreshCountdown.value <= 0) {
       autoRefreshCountdown.value = autoRefreshInterval.value
-      if (activeConnectors.value.length > 0) {
-        refreshMetricsForAllConnectors({ silent: true })
+      if (connectors.value.length > 0) {
+        void refreshMonitoringData({ silent: true })
       } else {
-        refreshCandidatesSilent()
+        void refreshCandidatesSilent()
       }
     }
   }, 1000)
@@ -2828,63 +2827,96 @@ async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Pr
   return result
 }
 
-function setMetricsRefreshResultItems(items: UpstreamRelayConnectorMetricsRefreshResult[], expanded?: boolean) {
+function setMonitoringRefreshResult(result: UpstreamRelayMonitoringRefreshResult, expanded?: boolean) {
   metricsRefreshResult.value = {
-    items,
-    updatedAt: new Date().toISOString(),
-    expanded: expanded ?? items.some((item) => item.status !== 'success')
+    items: result.items || [],
+    updatedAt: result.refreshed_at || new Date().toISOString(),
+    expanded: expanded ?? result.status !== 'success'
+  }
+}
+
+function monitoringRefreshItemFromMetrics(result: UpstreamRelayConnectorMetricsRefreshResult): UpstreamRelayMonitoringRefreshItem {
+  return {
+    connector_id: result.connector.id,
+    connector_name: result.connector.name,
+    connector: result.connector,
+    status: result.status,
+    snapshot_status: result.snapshots.length > 0 ? 'success' : 'skipped',
+    snapshot_count: result.snapshots.length,
+    snapshots: result.snapshots,
+    metrics: result,
+    error_reason: metricsRefreshWarning(result) || undefined
   }
 }
 
 function mergeMetricsRefreshResultItem(result: UpstreamRelayConnectorMetricsRefreshResult) {
   const currentItems = metricsRefreshResult.value?.items || []
-  const nextItems = currentItems.some((item) => item.connector.id === result.connector.id)
-    ? currentItems.map((item) => (item.connector.id === result.connector.id ? result : item))
-    : [result, ...currentItems]
-  setMetricsRefreshResultItems(nextItems, Boolean(metricsRefreshResult.value?.expanded) || result.status !== 'success')
+  const nextItem = monitoringRefreshItemFromMetrics(result)
+  const nextItems = currentItems.some((item) => item.connector_id === result.connector.id)
+    ? currentItems.map((item) => (item.connector_id === result.connector.id ? nextItem : item))
+    : [nextItem, ...currentItems]
+  metricsRefreshResult.value = {
+    items: nextItems,
+    updatedAt: new Date().toISOString(),
+    expanded: Boolean(metricsRefreshResult.value?.expanded) || result.status !== 'success'
+  }
 }
 
-async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}) {
+async function refreshMonitoringData(options: { silent?: boolean } = {}) {
   if (refreshingMetrics.value) return
-  const targets = activeConnectors.value.length > 0 ? activeConnectors.value : connectors.value
-  if (targets.length === 0) return
+  if (connectors.value.length === 0) return
   refreshingMetrics.value = true
   refreshingMetricsConnectorId.value = null
-  if (!options.silent) error.value = ''
-  const warnings: string[] = []
-  const results: UpstreamRelayConnectorMetricsRefreshResult[] = []
+  if (!options.silent) {
+    error.value = ''
+    successMessage.value = ''
+  }
   try {
-    for (const connector of targets) {
-      let result: UpstreamRelayConnectorMetricsRefreshResult
-      try {
-        result = await refreshMetricsForConnector(connector)
-      } catch (err) {
-        result = buildMetricsRefreshFailureResult(connector, err)
-      }
-      results.push(result)
-      const warning = metricsRefreshWarning(result)
-      if (warning) warnings.push(warning)
-    }
-    await refreshCandidatesSilent()
-    await refreshTodayUsageOverviewSilent()
-    if (activeSection.value === 'usageHistory') {
-      if (!usageHistoryFiltersDirty.value) {
-        await loadUsageHistory()
-      }
-    }
+    const result = await upstreamRelayAPI.refreshMonitoringData()
+    applyMonitoringRefreshResult(result, !options.silent)
+    await refreshPostMonitoringData()
     if (!options.silent) {
-      setMetricsRefreshResultItems(results)
-    }
-    if (warnings.length > 0 && !options.silent) {
-      error.value = warnings[0]
+      if (result.failed > 0 || result.partial > 0) {
+        const warning = monitoringRefreshResultWarning(result)
+        if (warning) error.value = warning
+      } else {
+        successMessage.value = tM('metricsRefresh.monitoringSuccess', { success: result.success, total: result.total })
+      }
     }
   } catch (err) {
     if (!options.silent) {
-      error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+      error.value = err instanceof Error ? err.message : tM('errors.refreshMonitoringFailed')
     }
   } finally {
     refreshingMetrics.value = false
     refreshingMetricsConnectorId.value = null
+  }
+}
+
+function applyMonitoringRefreshResult(result: UpstreamRelayMonitoringRefreshResult, showDetails: boolean) {
+  const nextConnectors = new Map(connectors.value.map((item) => [item.id, item]))
+  for (const item of result.items || []) {
+    if (item.connector) nextConnectors.set(item.connector.id, item.connector)
+    const itemSnapshots = Array.isArray(item.snapshots) ? item.snapshots : null
+    const shouldApplySnapshots = Boolean(itemSnapshots && (item.snapshot_status === 'success' || itemSnapshots.length > 0))
+    if (shouldApplySnapshots && itemSnapshots) replaceOverviewSnapshotsForConnector(item.connector_id, itemSnapshots)
+    if (selectedConnectorId.value === item.connector_id) {
+      if (shouldApplySnapshots && itemSnapshots) snapshots.value = itemSnapshots
+      snapshotConnector.value = item.connector || snapshotConnector.value
+    }
+  }
+  connectors.value = Array.from(nextConnectors.values())
+  setMonitoringRefreshResult(result, showDetails ? undefined : false)
+}
+
+async function refreshPostMonitoringData() {
+  await refreshCandidatesSilent()
+  await refreshTodayUsageOverviewSilent()
+  if (activeSection.value === 'snapshotChanges') {
+    await loadSnapshotChanges()
+  }
+  if (activeSection.value === 'usageHistory' && !usageHistoryFiltersDirty.value) {
+    await loadUsageHistory()
   }
 }
 
@@ -3808,6 +3840,19 @@ function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResul
   return null
 }
 
+function monitoringRefreshResultWarning(result: UpstreamRelayMonitoringRefreshResult) {
+  const warnings = (result.items || [])
+    .map((item) => {
+      if (item.snapshot_error) return item.snapshot_error
+      if (item.metrics) return metricsRefreshWarning(item.metrics)
+      return item.error_reason && item.error_reason !== METRICS_REFRESH_LOCAL_BINDING_ERROR ? item.error_reason : null
+    })
+    .filter((warning): warning is string => Boolean(warning))
+  if (warnings.length > 0) return warnings[0]
+  if (result.failed > 0) return tM('errors.refreshMonitoringPartialFailed', { failed: result.failed, partial: result.partial })
+  return ''
+}
+
 function metricsRefreshFailureReasons(result: Pick<UpstreamRelayConnectorMetricsRefreshResult, 'balance_error' | 'usage_error'>) {
   return [result.balance_error, result.usage_error].filter((reason): reason is string => Boolean(reason))
 }
@@ -3864,13 +3909,44 @@ function metricsUsageDetailLabel(result: UpstreamRelayConnectorMetricsRefreshRes
   return tM('metricsRefresh.usageFailed', { reason: detail.error || '-' })
 }
 
-function connectorMetricsRefreshInlineLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
-  if (result.usage_detail.status === 'success') return tM('metricsRefresh.inlineUsageOk')
-  const missingGroups = metricsMissingGroups(result.usage_detail)
+function monitoringRefreshItemConnectorLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  return item.connector?.name || item.connector_name || `#${item.connector_id}`
+}
+
+function monitoringSnapshotDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (item.snapshot_status === 'success') {
+    return tM('metricsRefresh.snapshotSuccess', { count: item.snapshot_count || item.snapshots.length })
+  }
+  if (item.snapshot_status === 'skipped') return tM('metricsRefresh.snapshotSkipped')
+  return tM('metricsRefresh.snapshotFailed', { reason: item.snapshot_error || '-' })
+}
+
+function monitoringBalanceDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return tM('metricsRefresh.balanceSkipped')
+  return metricsBalanceDetailLabel(item.metrics)
+}
+
+function monitoringUsageDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return tM('metricsRefresh.usageSkipped', { missing: monitoringMissingGroups(item).length })
+  return metricsUsageDetailLabel(item.metrics)
+}
+
+function monitoringRefreshItemError(item: UpstreamRelayMonitoringRefreshItem) {
+  return item.error_reason || item.snapshot_error || item.metrics?.usage_error || item.metrics?.balance_error || ''
+}
+
+function monitoringMissingGroups(item: UpstreamRelayMonitoringRefreshItem): UpstreamRelayMetricsMissingGroupDetail[] {
+  return item.metrics ? metricsMissingGroups(item.metrics.usage_detail) : []
+}
+
+function connectorMetricsRefreshInlineLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return metricsRefreshStatusLabel(item.status)
+  if (item.metrics.usage_detail.status === 'success') return tM('metricsRefresh.inlineUsageOk')
+  const missingGroups = metricsMissingGroups(item.metrics.usage_detail)
   if (missingGroups.length > 0) {
     return tM('metricsRefresh.inlineUsagePartial', { missing: missingGroups.length })
   }
-  return metricsRefreshStatusLabel(result.usage_detail.status)
+  return metricsRefreshStatusLabel(item.metrics.usage_detail.status)
 }
 
 function candidateRateLabel(candidate: UpstreamRelayCandidate) {

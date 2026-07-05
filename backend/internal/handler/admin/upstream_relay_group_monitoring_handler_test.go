@@ -45,6 +45,9 @@ type upstreamRelayHandlerRepo struct {
 }
 
 func (r *upstreamRelayHandlerRepo) ListConnectors(context.Context, pagination.PaginationParams, service.UpstreamRelayConnectorListFilters) ([]service.UpstreamRelayConnector, *pagination.PaginationResult, error) {
+	if r.created != nil {
+		return []service.UpstreamRelayConnector{*r.created}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 20, Pages: 1}, nil
+	}
 	return nil, &pagination.PaginationResult{Total: 0, Page: 1, PageSize: 20, Pages: 1}, nil
 }
 
@@ -460,6 +463,53 @@ func TestUpstreamRelayHandlerListSnapshotChangesReturnsPaginatedShape(t *testing
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
 	require.Equal(t, service.UpstreamRelaySnapshotChangeRateChanged, envelope.Data.Items[0].ChangeType)
+}
+
+func TestUpstreamRelayHandlerRefreshMonitoringDataReturnsAggregateResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer handler-token", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.5}]`))
+		case "/api/v1/groups/rates":
+			_, _ = w.Write([]byte(`{"g1":0.75}`))
+		case "/api/v1/user/profile":
+			_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	repo := &upstreamRelayHandlerRepo{
+		created: &service.UpstreamRelayConnector{
+			ID:                   42,
+			Name:                 "relay-a",
+			BaseURL:              upstream.URL,
+			BearerTokenEncrypted: "handler-token",
+			Status:               service.UpstreamRelayConnectorStatusActive,
+		},
+	}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/upstream-relay-group-monitors/refresh", nil)
+
+	handler.RefreshMonitoringData(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope struct {
+		Data service.UpstreamRelayMonitoringRefreshResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, 1, envelope.Data.Total)
+	require.Equal(t, 1, envelope.Data.Partial)
+	require.Len(t, envelope.Data.Items, 1)
+	require.Equal(t, "partial", envelope.Data.Items[0].Status)
+	require.Equal(t, "success", envelope.Data.Items[0].SnapshotStatus)
+	require.NotNil(t, envelope.Data.Items[0].Metrics)
 }
 
 func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T) {

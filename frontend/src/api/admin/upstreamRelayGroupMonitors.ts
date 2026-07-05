@@ -110,6 +110,29 @@ export interface UpstreamRelayConnectorMetricsRefreshResult {
   refreshed_at: string
 }
 
+export interface UpstreamRelayMonitoringRefreshResult {
+  status: Exclude<UpstreamRelayMetricsRefreshStatus, 'skipped'>
+  total: number
+  success: number
+  partial: number
+  failed: number
+  items: UpstreamRelayMonitoringRefreshItem[]
+  refreshed_at: string
+}
+
+export interface UpstreamRelayMonitoringRefreshItem {
+  connector_id: number
+  connector_name?: string
+  connector?: UpstreamRelayConnector
+  status: Exclude<UpstreamRelayMetricsRefreshStatus, 'skipped'>
+  snapshot_status: UpstreamRelayMetricsRefreshStatus
+  snapshot_count: number
+  snapshot_error?: string
+  snapshots: UpstreamRelayGroupRateSnapshot[]
+  metrics?: UpstreamRelayConnectorMetricsRefreshResult
+  error_reason?: string
+}
+
 export interface UpstreamRelayMetricsBalanceDetail {
   status: UpstreamRelayMetricsRefreshStatus
   value?: number | null
@@ -418,6 +441,11 @@ export async function syncAllConnectors(): Promise<UpstreamRelayBulkOperationRes
   return data
 }
 
+export async function refreshMonitoringData(): Promise<UpstreamRelayMonitoringRefreshResult> {
+  const { data } = await apiClient.post<UpstreamRelayMonitoringRefreshResult>(`${base}/refresh`)
+  return data
+}
+
 export async function refreshConnectorMetrics(id: number): Promise<UpstreamRelayConnectorMetricsRefreshResult> {
   const { data } = await apiClient.post<UpstreamRelayConnectorMetricsRefreshResult>(`${base}/connectors/${id}/metrics/refresh`)
   return data
@@ -563,6 +591,7 @@ export const upstreamRelayGroupMonitorsAPI = {
   deleteConnector,
   syncConnector,
   syncAllConnectors,
+  refreshMonitoringData,
   refreshConnectorMetrics,
   listSnapshots,
   listConnectorAPIKeys,

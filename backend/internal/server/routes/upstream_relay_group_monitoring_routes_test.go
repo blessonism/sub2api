@@ -28,6 +28,7 @@ func TestUpstreamRelayGroupMonitoringRoutesAreRegistered(t *testing.T) {
 	for _, route := range []string{
 		"GET /api/v1/admin/upstream-relay-group-monitors/connectors",
 		"POST /api/v1/admin/upstream-relay-group-monitors/connectors",
+		"POST /api/v1/admin/upstream-relay-group-monitors/refresh",
 		"POST /api/v1/admin/upstream-relay-group-monitors/connectors/sync-all",
 		"POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/sync",
 		"POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh",
