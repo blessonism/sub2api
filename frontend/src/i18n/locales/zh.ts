@@ -7663,12 +7663,12 @@ export default {
       },
       purchase: {
         title: '充值/订阅页面',
-        description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',
-        enabled: '显示充值/订阅入口',
-        enabledHint: '仅在标准模式（非简单模式）下展示',
-        url: '充值/订阅页面 URL',
-        urlPlaceholder: 'https://example.com/purchase',
-        urlHint: '必须是完整的 http(s) 链接',
+        description: '配置侧边栏展示的外部购买套餐入口',
+        enabled: '显示购买套餐链接',
+        enabledHint: '启用并配置链接后，用户侧边栏会显示“购买套餐”直达外链',
+        url: '购买套餐跳转链接',
+        urlPlaceholder: 'https://example.com/plans',
+        urlHint: '必须是完整的 http(s) 链接。留空则隐藏外部购买套餐入口。',
         iframeWarning:
           '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用”新窗口打开”。',
         integrationDoc: '支付集成文档',

@@ -7507,12 +7507,12 @@ export default {
       },
       purchase: {
         title: 'Recharge / Subscription Page',
-        description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',
-        enabled: 'Show Recharge / Subscription Entry',
-        enabledHint: 'Only shown in standard mode (not simple mode)',
-        url: 'Recharge / Subscription URL',
-        urlPlaceholder: 'https://example.com/purchase',
-        urlHint: 'Must be an absolute http(s) URL',
+        description: 'Configure the external buy-plan entry shown in the sidebar',
+        enabled: 'Show Buy Plan Link',
+        enabledHint: 'When enabled and a URL is set, users see a direct "Buy Plan" link in the sidebar',
+        url: 'Buy Plan Jump URL',
+        urlPlaceholder: 'https://example.com/plans',
+        urlHint: 'Must be an absolute http(s) URL. Leave empty to hide the external buy-plan link.',
         iframeWarning:
           '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.',
         integrationDoc: 'Payment Integration Docs',
