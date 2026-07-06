@@ -3,8 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CampaignRewardsView from '../CampaignRewardsView.vue'
 
 const messages: Record<string, string> = {
-  'campaignRewards.rulePoolDynamic': 'pool {rate}',
-  'campaignRewards.ruleSplitDynamic': 'split {rank} {contribution}',
+  'campaignRewards.periodElapsed': '{percent}% elapsed',
+  'campaignRewards.ruleSummaryThresholdTitle': 'Valid Invite Threshold',
+  'campaignRewards.ruleSummaryThresholdDesc': 'threshold {threshold}',
+  'campaignRewards.ruleSummaryPoolTitle': 'Bonus Pool Allocation',
+  'campaignRewards.ruleSummaryPoolDesc': 'pool {rate} split {rank} {contribution}',
+  'campaignRewards.ruleSummarySettlementTitle': 'Audit & Settlement',
+  'campaignRewards.ruleSummarySettlementDesc': 'settlement estimate',
 }
 
 const {
@@ -107,6 +112,7 @@ describe('user CampaignRewardsView', () => {
   })
 
   it('renders lifecycle countdown, primary CTA, backend rules, and invite status notes', async () => {
+    vi.setSystemTime(new Date('2026-07-05T00:00:00.000Z'))
     getActiveCampaign.mockResolvedValue({
       campaign,
       config: {
@@ -184,11 +190,26 @@ describe('user CampaignRewardsView', () => {
     const text = wrapper.text()
     expect(text).toContain('七月邀请活动')
     expect(text).toContain('campaignRewards.lifecycle.active')
-    expect(text).toContain('2d 03:12:08')
+    expect(text).toContain('campaignRewards.lifecycle.endsAt')
+    expect(text).toContain('campaignRewards.campaignPeriod')
+    expect(text).toContain('7/4 - 7/6')
+    expect(text).toContain('47% elapsed')
+    expect(text).toContain('1d 03:12:08')
+    expect(text).not.toContain('→')
+    const periodProgress = wrapper.get('[role="progressbar"]')
+    expect(periodProgress.attributes('aria-valuenow')).toBe('47')
+    expect(periodProgress.attributes('data-progress-value')).toBe('47')
     expect(text).toContain('campaignRewards.copyInviteLinkPrimary')
     expect(text).toContain('campaignRewards.distanceToTop10')
-    expect(text).toContain('pool 12.5%')
-    expect(text).toContain('split 70% 30%')
+    expect(wrapper.get('[data-testid="campaign-rules-layout"]').classes()).toContain('xl:items-start')
+    expect(wrapper.get('[data-testid="campaign-rules-card"]').classes()).toContain('self-start')
+    expect(wrapper.findAll('[data-testid="campaign-rule-summary-item"]')).toHaveLength(3)
+    expect(text).toContain('Valid Invite Threshold')
+    expect(text).toContain('threshold ¥20.00')
+    expect(text).toContain('Bonus Pool Allocation')
+    expect(text).toContain('pool 12.5% split 70% 30%')
+    expect(text).toContain('Audit & Settlement')
+    expect(text).toContain('settlement estimate')
     expect(text).toContain('后端配置的完整规则')
     expect(text).toContain('campaignRewards.inviteStatusNotes.recharge_unqualified')
     expect(text).toContain('campaignRewards.rechargeProgress')
