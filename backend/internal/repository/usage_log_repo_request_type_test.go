@@ -384,24 +384,6 @@ func TestUsageLogRepositoryGetSharedIPUsersSummary(t *testing.T) {
 	mock.ExpectQuery("WITH matched_logs AS").
 		WithArgs(start).
 		WillReturnRows(groupRows)
-	userRows := sqlmock.NewRows([]string{"user_id", "email", "deleted", "ip_count", "record_count", "last_used_at", "ip_addresses", "total_tokens", "actual_cost"})
-	for i := int64(0); i < int64(sharedIPUserSummaryLimit+1); i++ {
-		userRows.AddRow(
-			int64(7)+i,
-			fmt.Sprintf("alpha-%02d@example.com", i),
-			false,
-			int64(2),
-			int64(3),
-			lastUsed,
-			"{192.0.2.10,192.0.2.11}",
-			int64(1234)+i,
-			0.25,
-		)
-	}
-	mock.ExpectQuery("WITH matched_logs AS").
-		WithArgs(start).
-		WillReturnRows(userRows)
-
 	summary, err := repo.GetSharedIPUsersSummary(context.Background(), filters)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), summary.IPCount)
@@ -424,23 +406,10 @@ func TestUsageLogRepositoryGetSharedIPUsersSummary(t *testing.T) {
 			{UserID: 8, Email: "beta@example.com", Deleted: false, RecordCount: 2, LastUsedAt: &betaLastUsed, TotalTokens: 1000, ActualCost: 0.2},
 		},
 	}, summary.IPGroups[0])
-	require.Equal(t, sharedIPUserSummaryLimit, summary.UsersLimit)
-	require.True(t, summary.UsersTruncated)
-	require.Equal(t, int64(1), summary.HiddenUserCount)
-	require.Len(t, summary.Users, sharedIPUserSummaryLimit)
-	require.Equal(t, []usagestats.SharedIPUserSummaryItem{
-		{
-			UserID:      7,
-			Email:       "alpha-00@example.com",
-			Deleted:     false,
-			IPCount:     2,
-			RecordCount: 3,
-			LastUsedAt:  &lastUsed,
-			IPAddresses: []string{"192.0.2.10", "192.0.2.11"},
-			TotalTokens: 1234,
-			ActualCost:  0.25,
-		},
-	}, summary.Users[:1])
+	require.Empty(t, summary.Users)
+	require.Zero(t, summary.UsersLimit)
+	require.False(t, summary.UsersTruncated)
+	require.Zero(t, summary.HiddenUserCount)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

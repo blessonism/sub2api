@@ -18,11 +18,13 @@ type adminUsageRepoCapture struct {
 	service.UsageLogRepository
 	listParams     pagination.PaginationParams
 	listFilters    usagestats.UsageLogFilters
+	listCalls      int
 	statsFilters   usagestats.UsageLogFilters
 	summaryFilters usagestats.UsageLogFilters
 }
 
 func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	s.listCalls++
 	s.listParams = params
 	s.listFilters = filters
 	return []service.UsageLog{}, &pagination.PaginationResult{
@@ -56,12 +58,6 @@ func (s *adminUsageRepoCapture) GetSharedIPUsersSummary(ctx context.Context, fil
 					{UserID: 8, Email: "peer@example.com", RecordCount: 2},
 				},
 			},
-		},
-		UsersLimit:      50,
-		UsersTruncated:  true,
-		HiddenUserCount: 4,
-		Users: []usagestats.SharedIPUserSummaryItem{
-			{UserID: 7, Email: "risk@example.com", IPCount: 2, RecordCount: 4},
 		},
 	}, nil
 }
@@ -161,11 +157,53 @@ func TestAdminUsageListSharedIPUsersTrue(t *testing.T) {
 	require.Equal(t, "203.0.113.9", body.Data.SharedIPUsersSummary.IPGroups[0].IPAddress)
 	require.Len(t, body.Data.SharedIPUsersSummary.IPGroups[0].Users, 2)
 	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.IPGroups[0].Users[1].UserID)
-	require.Equal(t, 50, body.Data.SharedIPUsersSummary.UsersLimit)
-	require.True(t, body.Data.SharedIPUsersSummary.UsersTruncated)
-	require.Equal(t, int64(4), body.Data.SharedIPUsersSummary.HiddenUserCount)
-	require.Len(t, body.Data.SharedIPUsersSummary.Users, 1)
-	require.Equal(t, int64(7), body.Data.SharedIPUsersSummary.Users[0].UserID)
+}
+
+func TestAdminUsageListSharedIPSummaryOnlySkipsRecords(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?shared_ip_users=true&shared_ip_summary_only=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 0, repo.listCalls)
+	require.True(t, repo.summaryFilters.SharedIPUsers)
+
+	var body struct {
+		Data struct {
+			Items                []json.RawMessage               `json:"items"`
+			Total                int64                           `json:"total"`
+			SharedIPUsersSummary usagestats.SharedIPUsersSummary `json:"shared_ip_users_summary"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Empty(t, body.Data.Items)
+	require.Equal(t, int64(0), body.Data.Total)
+	require.Len(t, body.Data.SharedIPUsersSummary.IPGroups, 1)
+}
+
+func TestAdminUsageListInvalidSharedIPSummaryOnly(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?shared_ip_summary_only=oops", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminUsageListSharedIPSummaryOnlyRequiresSharedIPUsers(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?shared_ip_summary_only=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestAdminUsageListInvalidSharedIPUsers(t *testing.T) {

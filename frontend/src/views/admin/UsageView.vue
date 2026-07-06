@@ -482,6 +482,7 @@ const buildUsageListParams = (
     ...filters.value,
     stream: legacyStream === null ? undefined : legacyStream,
     shared_ip_users: sharedIPUsersEnabled.value || undefined,
+    shared_ip_summary_only: sharedIPUsersEnabled.value && !sharedIPRecordsExpanded.value ? true : undefined,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -663,6 +664,8 @@ const toggleSharedIPUsers = () => {
 }
 const toggleSharedIPRecords = () => {
   sharedIPRecordsExpanded.value = !sharedIPRecordsExpanded.value
+  pagination.page = 1
+  loadLogs()
 }
 const handlePageChange = (p: number) => { pagination.page = p; loadLogs() }
 const handlePageSizeChange = (s: number) => { pagination.page_size = s; pagination.page = 1; loadLogs() }

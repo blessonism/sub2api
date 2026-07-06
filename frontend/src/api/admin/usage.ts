@@ -190,6 +190,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   exact_total?: boolean
   billing_mode?: string
   shared_ip_users?: boolean
+  shared_ip_summary_only?: boolean
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }

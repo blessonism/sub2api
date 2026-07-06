@@ -160,6 +160,55 @@ describe('admin UsageView shared IP users summary', () => {
     list
       .mockResolvedValueOnce({ items: [], total: 0, pages: 0 })
       .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        pages: 1,
+        shared_ip_users_summary: {
+          ip_count: 2,
+          user_count: 55,
+          record_count: 6,
+          ip_groups_limit: 50,
+          ip_groups_truncated: true,
+          hidden_ip_group_count: 1,
+          ip_groups: [
+            {
+              ip_address: '203.0.113.9',
+              user_count: 2,
+              record_count: 6,
+              last_used_at: '2026-06-20T02:00:00Z',
+              total_tokens: 1234,
+              actual_cost: 0.25,
+              users_limit: 20,
+              users_truncated: false,
+              hidden_user_count: 0,
+              users: [
+                {
+                  user_id: 7,
+                  email: 'risk@example.com',
+                  deleted: false,
+                  record_count: 4,
+                  last_used_at: '2026-06-20T02:00:00Z',
+                  total_tokens: 1000,
+                  actual_cost: 0.2,
+                },
+                {
+                  user_id: 9,
+                  email: 'peer@example.com',
+                  deleted: false,
+                  record_count: 2,
+                  last_used_at: '2026-06-20T01:00:00Z',
+                  total_tokens: 234,
+                  actual_cost: 0.05,
+                },
+              ],
+            },
+          ],
+          users_limit: 0,
+          users_truncated: false,
+          hidden_user_count: 0,
+        },
+      })
+      .mockResolvedValueOnce({
         items: [{ id: 1, user_id: 7, ip_address: '203.0.113.9' }],
         total: 6,
         pages: 1,
@@ -203,22 +252,9 @@ describe('admin UsageView shared IP users summary', () => {
               ],
             },
           ],
-          users_limit: 50,
-          users_truncated: true,
-          hidden_user_count: 54,
-          users: [
-            {
-              user_id: 7,
-              email: 'risk@example.com',
-              deleted: false,
-              ip_count: 2,
-              record_count: 4,
-              last_used_at: '2026-06-20T02:00:00Z',
-              ip_addresses: ['203.0.113.9', '203.0.113.10', '203.0.113.11', '203.0.113.12'],
-              total_tokens: 1234,
-              actual_cost: 0.25,
-            },
-          ],
+          users_limit: 0,
+          users_truncated: false,
+          hidden_user_count: 0,
         },
       })
     getStats.mockResolvedValue({
@@ -272,6 +308,7 @@ describe('admin UsageView shared IP users summary', () => {
 
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
       shared_ip_users: true,
+      shared_ip_summary_only: true,
     }), expect.anything())
     expect(wrapper.text()).toContain('203.0.113.9')
     expect(wrapper.text()).toContain('risk@example.com')
@@ -282,6 +319,9 @@ describe('admin UsageView shared IP users summary', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === 'Show record details')?.trigger('click')
     await flushPromises()
+    const expandedParams = list.mock.calls.at(-1)?.[0]
+    expect(expandedParams).toEqual(expect.objectContaining({ shared_ip_users: true }))
+    expect(expandedParams).not.toHaveProperty('shared_ip_summary_only', true)
     expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(true)
   })
 })
