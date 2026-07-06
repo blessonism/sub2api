@@ -41,9 +41,22 @@ func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters
 func (s *adminUsageRepoCapture) GetSharedIPUsersSummary(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.SharedIPUsersSummary, error) {
 	s.summaryFilters = filters
 	return &usagestats.SharedIPUsersSummary{
-		IPCount:         2,
-		UserCount:       5,
-		RecordCount:     8,
+		IPCount:       2,
+		UserCount:     5,
+		RecordCount:   8,
+		IPGroupsLimit: 50,
+		IPGroups: []usagestats.SharedIPGroupSummaryItem{
+			{
+				IPAddress:   "203.0.113.9",
+				UserCount:   2,
+				RecordCount: 6,
+				UsersLimit:  20,
+				Users: []usagestats.SharedIPGroupUserSummaryItem{
+					{UserID: 7, Email: "risk@example.com", RecordCount: 4},
+					{UserID: 8, Email: "peer@example.com", RecordCount: 2},
+				},
+			},
+		},
 		UsersLimit:      50,
 		UsersTruncated:  true,
 		HiddenUserCount: 4,
@@ -143,6 +156,11 @@ func TestAdminUsageListSharedIPUsersTrue(t *testing.T) {
 	require.Equal(t, int64(2), body.Data.SharedIPUsersSummary.IPCount)
 	require.Equal(t, int64(5), body.Data.SharedIPUsersSummary.UserCount)
 	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.RecordCount)
+	require.Equal(t, 50, body.Data.SharedIPUsersSummary.IPGroupsLimit)
+	require.Len(t, body.Data.SharedIPUsersSummary.IPGroups, 1)
+	require.Equal(t, "203.0.113.9", body.Data.SharedIPUsersSummary.IPGroups[0].IPAddress)
+	require.Len(t, body.Data.SharedIPUsersSummary.IPGroups[0].Users, 2)
+	require.Equal(t, int64(8), body.Data.SharedIPUsersSummary.IPGroups[0].Users[1].UserID)
 	require.Equal(t, 50, body.Data.SharedIPUsersSummary.UsersLimit)
 	require.True(t, body.Data.SharedIPUsersSummary.UsersTruncated)
 	require.Equal(t, int64(4), body.Data.SharedIPUsersSummary.HiddenUserCount)

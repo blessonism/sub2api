@@ -13,10 +13,37 @@ export interface SharedIPUsersSummary {
   ip_count: number
   user_count: number
   record_count: number
+  ip_groups?: SharedIPGroupSummaryItem[]
+  ip_groups_limit: number
+  ip_groups_truncated: boolean
+  hidden_ip_group_count: number
   users?: SharedIPUserSummaryItem[]
   users_limit: number
   users_truncated: boolean
   hidden_user_count: number
+}
+
+export interface SharedIPGroupSummaryItem {
+  ip_address: string
+  user_count: number
+  record_count: number
+  last_used_at?: string | null
+  total_tokens: number
+  actual_cost: number
+  users?: SharedIPGroupUserSummaryItem[]
+  users_limit: number
+  users_truncated: boolean
+  hidden_user_count: number
+}
+
+export interface SharedIPGroupUserSummaryItem {
+  user_id: number
+  email: string
+  deleted: boolean
+  record_count: number
+  last_used_at?: string | null
+  total_tokens: number
+  actual_cost: number
 }
 
 export interface SharedIPUserSummaryItem {
