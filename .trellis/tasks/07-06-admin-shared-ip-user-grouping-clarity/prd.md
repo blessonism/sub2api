@@ -53,6 +53,8 @@ Recommended MVP: 在现有 `shared_ip_users_summary` 中新增 IP 分组数组�
 - DTO 增加 `SharedIPGroupSummaryItem` 与组内用户项，控制每层返回上限，避免大结果一次性塞满页面。
 - 前端将同 IP 面板的主表从“命中用户”改为“命中 IP 分组”，每个分组可展开组内用户。
 - 原有用户摘要可移除或降级为辅助统计，避免两个主视角并列造成认知负担。
+- 默认折叠记录明细时，前端通过 `shared_ip_summary_only=true` 请求轻量摘要，后端跳过原始使用记录列表查询；管理员展开记录明细后再请求明细。
+- 后端默认不再计算 legacy `users` 摘要，避免页面已切换到 `ip_groups` 后仍重复扫描同一批命中记录。
 
 ## Feasible Approaches
 
