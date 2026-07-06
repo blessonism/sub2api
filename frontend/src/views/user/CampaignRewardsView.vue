@@ -27,10 +27,33 @@
               <h1 class="mt-4 text-2xl font-semibold sm:text-3xl">{{ home.campaign.name }}</h1>
               <p class="mt-2 max-w-3xl text-sm text-white/80">{{ home.campaign.description || t('campaignRewards.defaultDescription') }}</p>
               <p class="mt-3 max-w-3xl text-sm font-medium text-white">{{ t(lifecycleState.descriptionKey) }}</p>
-              <div class="mt-5 flex flex-wrap gap-3 text-sm text-white/85">
-                <span>{{ formatDateTime(home.campaign.start_at) }}</span>
-                <span>→</span>
-                <span>{{ formatDateTime(home.campaign.end_at) }}</span>
+              <div class="mt-5 max-w-3xl space-y-3">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/75">
+                  <span class="inline-flex items-center gap-1.5">
+                    <Icon name="calendar" size="sm" class="text-white/60" />
+                    <span>{{ t('campaignRewards.campaignPeriod') }}</span>
+                  </span>
+                  <span class="tabular-nums text-white/90">{{ campaignPeriodText }}</span>
+                  <span class="hidden h-1 w-1 rounded-full bg-white/35 sm:inline-block" />
+                  <span class="text-white/70">{{ campaignProgressText }}</span>
+                </div>
+                <div
+                  class="relative h-3 w-full max-w-lg"
+                  role="progressbar"
+                  :aria-label="t('campaignRewards.campaignPeriodProgress')"
+                  :aria-valuenow="campaignElapsedPercent"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :data-progress-value="campaignElapsedPercent"
+                >
+                  <span class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/30" />
+                  <span
+                    class="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-white/85 transition-all"
+                    :style="{ width: `${campaignElapsedPercent}%` }"
+                  />
+                  <span class="absolute left-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white/85" />
+                  <span class="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white/45" />
+                </div>
               </div>
               <div class="mt-5 flex flex-wrap gap-3">
                 <button
@@ -72,7 +95,7 @@
           </div>
         </div>
 
-        <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+        <div data-testid="campaign-rules-layout" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)] xl:items-start">
           <div class="card p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -129,20 +152,36 @@
             </div>
           </div>
 
-          <div class="card p-6">
+          <div data-testid="campaign-rules-card" class="card self-start p-6">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('campaignRewards.rulesTitle') }}</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('campaignRewards.rulesSummaryTitle') }}</p>
               </div>
             </div>
-            <div class="mt-4 space-y-3 text-sm text-gray-600 dark:text-dark-300">
-              <p v-for="rule in ruleSummary" :key="rule">{{ rule }}</p>
-              <details class="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/60">
-                <summary class="cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-100">
+            <div class="mt-4 space-y-4">
+              <div class="grid gap-3">
+                <div
+                  v-for="(rule, index) in ruleSummaryItems"
+                  :key="rule.title"
+                  data-testid="campaign-rule-summary-item"
+                  class="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-dark-700 dark:bg-dark-900/50"
+                >
+                  <div class="flex gap-3">
+                    <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                      {{ index + 1 }}
+                    </span>
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ rule.title }}</p>
+                      <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-dark-300">{{ rule.description }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <details data-testid="campaign-full-rules" class="rounded-xl border border-gray-100 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/60">
+                <summary class="cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 dark:text-gray-100">
                   {{ t('campaignRewards.fullRules') }}
                 </summary>
-                <p class="mt-3 whitespace-pre-line text-sm text-gray-600 dark:text-dark-300">{{ fullRulesText }}</p>
+                <p class="border-t border-gray-100 px-3 py-3 whitespace-pre-line text-sm leading-6 text-gray-600 dark:border-dark-700 dark:text-dark-300">{{ fullRulesText }}</p>
               </details>
             </div>
           </div>
@@ -350,6 +389,38 @@ const inviteLink = computed(() => {
   return `${window.location.origin}${raw.startsWith('/') ? raw : `/${raw}`}`
 })
 
+function parseDateMs(raw?: string | null): number | null {
+  if (!raw) return null
+  const value = new Date(raw).getTime()
+  return Number.isFinite(value) ? value : null
+}
+
+function formatShortDate(raw?: string | null): string {
+  const time = parseDateMs(raw)
+  if (time === null) return t('campaignRewards.campaignPeriodPending')
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'numeric',
+    day: 'numeric',
+  }).format(new Date(time))
+}
+
+const campaignPeriodText = computed(() => {
+  const campaign = home.value?.campaign
+  if (!campaign?.start_at || !campaign?.end_at) return t('campaignRewards.campaignPeriodPending')
+  return `${formatShortDate(campaign.start_at)} - ${formatShortDate(campaign.end_at)}`
+})
+
+const campaignElapsedPercent = computed(() => {
+  const campaign = home.value?.campaign
+  const start = parseDateMs(campaign?.start_at)
+  const end = parseDateMs(campaign?.end_at)
+  if (start === null || end === null || end <= start) return 0
+  const elapsed = ((now.value.getTime() - start) / (end - start)) * 100
+  return Math.min(100, Math.max(0, Math.round(elapsed)))
+})
+
+const campaignProgressText = computed(() => t('campaignRewards.periodElapsed', { percent: campaignElapsedPercent.value }))
+
 const metrics = computed(() => [
   {
     label: t('campaignRewards.validInvites'),
@@ -391,7 +462,16 @@ const canCopyInviteLink = computed(() => Boolean(inviteLink.value && lifecycleSt
 
 const lifecycleTargetText = computed(() => {
   if (!lifecycleState.value.targetAt) return t('campaignRewards.lifecycle.targetPending')
-  return t('campaignRewards.lifecycle.targetAt', { time: formatDateTime(lifecycleState.value.targetAt) })
+  const targetLabelKeys: Record<string, string> = {
+    warmup: 'campaignRewards.lifecycle.startsAt',
+    active: 'campaignRewards.lifecycle.endsAt',
+    auditing: 'campaignRewards.lifecycle.auditEndsAt',
+    publicizing: 'campaignRewards.lifecycle.publicityEndsAt',
+    pending_payout: 'campaignRewards.lifecycle.payoutDueAt',
+  }
+  return t(targetLabelKeys[lifecycleState.value.phase] ?? 'campaignRewards.lifecycle.targetAt', {
+    time: formatDateTime(lifecycleState.value.targetAt),
+  })
 })
 
 const progressHint = computed(() => {
@@ -409,13 +489,25 @@ const progressHint = computed(() => {
   return t('campaignRewards.progressStart')
 })
 
-const ruleSummary = computed(() => [
-  t('campaignRewards.rulePoolDynamic', { rate: formatPercent(home.value?.config?.pool_injection_rate) }),
-  t('campaignRewards.ruleSplitDynamic', {
-    rank: formatPercent(home.value?.config?.rank_pool_ratio),
-    contribution: formatPercent(home.value?.config?.contribution_pool_ratio),
-  }),
-  t('campaignRewards.ruleNotice'),
+const ruleSummaryItems = computed(() => [
+  {
+    title: t('campaignRewards.ruleSummaryThresholdTitle'),
+    description: t('campaignRewards.ruleSummaryThresholdDesc', {
+      threshold: formatCents(home.value?.config?.recharge_threshold_cents),
+    }),
+  },
+  {
+    title: t('campaignRewards.ruleSummaryPoolTitle'),
+    description: t('campaignRewards.ruleSummaryPoolDesc', {
+      rate: formatPercent(home.value?.config?.pool_injection_rate),
+      rank: formatPercent(home.value?.config?.rank_pool_ratio),
+      contribution: formatPercent(home.value?.config?.contribution_pool_ratio),
+    }),
+  },
+  {
+    title: t('campaignRewards.ruleSummarySettlementTitle'),
+    description: t('campaignRewards.ruleSummarySettlementDesc'),
+  },
 ])
 
 const fullRulesText = computed(() => home.value?.campaign?.rules_text || t('campaignRewards.defaultFullRules'))
