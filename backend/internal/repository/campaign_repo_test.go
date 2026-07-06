@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -79,6 +80,46 @@ func TestCampaignRepositoryRecordRechargeIsSourceIdempotent(t *testing.T) {
 	}
 	if inserted || second.EffectiveRechargeAmountCents != 5_000 {
 		t.Fatalf("重复 source 不应再次累加，inserted=%v amount=%d", inserted, second.EffectiveRechargeAmountCents)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCampaignRepositoryAddLeaderboardAdjustmentRollsBackWhenFinalInvalidationFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	input := service.CampaignLeaderboardAdjustmentInput{
+		UserID:                   22,
+		ValidInviteDelta:         1,
+		RechargeAmountDeltaCents: 5_000,
+		Reason:                   "补录邀请",
+	}
+	invalidateErr := errors.New("delete final failed")
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO campaign_leaderboard_adjustments")).
+		WithArgs(int64(7), input.UserID, input.ValidInviteDelta, input.RechargeAmountDeltaCents, input.Reason, nil).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "campaign_id", "user_id", "adjustment_type", "valid_invite_delta", "recharge_amount_delta_cents", "reason", "operator_id", "created_at",
+		}).AddRow(int64(41), int64(7), input.UserID, "manual_delta", input.ValidInviteDelta, input.RechargeAmountDeltaCents, input.Reason, nil, time.Now()))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_reward_adjustments")).
+		WithArgs(int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_reward_results")).
+		WithArgs(int64(7)).
+		WillReturnError(invalidateErr)
+	mock.ExpectRollback()
+
+	_, err = repo.AddLeaderboardAdjustment(ctx, 7, input)
+	if !errors.Is(err, invalidateErr) {
+		t.Fatalf("final 失效失败应回滚并返回错误，实际 err=%v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sql expectations: %v", err)
