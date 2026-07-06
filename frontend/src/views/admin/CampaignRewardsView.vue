@@ -18,8 +18,8 @@
         </div>
       </div>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <div class="card overflow-hidden xl:sticky xl:top-6 xl:self-start">
+      <div class="space-y-6">
+        <div data-testid="campaign-list-card" class="card overflow-hidden">
           <div class="border-b border-gray-100 p-4 dark:border-dark-700">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.listTitle') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.listDesc') }}</p>
@@ -30,12 +30,12 @@
           <div v-else-if="campaigns.length === 0" class="p-4">
             <EmptyState :title="t('admin.campaignRewards.noCampaigns')" :description="t('admin.campaignRewards.noCampaignsDesc')" />
           </div>
-          <div v-else class="divide-y divide-gray-100 dark:divide-dark-700 xl:max-h-[calc(100dvh-14rem)] xl:overflow-y-auto">
+          <div v-else data-testid="campaign-list-items" class="grid max-h-[24rem] gap-3 overflow-y-auto p-3 md:grid-cols-2 2xl:grid-cols-3">
             <button
               v-for="campaign in campaigns"
               :key="campaign.id"
-              class="block w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-dark-800"
-              :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedCampaign?.id === campaign.id }"
+              class="block w-full rounded-lg border border-gray-100 px-4 py-3 text-left transition hover:border-primary-200 hover:bg-gray-50 dark:border-dark-700 dark:hover:border-primary-800 dark:hover:bg-dark-800"
+              :class="{ 'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/20': selectedCampaign?.id === campaign.id }"
               type="button"
               @click="selectCampaign(campaign.id)"
             >
@@ -78,6 +78,9 @@
                   </div>
                 </div>
                 <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+                  <button class="btn btn-secondary whitespace-nowrap" type="button" @click="openEditDialog">
+                    {{ t('admin.campaignRewards.editCampaign') }}
+                  </button>
                   <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canPublish" @click="publishSelected">
                     {{ t('admin.campaignRewards.publish') }}
                   </button>
@@ -320,7 +323,12 @@
 
             <div class="card overflow-hidden">
               <div class="border-b border-gray-100 p-4 dark:border-dark-700">
-                <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.leaderboard') }}</h2>
+                <div class="flex items-center justify-between gap-3">
+                  <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.leaderboard') }}</h2>
+                  <button class="btn btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!canManualAdjust" @click="openLeaderboardAdjustment(null)">
+                    {{ t('admin.campaignRewards.addManualAdjustment') }}
+                  </button>
+                </div>
               </div>
               <div class="overflow-x-auto">
                 <table class="w-full min-w-[760px] text-sm">
@@ -331,6 +339,8 @@
                       <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.validInvites') }}</th>
                       <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.rechargeAmount') }}</th>
                       <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.estimatedReward') }}</th>
+                      <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.manualAdjustment') }}</th>
+                      <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
@@ -340,9 +350,25 @@
                       <td class="px-4 py-3 text-right">{{ row.valid_invite_count }}</td>
                       <td class="px-4 py-3 text-right">{{ formatCents(row.invitee_recharge_amount_cents) }}</td>
                       <td class="px-4 py-3 text-right">{{ formatCents(row.estimated_reward_cents) }}</td>
+                      <td class="px-4 py-3">
+                        <span v-if="row.has_manual_adjustment" class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                          {{ formatManualDelta(row) }}
+                        </span>
+                        <span v-else class="text-gray-400">-</span>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <div class="flex justify-end gap-2">
+                          <button class="btn btn-secondary px-2 py-1 text-xs" type="button" :disabled="!canManualAdjust" @click="openLeaderboardAdjustment(row)">
+                            {{ t('admin.campaignRewards.adjustScore') }}
+                          </button>
+                          <button class="btn btn-secondary px-2 py-1 text-xs" type="button" @click="openInviteRecords(row)">
+                            {{ t('admin.campaignRewards.inviteDetails') }}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                     <tr v-if="leaderboard.length === 0">
-                      <td colspan="5" class="px-4 py-10 text-center text-gray-500">{{ t('admin.campaignRewards.noLeaderboard') }}</td>
+                      <td colspan="7" class="px-4 py-10 text-center text-gray-500">{{ t('admin.campaignRewards.noLeaderboard') }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -459,6 +485,174 @@
         </div>
       </template>
     </BaseDialog>
+
+    <BaseDialog :show="editDialogOpen" :title="t('admin.campaignRewards.editDialogTitle')" width="wide" @close="editDialogOpen = false">
+      <div class="space-y-5">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.editBasicInfo') }}</h3>
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.campaignName') }}</span>
+              <input v-model.trim="editForm.name" class="input" type="text" />
+            </label>
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.descriptionLabel') }}</span>
+              <textarea v-model.trim="editForm.description" class="input min-h-20" />
+            </label>
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rulesText') }}</span>
+              <textarea v-model.trim="editForm.rules_text" class="input min-h-24" />
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.editTimelineSettings') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.optionalTimeHint') }}</p>
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.warmupStartAt') }}</span>
+              <input v-model="editForm.warmup_start_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.startAt') }}</span>
+              <input v-model="editForm.start_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.endAt') }}</span>
+              <input v-model="editForm.end_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.auditStartAt') }}</span>
+              <input v-model="editForm.audit_start_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.auditEndAt') }}</span>
+              <input v-model="editForm.audit_end_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.publicityStartAt') }}</span>
+              <input v-model="editForm.publicity_start_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.publicityEndAt') }}</span>
+              <input v-model="editForm.publicity_end_at" class="input" type="datetime-local" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.payoutDueAt') }}</span>
+              <input v-model="editForm.payout_due_at" class="input" type="datetime-local" />
+            </label>
+          </div>
+          <p v-if="editValidationMessage" class="mt-3 text-xs text-amber-600 dark:text-amber-300">{{ editValidationMessage }}</p>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary" type="button" :disabled="editSubmitting" @click="editDialogOpen = false">
+            {{ t('common.cancel') }}
+          </button>
+          <button class="btn btn-primary" type="button" :disabled="editSubmitting || !!editValidationMessage" @click="submitEditCampaign">
+            {{ editSubmitting ? t('common.processing') : t('admin.campaignRewards.saveCampaign') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog :show="leaderboardAdjustDialogOpen" :title="t('admin.campaignRewards.adjustScoreTitle')" @close="leaderboardAdjustDialogOpen = false">
+      <div class="space-y-4">
+        <label class="space-y-1">
+          <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.userId') }}</span>
+          <input v-model.number="leaderboardAdjustForm.user_id" class="input" type="number" min="1" step="1" :disabled="!!selectedLeaderboardRow" />
+        </label>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="space-y-1">
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.validInviteDelta') }}</span>
+            <input v-model.number="leaderboardAdjustForm.valid_invite_delta" class="input" type="number" step="1" />
+          </label>
+          <label class="space-y-1">
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rechargeDeltaYuan') }}</span>
+            <input v-model.number="leaderboardAdjustForm.recharge_delta_yuan" class="input" type="number" step="0.01" />
+          </label>
+        </div>
+        <label class="space-y-1">
+          <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.reason') }}</span>
+          <textarea v-model="leaderboardAdjustForm.reason" class="input min-h-[88px]" />
+        </label>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary" type="button" :disabled="manualSubmitting" @click="leaderboardAdjustDialogOpen = false">
+            {{ t('common.cancel') }}
+          </button>
+          <button class="btn btn-primary" type="button" :disabled="manualSubmitting || !canSubmitLeaderboardAdjustment" @click="submitLeaderboardAdjustment">
+            {{ manualSubmitting ? t('common.processing') : t('common.submit') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog :show="inviteRecordsDialogOpen" :title="t('admin.campaignRewards.inviteDetailsTitle')" width="wide" @close="inviteRecordsDialogOpen = false">
+      <div class="space-y-4">
+        <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-dark-700">
+          <table class="w-full min-w-[760px] text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              <tr>
+                <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.user') }}</th>
+                <th class="px-4 py-3 text-left">{{ t('admin.campaignRewards.status') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('admin.campaignRewards.rechargeAmount') }}</th>
+                <th class="px-4 py-3 text-right">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="record in inviteRecords" :key="record.id">
+                <td class="px-4 py-3">{{ record.invitee_username || record.invitee_masked_email || record.invitee_user_id }}</td>
+                <td class="px-4 py-3">{{ inviteStatusLabel(record.status) }}</td>
+                <td class="px-4 py-3 text-right">{{ formatCents(record.effective_recharge_amount_cents) }}</td>
+                <td class="px-4 py-3 text-right">
+                  <button class="btn btn-secondary px-2 py-1 text-xs" type="button" :disabled="!canManualAdjust" @click="openInviteRecordAdjustment(record)">
+                    {{ t('admin.campaignRewards.adjustInviteRecord') }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="inviteRecords.length === 0">
+                <td colspan="4" class="px-4 py-10 text-center text-gray-500">{{ t('admin.campaignRewards.noInviteRecords') }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="selectedInviteRecord" class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.adjustInviteRecord') }}</h3>
+          <div class="mt-3 grid gap-4 sm:grid-cols-2">
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.status') }}</span>
+              <select v-model="inviteAdjustForm.status" class="input">
+                <option value="registered">{{ inviteStatusLabel('registered') }}</option>
+                <option value="recharge_unqualified">{{ inviteStatusLabel('recharge_unqualified') }}</option>
+                <option value="pending_audit">{{ inviteStatusLabel('pending_audit') }}</option>
+                <option value="effective">{{ inviteStatusLabel('effective') }}</option>
+                <option value="invalid">{{ inviteStatusLabel('invalid') }}</option>
+                <option value="risk_review">{{ inviteStatusLabel('risk_review') }}</option>
+              </select>
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rechargeAmount') }}</span>
+              <input v-model.number="inviteAdjustForm.recharge_yuan" class="input" type="number" min="0" step="0.01" />
+            </label>
+          </div>
+          <label class="mt-3 block space-y-1">
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.reason') }}</span>
+            <textarea v-model="inviteAdjustForm.reason" class="input min-h-[80px]" />
+          </label>
+          <div class="mt-3 flex justify-end">
+            <button class="btn btn-primary" type="button" :disabled="manualSubmitting || !canSubmitInviteAdjustment" @click="submitInviteRecordAdjustment">
+              {{ manualSubmitting ? t('common.processing') : t('common.submit') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -472,8 +666,8 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
-import type { Campaign, CampaignLeaderboardRow, CampaignPoolSummary } from '@/api/campaigns'
-import type { CampaignCalculationSummary } from '@/api/admin/campaigns'
+import type { Campaign, CampaignInviteRecord, CampaignLeaderboardRow, CampaignPoolSummary } from '@/api/campaigns'
+import type { CampaignCalculationSummary, CampaignUpdateRequest } from '@/api/admin/campaigns'
 import { useAppStore } from '@/stores'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { getCampaignLifecycleState, getCampaignTimeWarnings } from '@/utils/campaignLifecycle'
@@ -496,6 +690,8 @@ const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 const createDialogOpen = ref(false)
 const createSubmitting = ref(false)
+const editDialogOpen = ref(false)
+const editSubmitting = ref(false)
 const adjustForm = reactive({
   adjustment_type: 'additional_bonus',
   reason: '',
@@ -513,6 +709,36 @@ const createForm = reactive({
   rank_reward_count: 10,
   rank_weights: '30,20,15,10,8,6,4,3,2,2',
   min_payout_yuan: 1,
+})
+const editForm = reactive({
+  name: '',
+  description: '',
+  rules_text: '',
+  warmup_start_at: '',
+  start_at: '',
+  end_at: '',
+  audit_start_at: '',
+  audit_end_at: '',
+  publicity_start_at: '',
+  publicity_end_at: '',
+  payout_due_at: '',
+})
+const leaderboardAdjustDialogOpen = ref(false)
+const inviteRecordsDialogOpen = ref(false)
+const manualSubmitting = ref(false)
+const selectedLeaderboardRow = ref<CampaignLeaderboardRow | null>(null)
+const inviteRecords = ref<CampaignInviteRecord[]>([])
+const selectedInviteRecord = ref<CampaignInviteRecord | null>(null)
+const leaderboardAdjustForm = reactive({
+  user_id: 0,
+  valid_invite_delta: 0,
+  recharge_delta_yuan: 0,
+  reason: '',
+})
+const inviteAdjustForm = reactive({
+  status: 'registered',
+  recharge_yuan: 0,
+  reason: '',
 })
 
 const poolMetrics = computed(() => [
@@ -559,6 +785,21 @@ const createValidationMessage = computed(() => {
   return ''
 })
 
+const editValidationMessage = computed(() => {
+  if (!editForm.name.trim()) return t('admin.campaignRewards.createNameRequired')
+  if (!editForm.start_at || !editForm.end_at) return t('admin.campaignRewards.createTimeRequired')
+  if (!isValidDateRange(editForm.start_at, editForm.end_at)) return t('admin.campaignRewards.createTimeInvalid')
+  if (hasInvalidOptionalDateTime([
+    editForm.warmup_start_at,
+    editForm.audit_start_at,
+    editForm.audit_end_at,
+    editForm.publicity_start_at,
+    editForm.publicity_end_at,
+    editForm.payout_due_at,
+  ])) return t('admin.campaignRewards.editOptionalTimeInvalid')
+  return ''
+})
+
 const hasFinalCalculation = computed(() => calculation.value?.calculation_status === 'final')
 
 const canPublish = computed(() => selectedCampaign.value?.status === 'draft')
@@ -566,6 +807,21 @@ const canFreeze = computed(() => selectedCampaign.value?.status === 'active')
 const canPreview = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'draft')
 const canFinalize = computed(() => ['active', 'frozen', 'auditing', 'publicizing'].includes(selectedCampaign.value?.status ?? ''))
 const canPayout = computed(() => hasFinalCalculation.value && selectedCampaign.value?.status !== 'paid')
+const canManualAdjust = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'paid')
+const canSubmitLeaderboardAdjustment = computed(() => (
+  canManualAdjust.value &&
+  Number.isInteger(leaderboardAdjustForm.user_id) &&
+  leaderboardAdjustForm.user_id > 0 &&
+  (Number.isInteger(leaderboardAdjustForm.valid_invite_delta) || leaderboardAdjustForm.valid_invite_delta === 0) &&
+  Number.isFinite(leaderboardAdjustForm.recharge_delta_yuan) &&
+  (leaderboardAdjustForm.valid_invite_delta !== 0 || leaderboardAdjustForm.recharge_delta_yuan !== 0)
+))
+const canSubmitInviteAdjustment = computed(() => (
+  !!selectedInviteRecord.value &&
+  canManualAdjust.value &&
+  Number.isFinite(inviteAdjustForm.recharge_yuan) &&
+  inviteAdjustForm.recharge_yuan >= 0
+))
 
 const lifecycleLocale = computed(() => locale.value === 'zh' ? 'zh' : 'en')
 
@@ -826,6 +1082,78 @@ async function loadExistingFinalCalculation(id: number): Promise<void> {
   }
 }
 
+function openLeaderboardAdjustment(row: CampaignLeaderboardRow | null): void {
+  selectedLeaderboardRow.value = row
+  leaderboardAdjustForm.user_id = row?.user_id ?? 0
+  leaderboardAdjustForm.valid_invite_delta = 0
+  leaderboardAdjustForm.recharge_delta_yuan = 0
+  leaderboardAdjustForm.reason = ''
+  leaderboardAdjustDialogOpen.value = true
+}
+
+async function openInviteRecords(row: CampaignLeaderboardRow): Promise<void> {
+  if (!selectedCampaign.value) return
+  selectedLeaderboardRow.value = row
+  selectedInviteRecord.value = null
+  inviteRecordsDialogOpen.value = true
+  try {
+    const resp = await adminAPI.campaigns.listInviterRecords(selectedCampaign.value.id, row.user_id)
+    inviteRecords.value = resp.items
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.campaignRewards.loadFailed')))
+  }
+}
+
+function openInviteRecordAdjustment(record: CampaignInviteRecord): void {
+  selectedInviteRecord.value = record
+  inviteAdjustForm.status = record.status
+  inviteAdjustForm.recharge_yuan = record.effective_recharge_amount_cents / 100
+  inviteAdjustForm.reason = record.audit_note || ''
+}
+
+async function submitLeaderboardAdjustment(): Promise<void> {
+  if (!selectedCampaign.value || !canSubmitLeaderboardAdjustment.value) return
+  manualSubmitting.value = true
+  try {
+    await adminAPI.campaigns.addLeaderboardAdjustment(selectedCampaign.value.id, {
+      user_id: leaderboardAdjustForm.user_id,
+      valid_invite_delta: leaderboardAdjustForm.valid_invite_delta,
+      recharge_amount_delta_cents: yuanToCents(leaderboardAdjustForm.recharge_delta_yuan),
+      reason: leaderboardAdjustForm.reason,
+    })
+    leaderboardAdjustDialogOpen.value = false
+    calculation.value = null
+    await selectCampaign(selectedCampaign.value.id)
+    appStore.showSuccess(t('admin.campaignRewards.manualAdjusted'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.campaignRewards.actionFailed')))
+  } finally {
+    manualSubmitting.value = false
+  }
+}
+
+async function submitInviteRecordAdjustment(): Promise<void> {
+  if (!selectedCampaign.value || !selectedInviteRecord.value || !selectedLeaderboardRow.value || !canSubmitInviteAdjustment.value) return
+  manualSubmitting.value = true
+  try {
+    await adminAPI.campaigns.adjustInviteRecord(selectedCampaign.value.id, selectedInviteRecord.value.id, {
+      status: inviteAdjustForm.status,
+      effective_recharge_amount_cents: yuanToCents(inviteAdjustForm.recharge_yuan),
+      reason: inviteAdjustForm.reason,
+    })
+    const resp = await adminAPI.campaigns.listInviterRecords(selectedCampaign.value.id, selectedLeaderboardRow.value.user_id)
+    inviteRecords.value = resp.items
+    selectedInviteRecord.value = null
+    calculation.value = null
+    await selectCampaign(selectedCampaign.value.id)
+    appStore.showSuccess(t('admin.campaignRewards.manualAdjusted'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.campaignRewards.actionFailed')))
+  } finally {
+    manualSubmitting.value = false
+  }
+}
+
 function openCreateDialog(): void {
   const start = new Date(Date.now() + 60 * 60 * 1000)
   const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -842,6 +1170,23 @@ function openCreateDialog(): void {
   createForm.rank_weights = '30,20,15,10,8,6,4,3,2,2'
   createForm.min_payout_yuan = 1
   createDialogOpen.value = true
+}
+
+function openEditDialog(): void {
+  if (!selectedCampaign.value) return
+  const campaign = selectedCampaign.value
+  editForm.name = campaign.name
+  editForm.description = campaign.description || ''
+  editForm.rules_text = campaign.rules_text || ''
+  editForm.warmup_start_at = toDateTimeLocalFromRaw(campaign.warmup_start_at)
+  editForm.start_at = toDateTimeLocalFromRaw(campaign.start_at)
+  editForm.end_at = toDateTimeLocalFromRaw(campaign.end_at)
+  editForm.audit_start_at = toDateTimeLocalFromRaw(campaign.audit_start_at)
+  editForm.audit_end_at = toDateTimeLocalFromRaw(campaign.audit_end_at)
+  editForm.publicity_start_at = toDateTimeLocalFromRaw(campaign.publicity_start_at)
+  editForm.publicity_end_at = toDateTimeLocalFromRaw(campaign.publicity_end_at)
+  editForm.payout_due_at = toDateTimeLocalFromRaw(campaign.payout_due_at)
+  editDialogOpen.value = true
 }
 
 async function submitCreateCampaign(): Promise<void> {
@@ -875,6 +1220,43 @@ async function submitCreateCampaign(): Promise<void> {
     appStore.showError(extractApiErrorMessage(error, t('admin.campaignRewards.createFailed')))
   } finally {
     createSubmitting.value = false
+  }
+}
+
+async function submitEditCampaign(): Promise<void> {
+  if (!selectedCampaign.value) return
+  if (editValidationMessage.value) {
+    appStore.showError(editValidationMessage.value)
+    return
+  }
+  editSubmitting.value = true
+  try {
+    const updated = await adminAPI.campaigns.updateCampaign(selectedCampaign.value.id, buildCampaignUpdatePayload())
+    selectedCampaign.value = updated
+    appStore.showSuccess(t('admin.campaignRewards.updated'))
+    editDialogOpen.value = false
+    await loadCampaigns()
+    await selectCampaign(updated.id)
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.campaignRewards.updateFailed')))
+  } finally {
+    editSubmitting.value = false
+  }
+}
+
+function buildCampaignUpdatePayload(): CampaignUpdateRequest {
+  return {
+    name: editForm.name,
+    description: editForm.description,
+    rules_text: editForm.rules_text,
+    warmup_start_at: optionalDateTimePayload(editForm.warmup_start_at),
+    start_at: dateTimeLocalToISOString(editForm.start_at),
+    end_at: dateTimeLocalToISOString(editForm.end_at),
+    audit_start_at: optionalDateTimePayload(editForm.audit_start_at),
+    audit_end_at: optionalDateTimePayload(editForm.audit_end_at),
+    publicity_start_at: optionalDateTimePayload(editForm.publicity_start_at),
+    publicity_end_at: optionalDateTimePayload(editForm.publicity_end_at),
+    payout_due_at: optionalDateTimePayload(editForm.payout_due_at),
   }
 }
 
@@ -1081,6 +1463,10 @@ function isValidDateRange(startRaw: string, endRaw: string): boolean {
   return Number.isFinite(start) && Number.isFinite(end) && start < end
 }
 
+function hasInvalidOptionalDateTime(values: string[]): boolean {
+  return values.some(value => value.trim() !== '' && !Number.isFinite(new Date(value).getTime()))
+}
+
 function formatCents(value?: number | null): string {
   return `¥${((value || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -1088,6 +1474,19 @@ function formatCents(value?: number | null): string {
 function formatSignedCents(value: number): string {
   if (value === 0) return formatCents(0)
   return `${value > 0 ? '+' : '-'}${formatCents(Math.abs(value))}`
+}
+
+function formatSignedNumber(value: number): string {
+  if (value === 0) return '0'
+  return `${value > 0 ? '+' : ''}${value}`
+}
+
+function formatManualDelta(row: CampaignLeaderboardRow): string {
+  return `${formatSignedNumber(row.manual_valid_invite_delta)} / ${formatSignedCents(row.manual_recharge_amount_delta_cents)}`
+}
+
+function inviteStatusLabel(status: string): string {
+  return t(`campaignRewards.inviteStatuses.${status}`)
 }
 
 function formatDateTime(raw?: string | null): string {
@@ -1098,6 +1497,22 @@ function formatDateTime(raw?: string | null): string {
 function toDateTimeLocal(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function toDateTimeLocalFromRaw(raw?: string | null): string {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (!Number.isFinite(date.getTime())) return ''
+  return toDateTimeLocal(date)
+}
+
+function dateTimeLocalToISOString(value: string): string {
+  return new Date(value).toISOString()
+}
+
+function optionalDateTimePayload(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed ? dateTimeLocalToISOString(trimmed) : null
 }
 
 function statusLabel(status: string): string {

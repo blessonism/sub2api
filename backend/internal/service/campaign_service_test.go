@@ -108,6 +108,37 @@ func TestCampaignPayoutRejectsAlreadyPaidRewardResult(t *testing.T) {
 	}
 }
 
+func TestCampaignLeaderboardAdjustmentInvalidatesFinalSettlement(t *testing.T) {
+	repo := &campaignManualAdjustmentRepoStub{campaign: &Campaign{ID: 7, Status: CampaignStatusPublicizing}}
+	svc := NewCampaignService(repo, nil)
+
+	adjustment, err := svc.AddLeaderboardAdjustment(context.Background(), 7, CampaignLeaderboardAdjustmentInput{
+		UserID:                   21,
+		ValidInviteDelta:         2,
+		RechargeAmountDeltaCents: 10_000,
+		Reason:                   "补录线下确认邀请",
+	})
+	if err != nil {
+		t.Fatalf("手动调整榜单失败：%v", err)
+	}
+	if adjustment == nil || repo.added == nil || repo.invalidatedCampaignID != 7 {
+		t.Fatalf("调整后应写入增量并失效最终结算，adjustment=%+v added=%+v invalidated=%d", adjustment, repo.added, repo.invalidatedCampaignID)
+	}
+}
+
+func TestCampaignLeaderboardAdjustmentRejectsPaidCampaign(t *testing.T) {
+	repo := &campaignManualAdjustmentRepoStub{campaign: &Campaign{ID: 7, Status: CampaignStatusPaid}}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.AddLeaderboardAdjustment(context.Background(), 7, CampaignLeaderboardAdjustmentInput{UserID: 21, ValidInviteDelta: 1})
+	if !errors.Is(err, ErrCampaignAlreadyPaid) {
+		t.Fatalf("已派奖活动应拒绝手动调整，实际 err=%v", err)
+	}
+	if repo.added != nil || repo.invalidatedCampaignID != 0 {
+		t.Fatalf("拒绝调整时不应写入或失效结算，added=%+v invalidated=%d", repo.added, repo.invalidatedCampaignID)
+	}
+}
+
 func TestCampaignDeleteRemovesEmptyDraft(t *testing.T) {
 	repo := &campaignDeleteRepoStub{
 		campaign: &Campaign{ID: 7, Status: CampaignStatusDraft},
@@ -219,6 +250,67 @@ func TestCampaignCopyCreatesDraftFromLatestConfigWithoutBusinessData(t *testing.
 	}
 }
 
+func TestCampaignUpdateAllowsTimelinePatchAndValidatesMergedTimeRange(t *testing.T) {
+	startAt := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
+	endAt := startAt.Add(48 * time.Hour)
+	auditStartAt := endAt.Add(2 * time.Hour)
+	publicityEndAt := auditStartAt.Add(24 * time.Hour)
+	operatorID := int64(99)
+	var clearedWarmup *time.Time
+
+	repo := &campaignUpdateRepoStub{
+		campaign: &Campaign{
+			ID:      7,
+			Name:    "邀请活动",
+			Status:  CampaignStatusActive,
+			StartAt: startAt,
+			EndAt:   endAt,
+		},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	updated, err := svc.UpdateCampaign(context.Background(), 7, CampaignUpdateInput{
+		Name:           ptrString("夏季邀请活动"),
+		WarmupStartAt:  &clearedWarmup,
+		EndAt:          campaignPtrTime(endAt.Add(24 * time.Hour)),
+		AuditStartAt:   ptrTimePatch(auditStartAt),
+		PublicityEndAt: ptrTimePatch(publicityEndAt),
+		PayoutDueAt:    ptrTimePatch(publicityEndAt.Add(48 * time.Hour)),
+		OperatorID:     &operatorID,
+	})
+	if err != nil {
+		t.Fatalf("更新活动时间线失败：%v", err)
+	}
+	if updated == nil || updated.Name != "夏季邀请活动" || !updated.EndAt.Equal(endAt.Add(24*time.Hour)) {
+		t.Fatalf("更新后的活动不符合预期：%+v", updated)
+	}
+	if !repo.updateCalled {
+		t.Fatalf("有效更新时间线时应调用仓储")
+	}
+	if repo.updatedInput.WarmupStartAt == nil || *repo.updatedInput.WarmupStartAt != nil {
+		t.Fatalf("预热时间应支持清空，input=%+v", repo.updatedInput.WarmupStartAt)
+	}
+	if repo.updatedInput.AuditStartAt == nil || *repo.updatedInput.AuditStartAt == nil || !(*repo.updatedInput.AuditStartAt).Equal(auditStartAt) {
+		t.Fatalf("审核开始时间未传递到仓储，input=%+v", repo.updatedInput.AuditStartAt)
+	}
+	if repo.updatedInput.PublicityEndAt == nil || *repo.updatedInput.PublicityEndAt == nil || !(*repo.updatedInput.PublicityEndAt).Equal(publicityEndAt) {
+		t.Fatalf("公示结束时间未传递到仓储，input=%+v", repo.updatedInput.PublicityEndAt)
+	}
+	if repo.updatedInput.OperatorID == nil || *repo.updatedInput.OperatorID != operatorID {
+		t.Fatalf("操作者未传递到仓储，operator=%v", repo.updatedInput.OperatorID)
+	}
+
+	repo.updateCalled = false
+	invalidStart := endAt.Add(72 * time.Hour)
+	_, err = svc.UpdateCampaign(context.Background(), 7, CampaignUpdateInput{StartAt: &invalidStart})
+	if !errors.Is(err, ErrCampaignInvalidConfig) {
+		t.Fatalf("开始/结束时间合并后无效时应返回 ErrCampaignInvalidConfig，实际=%v", err)
+	}
+	if repo.updateCalled {
+		t.Fatalf("时间校验失败时不应调用仓储更新")
+	}
+}
+
 func TestCampaignGetMyDataReturnsCurrentRankOutsideTop50(t *testing.T) {
 	repo := &campaignMyDataRepoStub{
 		campaign: &Campaign{ID: 7, StartAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)},
@@ -245,6 +337,54 @@ func TestCampaignGetMyDataReturnsCurrentRankOutsideTop50(t *testing.T) {
 	}
 	if got.ValidInviteCount != 1 || got.InviteeRechargeAmountCents != 20_000 {
 		t.Fatalf("补位排名行应同步我的有效邀请与充值金额，valid=%d recharge=%d", got.ValidInviteCount, got.InviteeRechargeAmountCents)
+	}
+}
+
+func TestCampaignGetMyDataFallsBackToAffiliateIdentityWithoutParticipant(t *testing.T) {
+	repo := &campaignMyDataRepoStub{
+		campaign:  &Campaign{ID: 7, StartAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)},
+		cfg:       campaignTestConfig(100),
+		pool:      &CampaignPoolSummary{CampaignID: 7, FinalPoolCents: 100_000},
+		affiliate: &AffiliateSummary{UserID: 99, AffCode: "AFF99"},
+	}
+
+	svc := NewCampaignService(repo, nil)
+	got, err := svc.GetMyData(context.Background(), 7, 99)
+	if err != nil {
+		t.Fatalf("获取我的活动数据失败：%v", err)
+	}
+	if got.InviteCode != "AFF99" || got.InviteLink != "/register?aff=AFF99" {
+		t.Fatalf("无参与记录时应返回当前用户邀请码和邀请链接，code=%q link=%q", got.InviteCode, got.InviteLink)
+	}
+	if repo.ensureAffiliateCalls != 1 {
+		t.Fatalf("无参与记录时应确保用户邀请档案，calls=%d", repo.ensureAffiliateCalls)
+	}
+}
+
+func TestCampaignGetMyDataKeepsParticipantInviteSnapshot(t *testing.T) {
+	repo := &campaignMyDataRepoStub{
+		campaign: &Campaign{ID: 7, StartAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)},
+		cfg:      campaignTestConfig(100),
+		pool:     &CampaignPoolSummary{CampaignID: 7, FinalPoolCents: 100_000},
+		participant: &CampaignParticipant{
+			CampaignID:         7,
+			UserID:             99,
+			InviteCodeSnapshot: "SNAP99",
+			InviteLinkSnapshot: "/register?aff=SNAP99",
+		},
+		affiliate: &AffiliateSummary{UserID: 99, AffCode: "AFF99"},
+	}
+
+	svc := NewCampaignService(repo, nil)
+	got, err := svc.GetMyData(context.Background(), 7, 99)
+	if err != nil {
+		t.Fatalf("获取我的活动数据失败：%v", err)
+	}
+	if got.InviteCode != "SNAP99" || got.InviteLink != "/register?aff=SNAP99" {
+		t.Fatalf("已有参与快照时应优先使用快照，code=%q link=%q", got.InviteCode, got.InviteLink)
+	}
+	if repo.ensureAffiliateCalls != 0 {
+		t.Fatalf("已有完整参与快照时不应重复确保邀请档案，calls=%d", repo.ensureAffiliateCalls)
 	}
 }
 
@@ -314,6 +454,9 @@ type campaignMyDataRepoStub struct {
 	campaign              *Campaign
 	cfg                   *CampaignConfigVersion
 	pool                  *CampaignPoolSummary
+	participant           *CampaignParticipant
+	affiliate             *AffiliateSummary
+	ensureAffiliateCalls  int
 	topRows               []CampaignLeaderboardRow
 	currentUserRow        CampaignLeaderboardRow
 	loadedCurrentUserRank bool
@@ -343,7 +486,18 @@ func (r *campaignMyDataRepoStub) ListInviteRecords(context.Context, int64, int64
 }
 
 func (r *campaignMyDataRepoStub) GetParticipantStats(context.Context, int64, int64) (*CampaignParticipant, error) {
+	if r.participant != nil {
+		return r.participant, nil
+	}
 	return nil, ErrCampaignNotFound
+}
+
+func (r *campaignMyDataRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	r.ensureAffiliateCalls++
+	if r.affiliate != nil {
+		return r.affiliate, nil
+	}
+	return nil, ErrAffiliateProfileNotFound
 }
 
 func (r *campaignMyDataRepoStub) GetLeaderboardRowForUser(context.Context, int64, int64) (*CampaignLeaderboardRow, error) {
@@ -374,6 +528,41 @@ type campaignPayoutRepoStub struct {
 	CampaignRepository
 	results             []CampaignRewardResult
 	existingResultBatch *CampaignPayoutBatch
+}
+
+type campaignManualAdjustmentRepoStub struct {
+	CampaignRepository
+	campaign              *Campaign
+	successfulPayout      *CampaignPayoutBatch
+	added                 *CampaignLeaderboardAdjustmentInput
+	invalidatedCampaignID int64
+}
+
+func (r *campaignManualAdjustmentRepoStub) GetCampaign(context.Context, int64) (*Campaign, error) {
+	if r.campaign == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.campaign, nil
+}
+
+func (r *campaignManualAdjustmentRepoStub) GetSuccessfulPayoutBatch(context.Context, int64) (*CampaignPayoutBatch, error) {
+	if r.successfulPayout != nil {
+		return r.successfulPayout, nil
+	}
+	return nil, ErrCampaignNotFound
+}
+
+func (r *campaignManualAdjustmentRepoStub) AddLeaderboardAdjustment(_ context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error) {
+	r.added = &input
+	r.invalidatedCampaignID = campaignID
+	return &CampaignManualLeaderboardAdjustment{
+		ID:                       1,
+		CampaignID:               campaignID,
+		UserID:                   input.UserID,
+		AdjustmentType:           "manual_delta",
+		ValidInviteDelta:         input.ValidInviteDelta,
+		RechargeAmountDeltaCents: input.RechargeAmountDeltaCents,
+	}, nil
 }
 
 func (r *campaignPayoutRepoStub) GetSuccessfulPayoutBatch(context.Context, int64) (*CampaignPayoutBatch, error) {
@@ -474,6 +663,34 @@ func (r *campaignCopyRepoStub) AddPoolAdjustment(context.Context, int64, Campaig
 	return nil
 }
 
+type campaignUpdateRepoStub struct {
+	CampaignRepository
+	campaign     *Campaign
+	updatedInput CampaignUpdateInput
+	updateCalled bool
+}
+
+func (r *campaignUpdateRepoStub) GetCampaign(context.Context, int64) (*Campaign, error) {
+	if r.campaign == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.campaign, nil
+}
+
+func (r *campaignUpdateRepoStub) UpdateCampaign(_ context.Context, _ int64, input CampaignUpdateInput) (*Campaign, error) {
+	r.updateCalled = true
+	r.updatedInput = input
+	updated := *r.campaign
+	if input.Name != nil {
+		updated.Name = *input.Name
+	}
+	if input.EndAt != nil {
+		updated.EndAt = *input.EndAt
+	}
+	r.campaign = &updated
+	return &updated, nil
+}
+
 type campaignGrantStub struct{}
 
 func (campaignGrantStub) ListUsers(context.Context, int, int, UserListFilters, string, string) ([]User, int64, error) {
@@ -508,4 +725,17 @@ func campaignTestLeaderboardRow(userID int64, validInvites int, rechargeCents in
 
 func ptrInt64(value int64) *int64 {
 	return &value
+}
+
+func ptrString(value string) *string {
+	return &value
+}
+
+func campaignPtrTime(value time.Time) *time.Time {
+	return &value
+}
+
+func ptrTimePatch(value time.Time) **time.Time {
+	ptr := &value
+	return &ptr
 }

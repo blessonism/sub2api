@@ -61,6 +61,9 @@ export interface CampaignLeaderboardRow {
   username?: string
   valid_invite_count: number
   invitee_recharge_amount_cents: number
+  manual_valid_invite_delta: number
+  manual_recharge_amount_delta_cents: number
+  has_manual_adjustment: boolean
   reached_count_at: string
   joined_at: string
   estimated_reward_cents: number

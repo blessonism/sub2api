@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -141,6 +142,18 @@ type CampaignInviteRecord struct {
 	AuditNote                    string     `json:"audit_note"`
 }
 
+type CampaignManualLeaderboardAdjustment struct {
+	ID                       int64     `json:"id"`
+	CampaignID               int64     `json:"campaign_id"`
+	UserID                   int64     `json:"user_id"`
+	AdjustmentType           string    `json:"adjustment_type"`
+	ValidInviteDelta         int       `json:"valid_invite_delta"`
+	RechargeAmountDeltaCents int64     `json:"recharge_amount_delta_cents"`
+	Reason                   string    `json:"reason"`
+	OperatorID               *int64    `json:"operator_id,omitempty"`
+	CreatedAt                time.Time `json:"created_at"`
+}
+
 type CampaignPoolSummary struct {
 	CampaignID              int64 `json:"campaign_id"`
 	ConfirmedPoolCents      int64 `json:"confirmed_pool_cents"`
@@ -180,6 +193,9 @@ type CampaignLeaderboardRow struct {
 	Username                   string    `json:"username,omitempty"`
 	ValidInviteCount           int       `json:"valid_invite_count"`
 	InviteeRechargeAmountCents int64     `json:"invitee_recharge_amount_cents"`
+	ManualValidInviteDelta     int       `json:"manual_valid_invite_delta"`
+	ManualRechargeAmountCents  int64     `json:"manual_recharge_amount_delta_cents"`
+	HasManualAdjustment        bool      `json:"has_manual_adjustment"`
 	ReachedCountAt             time.Time `json:"reached_count_at"`
 	JoinedAt                   time.Time `json:"joined_at"`
 	EstimatedRewardCents       int64     `json:"estimated_reward_cents"`
@@ -295,6 +311,22 @@ type CampaignPoolAdjustmentInput struct {
 	OperatorID     *int64
 }
 
+type CampaignInviteRecordAdjustmentInput struct {
+	RecordID                     int64
+	Status                       string
+	EffectiveRechargeAmountCents int64
+	Reason                       string
+	OperatorID                   *int64
+}
+
+type CampaignLeaderboardAdjustmentInput struct {
+	UserID                   int64
+	ValidInviteDelta         int
+	RechargeAmountDeltaCents int64
+	Reason                   string
+	OperatorID               *int64
+}
+
 type CampaignRegisterInviteInput struct {
 	InviteeUserID int64
 	AffiliateCode string
@@ -381,6 +413,8 @@ type CampaignRepository interface {
 	RecordInviteRegistration(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, inviter *AffiliateSummary, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error)
 	RecordRecharge(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, input CampaignRechargeInput, poolAmountCents int64) (*CampaignInviteRecord, bool, error)
 	ListInviteRecords(ctx context.Context, campaignID, inviterUserID int64, page, pageSize int) ([]CampaignInviteRecord, int64, error)
+	AdjustInviteRecord(ctx context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error)
+	AddLeaderboardAdjustment(ctx context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error)
 	GetParticipantStats(ctx context.Context, campaignID, userID int64) (*CampaignParticipant, error)
 	ListLeaderboardRows(ctx context.Context, campaignID int64, limit int) ([]CampaignLeaderboardRow, error)
 	GetLeaderboardRowForUser(ctx context.Context, campaignID, userID int64) (*CampaignLeaderboardRow, error)
@@ -401,6 +435,10 @@ type CampaignRepository interface {
 	ListPayoutItems(ctx context.Context, batchID int64) ([]CampaignPayoutItem, error)
 	UpdatePayoutBatchSummary(ctx context.Context, batchID int64) (*CampaignPayoutBatch, error)
 	GetSuccessfulPayoutBatch(ctx context.Context, campaignID int64) (*CampaignPayoutBatch, error)
+}
+
+type campaignAffiliateProfileRepository interface {
+	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 }
 
 type CampaignBalanceGrantService interface {
@@ -488,6 +526,9 @@ func (s *CampaignService) CopyCampaign(ctx context.Context, campaignID int64, op
 }
 
 func (s *CampaignService) UpdateCampaign(ctx context.Context, campaignID int64, input CampaignUpdateInput) (*Campaign, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "campaign service unavailable")
+	}
 	if campaignID <= 0 {
 		return nil, ErrCampaignNotFound
 	}
@@ -495,8 +536,16 @@ func (s *CampaignService) UpdateCampaign(ctx context.Context, campaignID int64, 
 	if err != nil {
 		return nil, err
 	}
-	if current.Status != CampaignStatusDraft && current.Status != CampaignStatusWarmup {
-		return nil, ErrCampaignImmutableRule
+	nextStart := current.StartAt
+	if input.StartAt != nil {
+		nextStart = *input.StartAt
+	}
+	nextEnd := current.EndAt
+	if input.EndAt != nil {
+		nextEnd = *input.EndAt
+	}
+	if err := validateCampaignTime(nextStart, nextEnd); err != nil {
+		return nil, err
 	}
 	return s.repo.UpdateCampaign(ctx, campaignID, input)
 }
@@ -639,6 +688,59 @@ func (s *CampaignService) ListInviteRecords(ctx context.Context, campaignID, inv
 	return s.repo.ListInviteRecords(ctx, campaignID, inviterUserID, page, pageSize)
 }
 
+func (s *CampaignService) AdjustInviteRecord(ctx context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error) {
+	if campaignID <= 0 || input.RecordID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	if !isCampaignInviteAdjustableStatus(input.Status) || input.EffectiveRechargeAmountCents < 0 {
+		return nil, ErrCampaignInvalidConfig
+	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return nil, err
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	return s.repo.AdjustInviteRecord(ctx, campaignID, input)
+}
+
+func (s *CampaignService) AddLeaderboardAdjustment(ctx context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error) {
+	if campaignID <= 0 || input.UserID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	if input.ValidInviteDelta == 0 && input.RechargeAmountDeltaCents == 0 {
+		return nil, ErrCampaignInvalidConfig
+	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return nil, err
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	return s.repo.AddLeaderboardAdjustment(ctx, campaignID, input)
+}
+
+func (s *CampaignService) ensureCampaignAdjustable(ctx context.Context, campaignID int64) error {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return err
+	}
+	if campaign.Status == CampaignStatusPaid {
+		return ErrCampaignAlreadyPaid
+	}
+	if paid, err := s.repo.GetSuccessfulPayoutBatch(ctx, campaignID); err == nil && paid != nil {
+		return ErrCampaignAlreadyPaid
+	} else if err != nil && !errors.Is(err, ErrCampaignNotFound) {
+		return err
+	}
+	return nil
+}
+
+func isCampaignInviteAdjustableStatus(status string) bool {
+	switch status {
+	case CampaignInviteStatusRegistered, CampaignInviteStatusRechargeUnqualified, CampaignInviteStatusPendingAudit, CampaignInviteStatusEffective, CampaignInviteStatusInvalid, CampaignInviteStatusRiskReview:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *CampaignService) GetActiveHome(ctx context.Context) (*CampaignHome, error) {
 	now := time.Now()
 	campaign, err := s.repo.GetActiveCampaign(ctx, now)
@@ -707,6 +809,9 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 		result.EstimatedContributionRewardCents = participant.EstimatedContributionRewardCents
 		result.EstimatedTotalRewardCents = participant.EstimatedTotalRewardCents
 	}
+	if err := fillCampaignInviteIdentity(ctx, s.repo, &result); err != nil {
+		return nil, err
+	}
 	var previousCount int
 	for i, row := range rows {
 		if row.UserID == userID {
@@ -758,6 +863,44 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 	}
 	result.InviteRecords = invites
 	return &result, nil
+}
+
+func fillCampaignInviteIdentity(ctx context.Context, repo CampaignRepository, result *CampaignMyData) error {
+	if result == nil {
+		return nil
+	}
+	code := strings.TrimSpace(result.InviteCode)
+	if code == "" {
+		profileRepo, ok := repo.(campaignAffiliateProfileRepository)
+		if !ok {
+			return nil
+		}
+		summary, err := profileRepo.EnsureUserAffiliate(ctx, result.UserID)
+		if err != nil {
+			if errors.Is(err, ErrAffiliateProfileNotFound) || errors.Is(err, ErrCampaignNotFound) {
+				return nil
+			}
+			return err
+		}
+		if summary != nil {
+			code = strings.TrimSpace(summary.AffCode)
+		}
+	}
+	if strings.TrimSpace(result.InviteCode) == "" {
+		result.InviteCode = code
+	}
+	if strings.TrimSpace(result.InviteLink) == "" && code != "" {
+		result.InviteLink = campaignInviteLink(code)
+	}
+	return nil
+}
+
+func campaignInviteLink(inviteCode string) string {
+	code := strings.TrimSpace(inviteCode)
+	if code == "" {
+		return ""
+	}
+	return "/register?aff=" + url.QueryEscape(code)
 }
 
 func (s *CampaignService) RegisterInvite(ctx context.Context, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error) {
