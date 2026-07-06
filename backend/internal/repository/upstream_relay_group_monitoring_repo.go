@@ -390,25 +390,25 @@ func (r *upstreamRelayRepository) UpsertUsageHistory(ctx context.Context, items 
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO upstream_relay_group_usage_history (
 				usage_date, connector_id, upstream_group_id, group_name, platform,
-				actual_cost, total_tokens, checked_at, created_at, updated_at
+				actual_cost, total_tokens, checked_at, finalized_at, created_at, updated_at
 			)
-			VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+			VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,CASE WHEN $9 THEN NOW() ELSE NULL END,NOW(),NOW())
 			ON CONFLICT (usage_date, connector_id, upstream_group_id) DO UPDATE SET
 				group_name=EXCLUDED.group_name,
 				platform=EXCLUDED.platform,
 				actual_cost=EXCLUDED.actual_cost,
 				total_tokens=EXCLUDED.total_tokens,
 				checked_at=EXCLUDED.checked_at,
+				finalized_at=CASE WHEN $9 THEN NOW() ELSE upstream_relay_group_usage_history.finalized_at END,
 				updated_at=NOW()
-		`, item.UsageDate, item.ConnectorID, item.UpstreamGroupID, item.GroupName, item.Platform, item.ActualCost, item.TotalTokens, item.CheckedAt); err != nil {
+		`, item.UsageDate, item.ConnectorID, item.UpstreamGroupID, item.GroupName, item.Platform, item.ActualCost, item.TotalTokens, item.CheckedAt, item.Finalized); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayUsageHistoryListFilters) ([]service.UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error) {
-	page, pageSize := normalizePolicyPagination(params)
+func relayUsageHistoryWhere(filters service.UpstreamRelayUsageHistoryListFilters) (string, []any) {
 	conditions := []string{"1=1"}
 	args := []any{}
 	if filters.StartDate != "" {
@@ -431,7 +431,12 @@ func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params p
 		args = append(args, "%"+strings.ToLower(strings.TrimSpace(filters.Search))+"%")
 		conditions = append(conditions, fmt.Sprintf("(LOWER(COALESCE(c.name, '')) LIKE $%d OR LOWER(h.upstream_group_id) LIKE $%d OR LOWER(h.group_name) LIKE $%d OR LOWER(h.platform) LIKE $%d)", len(args), len(args), len(args), len(args)))
 	}
-	where := strings.Join(conditions, " AND ")
+	return strings.Join(conditions, " AND "), args
+}
+
+func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params pagination.PaginationParams, filters service.UpstreamRelayUsageHistoryListFilters) ([]service.UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error) {
+	page, pageSize := normalizePolicyPagination(params)
+	where, args := relayUsageHistoryWhere(filters)
 	var total int64
 	if err := scanSingleRow(ctx, r.db, `
 		SELECT COUNT(*)
@@ -445,7 +450,7 @@ func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params p
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT h.id, h.usage_date::text, h.connector_id, COALESCE(c.name, ''),
 		       h.upstream_group_id, h.group_name, h.platform,
-		       h.actual_cost, h.total_tokens, h.checked_at, h.created_at, h.updated_at
+		       h.actual_cost, h.total_tokens, h.checked_at, h.finalized_at, h.created_at, h.updated_at
 		FROM upstream_relay_group_usage_history h
 		LEFT JOIN upstream_relay_connectors c ON c.id = h.connector_id
 		WHERE `+where+`
@@ -461,6 +466,41 @@ func (r *upstreamRelayRepository) ListUsageHistory(ctx context.Context, params p
 		return nil, nil, err
 	}
 	return items, relayPage(total, page, pageSize), nil
+}
+
+func (r *upstreamRelayRepository) SummarizeUsageHistory(ctx context.Context, filters service.UpstreamRelayUsageHistoryListFilters) (*service.UpstreamRelayUsageHistorySummary, error) {
+	where, args := relayUsageHistoryWhere(filters)
+	summary := &service.UpstreamRelayUsageHistorySummary{}
+	var latest sql.NullTime
+	if err := scanSingleRow(ctx, r.db, `
+		SELECT
+			COUNT(*) AS row_count,
+			COALESCE(SUM(h.actual_cost), 0) AS total_cost,
+			COALESCE(SUM(h.total_tokens), 0) AS total_tokens,
+			COUNT(DISTINCT h.connector_id) AS connector_count,
+			COUNT(DISTINCT (h.connector_id, h.upstream_group_id)) AS group_count,
+			MAX(h.checked_at) AS latest_checked_at,
+			COUNT(*) FILTER (
+				WHERE h.finalized_at IS NULL
+				  AND h.usage_date < (NOW() AT TIME ZONE 'Asia/Shanghai')::date
+			) AS pending_finalize
+		FROM upstream_relay_group_usage_history h
+		LEFT JOIN upstream_relay_connectors c ON c.id = h.connector_id
+		WHERE `+where, args,
+		&summary.RowCount,
+		&summary.TotalCost,
+		&summary.TotalTokens,
+		&summary.ConnectorCount,
+		&summary.GroupCount,
+		&latest,
+		&summary.PendingFinalize,
+	); err != nil {
+		return nil, err
+	}
+	if latest.Valid {
+		summary.LatestCheckedAt = &latest.Time
+	}
+	return summary, nil
 }
 
 func (r *upstreamRelayRepository) ListCandidateUsageBindings(ctx context.Context, connectorID int64) ([]service.UpstreamRelayCandidateUsageBinding, error) {
@@ -1448,12 +1488,16 @@ func scanRelayUsageHistory(rows *sql.Rows) ([]service.UpstreamRelayGroupUsageHis
 	items := []service.UpstreamRelayGroupUsageHistory{}
 	for rows.Next() {
 		var item service.UpstreamRelayGroupUsageHistory
+		var finalizedAt sql.NullTime
 		if err := rows.Scan(
 			&item.ID, &item.UsageDate, &item.ConnectorID, &item.ConnectorName,
 			&item.UpstreamGroupID, &item.GroupName, &item.Platform,
-			&item.ActualCost, &item.TotalTokens, &item.CheckedAt, &item.CreatedAt, &item.UpdatedAt,
+			&item.ActualCost, &item.TotalTokens, &item.CheckedAt, &finalizedAt, &item.CreatedAt, &item.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if finalizedAt.Valid {
+			item.FinalizedAt = &finalizedAt.Time
 		}
 		items = append(items, item)
 	}

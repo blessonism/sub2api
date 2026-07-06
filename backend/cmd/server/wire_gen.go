@@ -254,7 +254,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	tokenUsagePolicyHandler := admin.NewTokenUsagePolicyHandler(tokenUsageAutoPolicyService)
 	upstreamRelayRepository := repository.NewUpstreamRelayRepository(db)
 	upstreamRelayGroupMonitoringService := service.ProvideUpstreamRelayGroupMonitoringService(upstreamRelayRepository, accountRepository, accountTestService, secretEncryptor)
-	upstreamRelayGroupMonitoringHandler := admin.NewUpstreamRelayGroupMonitoringHandler(upstreamRelayGroupMonitoringService)
+	upstreamRelayMonitoringRunner := service.ProvideUpstreamRelayMonitoringRunner(upstreamRelayGroupMonitoringService, leaderLockCache, db)
+	upstreamRelayGroupMonitoringHandler := handler.ProvideUpstreamRelayGroupMonitoringHandler(upstreamRelayGroupMonitoringService, upstreamRelayMonitoringRunner)
 	conversationRepository := repository.NewConversationCaptureRepository(db)
 	conversationCaptureWorkerPool := service.NewConversationCaptureWorkerPool(configConfig)
 	conversationExportWorkerPool := service.NewConversationExportWorkerPool(configConfig)
@@ -293,7 +294,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
-	upstreamRelayMonitoringRunner := service.ProvideUpstreamRelayMonitoringRunner(upstreamRelayGroupMonitoringService, leaderLockCache, db)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, tokenUsageAutoPolicyRunner, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, conversationCaptureWorkerPool, conversationExportWorkerPool, conversationCaptureCleanupService, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, upstreamRelayMonitoringRunner, userPlatformQuotaUsageFlusher)
 	application := &Application{

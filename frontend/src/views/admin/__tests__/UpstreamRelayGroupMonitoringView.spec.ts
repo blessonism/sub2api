@@ -16,6 +16,9 @@ const {
   getMonitoringPolicy,
   updateMonitoringPolicy,
   getRecommendationPolicy,
+  updateRecommendationPolicy,
+  previewRecommendations,
+  generateRecommendations,
   listSnapshots,
   listUsageHistory,
   refreshConnectorMetrics,
@@ -29,6 +32,7 @@ const {
   updateCandidate,
   listAccounts,
   listGroups,
+  getRunnerStatus,
 } = vi.hoisted(() => ({
   listConnectors: vi.fn(),
   listCandidates: vi.fn(),
@@ -40,6 +44,9 @@ const {
   getMonitoringPolicy: vi.fn(),
   updateMonitoringPolicy: vi.fn(),
   getRecommendationPolicy: vi.fn(),
+  updateRecommendationPolicy: vi.fn(),
+  previewRecommendations: vi.fn(),
+  generateRecommendations: vi.fn(),
   listSnapshots: vi.fn(),
   listUsageHistory: vi.fn(),
   refreshConnectorMetrics: vi.fn(),
@@ -53,6 +60,7 @@ const {
   updateCandidate: vi.fn(),
   listAccounts: vi.fn(),
   listGroups: vi.fn(),
+  getRunnerStatus: vi.fn(),
 }))
 
 const {
@@ -85,6 +93,9 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     getMonitoringPolicy,
     updateMonitoringPolicy,
     getRecommendationPolicy,
+    updateRecommendationPolicy,
+    previewRecommendations,
+    generateRecommendations,
     listSnapshots,
     listUsageHistory,
     refreshConnectorMetrics,
@@ -96,6 +107,7 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     updateConnector,
     createCandidate,
     updateCandidate,
+    getRunnerStatus,
   },
 }))
 
@@ -219,6 +231,16 @@ function monitoringPolicy(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function runnerStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    observed_at: '2026-06-28T12:00:00Z',
+    sync: { enabled: true, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 60, failure_retry_minutes: 5 },
+    probe: { enabled: true, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 15, failure_retry_minutes: 5 },
+    recommendation: { enabled: false, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 60, failure_retry_minutes: 5 },
+    ...overrides,
+  }
+}
+
 type TestConnectorMetricsRefreshResult = {
   connector: Record<string, unknown> & { id: number; name: string }
   snapshots: Array<Record<string, unknown> & { connector_id: number }>
@@ -305,10 +327,15 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     getMonitoringPolicy.mockReset()
     updateMonitoringPolicy.mockReset()
     getRecommendationPolicy.mockReset()
+    updateRecommendationPolicy.mockReset()
+    previewRecommendations.mockReset()
+    generateRecommendations.mockReset()
     listSnapshots.mockReset()
     listUsageHistory.mockReset()
     refreshConnectorMetrics.mockReset()
     refreshMonitoringData.mockReset()
+    getRunnerStatus.mockReset()
+    getRunnerStatus.mockResolvedValue(runnerStatus())
     syncConnector.mockReset()
     syncAllConnectors.mockReset()
     probeAllCandidates.mockReset()
@@ -393,7 +420,14 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       }],
     })
     syncConnector.mockResolvedValue([])
-    listUsageHistory.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50, pages: 1 })
+    listUsageHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
+    })
     getRecommendationPolicy.mockResolvedValue({
       snapshot_freshness_minutes: 1440,
       usage_delta_freshness_minutes: 1440,
@@ -405,6 +439,36 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       priority_step: 10,
       sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc'],
     })
+    updateRecommendationPolicy.mockResolvedValue({
+      snapshot_freshness_minutes: 1440,
+      usage_delta_freshness_minutes: 1440,
+      probe_freshness_minutes: 30,
+      min_success_rate: 0.5,
+      min_sample_size: 3,
+      exclude_consecutive_failures: true,
+      priority_start: 10,
+      priority_step: 10,
+      sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc'],
+    })
+    previewRecommendations.mockResolvedValue({
+      policy: {
+        snapshot_freshness_minutes: 1440,
+        usage_delta_freshness_minutes: 1440,
+        probe_freshness_minutes: 30,
+        min_success_rate: 0.5,
+        min_sample_size: 3,
+        exclude_consecutive_failures: true,
+        priority_start: 10,
+        priority_step: 10,
+        sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc'],
+      },
+      total_candidates: 0,
+      suggestion_count: 0,
+      excluded_count: 0,
+      suggestions: [],
+      exclusions: [],
+    })
+    generateRecommendations.mockResolvedValue(recommendationRun())
     getMonitoringPolicy.mockResolvedValue(monitoringPolicy())
     updateMonitoringPolicy.mockResolvedValue(monitoringPolicy({ updated_at: '2026-06-28T12:10:00Z' }))
     listAccounts.mockResolvedValue({
@@ -833,7 +897,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(listConnectors).toHaveBeenCalledWith({ page: 2, page_size: 100 })
     expect(listCandidates).toHaveBeenCalledWith({ page: 1, page_size: 100 })
     expect(listCandidates).toHaveBeenCalledWith({ page: 2, page_size: 100 })
-    const overview = wrapper.find('section')
+    const overview = wrapper.findAll('section')[0]
     expect(overview.text()).toContain('1 / 2')
     expect(overview.text()).toContain('1 / 2')
   })
@@ -1018,12 +1082,13 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 3.75, total_tokens: 3_250_000, connector_count: 2, group_count: 3, latest_checked_at: '2026-06-29T12:00:00Z', pending_finalize: 0 },
     })
 
     const wrapper = mountView()
     await flushPromises()
 
-    const overview = wrapper.find('section')
+    const overview = wrapper.findAll('section')[0]
     expect(overview.text()).toContain('admin.upstreamRelayGroupMonitoring.overview.connectorStatus')
     expect(overview.text()).toContain('1 / 2')
     expect(overview.text()).toContain('admin.upstreamRelayGroupMonitoring.overview.connectorStatusHint')
@@ -1187,6 +1252,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 3.75, total_tokens: 1500000, connector_count: 1, group_count: 2, latest_checked_at: freshCheckedAt, pending_finalize: 2 },
     })
     const wrapper = mountView()
     await flushPromises()
@@ -1216,7 +1282,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('usageHistory.summaryGroups')
     expect(wrapper.text()).toContain('usageHistory.summaryCostPerMillion')
     expect(wrapper.text()).toContain('usageHistory.summaryLatestCheckedAt')
+    expect(wrapper.text()).toContain('usageHistory.summaryPendingFinalize')
     expect(wrapper.text()).toContain('usageHistory.appliedFilterSummary')
+    expect(wrapper.text()).toContain('usageHistory.pendingFinalizeHint')
     expect(wrapper.text()).toContain('usageHistory.currentPageScopeHint')
     expect(wrapper.text()).toContain('usageHistory.shortcutToday')
     expect(wrapper.text()).toContain('usageHistory.shortcutLast7d')
@@ -1226,7 +1294,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('usageHistory.groupSubtotalGroups')
     expect(wrapper.text()).toContain('usageHistory.groupLatestCheckedAt')
     expect(wrapper.text()).toContain('usageHistory.flagCostWithoutTokens')
-    expect(wrapper.text()).toContain('usageHistory.flagStaleCheckedAt')
+    expect(wrapper.text()).toContain('usageHistory.badgePendingFinalize')
+    expect(wrapper.text()).toContain('usageHistory.manualFinalizeButton')
     expect(wrapper.text()).toContain('$3.75')
     expect(wrapper.text()).toContain('$2.50')
     expect(wrapper.text()).toContain('1.50M')
@@ -1245,6 +1314,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
     })
     const wrapper = mountView()
     await flushPromises()
@@ -1276,6 +1346,58 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(resetParams.search).toBeUndefined()
   })
 
+  it('历史用量日期使用 Asia/Shanghai 业务日而不是浏览器本地日期', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-28T16:30:00.000Z'))
+    const realDateTimeFormat = Intl.DateTimeFormat
+    const dateTimeFormatSpy = vi.spyOn(Intl, 'DateTimeFormat')
+    dateTimeFormatSpy.mockImplementation(((...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => new realDateTimeFormat(...args)) as typeof Intl.DateTimeFormat)
+    listUsageHistory.mockResolvedValue({
+      items: [
+        {
+          id: 88,
+          usage_date: '2026-06-29',
+          connector_id: 7,
+          connector_name: 'relay-a',
+          upstream_group_id: 'team-a',
+          group_name: 'Team A',
+          platform: 'openai',
+          actual_cost: 2.5,
+          total_tokens: 1500000,
+          checked_at: '2026-06-29T10:00:00+08:00',
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+      summary: { total_cost: 2.5, total_tokens: 1500000, connector_count: 1, group_count: 1, latest_checked_at: '2026-06-29T10:00:00+08:00', pending_finalize: 0 },
+    })
+
+    try {
+      const wrapper = mountView()
+      await flushPromises()
+
+      await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+      await flushPromises()
+
+      const initialParams = usageHistoryTabCalls().at(-1)!
+      expect(initialParams.start_date).toBe('2026-06-29')
+      expect(initialParams.end_date).toBe('2026-06-29')
+      expect(wrapper.text()).toContain('usageHistory.badgeLive')
+      expect(dateTimeFormatSpy.mock.calls.some(([, options]) => options?.timeZone === 'Asia/Shanghai')).toBe(true)
+
+      await wrapper.findAll('button').find((button) => button.text().includes('usageHistory.shortcutYesterday'))!.trigger('click')
+      await flushPromises()
+
+      const yesterdayParams = usageHistoryTabCalls().at(-1)!
+      expect(yesterdayParams.start_date).toBe('2026-06-28')
+      expect(yesterdayParams.end_date).toBe('2026-06-28')
+    } finally {
+      dateTimeFormatSpy.mockRestore()
+    }
+  })
+
   it('历史用量日期范围非法时提示并阻止查询', async () => {
     listUsageHistory.mockResolvedValue({
       items: [],
@@ -1283,6 +1405,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
     })
     const wrapper = mountView()
     await flushPromises()
@@ -1311,6 +1434,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
     })
     const wrapper = mountView()
     await flushPromises()
@@ -1466,6 +1590,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       page: 1,
       page_size: 50,
       pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
     })
     refreshConnectorMetrics.mockResolvedValue({
       connector: {
@@ -2258,6 +2383,75 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('monitoring.savedAt')
   })
 
+  it('顶部同步新鲜度使用已保存策略，设置页派生文案使用草稿策略', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-28T12:00:00Z'))
+    getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      sync_interval_minutes: 60,
+      probe_interval_minutes: 15,
+    }))
+    listConnectors.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'relay-a',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        last_synced_at: '2026-06-28T10:00:00Z',
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('input[type="number"]')[0].setValue(10)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="freshness-badge-synced"]').text()).toContain('freshness.fresh')
+    expect(wrapper.text()).toContain('10 30')
+  })
+
+  it('推荐策略保存使用监控草稿派生阈值', async () => {
+    getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      sync_interval_minutes: 60,
+      probe_interval_minutes: 15,
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+    const numberInputs = wrapper.findAll('input[type="number"]')
+    await numberInputs[0].setValue(120)
+    await numberInputs[1].setValue(20)
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.policy'))!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('policy.save'))!.trigger('click')
+    await flushPromises()
+
+    expect(updateRecommendationPolicy).toHaveBeenCalledWith(expect.objectContaining({
+      snapshot_freshness_minutes: 360,
+      usage_delta_freshness_minutes: 360,
+      probe_freshness_minutes: 60,
+    }))
+  })
+
   it('自动监控页在自动项关闭时展示未启用状态', async () => {
     getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
       auto_sync_enabled: false,
@@ -2304,6 +2498,62 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     expect(status.text()).toContain('monitoring.status.running')
     expect(status.text()).toContain('monitoring.status.detailSyncOnly')
+  })
+
+  it('顶部调度开关基于已保存策略提交，且不夹带策略页草稿', async () => {
+    updateMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
+      auto_sync_enabled: false,
+      sync_interval_minutes: 60,
+      updated_at: '2026-06-28T12:10:00Z',
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.monitoring'))!.trigger('click')
+    await flushPromises()
+    const syncIntervalInput = wrapper.findAll('input[type="number"]')[0]
+    await syncIntervalInput.setValue(999)
+
+    await wrapper.get('[data-testid="runner-toggle-sync"]').trigger('click')
+    await flushPromises()
+
+    expect(updateMonitoringPolicy).toHaveBeenCalledWith(expect.objectContaining({
+      auto_sync_enabled: false,
+      sync_interval_minutes: 60,
+      auto_probe_enabled: true,
+      probe_interval_minutes: 15,
+    }))
+    expect((syncIntervalInput.element as HTMLInputElement).value).toBe('999')
+  })
+
+  it('顶部调度开关保存失败时回滚到已保存状态', async () => {
+    updateMonitoringPolicy.mockRejectedValueOnce(new Error('save failed'))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-testid="runner-toggle-sync"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('save failed')
+  })
+
+  it('顶部调度失败卡展示 last_error 详情', async () => {
+    getRunnerStatus.mockResolvedValueOnce(runnerStatus({
+      sync: { enabled: true, in_flight: false, last_finished_at: '2026-06-28T12:00:00Z', last_succeeded: false, last_error: 'sync exploded', next_run_at: null, interval_minutes: 60, failure_retry_minutes: 5 },
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const card = wrapper.get('[data-testid="runner-status-card-sync"]')
+    expect(card.text()).toContain('runnerStatus.states.failed')
+    expect(card.text()).toContain('sync exploded')
   })
 
   it('自动推荐和自动应用开启时展示安全门提示', async () => {

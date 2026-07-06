@@ -93,8 +93,22 @@ export interface UpstreamRelayGroupUsageHistory {
   actual_cost: number
   total_tokens: number
   checked_at: string
+  finalized_at?: string | null
   created_at?: string
   updated_at?: string
+}
+
+export interface UpstreamRelayUsageHistorySummary {
+  total_cost: number
+  total_tokens: number
+  connector_count: number
+  group_count: number
+  latest_checked_at?: string | null
+  pending_finalize: number
+}
+
+export interface UsageHistoryListResponse extends PaginatedResponse<UpstreamRelayGroupUsageHistory> {
+  summary: UpstreamRelayUsageHistorySummary
 }
 
 export interface UpstreamRelayConnectorMetricsRefreshResult {
@@ -177,6 +191,26 @@ export interface UpstreamRelayMonitoringPolicy {
   updated_by?: number
   created_at?: string
   updated_at?: string
+}
+
+export interface UpstreamRelayMonitoringJobStatus {
+  name: string
+  enabled: boolean
+  in_flight: boolean
+  last_finished_at?: string | null
+  last_succeeded?: boolean | null
+  last_error?: string | null
+  next_run_at?: string | null
+  interval_minutes: number
+  failure_retry_minutes: number
+}
+
+export interface UpstreamRelayMonitoringRunnerStatus {
+  observed_at: string
+  sync: UpstreamRelayMonitoringJobStatus
+  probe: UpstreamRelayMonitoringJobStatus
+  recommendation: UpstreamRelayMonitoringJobStatus
+  finalize?: UpstreamRelayMonitoringJobStatus
 }
 
 export type UpstreamRelayMonitoringPolicyInput = Pick<
@@ -480,8 +514,13 @@ export async function listUsageHistory(params?: {
   connector_id?: number
   upstream_group_id?: string
   search?: string
-}): Promise<PaginatedResponse<UpstreamRelayGroupUsageHistory>> {
-  const { data } = await apiClient.get<PaginatedResponse<UpstreamRelayGroupUsageHistory>>(`${base}/usage-history`, { params })
+}): Promise<UsageHistoryListResponse> {
+  const { data } = await apiClient.get<UsageHistoryListResponse>(`${base}/usage-history`, { params })
+  return data
+}
+
+export async function finalizeUsage(id: number, date: string): Promise<{ success: boolean }> {
+  const { data } = await apiClient.post<{ success: boolean }>(`${base}/connectors/${id}/finalize-usage`, undefined, { params: { date } })
   return data
 }
 
@@ -517,6 +556,11 @@ export async function probeCandidate(id: number): Promise<UpstreamRelayProbeResu
 
 export async function probeAllCandidates(): Promise<UpstreamRelayBulkOperationResult> {
   const { data } = await apiClient.post<UpstreamRelayBulkOperationResult>(`${base}/candidates/probe-all`)
+  return data
+}
+
+export async function getRunnerStatus(): Promise<UpstreamRelayMonitoringRunnerStatus> {
+  const { data } = await apiClient.get<UpstreamRelayMonitoringRunnerStatus>(`${base}/runner-status`)
   return data
 }
 
@@ -597,12 +641,14 @@ export const upstreamRelayGroupMonitorsAPI = {
   listConnectorAPIKeys,
   listSnapshotChanges,
   listUsageHistory,
+  finalizeUsage,
   listCandidates,
   createCandidate,
   updateCandidate,
   deleteCandidate,
   probeCandidate,
   probeAllCandidates,
+  getRunnerStatus,
   getMonitoringPolicy,
   updateMonitoringPolicy,
   getRecommendationPolicy,

@@ -165,6 +165,7 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 	{
 		relay.GET("/connectors", h.Admin.UpstreamRelayMonitoring.ListConnectors)
 		relay.POST("/connectors", h.Admin.UpstreamRelayMonitoring.CreateConnector)
+		relay.GET("/runner-status", h.Admin.UpstreamRelayMonitoring.GetRunnerStatus)
 		relay.POST("/refresh", h.Admin.UpstreamRelayMonitoring.RefreshMonitoringData)
 		relay.POST("/connectors/sync-all", h.Admin.UpstreamRelayMonitoring.SyncAllConnectors)
 		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
@@ -173,6 +174,7 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.POST("/connectors/:id/metrics/refresh", h.Admin.UpstreamRelayMonitoring.RefreshConnectorMetrics)
 		relay.GET("/connectors/:id/api-keys", h.Admin.UpstreamRelayMonitoring.ListConnectorAPIKeys)
 		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
+		relay.POST("/connectors/:id/finalize-usage", h.Admin.UpstreamRelayMonitoring.FinalizeUsage)
 		relay.GET("/snapshot-changes", h.Admin.UpstreamRelayMonitoring.ListSnapshotChanges)
 		relay.GET("/usage-history", h.Admin.UpstreamRelayMonitoring.ListUsageHistory)
 

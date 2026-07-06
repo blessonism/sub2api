@@ -34,6 +34,7 @@ func TestUpstreamRelayGroupMonitoringRoutesAreRegistered(t *testing.T) {
 		"POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh",
 		"GET /api/v1/admin/upstream-relay-group-monitors/connectors/:id/api-keys",
 		"GET /api/v1/admin/upstream-relay-group-monitors/connectors/:id/snapshots",
+		"POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/finalize-usage",
 		"GET /api/v1/admin/upstream-relay-group-monitors/snapshot-changes",
 		"GET /api/v1/admin/upstream-relay-group-monitors/usage-history",
 		"GET /api/v1/admin/upstream-relay-group-monitors/candidates",

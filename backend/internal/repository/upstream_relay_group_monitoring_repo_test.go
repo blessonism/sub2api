@@ -122,7 +122,7 @@ func TestUpstreamRelayRepositoryUpsertUsageHistoryUsesDailyConnectorGroupConflic
 
 	mock.ExpectBegin()
 	mock.ExpectExec("ON CONFLICT \\(usage_date, connector_id, upstream_group_id\\) DO UPDATE SET").
-		WithArgs("2026-06-29", int64(7), "team-a", "Team A", "openai", 0.0, int64(0), checkedAt).
+		WithArgs("2026-06-29", int64(7), "team-a", "Team A", "openai", 0.0, int64(0), checkedAt, false).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
