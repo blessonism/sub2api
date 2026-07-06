@@ -263,7 +263,6 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
-const EXTERNAL_PAYMENT_URL = 'https://pay.ldxp.cn/shop/Y5TXJ2DO'
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
@@ -278,6 +277,11 @@ const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
+const externalPaymentUrl = computed(() => {
+  const settings = appStore.cachedPublicSettings
+  if (!settings?.purchase_subscription_enabled) return ''
+  return settings.purchase_subscription_url?.trim() || ''
+})
 
 // SVG Icon Components
 const createOutlineIcon = (...paths: string[]) => ({
@@ -781,7 +785,9 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: AvailableChannelsIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: StatusPulseIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: SubscriptionIcon, hideInSimpleMode: true },
-    { path: 'external-payment', label: t('nav.externalPayment'), icon: ExternalPaymentIcon, externalUrl: EXTERNAL_PAYMENT_URL },
+    ...(externalPaymentUrl.value
+      ? [{ path: 'external-payment', label: t('nav.externalPayment'), icon: ExternalPaymentIcon, externalUrl: externalPaymentUrl.value }]
+      : []),
     { path: '/purchase', label: t('nav.buySubscription'), icon: ShoppingBagIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },

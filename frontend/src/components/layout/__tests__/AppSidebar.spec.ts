@@ -32,10 +32,13 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar external payment entry', () => {
-  it('keeps the configured payment shop URL as a direct sidebar link', () => {
-    expect(componentSource).toContain("const EXTERNAL_PAYMENT_URL = 'https://pay.ldxp.cn/shop/Y5TXJ2DO'")
+  it('uses the public settings purchase URL as a direct sidebar link', () => {
+    expect(componentSource).not.toContain('EXTERNAL_PAYMENT_URL')
+    expect(componentSource).not.toContain('https://pay.ldxp.cn/shop/Y5TXJ2DO')
+    expect(componentSource).toContain('settings?.purchase_subscription_enabled')
+    expect(componentSource).toContain('settings.purchase_subscription_url?.trim()')
     expect(componentSource).toContain("label: t('nav.externalPayment')")
-    expect(componentSource).toContain('externalUrl: EXTERNAL_PAYMENT_URL')
+    expect(componentSource).toContain('externalUrl: externalPaymentUrl.value')
     expect(componentSource).toContain(':href="item.externalUrl"')
     expect(componentSource).toContain('target="_blank"')
     expect(componentSource).toContain('rel="noopener noreferrer"')
