@@ -277,6 +277,10 @@ func (r *upstreamRelayMetricsRefreshRepo) UpsertUsageHistory(_ context.Context, 
 	return nil
 }
 
+func (r *upstreamRelayMetricsRefreshRepo) SummarizeUsageHistory(context.Context, UpstreamRelayUsageHistoryListFilters) (*UpstreamRelayUsageHistorySummary, error) {
+	return &UpstreamRelayUsageHistorySummary{RowCount: 1}, nil
+}
+
 func (r *upstreamRelayMetricsRefreshRepo) ListCandidateUsageBindings(context.Context, int64) ([]UpstreamRelayCandidateUsageBinding, error) {
 	out := make([]UpstreamRelayCandidateUsageBinding, len(r.bindings))
 	copy(out, r.bindings)

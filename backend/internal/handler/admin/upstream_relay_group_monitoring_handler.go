@@ -10,11 +10,34 @@ import (
 )
 
 type UpstreamRelayGroupMonitoringHandler struct {
-	svc *service.UpstreamRelayGroupMonitoringService
+	svc    *service.UpstreamRelayGroupMonitoringService
+	runner *service.UpstreamRelayMonitoringRunner
 }
 
 func NewUpstreamRelayGroupMonitoringHandler(svc *service.UpstreamRelayGroupMonitoringService) *UpstreamRelayGroupMonitoringHandler {
 	return &UpstreamRelayGroupMonitoringHandler{svc: svc}
+}
+
+// SetRunner 注入自动监控调度器，用于对外暴露其运行状态。
+func (h *UpstreamRelayGroupMonitoringHandler) SetRunner(runner *service.UpstreamRelayMonitoringRunner) {
+	if h == nil {
+		return
+	}
+	h.runner = runner
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) GetRunnerStatus(c *gin.Context) {
+	policy, err := h.svc.GetMonitoringPolicy(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.runner == nil {
+		response.Success(c, service.UpstreamRelayMonitoringRunnerStatus{})
+		return
+	}
+	status := h.runner.Status(policy)
+	response.Success(c, status)
 }
 
 func (h *UpstreamRelayGroupMonitoringHandler) ListConnectors(c *gin.Context) {
@@ -187,12 +210,41 @@ func (h *UpstreamRelayGroupMonitoringHandler) ListUsageHistory(c *gin.Context) {
 		}
 		filters.ConnectorID = v
 	}
-	items, pageResult, err := h.svc.ListUsageHistory(c.Request.Context(), page, pageSize, filters)
+	items, summary, pageResult, err := h.svc.ListUsageHistory(c.Request.Context(), page, pageSize, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+	pages := pageResult.Pages
+	if pages < 1 {
+		pages = 1
+	}
+	response.Success(c, gin.H{
+		"items":     items,
+		"total":     pageResult.Total,
+		"page":      pageResult.Page,
+		"page_size": pageResult.PageSize,
+		"pages":     pages,
+		"summary":   summary,
+	})
+}
+
+func (h *UpstreamRelayGroupMonitoringHandler) FinalizeUsage(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid connector id")
+		return
+	}
+	date := c.Query("date")
+	if date == "" {
+		response.BadRequest(c, "date is required")
+		return
+	}
+	if err := h.svc.FinalizeUsageForConnectorDate(c.Request.Context(), id, date); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"success": true})
 }
 
 func (h *UpstreamRelayGroupMonitoringHandler) ListCandidates(c *gin.Context) {

@@ -36,6 +36,7 @@ type upstreamRelayHandlerRepo struct {
 	usageHistoryFilters   service.UpstreamRelayUsageHistoryListFilters
 	usageHistoryParams    pagination.PaginationParams
 	usageHistoryRows      []service.UpstreamRelayGroupUsageHistory
+	usageHistorySummary   *service.UpstreamRelayUsageHistorySummary
 	recommendationFilters service.UpstreamRelayRecommendationRunListFilters
 	recommendationParams  pagination.PaginationParams
 	syncStatus            string
@@ -138,6 +139,21 @@ func (r *upstreamRelayHandlerRepo) ListUsageHistory(_ context.Context, params pa
 		}
 	}
 	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
+}
+
+func (r *upstreamRelayHandlerRepo) SummarizeUsageHistory(context.Context, service.UpstreamRelayUsageHistoryListFilters) (*service.UpstreamRelayUsageHistorySummary, error) {
+	if r.usageHistorySummary != nil {
+		return r.usageHistorySummary, nil
+	}
+	checkedAt := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	return &service.UpstreamRelayUsageHistorySummary{
+		TotalCost:       1.25,
+		TotalTokens:     1200,
+		ConnectorCount:  1,
+		GroupCount:      1,
+		LatestCheckedAt: &checkedAt,
+		RowCount:        1,
+	}, nil
 }
 
 func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, errMessage string) error {
@@ -533,9 +549,10 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Equal(t, "relay", repo.usageHistoryFilters.Search)
 	var envelope struct {
 		Data struct {
-			Items []service.UpstreamRelayGroupUsageHistory `json:"items"`
-			Total int64                                    `json:"total"`
-			Page  int                                      `json:"page"`
+			Items   []service.UpstreamRelayGroupUsageHistory `json:"items"`
+			Total   int64                                    `json:"total"`
+			Page    int                                      `json:"page"`
+			Summary service.UpstreamRelayUsageHistorySummary `json:"summary"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
@@ -544,6 +561,7 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
 	require.Equal(t, 1.25, envelope.Data.Items[0].ActualCost)
+	require.Equal(t, 1.25, envelope.Data.Summary.TotalCost)
 }
 
 func TestUpstreamRelayHandlerListRecommendationRunsParsesSuggestionFilter(t *testing.T) {
