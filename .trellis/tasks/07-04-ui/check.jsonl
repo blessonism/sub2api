@@ -1,0 +1,4 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"检查实现是否遵守下游 fork 分支、提交和高风险操作边界。"}
+{"file":".trellis/spec/frontend/index.md","reason":"检查前端实现是否符合项目组件、状态和质量规范入口。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查新增前端状态、派生字段和接口使用是否保持类型安全。"}
+{"file":"docs/CAMPAIGN_REWARDS_ADMIN_UI_OPTIMIZATION_CN.md","reason":"检查最终实现是否覆盖 R1 生命周期流程、高风险确认和奖池调整预览。"}
