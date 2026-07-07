@@ -32,6 +32,7 @@ export interface CampaignConfigVersion {
   recharge_threshold_cents: number
   allow_accumulated_recharge: boolean
   pool_injection_rate: string
+  pool_injection_scope: 'invitees_only' | 'all_users'
   rank_pool_ratio: string
   contribution_pool_ratio: string
   rank_reward_count: number

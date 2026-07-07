@@ -86,6 +86,42 @@ func TestCampaignRepositoryRecordRechargeIsSourceIdempotent(t *testing.T) {
 	}
 }
 
+func TestCampaignRepositoryInsertPoolEntryAllowsNilInviteRecord(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	successAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	campaign := &service.Campaign{ID: 7}
+	cfg := &service.CampaignConfigVersion{ID: 11, PoolInjectionRate: decimal.RequireFromString("0.10")}
+	input := service.CampaignRechargeInput{
+		InviteeUserID:       99,
+		SourceType:          "payment_order",
+		SourceID:            "order-1",
+		SourceSuccessAt:     successAt,
+		RechargeAmountCents: 5_000,
+	}
+
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO campaign_pool_entries")).
+		WithArgs(campaign.ID, cfg.ID, nil, input.InviteeUserID, input.SourceType, input.SourceID, input.SourceSuccessAt, input.RechargeAmountCents, cfg.PoolInjectionRate.String(), int64(500)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	inserted, err := repo.InsertPoolEntry(ctx, campaign, cfg, nil, input, 500)
+	if err != nil {
+		t.Fatalf("写入非邀请充值奖池流水失败：%v", err)
+	}
+	if !inserted {
+		t.Fatalf("首次非邀请充值奖池流水应写入成功")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestCampaignRepositoryAddLeaderboardAdjustmentRollsBackWhenFinalInvalidationFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

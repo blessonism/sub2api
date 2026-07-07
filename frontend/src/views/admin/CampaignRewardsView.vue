@@ -246,6 +246,13 @@
                     <input v-model.number="versionRate" class="input" type="number" step="0.01" />
                   </label>
                   <label class="space-y-1">
+                    <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.poolInjectionScope') }}</span>
+                    <select v-model="versionPoolInjectionScope" class="input">
+                      <option value="invitees_only">{{ t('admin.campaignRewards.poolInjectionScopeInviteesOnly') }}</option>
+                      <option value="all_users">{{ t('admin.campaignRewards.poolInjectionScopeAllUsers') }}</option>
+                    </select>
+                  </label>
+                  <label class="space-y-1">
                     <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.reason') }}</span>
                     <input v-model.trim="versionReason" class="input" type="text" />
                   </label>
@@ -432,6 +439,13 @@
               <input v-model.number="createForm.pool_injection_rate" class="input" type="number" min="0" step="0.01" />
             </label>
             <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.poolInjectionScope') }}</span>
+              <select v-model="createForm.pool_injection_scope" class="input">
+                <option value="invitees_only">{{ t('admin.campaignRewards.poolInjectionScopeInviteesOnly') }}</option>
+                <option value="all_users">{{ t('admin.campaignRewards.poolInjectionScopeAllUsers') }}</option>
+              </select>
+            </label>
+            <label class="space-y-1">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.minPayoutYuan') }}</span>
               <input v-model.number="createForm.min_payout_yuan" class="input" type="number" min="0" step="0.01" />
             </label>
@@ -465,6 +479,10 @@
             <div>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.poolSplit') }}</p>
               <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ createForm.rank_pool_ratio }} / {{ createForm.contribution_pool_ratio }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.poolInjectionScope') }}</p>
+              <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ poolInjectionScopeLabel(createForm.pool_injection_scope) }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.minPayoutYuan') }}</p>
@@ -684,6 +702,7 @@ const calculation = ref<CampaignCalculationSummary | null>(null)
 const adjustAmountYuan = ref(0)
 const versionThresholdYuan = ref(20)
 const versionRate = ref(0.1)
+const versionPoolInjectionScope = ref<'invitees_only' | 'all_users'>('invitees_only')
 const versionReason = ref('')
 const pendingRiskAction = ref<'publish' | 'freeze' | 'finalize' | 'payout' | 'deduct' | 'delete' | 'copy' | null>(null)
 const now = ref(new Date())
@@ -704,6 +723,7 @@ const createForm = reactive({
   end_at: '',
   recharge_threshold_yuan: 20,
   pool_injection_rate: 0.1,
+  pool_injection_scope: 'invitees_only' as 'invitees_only' | 'all_users',
   rank_pool_ratio: 0.8,
   contribution_pool_ratio: 0.2,
   rank_reward_count: 10,
@@ -1164,6 +1184,7 @@ function openCreateDialog(): void {
   createForm.end_at = toDateTimeLocal(end)
   createForm.recharge_threshold_yuan = 20
   createForm.pool_injection_rate = 0.1
+  createForm.pool_injection_scope = 'invitees_only'
   createForm.rank_pool_ratio = 0.8
   createForm.contribution_pool_ratio = 0.2
   createForm.rank_reward_count = 10
@@ -1206,6 +1227,7 @@ async function submitCreateCampaign(): Promise<void> {
       recharge_threshold_cents: yuanToCents(createForm.recharge_threshold_yuan),
       allow_accumulated_recharge: true,
       pool_injection_rate: createForm.pool_injection_rate,
+      pool_injection_scope: createForm.pool_injection_scope,
       rank_pool_ratio: createForm.rank_pool_ratio,
       contribution_pool_ratio: createForm.contribution_pool_ratio,
       rank_reward_count: createForm.rank_reward_count,
@@ -1429,6 +1451,7 @@ async function submitVersion(): Promise<void> {
       effective_at: new Date().toISOString(),
       recharge_threshold_cents: yuanToCents(versionThresholdYuan.value),
       pool_injection_rate: versionRate.value,
+      pool_injection_scope: versionPoolInjectionScope.value,
       allow_accumulated_recharge: true,
       change_reason: versionReason.value || t('admin.campaignRewards.versionReasonDefault'),
     })
@@ -1447,6 +1470,12 @@ async function runAction(action: () => Promise<void>, success: string): Promise<
 
 function yuanToCents(value: number): number {
   return Math.round((value || 0) * 100)
+}
+
+function poolInjectionScopeLabel(scope: 'invitees_only' | 'all_users'): string {
+  return scope === 'all_users'
+    ? t('admin.campaignRewards.poolInjectionScopeAllUsers')
+    : t('admin.campaignRewards.poolInjectionScopeInviteesOnly')
 }
 
 function isFiniteNonNegative(value: number): boolean {

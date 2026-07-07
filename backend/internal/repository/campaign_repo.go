@@ -208,7 +208,7 @@ func (r *campaignRepository) CreateConfigVersion(ctx context.Context, campaignID
 func (r *campaignRepository) GetLatestConfigVersion(ctx context.Context, campaignID int64) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, rank_pool_ratio::text,
+	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -221,7 +221,7 @@ LIMIT 1`, campaignID)
 func (r *campaignRepository) GetLatestConfigVersionAt(ctx context.Context, campaignID int64, at time.Time) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, rank_pool_ratio::text,
+	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -232,7 +232,7 @@ LIMIT 1`, campaignID, at)
 	if err != nil && errors.Is(err, service.ErrCampaignNotFound) {
 		row = r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, rank_pool_ratio::text,
+	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -247,7 +247,7 @@ LIMIT 1`, campaignID)
 func (r *campaignRepository) GetPublishedConfigVersion(ctx context.Context, campaignID int64) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT cv.id, cv.campaign_id, cv.version, cv.version_scope, cv.effective_at, cv.recharge_threshold_cents,
-	cv.allow_accumulated_recharge, cv.pool_injection_rate::text, cv.rank_pool_ratio::text,
+	cv.allow_accumulated_recharge, cv.pool_injection_rate::text, cv.pool_injection_scope, cv.rank_pool_ratio::text,
 	cv.contribution_pool_ratio::text, cv.rank_reward_count, cv.rank_weights_json::text,
 	cv.min_payout_amount_cents, cv.payout_method, cv.payout_channel, cv.change_reason, cv.created_by, cv.created_at
 FROM campaigns c
@@ -692,7 +692,7 @@ INSERT INTO campaign_pool_entries (
 	pool_status, confirmed_at, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10, 'confirmed', NOW(), NOW(), NOW())
 ON CONFLICT (campaign_id, source_type, source_id) DO NOTHING`,
-		campaign.ID, cfg.ID, invite.ID, input.InviteeUserID, input.SourceType, input.SourceID,
+		campaign.ID, cfg.ID, nullableInviteRecordID(invite), input.InviteeUserID, input.SourceType, input.SourceID,
 		input.SourceSuccessAt, input.RechargeAmountCents, cfg.PoolInjectionRate.String(), poolAmountCents,
 	)
 	if err != nil {
@@ -710,7 +710,7 @@ func insertPoolEntryTx(ctx context.Context, tx *sql.Tx, campaign *service.Campai
 		pool_status, confirmed_at, created_at, updated_at
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10, 'confirmed', NOW(), NOW(), NOW())
 	ON CONFLICT (campaign_id, source_type, source_id) DO NOTHING`,
-		campaign.ID, cfg.ID, invite.ID, input.InviteeUserID, input.SourceType, input.SourceID,
+		campaign.ID, cfg.ID, nullableInviteRecordID(invite), input.InviteeUserID, input.SourceType, input.SourceID,
 		input.SourceSuccessAt, input.RechargeAmountCents, cfg.PoolInjectionRate.String(), poolAmountCents,
 	)
 	if err != nil {
@@ -1044,16 +1044,16 @@ func insertCampaignConfigVersion(ctx context.Context, execer interface {
 	row := execer.QueryRowContext(ctx, `
 INSERT INTO campaign_config_versions (
 	campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate, rank_pool_ratio, contribution_pool_ratio,
+	allow_accumulated_recharge, pool_injection_rate, pool_injection_scope, rank_pool_ratio, contribution_pool_ratio,
 	rank_reward_count, rank_weights_json, min_payout_amount_cents, payout_method, payout_channel,
 	change_reason, created_by, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric, $9::numeric, $10, $11::jsonb, $12, $13, $14, $15, $16, NOW())
+) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9::numeric, $10::numeric, $11, $12::jsonb, $13, $14, $15, $16, $17, NOW())
 RETURNING id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, rank_pool_ratio::text,
+	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at`,
 		cfg.CampaignID, cfg.Version, cfg.VersionScope, cfg.EffectiveAt, cfg.RechargeThresholdCents,
-		cfg.AllowAccumulatedRecharge, cfg.PoolInjectionRate.String(), cfg.RankPoolRatio.String(),
+		cfg.AllowAccumulatedRecharge, cfg.PoolInjectionRate.String(), cfg.PoolInjectionScope, cfg.RankPoolRatio.String(),
 		cfg.ContributionPoolRatio.String(), cfg.RankRewardCount, weightsJSON(cfg.RankWeights),
 		cfg.MinPayoutAmountCents, cfg.PayoutMethod, cfg.PayoutChannel, cfg.ChangeReason, nullableInt64(cfg.CreatedBy),
 	)
@@ -1066,7 +1066,7 @@ func scanCampaignConfigVersion(scanner campaignScanner) (*service.CampaignConfig
 	var weightsRaw string
 	err := scanner.Scan(
 		&item.ID, &item.CampaignID, &item.Version, &item.VersionScope, &item.EffectiveAt,
-		&item.RechargeThresholdCents, &item.AllowAccumulatedRecharge, &poolRate, &rankRatio,
+		&item.RechargeThresholdCents, &item.AllowAccumulatedRecharge, &poolRate, &item.PoolInjectionScope, &rankRatio,
 		&contributionRatio, &item.RankRewardCount, &weightsRaw, &item.MinPayoutAmountCents,
 		&item.PayoutMethod, &item.PayoutChannel, &item.ChangeReason, &item.CreatedBy, &item.CreatedAt,
 	)
@@ -1261,6 +1261,13 @@ func nullableInt64(v *int64) any {
 		return nil
 	}
 	return *v
+}
+
+func nullableInviteRecordID(invite *service.CampaignInviteRecord) any {
+	if invite == nil || invite.ID <= 0 {
+		return nil
+	}
+	return invite.ID
 }
 
 func campaignRepoErr(err error) error {

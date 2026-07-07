@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量与测试要求"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型与类型安全要求"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "新增配置字段前复用与搜索要求"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨数据库服务接口前端的数据流要求"}

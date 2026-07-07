@@ -30,6 +30,9 @@ const (
 	CampaignConfigScopePublishSnapshot      = "publish_snapshot"
 	CampaignConfigScopeThresholdAdjustment  = "threshold_adjustment"
 	CampaignConfigScopeInjectionRateAdjust  = "injection_rate_adjustment"
+	CampaignConfigScopePoolScopeAdjustment  = "pool_scope_adjustment"
+	CampaignPoolInjectionScopeInviteesOnly  = "invitees_only"
+	CampaignPoolInjectionScopeAllUsers      = "all_users"
 	CampaignInviteStatusRegistered          = "registered"
 	CampaignInviteStatusRechargeUnqualified = "recharge_unqualified"
 	CampaignInviteStatusPendingAudit        = "pending_audit"
@@ -87,6 +90,7 @@ type CampaignConfigVersion struct {
 	RechargeThresholdCents   int64           `json:"recharge_threshold_cents"`
 	AllowAccumulatedRecharge bool            `json:"allow_accumulated_recharge"`
 	PoolInjectionRate        decimal.Decimal `json:"pool_injection_rate"`
+	PoolInjectionScope       string          `json:"pool_injection_scope"`
 	RankPoolRatio            decimal.Decimal `json:"rank_pool_ratio"`
 	ContributionPoolRatio    decimal.Decimal `json:"contribution_pool_ratio"`
 	RankRewardCount          int             `json:"rank_reward_count"`
@@ -270,6 +274,7 @@ type CampaignCreateInput struct {
 	RechargeThresholdCents   int64
 	AllowAccumulatedRecharge bool
 	PoolInjectionRate        decimal.Decimal
+	PoolInjectionScope       string
 	RankPoolRatio            decimal.Decimal
 	ContributionPoolRatio    decimal.Decimal
 	RankRewardCount          int
@@ -299,6 +304,7 @@ type CampaignConfigVersionInput struct {
 	EffectiveAt              time.Time
 	RechargeThresholdCents   *int64
 	PoolInjectionRate        *decimal.Decimal
+	PoolInjectionScope       *string
 	AllowAccumulatedRecharge *bool
 	ChangeReason             string
 	OperatorID               *int64
@@ -412,6 +418,7 @@ type CampaignRepository interface {
 	GetInviterByAffiliateCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	RecordInviteRegistration(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, inviter *AffiliateSummary, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error)
 	RecordRecharge(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, input CampaignRechargeInput, poolAmountCents int64) (*CampaignInviteRecord, bool, error)
+	InsertPoolEntry(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, invite *CampaignInviteRecord, input CampaignRechargeInput, poolAmountCents int64) (bool, error)
 	ListInviteRecords(ctx context.Context, campaignID, inviterUserID int64, page, pageSize int) ([]CampaignInviteRecord, int64, error)
 	AdjustInviteRecord(ctx context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error)
 	AddLeaderboardAdjustment(ctx context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error)
@@ -515,6 +522,7 @@ func (s *CampaignService) CopyCampaign(ctx context.Context, campaignID int64, op
 		RechargeThresholdCents:   cfg.RechargeThresholdCents,
 		AllowAccumulatedRecharge: cfg.AllowAccumulatedRecharge,
 		PoolInjectionRate:        cfg.PoolInjectionRate,
+		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope),
 		RankPoolRatio:            cfg.RankPoolRatio,
 		ContributionPoolRatio:    cfg.ContributionPoolRatio,
 		RankRewardCount:          cfg.RankRewardCount,
@@ -631,7 +639,7 @@ func (s *CampaignService) CreateConfigVersion(ctx context.Context, campaignID in
 	if campaign.Status == CampaignStatusPaid || campaign.Status == CampaignStatusCancelled || campaign.Status == CampaignStatusTerminated {
 		return nil, ErrCampaignImmutableRule
 	}
-	if input.VersionScope != CampaignConfigScopeThresholdAdjustment && input.VersionScope != CampaignConfigScopeInjectionRateAdjust {
+	if input.VersionScope != CampaignConfigScopeThresholdAdjustment && input.VersionScope != CampaignConfigScopeInjectionRateAdjust && input.VersionScope != CampaignConfigScopePoolScopeAdjustment {
 		return nil, ErrCampaignImmutableRule
 	}
 	base, err := s.repo.GetLatestConfigVersionAt(ctx, campaignID, input.EffectiveAt)
@@ -648,6 +656,9 @@ func (s *CampaignService) CreateConfigVersion(ctx context.Context, campaignID in
 	}
 	if input.PoolInjectionRate != nil {
 		next.PoolInjectionRate = *input.PoolInjectionRate
+	}
+	if input.PoolInjectionScope != nil {
+		next.PoolInjectionScope = normalizedCampaignPoolInjectionScope(*input.PoolInjectionScope)
 	}
 	if input.AllowAccumulatedRecharge != nil {
 		next.AllowAccumulatedRecharge = *input.AllowAccumulatedRecharge
@@ -965,6 +976,13 @@ func (s *CampaignService) RecordRecharge(ctx context.Context, input CampaignRech
 	}
 	poolAmount := calculatePoolInjectionCents(input.RechargeAmountCents, cfg.PoolInjectionRate)
 	invite, _, err := s.repo.RecordRecharge(ctx, campaign, cfg, input, poolAmount)
+	if errors.Is(err, ErrCampaignNotFound) {
+		if normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope) != CampaignPoolInjectionScopeAllUsers {
+			return nil, nil
+		}
+		_, err = s.repo.InsertPoolEntry(ctx, campaign, cfg, nil, input, poolAmount)
+		return nil, err
+	}
 	return invite, err
 }
 
@@ -1167,6 +1185,7 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 		RechargeThresholdCents:   input.RechargeThresholdCents,
 		AllowAccumulatedRecharge: input.AllowAccumulatedRecharge,
 		PoolInjectionRate:        input.PoolInjectionRate,
+		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(input.PoolInjectionScope),
 		RankPoolRatio:            input.RankPoolRatio,
 		ContributionPoolRatio:    input.ContributionPoolRatio,
 		RankRewardCount:          input.RankRewardCount,
@@ -1183,6 +1202,7 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 	if cfg.PoolInjectionRate.IsZero() {
 		cfg.PoolInjectionRate = decimal.NewFromFloat(0.10)
 	}
+	cfg.PoolInjectionScope = normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope)
 	if cfg.RankPoolRatio.IsZero() {
 		cfg.RankPoolRatio = decimal.NewFromFloat(0.80)
 	}
@@ -1223,6 +1243,9 @@ func validateCampaignConfig(cfg CampaignConfigVersion) error {
 	if cfg.PoolInjectionRate.IsNegative() || cfg.RankPoolRatio.IsNegative() || cfg.ContributionPoolRatio.IsNegative() {
 		return ErrCampaignInvalidConfig
 	}
+	if !isCampaignPoolInjectionScope(cfg.PoolInjectionScope) {
+		return ErrCampaignInvalidConfig
+	}
 	if !cfg.RankPoolRatio.Add(cfg.ContributionPoolRatio).Equal(decimal.NewFromInt(1)) {
 		return ErrCampaignInvalidConfig
 	}
@@ -1240,6 +1263,23 @@ func validateCampaignConfig(cfg CampaignConfigVersion) error {
 		return ErrCampaignInvalidConfig
 	}
 	return nil
+}
+
+func normalizedCampaignPoolInjectionScope(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return CampaignPoolInjectionScopeInviteesOnly
+	}
+	return scope
+}
+
+func isCampaignPoolInjectionScope(scope string) bool {
+	switch normalizedCampaignPoolInjectionScope(scope) {
+	case CampaignPoolInjectionScopeInviteesOnly, CampaignPoolInjectionScopeAllUsers:
+		return true
+	default:
+		return false
+	}
 }
 
 func calculatePoolInjectionCents(rechargeAmountCents int64, rate decimal.Decimal) int64 {
