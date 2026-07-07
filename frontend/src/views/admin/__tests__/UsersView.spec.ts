@@ -172,7 +172,7 @@ describe('admin UsersView', () => {
     )
   })
 
-  it('clears usage current-page sort when switching to last_used_at server sort', async () => {
+  it('switches from usage server sort to last_used_at server sort', async () => {
     vi.useFakeTimers()
     localStorage.setItem('user-column-settings-version', '3')
     localStorage.setItem(
@@ -246,19 +246,94 @@ describe('admin UsersView', () => {
     await wrapper.get('[data-test="usage-sort-usage-today"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="row-order"]').text()).toBe('usage-first@example.com,last-used-first@example.com')
-    expect(localStorage.getItem('admin-users-usage-sort')).toContain('"key":"usage"')
+    expect(wrapper.get('[data-test="row-order"]').text()).toBe('last-used-first@example.com,usage-first@example.com')
+    expect(localStorage.getItem('admin-users-table-sort')).toContain('"key":"usage_today"')
+    expect(listUsers).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        sort_by: 'usage_today',
+        sort_order: 'desc'
+      }),
+      expect.any(Object)
+    )
 
     await wrapper.get('[data-test="sort-last-used"]').trigger('click')
     await flushPromises()
 
-    expect(localStorage.getItem('admin-users-usage-sort')).toBeNull()
+    expect(localStorage.getItem('admin-users-table-sort')).toContain('"key":"last_used_at"')
     expect(wrapper.get('[data-test="row-order"]').text()).toBe('last-used-first@example.com,usage-first@example.com')
     expect(listUsers).toHaveBeenLastCalledWith(
       1,
       20,
       expect.objectContaining({
         sort_by: 'last_used_at',
+        sort_order: 'desc'
+      }),
+      expect.any(Object)
+    )
+  })
+
+  it('shows Grok usage column when enabled and requests Grok usage sorting', async () => {
+    localStorage.setItem('user-column-settings-version', '4')
+    localStorage.setItem(
+      'user-hidden-columns',
+      JSON.stringify([
+        'notes',
+        'groups',
+        'subscriptions',
+        'usage',
+        'concurrency',
+        'usage_anthropic',
+        'usage_openai',
+        'usage_gemini',
+        'usage_antigravity',
+        'balance_platform_quota'
+      ])
+    )
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="columns"]').text().split(',')).toContain('usage_grok')
+
+    await wrapper.get('[data-test="usage-sort-trigger-usage_grok"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="usage-sort-usage_grok-total"]').trigger('click')
+    await flushPromises()
+
+    expect(listUsers).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        sort_by: 'usage_grok_total',
         sort_order: 'desc'
       }),
       expect.any(Object)

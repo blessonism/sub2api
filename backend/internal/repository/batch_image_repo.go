@@ -766,7 +766,7 @@ VALUES ($1, $2, $3)`, batchID, eventType, payloadArg)
 	return err
 }
 
-type rowScanner interface {
+type batchImageRowScanner interface {
 	Scan(dest ...any) error
 }
 
@@ -786,7 +786,7 @@ created_at, updated_at, submitted_at, started_at, finished_at, settled_at`
 
 const batchImageJobSelectSQL = `SELECT ` + batchImageJobColumns + ` FROM batch_image_jobs`
 
-func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
+func scanBatchImageJob(row batchImageRowScanner) (*service.BatchImageJob, error) {
 	var job service.BatchImageJob
 	var apiKeyID, accountID sql.NullInt64
 	var providerJobName, providerInputRef, providerOutputRef, gcsInputURI, gcsOutputURI sql.NullString
@@ -867,7 +867,7 @@ created_at, indexed_at`
 
 const batchImageItemSelectSQL = `SELECT ` + batchImageItemColumns + ` FROM batch_image_items`
 
-func scanBatchImageItem(row rowScanner) (*service.BatchImageItem, error) {
+func scanBatchImageItem(row batchImageRowScanner) (*service.BatchImageItem, error) {
 	var item service.BatchImageItem
 	var requestHash, promptPreview, providerSourceObject sql.NullString
 	var sourceLineNumber sql.NullInt64

@@ -3567,6 +3567,7 @@ export default {
         usageOpenAI: 'Usage (OpenAI)',
         usageGemini: 'Usage (Gemini)',
         usageAntigravity: 'Usage (Antigravity)',
+        usageGrok: 'Usage (Grok)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',

@@ -3587,6 +3587,7 @@ export default {
         usageOpenAI: '用量 (OpenAI)',
         usageGemini: '用量 (Gemini)',
         usageAntigravity: '用量 (Antigravity)',
+        usageGrok: '用量 (Grok)',
         concurrency: '并发数',
         status: '状态',
         lastActive: '最后活跃时间',
