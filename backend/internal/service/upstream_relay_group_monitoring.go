@@ -2213,7 +2213,7 @@ func (s *UpstreamRelayGroupMonitoringService) getUpstreamJSON(ctx context.Contex
 			return s.retryUpstreamJSONAfterRefresh(ctx, connector, path)
 		}
 		s.markConnectorRefreshFailure(ctx, connector, refreshErr)
-		return nil, fmt.Errorf("refresh upstream token: %w", refreshErr)
+		return nil, fmt.Errorf("upstream token refresh failed: %w", refreshErr)
 	}
 	return s.retryUpstreamJSONAfterRefresh(ctx, connector, path)
 }
@@ -2234,7 +2234,7 @@ func (s *UpstreamRelayGroupMonitoringService) markConnectorRefreshFailure(ctx co
 	if s == nil || s.repo == nil || connector == nil || err == nil {
 		return
 	}
-	message := sanitizeUpstreamRelayError(fmt.Sprintf("refresh upstream token: %v", err))
+	message := sanitizeUpstreamRelayError(fmt.Sprintf("upstream token refresh failed: %v", err))
 	connector.Status = UpstreamRelayConnectorStatusNeedsReauth
 	connector.LastError = message
 	_ = s.repo.MarkConnectorSync(ctx, connector.ID, UpstreamRelayConnectorStatusNeedsReauth, message)

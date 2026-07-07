@@ -236,4 +236,38 @@ func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalIncludesBalanceCalib
 	s.Require().Equal(logOnly.ID, users[1].ID)
 }
 
+func (s *UserRepoSuite) TestListWithFilters_SortByGrokUsageTotalDescBeforePagination() {
+	grokLow := s.mustCreateUser(&service.User{Email: "usage-grok-low@example.com"})
+	grokHigh := s.mustCreateUser(&service.User{Email: "usage-grok-high@example.com"})
+	openAIOnly := s.mustCreateUser(&service.User{Email: "usage-openai-only@example.com"})
+	grokAccount := mustCreateAccount(s.T(), s.client, &service.Account{Name: "usage-sort-grok-account", Platform: service.PlatformGrok})
+	openAIAccount := mustCreateAccount(s.T(), s.client, &service.Account{Name: "usage-sort-openai-account", Platform: service.PlatformOpenAI})
+	now := time.Now().UTC()
+
+	s.mustInsertUsageLogCost(grokLow.ID, grokAccount, 2.00, now)
+	s.mustInsertUsageLogCost(grokHigh.ID, grokAccount, 8.00, now)
+	s.mustInsertUsageLogCost(openAIOnly.ID, openAIAccount, 20.00, now)
+
+	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  1,
+		SortBy:    "usage_grok_total",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(int64(3), page.Total)
+	s.Require().Equal(grokHigh.ID, users[0].ID)
+
+	users, _, err = s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      2,
+		PageSize:  1,
+		SortBy:    "usage_grok_total",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(grokLow.ID, users[0].ID)
+}
+
 func TestUserRepoSortSuiteSmoke(_ *testing.T) {}

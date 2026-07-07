@@ -733,6 +733,8 @@ func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
 		"usage_gemini_total":      "total",
 		"usage_antigravity_today": "today",
 		"usage_antigravity_total": "total",
+		"usage_grok_today":        "today",
+		"usage_grok_total":        "total",
 	}
 	metric, ok := metricBySortKey[sortBy]
 	if !ok {
@@ -748,6 +750,8 @@ func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
 		"usage_gemini_total":      "gemini",
 		"usage_antigravity_today": "antigravity",
 		"usage_antigravity_total": "antigravity",
+		"usage_grok_today":        "grok",
+		"usage_grok_total":        "grok",
 	}
 	platform := platformBySortKey[sortBy]
 
@@ -883,6 +887,17 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	client := clientFromContext(ctx, r.client)
 	n, err := client.User.Update().
+		Where(dbuser.IDEQ(id), dbuser.BalanceGTE(amount)).
+		AddBalance(-amount).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+
+	n, err = client.User.Update().
 		Where(dbuser.IDEQ(id)).
 		AddBalance(-amount).
 		Save(ctx)
