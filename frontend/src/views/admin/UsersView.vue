@@ -461,6 +461,7 @@
                     ? 'text-primary-600 dark:text-primary-400'
                     : 'text-gray-400 dark:text-dark-500'"
                   :title="t('admin.users.sortBy')"
+                  :data-test="`usage-sort-trigger-${usageKey}`"
                   @click.stop="toggleUsageSortMenu(usageKey)"
                 >
                   <span
@@ -497,6 +498,7 @@
                     :class="isUsageSortActive(usageKey, metric)
                       ? 'font-medium text-primary-600 dark:text-primary-400'
                       : 'text-gray-700 dark:text-gray-300'"
+                    :data-test="`usage-sort-${usageKey}-${metric}`"
                     @click.stop="toggleUsageSort(usageKey, metric)"
                   >
                     <span>{{ metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
@@ -1206,6 +1208,9 @@ const fromUsageSortBy = (sortBy: string): UsageSortState => {
   return key ? { key, metric: metric as UsageMetric, order: sortState.sort_order } : null
 }
 
+// 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
+const openUsageSortMenu = ref<string | null>(null)
+
 const loadInitialUsageSort = (): UsageSortState => {
   return fromUsageSortBy(sortState.sort_by)
 }
@@ -1219,6 +1224,12 @@ const persistSortState = () => {
   } catch (e) {
     console.error('Failed to persist user sort:', e)
   }
+}
+const clearUsageSort = () => {
+  if (!usageSort.value) return
+  usageSort.value = null
+  openUsageSortMenu.value = null
+  persistSortState()
 }
 
 const isUsageSortActive = (key: string, metric: UsageMetric) =>
@@ -1248,9 +1259,7 @@ const toggleUsageSort = (key: string, metric: UsageMetric) => {
   loadUsers()
 }
 
-// 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
 // 点击图标本身不触发排序，仅开关菜单；首次排序由用户在菜单内选择 metric 触发（默认 desc，详见 toggleUsageSort）。
-const openUsageSortMenu = ref<string | null>(null)
 const toggleUsageSortMenu = (key: string) => {
   openUsageSortMenu.value = openUsageSortMenu.value === key ? null : key
 }
@@ -1594,6 +1603,7 @@ const handlePageSizeChange = (pageSize: number) => {
 }
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  clearUsageSort()
   sortState.sort_by = key
   sortState.sort_order = order
   usageSort.value = null
