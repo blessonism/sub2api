@@ -1165,6 +1165,7 @@ const toApiKeyLike = (key: SimpleApiKey): ApiKey => ({
   last_used_at: null,
   quota: 0,
   quota_used: 0,
+  current_concurrency: 0,
   expires_at: null,
   created_at: '',
   updated_at: '',
