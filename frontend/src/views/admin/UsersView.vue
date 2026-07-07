@@ -461,6 +461,7 @@
                     ? 'text-primary-600 dark:text-primary-400'
                     : 'text-gray-400 dark:text-dark-500'"
                   :title="t('admin.users.sortBy')"
+                  :data-test="`usage-sort-trigger-${usageKey}`"
                   @click.stop="toggleUsageSortMenu(usageKey)"
                 >
                   <span
@@ -497,6 +498,7 @@
                     :class="isUsageSortActive(usageKey, metric)
                       ? 'font-medium text-primary-600 dark:text-primary-400'
                       : 'text-gray-700 dark:text-gray-300'"
+                    :data-test="`usage-sort-${usageKey}-${metric}`"
                     @click.stop="toggleUsageSort(usageKey, metric)"
                   >
                     <span>{{ metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
@@ -541,6 +543,10 @@
 
           <template #cell-usage_antigravity="{ row }">
             <PlatformCostCell :usage="getPlatformUsage(row.id, 'antigravity')" />
+          </template>
+
+          <template #cell-usage_grok="{ row }">
+            <PlatformCostCell :usage="getPlatformUsage(row.id, 'grok')" />
           </template>
 
           <template #cell-concurrency="{ row }">
@@ -850,6 +856,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_openai', label: t('admin.users.columns.usageOpenAI'), sortable: false },
   { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
+  { key: 'usage_grok', label: t('admin.users.columns.usageGrok'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
@@ -870,7 +877,7 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 // Default hidden columns (columns hidden by default on first load)
 const DEFAULT_HIDDEN_COLUMNS = [
   'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
-  'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity',
+  'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity', 'usage_grok',
   'balance_platform_quota'
 ]
 const REMOVED_COLUMNS = new Set(['last_login_at'])
@@ -884,10 +891,11 @@ const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
 // 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
 // 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
 const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
-const COLUMN_SETTINGS_VERSION = 3
+const COLUMN_SETTINGS_VERSION = 4
 const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
   2: ['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'],
-  3: ['balance_platform_quota']
+  3: ['balance_platform_quota'],
+  4: ['usage_grok']
 }
 
 // Load saved column settings
@@ -967,13 +975,14 @@ const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 // 列 key → 平台名（'usage' 主列汇总所有平台时为 null）
 // 显式数组取代 Object.keys()：保证迭代顺序（决定列头排序按钮渲染顺序）
 // 不会因 JS 引擎差异或 USAGE_COLUMN_PLATFORMS 属性顺序调整而静默变化。
-const USAGE_COLUMN_KEYS: readonly string[] = ['usage', 'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity']
+const USAGE_COLUMN_KEYS: readonly string[] = ['usage', 'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity', 'usage_grok']
 const USAGE_COLUMN_PLATFORMS: Record<string, string | null> = {
   usage: null,
   usage_anthropic: 'anthropic',
   usage_openai: 'openai',
   usage_gemini: 'gemini',
-  usage_antigravity: 'antigravity'
+  usage_antigravity: 'antigravity',
+  usage_grok: 'grok'
 }
 const PLATFORM_USAGE_COLUMNS = USAGE_COLUMN_KEYS.filter((k) => k !== 'usage')
 const hasVisibleUsageColumn = computed(
@@ -1005,7 +1014,8 @@ const USER_USAGE_SORT_KEYS = new Set([
   'usage_anthropic_today', 'usage_anthropic_total',
   'usage_openai_today', 'usage_openai_total',
   'usage_gemini_today', 'usage_gemini_total',
-  'usage_antigravity_today', 'usage_antigravity_total'
+  'usage_antigravity_today', 'usage_antigravity_total',
+  'usage_grok_today', 'usage_grok_total'
 ])
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }
@@ -1199,12 +1209,15 @@ const toUsageSortBy = (key: string, metric: UsageMetric): string => {
 const fromUsageSortBy = (sortBy: string): UsageSortState => {
   if (sortBy === 'usage_today') return { key: 'usage', metric: 'today', order: sortState.sort_order }
   if (sortBy === 'usage_total') return { key: 'usage', metric: 'total', order: sortState.sort_order }
-  const match = sortBy.match(/^usage_(anthropic|openai|gemini|antigravity)_(today|total)$/)
+  const match = sortBy.match(/^usage_(anthropic|openai|gemini|antigravity|grok)_(today|total)$/)
   if (!match) return null
   const [, platform, metric] = match
   const key = Object.entries(USAGE_COLUMN_PLATFORMS).find(([, value]) => value === platform)?.[0]
   return key ? { key, metric: metric as UsageMetric, order: sortState.sort_order } : null
 }
+
+// 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
+const openUsageSortMenu = ref<string | null>(null)
 
 const loadInitialUsageSort = (): UsageSortState => {
   return fromUsageSortBy(sortState.sort_by)
@@ -1219,6 +1232,12 @@ const persistSortState = () => {
   } catch (e) {
     console.error('Failed to persist user sort:', e)
   }
+}
+const clearUsageSort = () => {
+  if (!usageSort.value) return
+  usageSort.value = null
+  openUsageSortMenu.value = null
+  persistSortState()
 }
 
 const isUsageSortActive = (key: string, metric: UsageMetric) =>
@@ -1248,9 +1267,7 @@ const toggleUsageSort = (key: string, metric: UsageMetric) => {
   loadUsers()
 }
 
-// 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
 // 点击图标本身不触发排序，仅开关菜单；首次排序由用户在菜单内选择 metric 触发（默认 desc，详见 toggleUsageSort）。
-const openUsageSortMenu = ref<string | null>(null)
 const toggleUsageSortMenu = (key: string) => {
   openUsageSortMenu.value = openUsageSortMenu.value === key ? null : key
 }
@@ -1594,6 +1611,7 @@ const handlePageSizeChange = (pageSize: number) => {
 }
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  clearUsageSort()
   sortState.sort_by = key
   sortState.sort_order = order
   usageSort.value = null
