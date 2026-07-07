@@ -937,6 +937,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
 				if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
 					entry.UpstreamErrors = events
+					backfillOpsAccountIDFromUpstreamEvents(entry, events)
 					// Best-effort backfill the single upstream fields from the last event when missing.
 					last := events[len(events)-1]
 					if last != nil {
@@ -1016,6 +1017,21 @@ func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertEr
 	entry.UpstreamLatencyMs = getContextLatencyMs(c, service.OpsUpstreamLatencyMsKey)
 	entry.ResponseLatencyMs = getContextLatencyMs(c, service.OpsResponseLatencyMsKey)
 	entry.TimeToFirstTokenMs = getContextLatencyMs(c, service.OpsTimeToFirstTokenMsKey)
+}
+
+func backfillOpsAccountIDFromUpstreamEvents(entry *service.OpsInsertErrorLogInput, events []*service.OpsUpstreamErrorEvent) {
+	if entry == nil || entry.AccountID != nil {
+		return
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if ev == nil || ev.AccountID <= 0 {
+			continue
+		}
+		accountID := ev.AccountID
+		entry.AccountID = &accountID
+		return
+	}
 }
 
 func getContextLatencyMs(c *gin.Context, key string) *int64 {

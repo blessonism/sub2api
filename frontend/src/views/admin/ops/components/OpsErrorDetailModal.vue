@@ -34,7 +34,9 @@
           </div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
             <template v-if="isUpstreamError(detail)">
-              {{ detail.account_name || (detail.account_id != null ? String(detail.account_id) : '—') }}
+              <span :title="detailAccountTitle(detail)">
+                {{ detailAccountLabel(detail) }}
+              </span>
             </template>
             <template v-else>
               {{ detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
@@ -264,6 +266,28 @@ function isUpstreamError(d: OpsErrorDetail | null): boolean {
   const phase = String(d.phase || '').toLowerCase()
   const owner = String(d.error_owner || '').toLowerCase()
   return phase === 'upstream' && owner === 'provider'
+}
+
+function hasDetailAccount(d: OpsErrorDetail | null): boolean {
+  return typeof d?.account_id === 'number' && d.account_id > 0
+}
+
+function detailAccountLabel(d: OpsErrorDetail | null): string {
+  if (hasDetailAccount(d)) {
+    return String(d?.account_name || `#${d?.account_id}`)
+  }
+  return isUpstreamError(d)
+    ? t('admin.ops.errorDetail.accountAttributionMissing')
+    : t('admin.ops.errorDetail.accountNotAssigned')
+}
+
+function detailAccountTitle(d: OpsErrorDetail | null): string {
+  if (hasDetailAccount(d)) {
+    return t('admin.ops.errorLog.accountId') + ' ' + d?.account_id
+  }
+  return isUpstreamError(d)
+    ? t('admin.ops.errorDetail.accountAttributionMissingHint')
+    : t('admin.ops.errorDetail.accountNotAssignedHint')
 }
 
 function formatRequestTypeLabel(type: number | null | undefined): string {

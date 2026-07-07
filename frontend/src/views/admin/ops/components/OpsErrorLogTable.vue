@@ -161,12 +161,16 @@
 
               <!-- Account -->
               <td class="px-4 py-2">
-                <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id" placement="top" :show-after="500">
+                <el-tooltip v-if="hasAccount(log)" :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id" placement="top" :show-after="500">
                   <span class="block max-w-[120px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                    {{ log.account_name || '-' }}
+                    {{ formatAccountLabel(log) }}
                   </span>
                 </el-tooltip>
-                <span v-else class="text-xs text-gray-400">-</span>
+                <el-tooltip v-else :content="missingAccountTitle(log)" placement="top" :show-after="500">
+                  <span class="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    {{ missingAccountLabel(log) }}
+                  </span>
+                </el-tooltip>
               </td>
 
               <!-- Status -->
@@ -251,6 +255,26 @@ function formatEndpointTooltip(log: OpsErrorLog): string {
   if (log.inbound_endpoint) parts.push(`Inbound: ${log.inbound_endpoint}`)
   if (log.upstream_endpoint) parts.push(`Upstream: ${log.upstream_endpoint}`)
   return parts.join('\n') || ''
+}
+
+function hasAccount(log: OpsErrorLog): boolean {
+  return typeof log.account_id === 'number' && log.account_id > 0
+}
+
+function formatAccountLabel(log: OpsErrorLog): string {
+  return String(log.account_name || `#${log.account_id}`)
+}
+
+function missingAccountLabel(log: OpsErrorLog): string {
+  return isUpstreamRow(log)
+    ? t('admin.ops.errorLog.accountAttributionMissing')
+    : t('admin.ops.errorLog.accountNotAssigned')
+}
+
+function missingAccountTitle(log: OpsErrorLog): string {
+  return isUpstreamRow(log)
+    ? t('admin.ops.errorLog.accountAttributionMissingHint')
+    : t('admin.ops.errorLog.accountNotAssignedHint')
 }
 
 function hasModelMapping(log: OpsErrorLog): boolean {
