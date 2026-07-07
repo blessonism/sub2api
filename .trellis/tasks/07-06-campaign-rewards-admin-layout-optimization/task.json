@@ -1,0 +1,29 @@
+{
+  "id": "campaign-rewards-admin-layout-optimization",
+  "name": "campaign-rewards-admin-layout-optimization",
+  "title": "campaign rewards admin layout optimization",
+  "description": "优化管理员邀请活动页面布局，避免活动列表固定侧栏造成详情区域留白过多。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "frontend",
+  "package": null,
+  "priority": "P2",
+  "creator": "Edom",
+  "assignee": "Edom",
+  "createdAt": "2026-07-06",
+  "completedAt": "2026-07-06",
+  "branch": "feature/campaign-rewards-admin-ui-r1",
+  "base_branch": "custom/main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "frontend/src/views/admin/CampaignRewardsView.vue",
+    "frontend/src/views/admin/__tests__/CampaignRewardsView.spec.ts"
+  ],
+  "notes": "活动列表改为主内容流中的响应式选择区，详情区独占横向空间；相关前端测试和类型检查通过。",
+  "meta": {}
+}

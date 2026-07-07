@@ -67,3 +67,14 @@ describe('AppSidebar leaderboard entry', () => {
     expect(componentSource).toContain('const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))')
   })
 })
+
+describe('AppSidebar invite navigation entries', () => {
+  it('keeps the persistent affiliate rebate entry separate from campaign rewards', () => {
+    const affiliateEntry = "{ path: '/affiliate', label: t('nav.affiliate'), icon: AffiliateIcon, hideInSimpleMode: true, featureFlag: flagAffiliate }"
+    const campaignRewardsEntry = "{ path: '/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true }"
+
+    expect(componentSource).toContain(affiliateEntry)
+    expect(componentSource).toContain(campaignRewardsEntry)
+    expect(componentSource.indexOf(affiliateEntry)).toBeLessThan(componentSource.indexOf(campaignRewardsEntry))
+  })
+})

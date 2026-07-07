@@ -17,6 +17,7 @@ const {
   payoutCampaign,
   publishCampaign,
   recalculateRewards,
+  updateCampaign,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -34,6 +35,7 @@ const {
   payoutCampaign: vi.fn(),
   publishCampaign: vi.fn(),
   recalculateRewards: vi.fn(),
+  updateCampaign: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
@@ -55,6 +57,7 @@ vi.mock('@/api/admin', () => ({
       payoutCampaign,
       publishCampaign,
       recalculateRewards,
+      updateCampaign,
     },
   },
 }))
@@ -153,6 +156,7 @@ describe('admin CampaignRewardsView', () => {
     payoutCampaign.mockReset()
     publishCampaign.mockReset()
     recalculateRewards.mockReset()
+    updateCampaign.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -176,6 +180,8 @@ describe('admin CampaignRewardsView', () => {
   })
 
   it('renders campaign countdown, user preview, timeline warning, and timeline fallback', async () => {
+    getCampaign.mockResolvedValueOnce({ ...campaign, status: 'auditing' })
+
     const wrapper = mountView()
     await flushPromises()
 
@@ -187,6 +193,17 @@ describe('admin CampaignRewardsView', () => {
     expect(text).toContain('admin.campaignRewards.timelinePublicityStart')
     expect(text).toContain('campaignRewards.lifecycle.timeOrderWarning')
     expect(text).toContain('admin.campaignRewards.timelineMissing')
+  })
+
+  it('renders the campaign list as a full-width responsive selector instead of a sticky sidebar', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const listCard = wrapper.get('[data-testid="campaign-list-card"]')
+    const listItems = wrapper.get('[data-testid="campaign-list-items"]')
+
+    expect(listCard.classes()).not.toContain('xl:sticky')
+    expect(listItems.classes()).toEqual(expect.arrayContaining(['grid', 'md:grid-cols-2', '2xl:grid-cols-3']))
   })
 
   it('keeps payout disabled until a local final calculation exists', async () => {
@@ -257,7 +274,7 @@ describe('admin CampaignRewardsView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createDefault'))?.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
     await flushPromises()
 
     const dialog = wrapper.get('[data-testid="base-dialog"]')
@@ -291,6 +308,41 @@ describe('admin CampaignRewardsView', () => {
     await flushPromises()
 
     expect(publishCampaign).toHaveBeenCalledWith(9)
+  })
+
+  it('updates campaign details and lifecycle times from the edit dialog', async () => {
+    const updated = {
+      ...campaign,
+      name: '生产邀请活动',
+      end_at: new Date('2026-07-09T12:30').toISOString(),
+      audit_start_at: new Date('2026-07-10T09:00').toISOString(),
+      audit_end_at: null,
+    }
+    updateCampaign.mockResolvedValue(updated)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.editCampaign'))?.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="base-dialog"]')
+    await dialog.find('input[type="text"]').setValue('生产邀请活动')
+    const timeInputs = dialog.findAll('input[type="datetime-local"]')
+    await timeInputs[2].setValue('2026-07-09T12:30')
+    await timeInputs[3].setValue('2026-07-10T09:00')
+    await timeInputs[4].setValue('')
+
+    await dialog.findAll('button').find(button => button.text().includes('admin.campaignRewards.saveCampaign'))?.trigger('click')
+    await flushPromises()
+
+    expect(updateCampaign).toHaveBeenCalledWith(9, expect.objectContaining({
+      name: '生产邀请活动',
+      end_at: new Date('2026-07-09T12:30').toISOString(),
+      audit_start_at: new Date('2026-07-10T09:00').toISOString(),
+      audit_end_at: null,
+    }))
+    expect(showSuccess).toHaveBeenCalledWith('admin.campaignRewards.updated')
   })
 
   it('requires confirmation before copying a campaign as draft', async () => {
