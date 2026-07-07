@@ -8,8 +8,17 @@ const messages: Record<string, string> = {
   'campaignRewards.ruleSummaryThresholdDesc': 'threshold {threshold}',
   'campaignRewards.ruleSummaryPoolTitle': 'Bonus Pool Allocation',
   'campaignRewards.ruleSummaryPoolDesc': 'pool {rate} split {rank} {contribution}',
+  'campaignRewards.ruleSummaryPoolDescInviteesOnly': 'pool {rate} split {rank} {contribution}',
+  'campaignRewards.ruleSummaryPoolDescAllUsers': 'pool {rate} split {rank} {contribution}',
   'campaignRewards.ruleSummarySettlementTitle': 'Audit & Settlement',
   'campaignRewards.ruleSummarySettlementDesc': 'settlement estimate',
+  'campaignRewards.pendingRechargeInvites': 'Pending Recharge Invites',
+  'campaignRewards.myCode': 'My Invite Code',
+  'campaignRewards.inviteLink': 'Invite Link',
+  'campaignRewards.copyCode': 'Copy Code',
+  'campaignRewards.copyLink': 'Copy Link',
+  'campaignRewards.codeCopied': 'Invite code copied',
+  'campaignRewards.linkCopied': 'Invite link copied',
 }
 
 const {
@@ -111,7 +120,7 @@ describe('user CampaignRewardsView', () => {
     vi.useRealTimers()
   })
 
-  it('renders lifecycle countdown, primary CTA, backend rules, and invite status notes', async () => {
+  it('renders lifecycle countdown, primary CTA, rule summaries, and invite status notes', async () => {
     vi.setSystemTime(new Date('2026-07-05T00:00:00.000Z'))
     getActiveCampaign.mockResolvedValue({
       campaign,
@@ -175,6 +184,7 @@ describe('user CampaignRewardsView', () => {
           user_id: 42,
           username: 'me',
           valid_invite_count: 3,
+          pending_invite_count: 1,
           invitee_recharge_amount_cents: 8888,
           reached_count_at: '2026-07-04T01:00:00.000Z',
           joined_at: '2026-07-04T01:00:00.000Z',
@@ -200,9 +210,14 @@ describe('user CampaignRewardsView', () => {
     expect(periodProgress.attributes('aria-valuenow')).toBe('47')
     expect(periodProgress.attributes('data-progress-value')).toBe('47')
     expect(text).toContain('campaignRewards.copyInviteLinkPrimary')
+    expect(text).toContain('My Invite Code')
+    expect(text).toContain('Invite Link')
+    expect(text).toContain('Copy Code')
+    expect(text).toContain('Copy Link')
     expect(text).toContain('campaignRewards.distanceToTop10')
-    expect(wrapper.get('[data-testid="campaign-rules-layout"]').classes()).toContain('xl:items-start')
-    expect(wrapper.get('[data-testid="campaign-rules-card"]').classes()).toContain('self-start')
+    expect(wrapper.get('[data-testid="campaign-rules-layout"]').classes()).toContain('xl:items-stretch')
+    expect(wrapper.get('[data-testid="campaign-rules-card"]').classes()).toContain('h-full')
+    expect(wrapper.get('[data-testid="campaign-rules-card"]').classes()).not.toContain('self-start')
     expect(wrapper.findAll('[data-testid="campaign-rule-summary-item"]')).toHaveLength(3)
     expect(text).toContain('Valid Invite Threshold')
     expect(text).toContain('threshold ¥20.00')
@@ -210,11 +225,20 @@ describe('user CampaignRewardsView', () => {
     expect(text).toContain('pool 12.5% split 70% 30%')
     expect(text).toContain('Audit & Settlement')
     expect(text).toContain('settlement estimate')
-    expect(text).toContain('后端配置的完整规则')
+    expect(wrapper.find('[data-testid="campaign-full-rules"]').exists()).toBe(false)
+    expect(text).not.toContain('后端配置的完整规则')
+    expect(text).toContain('Pending Recharge Invites')
+    expect(text).not.toContain('campaignRewards.rechargeAmount')
     expect(text).toContain('campaignRewards.inviteStatusNotes.recharge_unqualified')
     expect(text).toContain('campaignRewards.rechargeProgress')
     expect(text).toContain('campaignRewards.timeline')
     expect(text).toContain('campaignRewards.notQualifiedYet')
+
+    await wrapper.findAll('button').find(button => button.text().includes('Copy Code'))?.trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('INV42', 'Invite code copied')
+
+    await wrapper.findAll('button').find(button => button.text().includes('Copy Link'))?.trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('http://localhost:3000/invite/INV42', 'Invite link copied')
   })
 
   it('disables the hero CTA after active participation stage', async () => {
