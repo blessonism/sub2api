@@ -825,7 +825,12 @@ const hasFinalCalculation = computed(() => calculation.value?.calculation_status
 const canPublish = computed(() => selectedCampaign.value?.status === 'draft')
 const canFreeze = computed(() => selectedCampaign.value?.status === 'active')
 const canPreview = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'draft')
-const canFinalize = computed(() => ['active', 'frozen', 'auditing', 'publicizing'].includes(selectedCampaign.value?.status ?? ''))
+const canFinalize = computed(() => {
+  const campaign = selectedCampaign.value
+  if (!campaign || !['active', 'frozen', 'auditing', 'publicizing'].includes(campaign.status)) return false
+  const endAt = new Date(campaign.end_at).getTime()
+  return Number.isFinite(endAt) && now.value.getTime() >= endAt
+})
 const canPayout = computed(() => hasFinalCalculation.value && selectedCampaign.value?.status !== 'paid')
 const canManualAdjust = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'paid')
 const canSubmitLeaderboardAdjustment = computed(() => (

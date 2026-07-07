@@ -61,6 +61,7 @@ export interface CampaignLeaderboardRow {
   masked_email?: string
   username?: string
   valid_invite_count: number
+  pending_invite_count: number
   invitee_recharge_amount_cents: number
   manual_valid_invite_delta: number
   manual_recharge_amount_delta_cents: number

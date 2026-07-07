@@ -162,6 +162,78 @@ func TestCampaignRepositoryAddLeaderboardAdjustmentRollsBackWhenFinalInvalidatio
 	}
 }
 
+func TestCampaignRepositoryAddPoolAdjustmentInvalidatesFinalSettlement(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	input := service.CampaignPoolAdjustmentInput{
+		AdjustmentType: "additional_bonus",
+		AmountCents:    10_000,
+		Reason:         "补充活动奖池",
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO campaign_pool_adjustments")).
+		WithArgs(int64(7), input.AdjustmentType, input.AmountCents, input.Reason, nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_reward_adjustments")).
+		WithArgs(int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_reward_results")).
+		WithArgs(int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_leaderboard_snapshots")).
+		WithArgs(int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := repo.AddPoolAdjustment(ctx, 7, input); err != nil {
+		t.Fatalf("奖池调整应失效 final 并提交事务：%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCampaignRepositoryAddPoolAdjustmentRollsBackWhenFinalInvalidationFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	input := service.CampaignPoolAdjustmentInput{
+		AdjustmentType: "exception_deduction",
+		AmountCents:    -1_000,
+		Reason:         "异常扣减",
+	}
+	invalidateErr := errors.New("delete final failed")
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO campaign_pool_adjustments")).
+		WithArgs(int64(7), input.AdjustmentType, input.AmountCents, input.Reason, nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM campaign_reward_adjustments")).
+		WithArgs(int64(7)).
+		WillReturnError(invalidateErr)
+	mock.ExpectRollback()
+
+	err = repo.AddPoolAdjustment(ctx, 7, input)
+	if !errors.Is(err, invalidateErr) {
+		t.Fatalf("final 失效失败应回滚奖池调整，实际 err=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestCampaignRepositoryGetCampaignDeleteImpactCountsDependencies(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -218,10 +290,54 @@ func TestCampaignRepositoryDeleteCampaignDeletesRow(t *testing.T) {
 	}
 }
 
+func TestCampaignRepositoryListLeaderboardRowsScansPendingInviteCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta("WITH invite_base AS (")).
+		WithArgs(int64(7), 50).
+		WillReturnRows(campaignLeaderboardRows().AddRow(
+			1, int64(21), "alpha@example.com", "alpha", 3, 2, int64(8_000),
+			0, int64(0), false, now, now.Add(-time.Hour), int64(0), int64(0),
+		))
+
+	rows, err := repo.ListLeaderboardRows(ctx, 7, 50)
+	if err != nil {
+		t.Fatalf("读取活动排行榜失败：%v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("排行榜行数=%d", len(rows))
+	}
+	if rows[0].PendingInviteCount != 2 {
+		t.Fatalf("待充值邀请数未正确扫描，实际=%d", rows[0].PendingInviteCount)
+	}
+	if rows[0].MaskedEmail != "a***@example.com" {
+		t.Fatalf("用户侧邮箱脱敏不符合预期：%q", rows[0].MaskedEmail)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func campaignInviteRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "campaign_id", "config_version_id", "inviter_user_id", "invitee_user_id", "invite_source",
 		"threshold_snapshot_cents", "registered_at", "qualified_at", "effective_recharge_amount_cents",
 		"status", "risk_level", "invalid_reason", "audit_status", "audit_by", "audit_at", "audit_note",
+	})
+}
+
+func campaignLeaderboardRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"rank", "user_id", "email", "username", "valid_invite_count", "pending_invite_count",
+		"recharge_amount", "manual_valid_invite_delta", "manual_recharge_delta", "has_manual_adjustment",
+		"reached_count_at", "joined_at", "estimated_reward_cents", "final_reward_cents",
 	})
 }

@@ -721,10 +721,21 @@ func insertPoolEntryTx(ctx context.Context, tx *sql.Tx, campaign *service.Campai
 }
 
 func (r *campaignRepository) AddPoolAdjustment(ctx context.Context, campaignID int64, input service.CampaignPoolAdjustmentInput) error {
-	_, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
 INSERT INTO campaign_pool_adjustments (campaign_id, adjustment_type, amount_cents, reason, operator_id, created_at)
-VALUES ($1, $2, $3, $4, $5, NOW())`, campaignID, input.AdjustmentType, input.AmountCents, input.Reason, nullableInt64(input.OperatorID))
-	return err
+VALUES ($1, $2, $3, $4, $5, NOW())`, campaignID, input.AdjustmentType, input.AmountCents, input.Reason, nullableInt64(input.OperatorID)); err != nil {
+		return err
+	}
+	if err := invalidateFinalSettlementTx(ctx, tx, campaignID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *campaignRepository) GetPoolSummary(ctx context.Context, campaignID int64) (*service.CampaignPoolSummary, error) {
@@ -1116,6 +1127,7 @@ WITH invite_base AS (
 	SELECT
 		cir.inviter_user_id AS user_id,
 		COUNT(*) FILTER (WHERE cir.status = 'effective')::integer AS valid_invite_count,
+		COUNT(*) FILTER (WHERE cir.status IN ('registered', 'recharge_unqualified', 'pending_audit', 'risk_review'))::integer AS pending_invite_count,
 		COALESCE(SUM(cir.effective_recharge_amount_cents) FILTER (WHERE cir.status = 'effective'), 0)::bigint AS recharge_amount,
 		COALESCE(MAX(cir.qualified_at) FILTER (WHERE cir.status = 'effective'), MIN(cir.registered_at)) AS reached_count_at,
 		MIN(cir.registered_at) AS joined_at
@@ -1135,6 +1147,7 @@ WITH invite_base AS (
 	SELECT
 		COALESCE(ib.user_id, md.user_id) AS user_id,
 		GREATEST(COALESCE(ib.valid_invite_count, 0) + COALESCE(md.valid_invite_delta, 0), 0)::integer AS valid_invite_count,
+		COALESCE(ib.pending_invite_count, 0)::integer AS pending_invite_count,
 		GREATEST(COALESCE(ib.recharge_amount, 0) + COALESCE(md.recharge_delta, 0), 0)::bigint AS recharge_amount,
 		COALESCE(md.valid_invite_delta, 0)::integer AS manual_valid_invite_delta,
 		COALESCE(md.recharge_delta, 0)::bigint AS manual_recharge_delta,
@@ -1149,6 +1162,7 @@ WITH invite_base AS (
 		COALESCE(u.email, '') AS email,
 		COALESCE(u.username, '') AS username,
 		a.valid_invite_count,
+		a.pending_invite_count,
 		a.recharge_amount,
 		a.manual_valid_invite_delta,
 		a.manual_recharge_delta,
@@ -1161,7 +1175,7 @@ WITH invite_base AS (
 )
 SELECT
 	ROW_NUMBER() OVER (ORDER BY valid_invite_count DESC, recharge_amount DESC, reached_count_at ASC, joined_at ASC)::integer AS rank,
-	user_id, email, username, valid_invite_count, recharge_amount, manual_valid_invite_delta, manual_recharge_delta, has_manual_adjustment, reached_count_at, joined_at,
+	user_id, email, username, valid_invite_count, pending_invite_count, recharge_amount, manual_valid_invite_delta, manual_recharge_delta, has_manual_adjustment, reached_count_at, joined_at,
 	0::bigint AS estimated_reward_cents, 0::bigint AS final_reward_cents
 FROM ranked
 ORDER BY rank`
@@ -1174,7 +1188,7 @@ func scanCampaignLeaderboardRows(rows *sql.Rows) ([]service.CampaignLeaderboardR
 		var email string
 		if err := rows.Scan(
 			&item.Rank, &item.UserID, &email, &item.Username, &item.ValidInviteCount,
-			&item.InviteeRechargeAmountCents, &item.ManualValidInviteDelta, &item.ManualRechargeAmountCents,
+			&item.PendingInviteCount, &item.InviteeRechargeAmountCents, &item.ManualValidInviteDelta, &item.ManualRechargeAmountCents,
 			&item.HasManualAdjustment, &item.ReachedCountAt, &item.JoinedAt,
 			&item.EstimatedRewardCents, &item.FinalRewardCents,
 		); err != nil {

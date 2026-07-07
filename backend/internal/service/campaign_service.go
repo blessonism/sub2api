@@ -196,6 +196,7 @@ type CampaignLeaderboardRow struct {
 	MaskedEmail                string    `json:"masked_email,omitempty"`
 	Username                   string    `json:"username,omitempty"`
 	ValidInviteCount           int       `json:"valid_invite_count"`
+	PendingInviteCount         int       `json:"pending_invite_count"`
 	InviteeRechargeAmountCents int64     `json:"invitee_recharge_amount_cents"`
 	ManualValidInviteDelta     int       `json:"manual_valid_invite_delta"`
 	ManualRechargeAmountCents  int64     `json:"manual_recharge_amount_delta_cents"`
@@ -676,6 +677,9 @@ func (s *CampaignService) AddPoolAdjustment(ctx context.Context, campaignID int6
 	if input.AmountCents == 0 {
 		return ErrCampaignInvalidConfig
 	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return err
+	}
 	return s.repo.AddPoolAdjustment(ctx, campaignID, input)
 }
 
@@ -829,6 +833,7 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
 			if i > 0 {
@@ -846,6 +851,7 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
 		}
@@ -1038,6 +1044,9 @@ func (s *CampaignService) RecalculateRewards(ctx context.Context, campaignID int
 	campaign, err := s.repo.GetCampaign(ctx, campaignID)
 	if err != nil {
 		return nil, err
+	}
+	if status == CampaignCalculationFinal && time.Now().Before(campaign.EndAt) {
+		return nil, ErrCampaignInvalidConfig
 	}
 	cfg, err := s.repo.GetPublishedConfigVersion(ctx, campaignID)
 	if err != nil {
