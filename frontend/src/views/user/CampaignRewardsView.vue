@@ -95,8 +95,8 @@
           </div>
         </div>
 
-        <div data-testid="campaign-rules-layout" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)] xl:items-start">
-          <div class="card p-6">
+        <div data-testid="campaign-rules-layout" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)] xl:items-stretch">
+          <div class="card h-full p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('campaignRewards.inviteEntry') }}</h2>
@@ -109,25 +109,23 @@
 
             <div class="mt-5 grid gap-4">
               <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('campaignRewards.myLink') }}</p>
-                  <span class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">{{ t('campaignRewards.primaryEntry') }}</span>
-                </div>
-                <div class="flex flex-col gap-3 rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-3 dark:border-primary-900/50 dark:bg-primary-900/20 sm:flex-row sm:items-center">
-                  <code class="min-w-0 flex-1 truncate text-sm font-semibold text-primary-900 dark:text-primary-100">{{ inviteLink }}</code>
-                  <button class="btn btn-primary btn-sm shrink-0" type="button" :disabled="!canCopyInviteLink" @click="copyLink">
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('campaignRewards.myCode') }}</p>
+                <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
+                  <code class="flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ inviteCode }}</code>
+                  <button class="btn btn-secondary btn-sm" type="button" :disabled="!inviteCode" @click="copyCode">
                     <Icon name="copy" size="sm" />
-                    {{ t('common.copy') }}
+                    <span>{{ t('campaignRewards.copyCode') }}</span>
                   </button>
                 </div>
               </div>
-              <div class="space-y-1.5">
-                <p class="text-xs text-gray-400 dark:text-dark-500">{{ t('campaignRewards.myCode') }}</p>
-                <div class="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-1.5 dark:border-dark-800 dark:bg-dark-900/50">
-                  <code class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-dark-400">{{ inviteCode }}</code>
-                  <button class="btn btn-secondary btn-xs shrink-0" type="button" :disabled="!inviteCode" @click="copyCode">
+
+              <div class="space-y-2">
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('campaignRewards.inviteLink') }}</p>
+                <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
+                  <code class="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">{{ inviteLink }}</code>
+                  <button class="btn btn-secondary btn-sm" type="button" :disabled="!canCopyInviteLink" @click="copyLink">
                     <Icon name="copy" size="sm" />
-                    {{ t('common.copy') }}
+                    <span>{{ t('campaignRewards.copyLink') }}</span>
                   </button>
                 </div>
               </div>
@@ -152,7 +150,7 @@
             </div>
           </div>
 
-          <div data-testid="campaign-rules-card" class="card self-start p-6">
+          <div data-testid="campaign-rules-card" class="card h-full p-6">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('campaignRewards.rulesTitle') }}</h2>
@@ -177,12 +175,6 @@
                   </div>
                 </div>
               </div>
-              <details data-testid="campaign-full-rules" class="rounded-xl border border-gray-100 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/60">
-                <summary class="cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 dark:text-gray-100">
-                  {{ t('campaignRewards.fullRules') }}
-                </summary>
-                <p class="border-t border-gray-100 px-3 py-3 whitespace-pre-line text-sm leading-6 text-gray-600 dark:border-dark-700 dark:text-dark-300">{{ fullRulesText }}</p>
-              </details>
             </div>
           </div>
         </div>
@@ -211,7 +203,7 @@
                     <th class="px-4 py-3 text-left">{{ t('campaignRewards.rank') }}</th>
                     <th class="px-4 py-3 text-left">{{ t('campaignRewards.user') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('campaignRewards.validInvites') }}</th>
-                    <th class="px-4 py-3 text-right">{{ t('campaignRewards.rechargeAmount') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('campaignRewards.pendingRechargeInvites') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('campaignRewards.estimatedReward') }}</th>
                   </tr>
                 </thead>
@@ -228,7 +220,7 @@
                     </td>
                     <td class="px-4 py-3">{{ displayUser(row.username, row.masked_email) }}</td>
                     <td class="px-4 py-3 text-right">{{ row.valid_invite_count }}</td>
-                    <td class="px-4 py-3 text-right">{{ formatCents(row.invitee_recharge_amount_cents) }}</td>
+                    <td class="px-4 py-3 text-right">{{ formatCount(row.pending_invite_count) }}</td>
                     <td class="px-4 py-3 text-right font-medium">{{ formatCents(row.estimated_reward_cents) }}</td>
                   </tr>
                   <tr v-if="leaderboard.length === 0">
@@ -510,8 +502,6 @@ const ruleSummaryItems = computed(() => [
   },
 ])
 
-const fullRulesText = computed(() => home.value?.campaign?.rules_text || t('campaignRewards.defaultFullRules'))
-
 async function loadCampaign(silent = false): Promise<void> {
   if (silent) {
     refreshing.value = true
@@ -550,11 +540,11 @@ async function refresh(): Promise<void> {
 }
 
 async function copyCode(): Promise<void> {
-  if (inviteCode.value) await copyToClipboard(inviteCode.value, t('campaignRewards.copied'))
+  if (inviteCode.value) await copyToClipboard(inviteCode.value, t('campaignRewards.codeCopied'))
 }
 
 async function copyLink(): Promise<void> {
-  if (canCopyInviteLink.value) await copyToClipboard(inviteLink.value, t('campaignRewards.copied'))
+  if (canCopyInviteLink.value) await copyToClipboard(inviteLink.value, t('campaignRewards.linkCopied'))
 }
 
 function formatCents(value?: number | null): string {
