@@ -25,6 +25,7 @@ export interface CampaignCreateRequest {
   recharge_threshold_cents?: number
   allow_accumulated_recharge?: boolean
   pool_injection_rate?: number
+  pool_injection_scope?: 'invitees_only' | 'all_users'
   rank_pool_ratio?: number
   contribution_pool_ratio?: number
   rank_reward_count?: number
@@ -52,6 +53,7 @@ export interface CampaignConfigVersionRequest {
   effective_at: string
   recharge_threshold_cents?: number
   pool_injection_rate?: number
+  pool_injection_scope?: 'invitees_only' | 'all_users'
   allow_accumulated_recharge?: boolean
   change_reason?: string
 }

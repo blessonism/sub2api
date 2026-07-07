@@ -498,7 +498,7 @@ const ruleSummaryItems = computed(() => [
   },
   {
     title: t('campaignRewards.ruleSummaryPoolTitle'),
-    description: t('campaignRewards.ruleSummaryPoolDesc', {
+    description: t(home.value?.config?.pool_injection_scope === 'all_users' ? 'campaignRewards.ruleSummaryPoolDescAllUsers' : 'campaignRewards.ruleSummaryPoolDescInviteesOnly', {
       rate: formatPercent(home.value?.config?.pool_injection_rate),
       rank: formatPercent(home.value?.config?.rank_pool_ratio),
       contribution: formatPercent(home.value?.config?.contribution_pool_ratio),

@@ -38,6 +38,7 @@ type campaignCreateRequest struct {
 	RechargeThresholdCents   int64    `json:"recharge_threshold_cents"`
 	AllowAccumulatedRecharge *bool    `json:"allow_accumulated_recharge"`
 	PoolInjectionRate        *float64 `json:"pool_injection_rate"`
+	PoolInjectionScope       string   `json:"pool_injection_scope"`
 	RankPoolRatio            *float64 `json:"rank_pool_ratio"`
 	ContributionPoolRatio    *float64 `json:"contribution_pool_ratio"`
 	RankRewardCount          int      `json:"rank_reward_count"`
@@ -84,6 +85,7 @@ type campaignConfigVersionRequest struct {
 	EffectiveAt              string   `json:"effective_at" binding:"required"`
 	RechargeThresholdCents   *int64   `json:"recharge_threshold_cents"`
 	PoolInjectionRate        *float64 `json:"pool_injection_rate"`
+	PoolInjectionScope       *string  `json:"pool_injection_scope"`
 	AllowAccumulatedRecharge *bool    `json:"allow_accumulated_recharge"`
 	ChangeReason             string   `json:"change_reason"`
 }
@@ -232,6 +234,10 @@ func (h *CampaignHandler) CreateConfigVersion(c *gin.Context) {
 		AllowAccumulatedRecharge: req.AllowAccumulatedRecharge,
 		ChangeReason:             req.ChangeReason,
 		OperatorID:               adminSubjectID(c),
+	}
+	if req.PoolInjectionScope != nil {
+		scope := strings.TrimSpace(*req.PoolInjectionScope)
+		input.PoolInjectionScope = &scope
 	}
 	if req.PoolInjectionRate != nil {
 		rate := decimal.NewFromFloat(*req.PoolInjectionRate)
@@ -439,6 +445,7 @@ func (req campaignCreateRequest) toServiceInput(c *gin.Context) (service.Campaig
 		InitialBonusCents:        req.InitialBonusCents,
 		RechargeThresholdCents:   req.RechargeThresholdCents,
 		AllowAccumulatedRecharge: allowAccumulated,
+		PoolInjectionScope:       strings.TrimSpace(req.PoolInjectionScope),
 		RankRewardCount:          req.RankRewardCount,
 		RankWeights:              req.RankWeights,
 		MinPayoutAmountCents:     req.MinPayoutAmountCents,

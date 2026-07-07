@@ -139,6 +139,65 @@ func TestCampaignLeaderboardAdjustmentRejectsPaidCampaign(t *testing.T) {
 	}
 }
 
+func TestCampaignRecordRechargeAllUsersInjectsPoolWithoutInviteRecord(t *testing.T) {
+	successAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	repo := &campaignRechargeRepoStub{
+		campaign: &Campaign{ID: 7, StartAt: successAt.Add(-time.Hour), EndAt: successAt.Add(time.Hour)},
+		cfg: &CampaignConfigVersion{
+			ID:                 11,
+			PoolInjectionRate:  decimal.RequireFromString("0.10"),
+			PoolInjectionScope: CampaignPoolInjectionScopeAllUsers,
+		},
+		recordRechargeErr: ErrCampaignNotFound,
+	}
+	svc := NewCampaignService(repo, nil)
+
+	invite, err := svc.RecordRecharge(context.Background(), CampaignRechargeInput{
+		InviteeUserID:       99,
+		SourceType:          "payment_order",
+		SourceID:            "order-1",
+		SourceSuccessAt:     successAt,
+		RechargeAmountCents: 5_000,
+	})
+	if err != nil {
+		t.Fatalf("全员充值入池不应因没有邀请记录失败：%v", err)
+	}
+	if invite != nil {
+		t.Fatalf("非受邀用户充值只注入奖池，不应返回邀请记录：%+v", invite)
+	}
+	if !repo.insertPoolCalled || repo.insertedInvite != nil || repo.insertedPoolAmount != 500 {
+		t.Fatalf("非受邀用户充值应写入无邀请记录的奖池流水，called=%v invite=%+v pool=%d", repo.insertPoolCalled, repo.insertedInvite, repo.insertedPoolAmount)
+	}
+}
+
+func TestCampaignRecordRechargeInviteesOnlyIgnoresRechargeWithoutInviteRecord(t *testing.T) {
+	successAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	repo := &campaignRechargeRepoStub{
+		campaign: &Campaign{ID: 7, StartAt: successAt.Add(-time.Hour), EndAt: successAt.Add(time.Hour)},
+		cfg: &CampaignConfigVersion{
+			ID:                 11,
+			PoolInjectionRate:  decimal.RequireFromString("0.10"),
+			PoolInjectionScope: CampaignPoolInjectionScopeInviteesOnly,
+		},
+		recordRechargeErr: ErrCampaignNotFound,
+	}
+	svc := NewCampaignService(repo, nil)
+
+	invite, err := svc.RecordRecharge(context.Background(), CampaignRechargeInput{
+		InviteeUserID:       99,
+		SourceType:          "payment_order",
+		SourceID:            "order-1",
+		SourceSuccessAt:     successAt,
+		RechargeAmountCents: 5_000,
+	})
+	if err != nil || invite != nil {
+		t.Fatalf("仅受邀新用户模式下无邀请记录充值应被忽略，invite=%+v err=%v", invite, err)
+	}
+	if repo.insertPoolCalled {
+		t.Fatalf("仅受邀新用户模式下不应写入非受邀充值奖池流水")
+	}
+}
+
 func TestCampaignDeleteRemovesEmptyDraft(t *testing.T) {
 	repo := &campaignDeleteRepoStub{
 		campaign: &Campaign{ID: 7, Status: CampaignStatusDraft},
@@ -528,6 +587,44 @@ type campaignPayoutRepoStub struct {
 	CampaignRepository
 	results             []CampaignRewardResult
 	existingResultBatch *CampaignPayoutBatch
+}
+
+type campaignRechargeRepoStub struct {
+	CampaignRepository
+	campaign           *Campaign
+	cfg                *CampaignConfigVersion
+	recordRechargeErr  error
+	insertPoolCalled   bool
+	insertedInvite     *CampaignInviteRecord
+	insertedPoolAmount int64
+}
+
+func (r *campaignRechargeRepoStub) GetActiveCampaign(context.Context, time.Time) (*Campaign, error) {
+	if r.campaign == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.campaign, nil
+}
+
+func (r *campaignRechargeRepoStub) GetLatestConfigVersionAt(context.Context, int64, time.Time) (*CampaignConfigVersion, error) {
+	if r.cfg == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.cfg, nil
+}
+
+func (r *campaignRechargeRepoStub) RecordRecharge(context.Context, *Campaign, *CampaignConfigVersion, CampaignRechargeInput, int64) (*CampaignInviteRecord, bool, error) {
+	if r.recordRechargeErr != nil {
+		return nil, false, r.recordRechargeErr
+	}
+	return &CampaignInviteRecord{ID: 31}, true, nil
+}
+
+func (r *campaignRechargeRepoStub) InsertPoolEntry(_ context.Context, _ *Campaign, _ *CampaignConfigVersion, invite *CampaignInviteRecord, _ CampaignRechargeInput, poolAmountCents int64) (bool, error) {
+	r.insertPoolCalled = true
+	r.insertedInvite = invite
+	r.insertedPoolAmount = poolAmountCents
+	return true, nil
 }
 
 type campaignManualAdjustmentRepoStub struct {
