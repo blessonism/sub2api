@@ -3,6 +3,7 @@ import type { PaginatedResponse } from '@/types'
 import type {
   Campaign,
   CampaignConfigVersion,
+  CampaignInviteRecord,
   CampaignLeaderboardRow,
   CampaignPoolSummary,
 } from '@/api/campaigns'
@@ -24,6 +25,7 @@ export interface CampaignCreateRequest {
   recharge_threshold_cents?: number
   allow_accumulated_recharge?: boolean
   pool_injection_rate?: number
+  pool_injection_scope?: 'invitees_only' | 'all_users'
   rank_pool_ratio?: number
   contribution_pool_ratio?: number
   rank_reward_count?: number
@@ -31,11 +33,27 @@ export interface CampaignCreateRequest {
   min_payout_amount_cents?: number
 }
 
+export interface CampaignUpdateRequest {
+  name?: string
+  description?: string
+  cover_url?: string
+  rules_text?: string
+  warmup_start_at?: string | null
+  start_at?: string
+  end_at?: string
+  audit_start_at?: string | null
+  audit_end_at?: string | null
+  publicity_start_at?: string | null
+  publicity_end_at?: string | null
+  payout_due_at?: string | null
+}
+
 export interface CampaignConfigVersionRequest {
   version_scope: string
   effective_at: string
   recharge_threshold_cents?: number
   pool_injection_rate?: number
+  pool_injection_scope?: 'invitees_only' | 'all_users'
   allow_accumulated_recharge?: boolean
   change_reason?: string
 }
@@ -43,6 +61,31 @@ export interface CampaignConfigVersionRequest {
 export interface CampaignPoolAdjustmentRequest {
   adjustment_type: string
   amount_cents: number
+  reason?: string
+}
+
+export interface CampaignLeaderboardAdjustmentRequest {
+  user_id: number
+  valid_invite_delta: number
+  recharge_amount_delta_cents: number
+  reason?: string
+}
+
+export interface CampaignManualLeaderboardAdjustment {
+  id: number
+  campaign_id: number
+  user_id: number
+  adjustment_type: string
+  valid_invite_delta: number
+  recharge_amount_delta_cents: number
+  reason: string
+  operator_id?: number | null
+  created_at: string
+}
+
+export interface CampaignInviteRecordAdjustmentRequest {
+  status: string
+  effective_recharge_amount_cents: number
   reason?: string
 }
 
@@ -95,6 +138,23 @@ export interface CampaignPayoutBatch {
   created_at: string
 }
 
+export interface CampaignDeleteImpact {
+  participants: number
+  invite_records: number
+  pool_entries: number
+  pool_adjustments: number
+  leaderboard_snapshots: number
+  reward_results: number
+  payout_batches: number
+  payout_items: number
+}
+
+export interface CampaignDeleteResult {
+  action: 'deleted' | 'archived'
+  campaign?: Campaign | null
+  impact: CampaignDeleteImpact
+}
+
 export async function listCampaigns(params: { page?: number; page_size?: number } = {}): Promise<PaginatedResponse<Campaign>> {
   const { data } = await apiClient.get<PaginatedResponse<Campaign>>('/admin/campaigns', {
     params: { page: params.page ?? 1, page_size: params.page_size ?? 20 },
@@ -107,8 +167,23 @@ export async function createCampaign(payload: CampaignCreateRequest): Promise<{ 
   return data
 }
 
+export async function updateCampaign(id: number, payload: CampaignUpdateRequest): Promise<Campaign> {
+  const { data } = await apiClient.put<Campaign>(`/admin/campaigns/${id}`, payload)
+  return data
+}
+
+export async function copyCampaign(id: number): Promise<{ campaign: Campaign; config_version: CampaignConfigVersion }> {
+  const { data } = await apiClient.post<{ campaign: Campaign; config_version: CampaignConfigVersion }>(`/admin/campaigns/${id}/copy`)
+  return data
+}
+
 export async function getCampaign(id: number): Promise<Campaign> {
   const { data } = await apiClient.get<Campaign>(`/admin/campaigns/${id}`)
+  return data
+}
+
+export async function deleteCampaign(id: number): Promise<CampaignDeleteResult> {
+  const { data } = await apiClient.delete<CampaignDeleteResult>(`/admin/campaigns/${id}`)
   return data
 }
 
@@ -137,6 +212,23 @@ export async function getLeaderboard(id: number): Promise<{ items: CampaignLeade
   return data
 }
 
+export async function addLeaderboardAdjustment(id: number, payload: CampaignLeaderboardAdjustmentRequest): Promise<CampaignManualLeaderboardAdjustment> {
+  const { data } = await apiClient.post<CampaignManualLeaderboardAdjustment>(`/admin/campaigns/${id}/leaderboard-adjustments`, payload)
+  return data
+}
+
+export async function listInviterRecords(id: number, userID: number): Promise<PaginatedResponse<CampaignInviteRecord>> {
+  const { data } = await apiClient.get<PaginatedResponse<CampaignInviteRecord>>(`/admin/campaigns/${id}/inviters/${userID}/invites`, {
+    params: { page: 1, page_size: 100 },
+  })
+  return data
+}
+
+export async function adjustInviteRecord(id: number, recordID: number, payload: CampaignInviteRecordAdjustmentRequest): Promise<CampaignInviteRecord> {
+  const { data } = await apiClient.patch<CampaignInviteRecord>(`/admin/campaigns/${id}/invite-records/${recordID}`, payload)
+  return data
+}
+
 export async function freezeLeaderboard(id: number): Promise<{ ok: boolean }> {
   const { data } = await apiClient.post<{ ok: boolean }>(`/admin/campaigns/${id}/freeze`)
   return data
@@ -149,6 +241,11 @@ export async function recalculateRewards(id: number, status: 'preview' | 'frozen
   return data
 }
 
+export async function getFinalRewardResults(id: number): Promise<CampaignCalculationSummary> {
+  const { data } = await apiClient.get<CampaignCalculationSummary>(`/admin/campaigns/${id}/reward-results/final`)
+  return data
+}
+
 export async function payoutCampaign(id: number): Promise<CampaignPayoutBatch> {
   const { data } = await apiClient.post<CampaignPayoutBatch>(`/admin/campaigns/${id}/payout`)
   return data
@@ -157,14 +254,21 @@ export async function payoutCampaign(id: number): Promise<CampaignPayoutBatch> {
 export const campaignsAdminAPI = {
   listCampaigns,
   createCampaign,
+  updateCampaign,
+  copyCampaign,
   getCampaign,
+  deleteCampaign,
   publishCampaign,
   createConfigVersion,
   getPoolSummary,
   addPoolAdjustment,
   getLeaderboard,
+  addLeaderboardAdjustment,
+  listInviterRecords,
+  adjustInviteRecord,
   freezeLeaderboard,
   recalculateRewards,
+  getFinalRewardResults,
   payoutCampaign,
 }
 

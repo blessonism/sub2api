@@ -1,0 +1,2 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"遵守下游 fork 分支与提交边界"}
+{"file":".trellis/spec/frontend/index.md","reason":"确认前端变更遵循项目结构与质量约束"}

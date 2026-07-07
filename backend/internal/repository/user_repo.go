@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -592,6 +593,9 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	if sortBy == "last_used_at" {
 		return userLastUsedAtOrder(sortOrder)
 	}
+	if order := userUsageCostOrder(sortBy, sortOrder); order != nil {
+		return order
+	}
 
 	var field string
 	defaultField := true
@@ -714,6 +718,96 @@ func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
 	return []func(*entsql.Selector){
 		orderExpr("DESC", "LAST", entsql.Desc),
 	}
+}
+
+func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
+	metricBySortKey := map[string]string{
+		"usage_today": "today",
+		// 用户管理页 UI 沿用 total 文案，但实际展示与排序都是近 30 天用量。
+		"usage_total":             "total",
+		"usage_anthropic_today":   "today",
+		"usage_anthropic_total":   "total",
+		"usage_openai_today":      "today",
+		"usage_openai_total":      "total",
+		"usage_gemini_today":      "today",
+		"usage_gemini_total":      "total",
+		"usage_antigravity_today": "today",
+		"usage_antigravity_total": "total",
+	}
+	metric, ok := metricBySortKey[sortBy]
+	if !ok {
+		return nil
+	}
+
+	platformBySortKey := map[string]string{
+		"usage_anthropic_today":   "anthropic",
+		"usage_anthropic_total":   "anthropic",
+		"usage_openai_today":      "openai",
+		"usage_openai_total":      "openai",
+		"usage_gemini_today":      "gemini",
+		"usage_gemini_total":      "gemini",
+		"usage_antigravity_today": "antigravity",
+		"usage_antigravity_total": "antigravity",
+	}
+	platform := platformBySortKey[sortBy]
+
+	return []func(*entsql.Selector){func(s *entsql.Selector) {
+		direction := "DESC"
+		tieOrder := entsql.Desc
+		if sortOrder == pagination.SortOrderAsc {
+			direction = "ASC"
+			tieOrder = entsql.Asc
+		}
+
+		filter := "ul.created_at >= NOW() - INTERVAL '30 days' AND ul.created_at < NOW()"
+		if metric == "today" {
+			today := timezone.Today().UTC().Format(time.RFC3339Nano)
+			filter = fmt.Sprintf("ul.created_at >= '%s'::timestamptz", today)
+		}
+
+		platformFilter := ""
+		if platform != "" {
+			platformFilter = fmt.Sprintf(" AND %s = '%s'", usageLogEffectivePlatformExpr, platform)
+		}
+
+		usageLogCostExpr := fmt.Sprintf(
+			`(SELECT COALESCE(SUM(ul.actual_cost), 0)
+			 FROM usage_logs ul
+			 LEFT JOIN groups g ON g.id = ul.group_id
+			 LEFT JOIN accounts a ON a.id = ul.account_id
+			 WHERE ul.user_id = %s
+			   AND %s
+			   AND %s%s)`,
+			s.C(dbuser.FieldID),
+			filter,
+			usageLogSuccessFilterUL,
+			platformFilter,
+		)
+
+		// 全局用量列展示来自 DashboardService.GetBatchUserUsageStats，
+		// 除 usage_logs.actual_cost 外还会叠加管理员余额校准支出；平台拆分没有校准归属，保持 usage_logs 口径。
+		costExpr := usageLogCostExpr
+		if platform == "" {
+			calibrationFilter := "auc.created_at >= NOW() - INTERVAL '30 days' AND auc.created_at < NOW()"
+			if metric == "today" {
+				today := timezone.Today().UTC().Format(time.RFC3339Nano)
+				calibrationFilter = fmt.Sprintf("auc.created_at >= '%s'::timestamptz", today)
+			}
+			calibrationCostExpr := fmt.Sprintf(
+				`(SELECT COALESCE(SUM(-auc.balance_delta), 0)
+				 FROM admin_usage_calibrations auc
+				 WHERE auc.target_user_id = %s
+				   AND auc.balance_delta < 0
+				   AND %s)`,
+				s.C(dbuser.FieldID),
+				calibrationFilter,
+			)
+			costExpr = fmt.Sprintf("(%s + %s)", usageLogCostExpr, calibrationCostExpr)
+		}
+
+		s.OrderExpr(entsql.Expr(costExpr + " " + direction))
+		s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
+	}}
 }
 
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters

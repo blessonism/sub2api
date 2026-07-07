@@ -116,6 +116,16 @@ func ProvideAdminUsageHandler(
 	return h
 }
 
+// ProvideUpstreamRelayGroupMonitoringHandler 构造 handler 并注入自动调度器状态。
+func ProvideUpstreamRelayGroupMonitoringHandler(
+	svc *service.UpstreamRelayGroupMonitoringService,
+	runner *service.UpstreamRelayMonitoringRunner,
+) *admin.UpstreamRelayGroupMonitoringHandler {
+	h := admin.NewUpstreamRelayGroupMonitoringHandler(svc)
+	h.SetRunner(runner)
+	return h
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -215,7 +225,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewCampaignHandler,
 	admin.NewComplianceHandler,
 	admin.NewTokenUsagePolicyHandler,
-	admin.NewUpstreamRelayGroupMonitoringHandler,
+	ProvideUpstreamRelayGroupMonitoringHandler,
 	admin.NewConversationHandler,
 
 	// AdminHandlers and Handlers constructors

@@ -122,6 +122,54 @@ Correct:
 SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE actual_cost > 0
 ```
 
+### Scenario: Admin user list usage sorting
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing usage-related sort keys for the admin user list.
+- This flow crosses frontend sort controls, admin user list query parameters, repository SQL aggregation, and usage statistics shown in the table.
+
+#### 2. Signatures
+- Query params: `sort_by`, `sort_order`, `page`, `page_size`.
+- Supported global sort keys: `usage_today`, `usage_total`.
+- Supported platform sort keys: `usage_anthropic_today`, `usage_anthropic_total`, `usage_openai_today`, `usage_openai_total`, `usage_gemini_today`, `usage_gemini_total`, `usage_antigravity_today`, `usage_antigravity_total`.
+- Repository entrypoint: `UserRepository.ListWithFilters(ctx, pagination.PaginationParams, service.UserListFilters)`.
+
+#### 3. Contracts
+- Usage sorting must be applied before `OFFSET/LIMIT`; never sort only the already paginated user slice.
+- `usage_today` uses the same local-day boundary as dashboard/user usage statistics.
+- `usage_total` keeps the UI label but means the same rolling 30-day window used by `DashboardService.GetBatchUserUsageStats`.
+- Global usage sorting must include `usage_logs.actual_cost` plus negative `admin_usage_calibrations.balance_delta` as calibration spend.
+- Platform usage sorting uses `usage_logs.actual_cost` only, because balance calibrations have no platform attribution.
+- Tie-break by user id in the same direction as the requested sort order to keep pagination deterministic.
+
+#### 4. Validation & Error Matrix
+- Unknown usage sort key -> fall back to the normal user-list sort handling.
+- Invalid or missing `sort_order` -> use the existing pagination sort-order normalization.
+- No matching usage rows or calibration rows -> aggregate as zero, not `NULL`.
+
+#### 5. Good/Base/Bad Cases
+- Good: page 1 with `sort_by=usage_total&sort_order=desc&page_size=1` returns the highest 30-day spender among all matching users.
+- Base: users with no usage logs still appear in deterministic order with a zero usage value.
+- Bad: fetching one page by `created_at` and then sorting that page by usage in frontend state.
+
+#### 6. Tests Required
+- Repository integration test: usage sorting happens before pagination.
+- Repository integration test: global 30-day sorting includes negative balance calibration spend.
+- Frontend typecheck: admin user list passes the selected usage sort key through list query state.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+users = sortCurrentPageByUsage(users)
+```
+
+Correct:
+```go
+params.SortBy = "usage_total"
+repo.ListWithFilters(ctx, params, filters)
+```
+
 ---
 
 ### Scenario: Admin token usage auto policy APIs

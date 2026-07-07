@@ -32,7 +32,23 @@ Questions to answer:
 
 <!-- How props should be defined and typed -->
 
-(To be filled by the team)
+### Convention: DataTable server-side sorting control
+
+**What**: When a page uses `DataTable` with `server-side-sort`, the parent view should own the effective sort state and pass it back through `sortKey` and `sortOrder` when the sort key can also be changed by custom controls.
+
+**Why**: Custom column menus, such as admin usage "today / 30 days" sorting, must keep the header icon, persisted state, query params, and backend results aligned. Local-only sorting of the current `data` array is forbidden for server-side user-visible lists.
+
+**Example**:
+```vue
+<DataTable
+  :server-side-sort="true"
+  :sort-key="tableSortKey"
+  :sort-order="sortState.sort_order"
+  @sort="handleSort"
+/>
+```
+
+**Related**: For admin user usage sorting, the backend must apply usage aggregation order before pagination.
 
 ---
 

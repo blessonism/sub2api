@@ -1,0 +1,2 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"检查下游 fork 分支边界"}
+{"file":".trellis/spec/frontend/index.md","reason":"检查前端回归覆盖与结构约束"}

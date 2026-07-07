@@ -17,9 +17,12 @@ type upstreamRelayMonitoringRunnerStub struct {
 	syncCalls                 int
 	probeCalls                int
 	recommendationCalls       int
+	finalizeCalls             int
 	syncErr                   error
 	probeErr                  error
 	recommendationErr         error
+	finalizeErr               error
+	finalizeResult            *UpstreamRelayBulkOperationResult
 	recommendationResultOnErr *UpstreamRelayRecommendationAutomationResult
 
 	policyStarted chan struct{}
@@ -101,6 +104,20 @@ func (s *upstreamRelayMonitoringRunnerStub) GenerateAndMaybeApplyRecommendations
 	}, nil
 }
 
+func (s *upstreamRelayMonitoringRunnerStub) FinalizeYesterdayUsage(context.Context) (*UpstreamRelayBulkOperationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.finalizeCalls++
+	if s.finalizeErr != nil {
+		return nil, s.finalizeErr
+	}
+	if s.finalizeResult != nil {
+		result := *s.finalizeResult
+		return &result, nil
+	}
+	return &UpstreamRelayBulkOperationResult{Total: 1, Success: 1}, nil
+}
+
 func (s *upstreamRelayMonitoringRunnerStub) counts() (int, int, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,7 +135,7 @@ func waitRunnerIdle(t *testing.T, r *UpstreamRelayMonitoringRunner) {
 	waitUpstreamRelayMonitoringRunnerFor(t, 2*time.Second, "upstream relay monitoring runner idle", func() bool {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		return !r.sync.inFlight && !r.probe.inFlight && !r.recommendation.inFlight
+		return !r.sync.inFlight && !r.probe.inFlight && !r.recommendation.inFlight && !r.finalize.inFlight
 	})
 }
 
@@ -145,6 +162,9 @@ func runnerJobNextRunAt(runner *UpstreamRelayMonitoringRunner, job string) time.
 	if job == "probe" {
 		return runner.probe.nextRunAt
 	}
+	if job == "finalize" {
+		return runner.finalize.nextRunAt
+	}
 	return runner.recommendation.nextRunAt
 }
 
@@ -157,7 +177,31 @@ func runnerJobLastFinishedAt(runner *UpstreamRelayMonitoringRunner, job string) 
 	if job == "probe" {
 		return runner.probe.lastFinishedAt
 	}
+	if job == "finalize" {
+		return runner.finalize.lastFinishedAt
+	}
 	return runner.recommendation.lastFinishedAt
+}
+
+func runnerJobLastError(runner *UpstreamRelayMonitoringRunner, job string) string {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if job == "sync" {
+		return runner.sync.lastError
+	}
+	if job == "probe" {
+		return runner.probe.lastError
+	}
+	if job == "finalize" {
+		return runner.finalize.lastError
+	}
+	return runner.recommendation.lastError
+}
+
+func runnerFinalizeState(runner *UpstreamRelayMonitoringRunner) upstreamRelayMonitoringJobState {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	return runner.finalize
 }
 
 func TestUpstreamRelayMonitoringRunnerRunsEnabledJobsOnFirstCycle(t *testing.T) {
@@ -317,6 +361,10 @@ func TestUpstreamRelayMonitoringRunnerSchedulesRetryAfterFailure(t *testing.T) {
 	waitRunnerIdle(t, runner)
 
 	require.WithinDuration(t, now.Add(5*time.Minute), runnerJobNextRunAt(runner, "sync"), time.Second)
+	status := runner.Status(svc.policy)
+	require.NotNil(t, status.Sync.LastSucceeded)
+	require.False(t, *status.Sync.LastSucceeded)
+	require.Contains(t, status.Sync.LastError, "sync failed")
 }
 
 func TestUpstreamRelayMonitoringRunnerReschedulesAfterSuccessIntervalShortened(t *testing.T) {
@@ -446,6 +494,31 @@ func TestUpstreamRelayMonitoringRunnerSkipsWhenLeaderLockHeld(t *testing.T) {
 	syncCalls, _, _ := svc.counts()
 	require.Zero(t, syncCalls)
 	require.WithinDuration(t, now.Add(5*time.Minute), runnerJobNextRunAt(runner, "sync"), time.Second)
+	status := runner.Status(svc.policy)
+	require.Nil(t, status.Sync.LastSucceeded)
+	require.Empty(t, status.Sync.LastError)
+}
+
+func TestUpstreamRelayMonitoringRunnerDailyFinalizePartialFailureRetries(t *testing.T) {
+	svc := &upstreamRelayMonitoringRunnerStub{
+		policy: &UpstreamRelayMonitoringPolicy{
+			AutoSyncEnabled:             true,
+			FailureRetryIntervalMinutes: 5,
+		},
+		finalizeResult: &UpstreamRelayBulkOperationResult{Total: 2, Success: 1, Failed: 1},
+	}
+	runner := newUpstreamRelayMonitoringRunner(svc, time.Hour)
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	runner.runCycle(now)
+	waitRunnerIdle(t, runner)
+
+	state := runnerFinalizeState(runner)
+	require.Equal(t, 1, svc.finalizeCalls)
+	require.True(t, state.lastRunKey == "", "partial finalize failure must not mark the daily run key complete")
+	require.False(t, state.lastSucceeded)
+	require.Contains(t, state.lastError, "partial failures")
+	require.WithinDuration(t, state.lastFinishedAt.Add(5*time.Minute), runnerJobNextRunAt(runner, "finalize"), time.Second)
 }
 
 func TestUpstreamRelayMonitoringRunnerRunsAfterDisabledThenEnabled(t *testing.T) {
@@ -530,4 +603,5 @@ func TestUpstreamRelayMonitoringRunnerSchedulesRecommendationRetryWhenApplyFails
 	_, _, recommendationCalls := svc.counts()
 	require.Equal(t, 1, recommendationCalls)
 	require.WithinDuration(t, now.Add(9*time.Minute), runnerJobNextRunAt(runner, "recommendation"), time.Second)
+	require.Contains(t, runnerJobLastError(runner, "recommendation"), "apply failed")
 }

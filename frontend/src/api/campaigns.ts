@@ -32,6 +32,7 @@ export interface CampaignConfigVersion {
   recharge_threshold_cents: number
   allow_accumulated_recharge: boolean
   pool_injection_rate: string
+  pool_injection_scope: 'invitees_only' | 'all_users'
   rank_pool_ratio: string
   contribution_pool_ratio: string
   rank_reward_count: number
@@ -60,7 +61,11 @@ export interface CampaignLeaderboardRow {
   masked_email?: string
   username?: string
   valid_invite_count: number
+  pending_invite_count: number
   invitee_recharge_amount_cents: number
+  manual_valid_invite_delta: number
+  manual_recharge_amount_delta_cents: number
+  has_manual_adjustment: boolean
   reached_count_at: string
   joined_at: string
   estimated_reward_cents: number

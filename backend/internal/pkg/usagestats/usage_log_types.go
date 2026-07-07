@@ -407,13 +407,42 @@ type UsageLogFilters struct {
 
 // SharedIPUsersSummary 汇总管理员同 IP 多用户筛选结果。
 type SharedIPUsersSummary struct {
-	IPCount         int64                     `json:"ip_count"`
-	UserCount       int64                     `json:"user_count"`
-	RecordCount     int64                     `json:"record_count"`
-	Users           []SharedIPUserSummaryItem `json:"users,omitempty"`
-	UsersLimit      int                       `json:"users_limit"`
-	UsersTruncated  bool                      `json:"users_truncated"`
-	HiddenUserCount int64                     `json:"hidden_user_count"`
+	IPCount            int64                      `json:"ip_count"`
+	UserCount          int64                      `json:"user_count"`
+	RecordCount        int64                      `json:"record_count"`
+	IPGroups           []SharedIPGroupSummaryItem `json:"ip_groups,omitempty"`
+	IPGroupsLimit      int                        `json:"ip_groups_limit"`
+	IPGroupsTruncated  bool                       `json:"ip_groups_truncated"`
+	HiddenIPGroupCount int64                      `json:"hidden_ip_group_count"`
+	Users              []SharedIPUserSummaryItem  `json:"users,omitempty"`
+	UsersLimit         int                        `json:"users_limit"`
+	UsersTruncated     bool                       `json:"users_truncated"`
+	HiddenUserCount    int64                      `json:"hidden_user_count"`
+}
+
+// SharedIPGroupSummaryItem 表示同 IP 多用户命中的 IP 级聚合结果。
+type SharedIPGroupSummaryItem struct {
+	IPAddress       string                         `json:"ip_address"`
+	UserCount       int64                          `json:"user_count"`
+	RecordCount     int64                          `json:"record_count"`
+	LastUsedAt      *time.Time                     `json:"last_used_at,omitempty"`
+	TotalTokens     int64                          `json:"total_tokens"`
+	ActualCost      float64                        `json:"actual_cost"`
+	Users           []SharedIPGroupUserSummaryItem `json:"users,omitempty"`
+	UsersLimit      int                            `json:"users_limit"`
+	UsersTruncated  bool                           `json:"users_truncated"`
+	HiddenUserCount int64                          `json:"hidden_user_count"`
+}
+
+// SharedIPGroupUserSummaryItem 表示某个共享 IP 下的用户级聚合结果。
+type SharedIPGroupUserSummaryItem struct {
+	UserID      int64      `json:"user_id"`
+	Email       string     `json:"email"`
+	Deleted     bool       `json:"deleted"`
+	RecordCount int64      `json:"record_count"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	TotalTokens int64      `json:"total_tokens"`
+	ActualCost  float64    `json:"actual_cost"`
 }
 
 // SharedIPUserSummaryItem 表示同 IP 多用户命中的用户级聚合结果。

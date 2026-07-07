@@ -102,6 +102,19 @@ func (h *UsageHandler) List(c *gin.Context) {
 		}
 		sharedIPUsers = parsed
 	}
+	sharedIPSummaryOnly := false
+	if sharedIPSummaryOnlyRaw := strings.TrimSpace(c.Query("shared_ip_summary_only")); sharedIPSummaryOnlyRaw != "" {
+		parsed, err := strconv.ParseBool(sharedIPSummaryOnlyRaw)
+		if err != nil {
+			response.BadRequest(c, "Invalid shared_ip_summary_only value, use true or false")
+			return
+		}
+		sharedIPSummaryOnly = parsed
+	}
+	if sharedIPSummaryOnly && !sharedIPUsers {
+		response.BadRequest(c, "shared_ip_summary_only requires shared_ip_users=true")
+		return
+	}
 
 	// Parse filters
 	var userID, apiKeyID, accountID, groupID int64
@@ -219,10 +232,17 @@ func (h *UsageHandler) List(c *gin.Context) {
 		SharedIPUsers: sharedIPUsers,
 	}
 
-	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	var (
+		records []service.UsageLog
+		result  *pagination.PaginationResult
+	)
+	if !sharedIPSummaryOnly {
+		var err error
+		records, result, err = h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	}
 
 	out := make([]dto.AdminUsageLog, 0, len(records))

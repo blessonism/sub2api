@@ -1,0 +1,4 @@
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"本仓库是下游二开 fork，后续任何文档或代码变更都必须遵守 custom/main 与上游同步边界。"}
+{"file":".trellis/spec/frontend/index.md","reason":"邀请活动管理员侧 UI 优化会修改前端页面，需要按前端规范索引展开具体规范。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"前端接口字段和计算状态派生需保持类型安全，字段名与后端 JSON 对齐。"}
+{"file":"docs/CAMPAIGN_REWARDS_ADMIN_UI_OPTIMIZATION_CN.md","reason":"邀请活动管理员侧 UI 优化主方案文档，后续实现应以 R1 范围为准。"}

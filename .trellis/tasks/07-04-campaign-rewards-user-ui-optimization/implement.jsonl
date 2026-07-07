@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与实现边界规则"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型、视图测试和 i18n 约束"}

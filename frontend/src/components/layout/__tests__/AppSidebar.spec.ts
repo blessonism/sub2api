@@ -32,10 +32,13 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar external payment entry', () => {
-  it('keeps the configured payment shop URL as a direct sidebar link', () => {
-    expect(componentSource).toContain("const EXTERNAL_PAYMENT_URL = 'https://pay.ldxp.cn/shop/Y5TXJ2DO'")
+  it('uses the public settings purchase URL as a direct sidebar link', () => {
+    expect(componentSource).not.toContain('EXTERNAL_PAYMENT_URL')
+    expect(componentSource).not.toContain('https://pay.ldxp.cn/shop/Y5TXJ2DO')
+    expect(componentSource).toContain('settings?.purchase_subscription_enabled')
+    expect(componentSource).toContain('settings.purchase_subscription_url?.trim()')
     expect(componentSource).toContain("label: t('nav.externalPayment')")
-    expect(componentSource).toContain('externalUrl: EXTERNAL_PAYMENT_URL')
+    expect(componentSource).toContain('externalUrl: externalPaymentUrl.value')
     expect(componentSource).toContain(':href="item.externalUrl"')
     expect(componentSource).toContain('target="_blank"')
     expect(componentSource).toContain('rel="noopener noreferrer"')
@@ -62,5 +65,16 @@ describe('AppSidebar leaderboard entry', () => {
     expect(componentSource).toContain("{ path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon }")
     expect(componentSource).toContain('const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))')
     expect(componentSource).toContain('const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))')
+  })
+})
+
+describe('AppSidebar invite navigation entries', () => {
+  it('keeps the persistent affiliate rebate entry separate from campaign rewards', () => {
+    const affiliateEntry = "{ path: '/affiliate', label: t('nav.affiliate'), icon: AffiliateIcon, hideInSimpleMode: true, featureFlag: flagAffiliate }"
+    const campaignRewardsEntry = "{ path: '/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true }"
+
+    expect(componentSource).toContain(affiliateEntry)
+    expect(componentSource).toContain(campaignRewardsEntry)
+    expect(componentSource.indexOf(affiliateEntry)).toBeLessThan(componentSource.indexOf(campaignRewardsEntry))
   })
 })

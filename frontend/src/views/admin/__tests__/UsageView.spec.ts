@@ -31,14 +31,22 @@ const messages: Record<string, string> = {
   'admin.usage.sharedIPUsers.userCount': 'Users involved: {count}',
   'admin.usage.sharedIPUsers.recordCount': 'Matched records: {count}',
   'admin.usage.sharedIPUsers.matchedUsersTitle': 'Matched users',
+  'admin.usage.sharedIPUsers.matchedIPGroupsTitle': 'Matched IP groups',
   'admin.usage.sharedIPUsers.user': 'User',
   'admin.usage.sharedIPUsers.ipCountColumn': 'IPs',
+  'admin.usage.sharedIPUsers.ipAddressColumn': 'IP address',
+  'admin.usage.sharedIPUsers.userCountColumn': 'Users',
   'admin.usage.sharedIPUsers.recordCountColumn': 'Records',
   'admin.usage.sharedIPUsers.lastUsed': 'Last used',
   'admin.usage.sharedIPUsers.ipAddresses': 'Matched IPs',
+  'admin.usage.sharedIPUsers.groupUsers': 'Users on this IP',
+  'admin.usage.sharedIPUsers.expandGroup': 'Expand IP group',
+  'admin.usage.sharedIPUsers.collapseGroup': 'Collapse IP group',
   'admin.usage.sharedIPUsers.showRecords': 'Show record details',
   'admin.usage.sharedIPUsers.hideRecords': 'Hide record details',
+  'admin.usage.sharedIPUsers.ipGroupsTruncated': 'Showing the first {shown} of {total} matched IP groups. {hidden} more IP groups are hidden by the summary limit.',
   'admin.usage.sharedIPUsers.usersTruncated': 'Showing the first {shown} of {total} matched users. {hidden} more users are hidden by the summary limit.',
+  'admin.usage.sharedIPUsers.groupUsersTruncated': 'Showing the first {shown} of {total} users on this IP. {hidden} more users are hidden by the summary limit.',
   'admin.usage.sharedIPUsers.moreIPs': 'and {count} more',
   'usage.tokens': 'Tokens',
   'usage.cost': 'Cost',
@@ -152,6 +160,55 @@ describe('admin UsageView shared IP users summary', () => {
     list
       .mockResolvedValueOnce({ items: [], total: 0, pages: 0 })
       .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        pages: 1,
+        shared_ip_users_summary: {
+          ip_count: 2,
+          user_count: 55,
+          record_count: 6,
+          ip_groups_limit: 50,
+          ip_groups_truncated: true,
+          hidden_ip_group_count: 1,
+          ip_groups: [
+            {
+              ip_address: '203.0.113.9',
+              user_count: 2,
+              record_count: 6,
+              last_used_at: '2026-06-20T02:00:00Z',
+              total_tokens: 1234,
+              actual_cost: 0.25,
+              users_limit: 20,
+              users_truncated: false,
+              hidden_user_count: 0,
+              users: [
+                {
+                  user_id: 7,
+                  email: 'risk@example.com',
+                  deleted: false,
+                  record_count: 4,
+                  last_used_at: '2026-06-20T02:00:00Z',
+                  total_tokens: 1000,
+                  actual_cost: 0.2,
+                },
+                {
+                  user_id: 9,
+                  email: 'peer@example.com',
+                  deleted: false,
+                  record_count: 2,
+                  last_used_at: '2026-06-20T01:00:00Z',
+                  total_tokens: 234,
+                  actual_cost: 0.05,
+                },
+              ],
+            },
+          ],
+          users_limit: 0,
+          users_truncated: false,
+          hidden_user_count: 0,
+        },
+      })
+      .mockResolvedValueOnce({
         items: [{ id: 1, user_id: 7, ip_address: '203.0.113.9' }],
         total: 6,
         pages: 1,
@@ -159,22 +216,45 @@ describe('admin UsageView shared IP users summary', () => {
           ip_count: 2,
           user_count: 55,
           record_count: 6,
-          users_limit: 50,
-          users_truncated: true,
-          hidden_user_count: 54,
-          users: [
+          ip_groups_limit: 50,
+          ip_groups_truncated: true,
+          hidden_ip_group_count: 1,
+          ip_groups: [
             {
-              user_id: 7,
-              email: 'risk@example.com',
-              deleted: false,
-              ip_count: 2,
-              record_count: 4,
+              ip_address: '203.0.113.9',
+              user_count: 2,
+              record_count: 6,
               last_used_at: '2026-06-20T02:00:00Z',
-              ip_addresses: ['203.0.113.9', '203.0.113.10', '203.0.113.11', '203.0.113.12'],
               total_tokens: 1234,
               actual_cost: 0.25,
+              users_limit: 20,
+              users_truncated: false,
+              hidden_user_count: 0,
+              users: [
+                {
+                  user_id: 7,
+                  email: 'risk@example.com',
+                  deleted: false,
+                  record_count: 4,
+                  last_used_at: '2026-06-20T02:00:00Z',
+                  total_tokens: 1000,
+                  actual_cost: 0.2,
+                },
+                {
+                  user_id: 9,
+                  email: 'peer@example.com',
+                  deleted: false,
+                  record_count: 2,
+                  last_used_at: '2026-06-20T01:00:00Z',
+                  total_tokens: 234,
+                  actual_cost: 0.05,
+                },
+              ],
             },
           ],
+          users_limit: 0,
+          users_truncated: false,
+          hidden_user_count: 0,
         },
       })
     getStats.mockResolvedValue({
@@ -228,14 +308,20 @@ describe('admin UsageView shared IP users summary', () => {
 
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
       shared_ip_users: true,
+      shared_ip_summary_only: true,
     }), expect.anything())
+    expect(wrapper.text()).toContain('203.0.113.9')
     expect(wrapper.text()).toContain('risk@example.com')
-    expect(wrapper.text()).toContain('and 1 more')
-    expect(wrapper.text()).toContain('Showing the first 1 of 55 matched users. 54 more users are hidden by the summary limit.')
+    expect(wrapper.text()).toContain('peer@example.com')
+    expect(wrapper.text()).toContain('Users on this IP')
+    expect(wrapper.text()).toContain('Showing the first 1 of 2 matched IP groups. 1 more IP groups are hidden by the summary limit.')
     expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(false)
 
     await wrapper.findAll('button').find((button) => button.text() === 'Show record details')?.trigger('click')
     await flushPromises()
+    const expandedParams = list.mock.calls.at(-1)?.[0]
+    expect(expandedParams).toEqual(expect.objectContaining({ shared_ip_users: true }))
+    expect(expandedParams).not.toHaveProperty('shared_ip_summary_only', true)
     expect(wrapper.find('[data-test="usage-table"]').exists()).toBe(true)
   })
 })
