@@ -733,6 +733,8 @@ func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
 		"usage_gemini_total":      "total",
 		"usage_antigravity_today": "today",
 		"usage_antigravity_total": "total",
+		"usage_grok_today":        "today",
+		"usage_grok_total":        "total",
 	}
 	metric, ok := metricBySortKey[sortBy]
 	if !ok {
@@ -748,6 +750,8 @@ func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
 		"usage_gemini_total":      "gemini",
 		"usage_antigravity_today": "antigravity",
 		"usage_antigravity_total": "antigravity",
+		"usage_grok_today":        "grok",
+		"usage_grok_total":        "grok",
 	}
 	platform := platformBySortKey[sortBy]
 
