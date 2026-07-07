@@ -138,55 +138,95 @@
           </div>
           <div class="mt-3 border-t border-amber-200 pt-3 dark:border-amber-800">
             <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
-              {{ t('admin.usage.sharedIPUsers.matchedUsersTitle') }}
+              {{ t('admin.usage.sharedIPUsers.matchedIPGroupsTitle') }}
             </div>
             <div v-if="sharedIPUsersTruncatedHint" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
               {{ sharedIPUsersTruncatedHint }}
             </div>
-            <div v-if="sharedIPUserRows.length" class="overflow-x-auto">
+            <div v-if="sharedIPGroupRows.length" class="overflow-x-auto">
               <table class="min-w-full divide-y divide-amber-200 text-left text-xs dark:divide-amber-800">
                 <thead>
                   <tr class="text-amber-700 dark:text-amber-200">
-                    <th class="whitespace-nowrap py-2 pr-4 font-medium">{{ t('admin.usage.sharedIPUsers.user') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.ipCountColumn') }}</th>
+                    <th class="w-8 py-2 pr-2 font-medium"></th>
+                    <th class="whitespace-nowrap py-2 pr-4 font-medium">{{ t('admin.usage.sharedIPUsers.ipAddressColumn') }}</th>
+                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.userCountColumn') }}</th>
                     <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</th>
                     <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.lastUsed') }}</th>
                     <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.tokens') }}</th>
                     <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.cost') }}</th>
-                    <th class="min-w-56 py-2 pl-4 font-medium">{{ t('admin.usage.sharedIPUsers.ipAddresses') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-amber-100 dark:divide-amber-900/70">
-                  <tr v-for="user in sharedIPUserRows" :key="user.user_id">
-                    <td class="whitespace-nowrap py-2 pr-4">
-                      <button
-                        type="button"
-                        class="font-medium text-primary-700 underline decoration-dashed underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-                        @click="handleUserClick(user.user_id)"
-                      >
-                        {{ user.email || `#${user.user_id}` }}
-                      </button>
-                      <span v-if="user.deleted" class="ml-1 rounded bg-rose-100 px-1 py-px text-[10px] font-medium text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-500/30">
-                        {{ t('admin.usage.userDeletedBadge') }}
-                      </span>
-                      <span class="ml-1 text-amber-700/70 dark:text-amber-100/70">#{{ user.user_id }}</span>
-                    </td>
-                    <td class="whitespace-nowrap px-4 py-2 font-medium">{{ user.ip_count }}</td>
-                    <td class="whitespace-nowrap px-4 py-2">{{ user.record_count }}</td>
-                    <td class="whitespace-nowrap px-4 py-2">{{ user.last_used_at ? formatDateTime(user.last_used_at) : '-' }}</td>
-                    <td class="whitespace-nowrap px-4 py-2">{{ user.total_tokens.toLocaleString() }}</td>
-                    <td class="whitespace-nowrap px-4 py-2">${{ user.actual_cost.toFixed(6) }}</td>
-                    <td class="py-2 pl-4">
-                      <span class="font-mono" :title="formatSharedIPAddresses(user, false)">
-                        {{ formatSharedIPAddresses(user) }}
-                      </span>
-                    </td>
-                  </tr>
+                  <template v-for="group in sharedIPGroupRows" :key="group.ip_address">
+                    <tr>
+                      <td class="py-2 pr-2 align-top">
+                        <button
+                          type="button"
+                          class="inline-flex h-6 w-6 items-center justify-center rounded border border-amber-300 text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                          :title="isSharedIPGroupExpanded(group.ip_address) ? t('admin.usage.sharedIPUsers.collapseGroup') : t('admin.usage.sharedIPUsers.expandGroup')"
+                          @click="toggleSharedIPGroup(group.ip_address)"
+                        >
+                          <Icon :name="isSharedIPGroupExpanded(group.ip_address) ? 'chevronDown' : 'chevronRight'" size="xs" :stroke-width="2" />
+                        </button>
+                      </td>
+                      <td class="whitespace-nowrap py-2 pr-4 align-top font-mono font-medium">{{ group.ip_address }}</td>
+                      <td class="whitespace-nowrap px-4 py-2 align-top font-medium">{{ group.user_count }}</td>
+                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.record_count }}</td>
+                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.last_used_at ? formatDateTime(group.last_used_at) : '-' }}</td>
+                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.total_tokens.toLocaleString() }}</td>
+                      <td class="whitespace-nowrap px-4 py-2 align-top">${{ group.actual_cost.toFixed(6) }}</td>
+                    </tr>
+                    <tr v-if="isSharedIPGroupExpanded(group.ip_address)">
+                      <td></td>
+                      <td colspan="6" class="pb-3 pr-4">
+                        <div class="rounded border border-amber-200 bg-white/50 p-2 dark:border-amber-800 dark:bg-dark-900/30">
+                          <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                            {{ t('admin.usage.sharedIPUsers.groupUsers') }}
+                          </div>
+                          <div v-if="formatSharedIPGroupUsersHint(group)" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
+                            {{ formatSharedIPGroupUsersHint(group) }}
+                          </div>
+                          <div class="grid gap-1">
+                            <div class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-200">
+                              <div>{{ t('admin.usage.sharedIPUsers.user') }}</div>
+                              <div>{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</div>
+                              <div>{{ t('admin.usage.sharedIPUsers.lastUsed') }}</div>
+                              <div>{{ t('usage.tokens') }}</div>
+                              <div>{{ t('usage.cost') }}</div>
+                            </div>
+                            <div
+                              v-for="user in group.users || []"
+                              :key="`${group.ip_address}-${user.user_id}`"
+                              class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 rounded px-2 py-1.5 text-xs text-amber-950 odd:bg-amber-100/50 dark:text-amber-50 dark:odd:bg-amber-900/20"
+                            >
+                              <div class="min-w-0">
+                                <button
+                                  type="button"
+                                  class="truncate font-medium text-primary-700 underline decoration-dashed underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                                  @click="handleUserClick(user.user_id)"
+                                >
+                                  {{ user.email || `#${user.user_id}` }}
+                                </button>
+                                <span v-if="user.deleted" class="ml-1 rounded bg-rose-100 px-1 py-px text-[10px] font-medium text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-500/30">
+                                  {{ t('admin.usage.userDeletedBadge') }}
+                                </span>
+                                <span class="ml-1 text-amber-700/70 dark:text-amber-100/70">#{{ user.user_id }}</span>
+                              </div>
+                              <div>{{ user.record_count }}</div>
+                              <div>{{ user.last_used_at ? formatDateTime(user.last_used_at) : '-' }}</div>
+                              <div>{{ user.total_tokens.toLocaleString() }}</div>
+                              <div>${{ user.actual_cost.toFixed(6) }}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
             <div v-else class="text-xs text-amber-700 dark:text-amber-200">
-              {{ t('admin.usage.sharedIPUsers.noMatchedUsers') }}
+              {{ t('admin.usage.sharedIPUsers.noMatchedIPGroups') }}
             </div>
           </div>
         </div>
@@ -252,7 +292,7 @@ import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, SharedIPUsersSummary, SharedIPUserSummaryItem } from '@/api/admin/usage'
+import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, SharedIPUsersSummary, SharedIPGroupSummaryItem } from '@/api/admin/usage'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -264,6 +304,7 @@ const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = 
 const sharedIPUsersEnabled = ref(false)
 const sharedIPUsersSummary = ref<SharedIPUsersSummary | null>(null)
 const sharedIPRecordsExpanded = ref(false)
+const expandedSharedIPGroups = ref<Set<string>>(new Set())
 const trendData = ref<TrendDataPoint[]>([]); const requestedModelStats = ref<ModelStat[]>([]); const upstreamModelStats = ref<ModelStat[]>([]); const mappingModelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const modelStatsLoading = ref(false); const granularity = ref<'day' | 'hour'>('hour')
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
 const modelDistributionSource = ref<ModelDistributionSource>('requested')
@@ -303,23 +344,42 @@ const breakdownFilters = computed(() => {
 const modelNameOptions = computed(() =>
   Array.from(new Set(requestedModelStats.value.map((m) => m.model).filter(Boolean))).sort()
 )
-const sharedIPUserRows = computed(() => sharedIPUsersSummary.value?.users || [])
+const sharedIPGroupRows = computed(() => sharedIPUsersSummary.value?.ip_groups || [])
 const sharedIPUsersTruncatedHint = computed(() => {
   const summary = sharedIPUsersSummary.value
-  if (!summary?.users_truncated) return ''
-  return t('admin.usage.sharedIPUsers.usersTruncated', {
-    shown: summary.users?.length ?? 0,
-    total: summary.user_count,
-    hidden: summary.hidden_user_count,
-    limit: summary.users_limit
+  if (!summary?.ip_groups_truncated) return ''
+  return t('admin.usage.sharedIPUsers.ipGroupsTruncated', {
+    shown: summary.ip_groups?.length ?? 0,
+    total: summary.ip_count,
+    hidden: summary.hidden_ip_group_count,
+    limit: summary.ip_groups_limit
   })
 })
 
-const formatSharedIPAddresses = (user: SharedIPUserSummaryItem, truncate = true): string => {
-  const ips = user.ip_addresses || []
-  if (ips.length === 0) return '-'
-  if (!truncate || ips.length <= 3) return ips.join(', ')
-  return `${ips.slice(0, 3).join(', ')} ${t('admin.usage.sharedIPUsers.moreIPs', { count: ips.length - 3 })}`
+const isSharedIPGroupExpanded = (ipAddress: string): boolean => expandedSharedIPGroups.value.has(ipAddress)
+
+const toggleSharedIPGroup = (ipAddress: string) => {
+  const next = new Set(expandedSharedIPGroups.value)
+  if (next.has(ipAddress)) {
+    next.delete(ipAddress)
+  } else {
+    next.add(ipAddress)
+  }
+  expandedSharedIPGroups.value = next
+}
+
+const syncExpandedSharedIPGroups = (summary: SharedIPUsersSummary | null) => {
+  expandedSharedIPGroups.value = new Set((summary?.ip_groups || []).map((group) => group.ip_address))
+}
+
+const formatSharedIPGroupUsersHint = (group: SharedIPGroupSummaryItem): string => {
+  if (!group.users_truncated) return ''
+  return t('admin.usage.sharedIPUsers.groupUsersTruncated', {
+    shown: group.users?.length ?? 0,
+    total: group.user_count,
+    hidden: group.hidden_user_count,
+    limit: group.users_limit
+  })
 }
 
 const handleUserClick = async (userId: number) => {
@@ -422,6 +482,7 @@ const buildUsageListParams = (
     ...filters.value,
     stream: legacyStream === null ? undefined : legacyStream,
     shared_ip_users: sharedIPUsersEnabled.value || undefined,
+    shared_ip_summary_only: sharedIPUsersEnabled.value && !sharedIPRecordsExpanded.value ? true : undefined,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -438,6 +499,7 @@ const loadLogs = async () => {
       usageLogs.value = res.items
       pagination.total = res.total
       sharedIPUsersSummary.value = sharedIPUsersEnabled.value ? (res.shared_ip_users_summary || null) : null
+      syncExpandedSharedIPGroups(sharedIPUsersSummary.value)
     }
   } catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) } finally { if(abortController === c) loading.value = false }
 }
@@ -586,6 +648,7 @@ const resetFilters = () => {
   sharedIPUsersEnabled.value = false
   sharedIPUsersSummary.value = null
   sharedIPRecordsExpanded.value = false
+  expandedSharedIPGroups.value = new Set()
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 }
@@ -594,12 +657,15 @@ const toggleSharedIPUsers = () => {
   sharedIPRecordsExpanded.value = false
   if (!sharedIPUsersEnabled.value) {
     sharedIPUsersSummary.value = null
+    expandedSharedIPGroups.value = new Set()
   }
   pagination.page = 1
   loadLogs()
 }
 const toggleSharedIPRecords = () => {
   sharedIPRecordsExpanded.value = !sharedIPRecordsExpanded.value
+  pagination.page = 1
+  loadLogs()
 }
 const handlePageChange = (p: number) => { pagination.page = p; loadLogs() }
 const handlePageSizeChange = (s: number) => { pagination.page_size = s; pagination.page = 1; loadLogs() }

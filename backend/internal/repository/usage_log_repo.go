@@ -3606,22 +3606,23 @@ func (r *usageLogRepository) GetSharedIPUsersSummary(ctx context.Context, filter
 	if err := scanSingleRow(ctx, r.sql, query, args, &summary.IPCount, &summary.UserCount, &summary.RecordCount); err != nil {
 		return nil, err
 	}
-	users, truncated, err := r.listSharedIPUserSummaryItems(ctx, whereClause, args)
+	ipGroups, ipGroupsTruncated, err := r.listSharedIPGroupSummaryItems(ctx, whereClause, args)
 	if err != nil {
 		return nil, err
 	}
-	summary.Users = users
-	summary.UsersLimit = sharedIPUserSummaryLimit
-	summary.UsersTruncated = truncated || summary.UserCount > int64(len(users))
-	if summary.UserCount > int64(len(users)) {
-		summary.HiddenUserCount = summary.UserCount - int64(len(users))
+	summary.IPGroups = ipGroups
+	summary.IPGroupsLimit = sharedIPGroupSummaryLimit
+	summary.IPGroupsTruncated = ipGroupsTruncated || summary.IPCount > int64(len(ipGroups))
+	if summary.IPCount > int64(len(ipGroups)) {
+		summary.HiddenIPGroupCount = summary.IPCount - int64(len(ipGroups))
 	}
 	return summary, nil
 }
 
-const sharedIPUserSummaryLimit = 50
+const sharedIPGroupSummaryLimit = 50
+const sharedIPGroupUserSummaryLimit = 20
 
-func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, whereClause string, args []any) ([]usagestats.SharedIPUserSummaryItem, bool, error) {
+func (r *usageLogRepository) listSharedIPGroupSummaryItems(ctx context.Context, whereClause string, args []any) ([]usagestats.SharedIPGroupSummaryItem, bool, error) {
 	query := fmt.Sprintf(`
 		WITH matched_logs AS (
 			SELECT
@@ -3635,22 +3636,53 @@ func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, w
 				actual_cost
 			FROM usage_logs
 			`+whereClause+`
+		),
+		ip_summary AS (
+			SELECT
+				ip_address,
+				COUNT(DISTINCT user_id) AS user_count,
+				COUNT(*) AS record_count,
+				MAX(created_at) AS last_used_at,
+				COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS total_tokens,
+				COALESCE(SUM(actual_cost), 0) AS actual_cost
+			FROM matched_logs
+			GROUP BY ip_address
+			ORDER BY record_count DESC, user_count DESC, last_used_at DESC, ip_address ASC
+			LIMIT %d
+		),
+		user_summary AS (
+			SELECT
+				ml.ip_address,
+				ml.user_id,
+				COALESCE(u.email, '') AS email,
+				u.deleted_at IS NOT NULL AS deleted,
+				COUNT(*) AS record_count,
+				MAX(ml.created_at) AS last_used_at,
+				COALESCE(SUM(ml.input_tokens + ml.output_tokens + ml.cache_creation_tokens + ml.cache_read_tokens), 0) AS total_tokens,
+				COALESCE(SUM(ml.actual_cost), 0) AS actual_cost,
+				ROW_NUMBER() OVER (PARTITION BY ml.ip_address ORDER BY COUNT(*) DESC, MAX(ml.created_at) DESC, ml.user_id ASC) AS user_rank
+			FROM matched_logs ml
+			JOIN ip_summary ips ON ips.ip_address = ml.ip_address
+			LEFT JOIN users u ON u.id = ml.user_id
+			GROUP BY ml.ip_address, ml.user_id, u.email, u.deleted_at
 		)
 		SELECT
-			ml.user_id,
-			COALESCE(u.email, '') AS email,
-			u.deleted_at IS NOT NULL AS deleted,
-			COUNT(DISTINCT ml.ip_address) AS ip_count,
-			COUNT(*) AS record_count,
-			MAX(ml.created_at) AS last_used_at,
-			COALESCE(array_agg(DISTINCT ml.ip_address ORDER BY ml.ip_address) FILTER (WHERE ml.ip_address IS NOT NULL AND ml.ip_address <> ''), '{}') AS ip_addresses,
-			COALESCE(SUM(ml.input_tokens + ml.output_tokens + ml.cache_creation_tokens + ml.cache_read_tokens), 0) AS total_tokens,
-			COALESCE(SUM(ml.actual_cost), 0) AS actual_cost
-		FROM matched_logs ml
-		LEFT JOIN users u ON u.id = ml.user_id
-		GROUP BY ml.user_id, u.email, u.deleted_at
-		ORDER BY record_count DESC, last_used_at DESC, ml.user_id ASC
-		LIMIT %d`, sharedIPUserSummaryLimit+1)
+			ips.ip_address,
+			ips.user_count,
+			ips.record_count,
+			ips.last_used_at,
+			ips.total_tokens,
+			ips.actual_cost,
+			us.user_id,
+			us.email,
+			us.deleted,
+			us.record_count,
+			us.last_used_at,
+			us.total_tokens,
+			us.actual_cost
+		FROM ip_summary ips
+		JOIN user_summary us ON us.ip_address = ips.ip_address AND us.user_rank <= %d
+		ORDER BY ips.record_count DESC, ips.user_count DESC, ips.last_used_at DESC, ips.ip_address ASC, us.user_rank ASC`, sharedIPGroupSummaryLimit+1, sharedIPGroupUserSummaryLimit)
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -3658,34 +3690,61 @@ func (r *usageLogRepository) listSharedIPUserSummaryItems(ctx context.Context, w
 	}
 	defer rows.Close()
 
-	items := make([]usagestats.SharedIPUserSummaryItem, 0)
+	groups := make([]usagestats.SharedIPGroupSummaryItem, 0)
+	groupIndexByIP := make(map[string]int)
 	for rows.Next() {
-		var item usagestats.SharedIPUserSummaryItem
-		var ips []string
+		var (
+			group usagestats.SharedIPGroupSummaryItem
+			user  usagestats.SharedIPGroupUserSummaryItem
+		)
 		if err := rows.Scan(
-			&item.UserID,
-			&item.Email,
-			&item.Deleted,
-			&item.IPCount,
-			&item.RecordCount,
-			&item.LastUsedAt,
-			pq.Array(&ips),
-			&item.TotalTokens,
-			&item.ActualCost,
+			&group.IPAddress,
+			&group.UserCount,
+			&group.RecordCount,
+			&group.LastUsedAt,
+			&group.TotalTokens,
+			&group.ActualCost,
+			&user.UserID,
+			&user.Email,
+			&user.Deleted,
+			&user.RecordCount,
+			&user.LastUsedAt,
+			&user.TotalTokens,
+			&user.ActualCost,
 		); err != nil {
 			return nil, false, err
 		}
-		item.IPAddresses = ips
-		items = append(items, item)
+
+		groupIndex, ok := groupIndexByIP[group.IPAddress]
+		if !ok {
+			group.Users = make([]usagestats.SharedIPGroupUserSummaryItem, 0, minSharedIPSummaryInt(group.UserCount, int64(sharedIPGroupUserSummaryLimit)))
+			group.UsersLimit = sharedIPGroupUserSummaryLimit
+			group.UsersTruncated = group.UserCount > int64(sharedIPGroupUserSummaryLimit)
+			if group.UsersTruncated {
+				group.HiddenUserCount = group.UserCount - int64(sharedIPGroupUserSummaryLimit)
+			}
+			groups = append(groups, group)
+			groupIndex = len(groups) - 1
+			groupIndexByIP[group.IPAddress] = groupIndex
+		}
+		groups[groupIndex].Users = append(groups[groupIndex].Users, user)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, err
 	}
-	truncated := len(items) > sharedIPUserSummaryLimit
+
+	truncated := len(groups) > sharedIPGroupSummaryLimit
 	if truncated {
-		items = items[:sharedIPUserSummaryLimit]
+		groups = groups[:sharedIPGroupSummaryLimit]
 	}
-	return items, truncated, nil
+	return groups, truncated, nil
+}
+
+func minSharedIPSummaryInt(a, b int64) int {
+	if a < b {
+		return int(a)
+	}
+	return int(b)
 }
 
 func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {

@@ -36,6 +36,7 @@ type upstreamRelayHandlerRepo struct {
 	usageHistoryFilters   service.UpstreamRelayUsageHistoryListFilters
 	usageHistoryParams    pagination.PaginationParams
 	usageHistoryRows      []service.UpstreamRelayGroupUsageHistory
+	usageHistorySummary   *service.UpstreamRelayUsageHistorySummary
 	recommendationFilters service.UpstreamRelayRecommendationRunListFilters
 	recommendationParams  pagination.PaginationParams
 	syncStatus            string
@@ -45,6 +46,9 @@ type upstreamRelayHandlerRepo struct {
 }
 
 func (r *upstreamRelayHandlerRepo) ListConnectors(context.Context, pagination.PaginationParams, service.UpstreamRelayConnectorListFilters) ([]service.UpstreamRelayConnector, *pagination.PaginationResult, error) {
+	if r.created != nil {
+		return []service.UpstreamRelayConnector{*r.created}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 20, Pages: 1}, nil
+	}
 	return nil, &pagination.PaginationResult{Total: 0, Page: 1, PageSize: 20, Pages: 1}, nil
 }
 
@@ -135,6 +139,21 @@ func (r *upstreamRelayHandlerRepo) ListUsageHistory(_ context.Context, params pa
 		}
 	}
 	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
+}
+
+func (r *upstreamRelayHandlerRepo) SummarizeUsageHistory(context.Context, service.UpstreamRelayUsageHistoryListFilters) (*service.UpstreamRelayUsageHistorySummary, error) {
+	if r.usageHistorySummary != nil {
+		return r.usageHistorySummary, nil
+	}
+	checkedAt := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+	return &service.UpstreamRelayUsageHistorySummary{
+		TotalCost:       1.25,
+		TotalTokens:     1200,
+		ConnectorCount:  1,
+		GroupCount:      1,
+		LatestCheckedAt: &checkedAt,
+		RowCount:        1,
+	}, nil
 }
 
 func (r *upstreamRelayHandlerRepo) MarkConnectorSync(_ context.Context, _ int64, status string, errMessage string) error {
@@ -462,6 +481,53 @@ func TestUpstreamRelayHandlerListSnapshotChangesReturnsPaginatedShape(t *testing
 	require.Equal(t, service.UpstreamRelaySnapshotChangeRateChanged, envelope.Data.Items[0].ChangeType)
 }
 
+func TestUpstreamRelayHandlerRefreshMonitoringDataReturnsAggregateResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer handler-token", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.5}]`))
+		case "/api/v1/groups/rates":
+			_, _ = w.Write([]byte(`{"g1":0.75}`))
+		case "/api/v1/user/profile":
+			_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	repo := &upstreamRelayHandlerRepo{
+		created: &service.UpstreamRelayConnector{
+			ID:                   42,
+			Name:                 "relay-a",
+			BaseURL:              upstream.URL,
+			BearerTokenEncrypted: "handler-token",
+			Status:               service.UpstreamRelayConnectorStatusActive,
+		},
+	}
+	svc := service.NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayHandlerEncryptor{})
+	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/upstream-relay-group-monitors/refresh", nil)
+
+	handler.RefreshMonitoringData(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var envelope struct {
+		Data service.UpstreamRelayMonitoringRefreshResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	require.Equal(t, 1, envelope.Data.Total)
+	require.Equal(t, 1, envelope.Data.Partial)
+	require.Len(t, envelope.Data.Items, 1)
+	require.Equal(t, "partial", envelope.Data.Items[0].Status)
+	require.Equal(t, "success", envelope.Data.Items[0].SnapshotStatus)
+	require.NotNil(t, envelope.Data.Items[0].Metrics)
+}
+
 func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &upstreamRelayHandlerRepo{}
@@ -483,9 +549,10 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Equal(t, "relay", repo.usageHistoryFilters.Search)
 	var envelope struct {
 		Data struct {
-			Items []service.UpstreamRelayGroupUsageHistory `json:"items"`
-			Total int64                                    `json:"total"`
-			Page  int                                      `json:"page"`
+			Items   []service.UpstreamRelayGroupUsageHistory `json:"items"`
+			Total   int64                                    `json:"total"`
+			Page    int                                      `json:"page"`
+			Summary service.UpstreamRelayUsageHistorySummary `json:"summary"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
@@ -494,6 +561,7 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, "gpt-pro", envelope.Data.Items[0].UpstreamGroupID)
 	require.Equal(t, 1.25, envelope.Data.Items[0].ActualCost)
+	require.Equal(t, 1.25, envelope.Data.Summary.TotalCost)
 }
 
 func TestUpstreamRelayHandlerListRecommendationRunsParsesSuggestionFilter(t *testing.T) {

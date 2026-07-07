@@ -16,6 +16,7 @@ vi.mock('@/api/client', () => ({
 
 import {
   closeRecommendationRun,
+  finalizeUsage,
   generateRecommendations,
   getMonitoringPolicy,
   getRecommendationPolicy,
@@ -25,6 +26,7 @@ import {
   probeAllCandidates,
   previewRecommendations,
   refreshConnectorMetrics,
+  refreshMonitoringData,
   restoreRecommendationRun,
   syncAllConnectors,
   updateMonitoringPolicy,
@@ -189,6 +191,22 @@ describe('admin upstream relay group monitors api', () => {
     expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/metrics/refresh')
   })
 
+  it('refreshes monitoring data through the aggregate endpoint', async () => {
+    const response = {
+      status: 'success',
+      total: 1,
+      success: 1,
+      partial: 0,
+      failed: 0,
+      items: [],
+      refreshed_at: '2026-06-28T12:00:00Z'
+    }
+    post.mockResolvedValue({ data: response })
+
+    await expect(refreshMonitoringData()).resolves.toEqual(response)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/refresh')
+  })
+
   it('loads connector-visible upstream api keys for candidate binding', async () => {
     const keys = [{ id: 855, name: 'cheap', masked_key: 'sk-***' }]
     get.mockResolvedValue({ data: keys })
@@ -198,12 +216,27 @@ describe('admin upstream relay group monitors api', () => {
   })
 
   it('loads persisted usage history with date and connector filters', async () => {
-    const response = { items: [], total: 0, page: 1, page_size: 50, pages: 1 }
+    const response = {
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+      pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 }
+    }
     const params = { page: 1, page_size: 50, start_date: '2026-06-28', end_date: '2026-06-29', connector_id: 7, upstream_group_id: 'g1', search: 'relay' }
     get.mockResolvedValue({ data: response })
 
     await expect(listUsageHistory(params)).resolves.toEqual(response)
     expect(get).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/usage-history', { params })
+  })
+
+  it('finalizes a connector usage date through the existing monitor prefix', async () => {
+    const response = { success: true }
+    post.mockResolvedValue({ data: response })
+
+    await expect(finalizeUsage(7, '2026-06-28')).resolves.toEqual(response)
+    expect(post).toHaveBeenCalledWith('/admin/upstream-relay-group-monitors/connectors/7/finalize-usage', undefined, { params: { date: '2026-06-28' } })
   })
 
   it('runs bulk manual sync and probe endpoints', async () => {

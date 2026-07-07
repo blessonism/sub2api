@@ -165,6 +165,8 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 	{
 		relay.GET("/connectors", h.Admin.UpstreamRelayMonitoring.ListConnectors)
 		relay.POST("/connectors", h.Admin.UpstreamRelayMonitoring.CreateConnector)
+		relay.GET("/runner-status", h.Admin.UpstreamRelayMonitoring.GetRunnerStatus)
+		relay.POST("/refresh", h.Admin.UpstreamRelayMonitoring.RefreshMonitoringData)
 		relay.POST("/connectors/sync-all", h.Admin.UpstreamRelayMonitoring.SyncAllConnectors)
 		relay.PUT("/connectors/:id", h.Admin.UpstreamRelayMonitoring.UpdateConnector)
 		relay.DELETE("/connectors/:id", h.Admin.UpstreamRelayMonitoring.DeleteConnector)
@@ -172,6 +174,7 @@ func registerUpstreamRelayGroupMonitoringRoutes(admin *gin.RouterGroup, h *handl
 		relay.POST("/connectors/:id/metrics/refresh", h.Admin.UpstreamRelayMonitoring.RefreshConnectorMetrics)
 		relay.GET("/connectors/:id/api-keys", h.Admin.UpstreamRelayMonitoring.ListConnectorAPIKeys)
 		relay.GET("/connectors/:id/snapshots", h.Admin.UpstreamRelayMonitoring.ListSnapshots)
+		relay.POST("/connectors/:id/finalize-usage", h.Admin.UpstreamRelayMonitoring.FinalizeUsage)
 		relay.GET("/snapshot-changes", h.Admin.UpstreamRelayMonitoring.ListSnapshotChanges)
 		relay.GET("/usage-history", h.Admin.UpstreamRelayMonitoring.ListUsageHistory)
 
@@ -778,13 +781,20 @@ func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		campaigns.GET("", h.Admin.Campaign.List)
 		campaigns.POST("", h.Admin.Campaign.Create)
 		campaigns.GET("/:id", h.Admin.Campaign.Get)
+		campaigns.PUT("/:id", h.Admin.Campaign.Update)
+		campaigns.DELETE("/:id", h.Admin.Campaign.Delete)
+		campaigns.POST("/:id/copy", h.Admin.Campaign.Copy)
 		campaigns.POST("/:id/publish", h.Admin.Campaign.Publish)
 		campaigns.POST("/:id/config-versions", h.Admin.Campaign.CreateConfigVersion)
 		campaigns.GET("/:id/pool", h.Admin.Campaign.Pool)
 		campaigns.POST("/:id/pool-adjustments", h.Admin.Campaign.AddPoolAdjustment)
 		campaigns.GET("/:id/leaderboard", h.Admin.Campaign.Leaderboard)
+		campaigns.POST("/:id/leaderboard-adjustments", h.Admin.Campaign.AddLeaderboardAdjustment)
+		campaigns.GET("/:id/inviters/:user_id/invites", h.Admin.Campaign.ListInviteRecords)
+		campaigns.PATCH("/:id/invite-records/:record_id", h.Admin.Campaign.AdjustInviteRecord)
 		campaigns.POST("/:id/freeze", h.Admin.Campaign.Freeze)
 		campaigns.POST("/:id/recalculate", h.Admin.Campaign.Recalculate)
+		campaigns.GET("/:id/reward-results/final", h.Admin.Campaign.FinalRewardResults)
 		campaigns.POST("/:id/payout", h.Admin.Campaign.Payout)
 	}
 }

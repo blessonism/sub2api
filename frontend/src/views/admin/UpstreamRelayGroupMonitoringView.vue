@@ -4,10 +4,24 @@
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ tM('title') }}</h1>
-          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-            <span>{{ tM('lastRefreshed') }}: {{ formatDate(lastLoadedAt) }}</span>
-            <span>{{ tM('lastSynced') }}: {{ overviewStats.latestSyncedAt }}</span>
-            <span>{{ tM('statsNote') }}</span>
+          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 dark:text-gray-400">
+            <span class="inline-flex items-center gap-1.5" :title="lastRefreshedFreshness.absolute">
+              <span class="text-gray-500 dark:text-gray-400">{{ tM('lastRefreshed') }}:</span>
+              <span class="font-medium text-gray-700 tabular-nums dark:text-gray-200">{{ lastRefreshedFreshness.relative }}</span>
+              <span
+                :class="['inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold', freshnessBadgeClass(lastRefreshedFreshness.tone)]"
+                data-testid="freshness-badge-refreshed"
+              >{{ lastRefreshedFreshness.label }}</span>
+            </span>
+            <span class="inline-flex items-center gap-1.5" :title="lastSyncedFreshness.absolute">
+              <span class="text-gray-500 dark:text-gray-400">{{ tM('lastSynced') }}:</span>
+              <span class="font-medium text-gray-700 tabular-nums dark:text-gray-200">{{ lastSyncedFreshness.relative }}</span>
+              <span
+                :class="['inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold', freshnessBadgeClass(lastSyncedFreshness.tone)]"
+                data-testid="freshness-badge-synced"
+              >{{ lastSyncedFreshness.label }}</span>
+            </span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">{{ tM('statsNote') }}</span>
           </div>
         </div>
         <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end lg:justify-end">
@@ -23,13 +37,15 @@
                 @update:enabled="autoRefreshEnabled = $event"
                 @update:interval="autoRefreshInterval = $event"
               />
-              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="loading" @click="loadAll">
+              <button
+                class="btn btn-secondary inline-flex items-center gap-2"
+                type="button"
+                :disabled="loading || refreshingMetrics || connectors.length === 0"
+                :title="tM('manualRefreshHint')"
+                @click="() => refreshMonitoringData()"
+              >
                 <Icon name="refresh" size="sm" />
-                {{ tM('refresh') }}
-              </button>
-              <button class="btn btn-secondary inline-flex items-center gap-2" type="button" :disabled="refreshingMetrics || activeConnectors.length === 0" @click="() => refreshMetricsForAllConnectors()">
-                <Icon name="refresh" size="sm" />
-                {{ refreshingMetrics ? tM('refreshingMetrics') : tM('refreshMetrics') }}
+                {{ refreshingMetrics ? tM('refreshingMonitoring') : tM('refreshMonitoring') }}
               </button>
             </div>
           </div>
@@ -48,6 +64,68 @@
       </div>
       <div v-if="successMessage" data-testid="page-success" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
         {{ successMessage }}
+      </div>
+
+      <div
+        data-testid="runner-status-bar"
+        class="rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+      >
+        <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ tM('runnerStatus.title') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ tM('runnerStatus.subtitle') }}</div>
+          </div>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[640px]">
+            <div
+              v-for="card in runnerStatusCards"
+              :key="card.key"
+              :data-testid="`runner-status-card-${card.key}`"
+              class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/40"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ card.label }}</span>
+                <span
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  :class="{
+                    'bg-gray-200 text-gray-600 dark:bg-dark-700 dark:text-gray-300': card.stateTone === 'disabled',
+                    'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200': card.stateTone === 'running',
+                    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200': card.stateTone === 'success',
+                    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200': card.stateTone === 'failed',
+                    'bg-gray-100 text-gray-600 dark:bg-dark-700/60 dark:text-gray-300': card.stateTone === 'idle'
+                  }"
+                >
+                  {{ card.stateLabel }}
+                </span>
+              </div>
+              <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{{ card.hintText }}</div>
+              <div v-if="card.enabled" class="mt-0.5 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                {{ tM('runnerStatus.hints.lastFinished', { time: card.lastFinishedAt ? formatDate(card.lastFinishedAt) : '-' }) }}
+                <span v-if="card.intervalMinutes > 0"> · {{ tM('runnerStatus.hints.interval', { minutes: card.intervalMinutes }) }}</span>
+              </div>
+              <div class="mt-1.5 flex items-center justify-between border-t border-dashed border-gray-200 pt-1.5 dark:border-dark-700">
+                <span class="text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ tM('runnerStatus.toggle.label') }} · {{ card.autoEnabled ? tM('runnerStatus.toggle.enabled') : tM('runnerStatus.toggle.disabled') }}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="card.autoEnabled"
+                  :aria-label="card.autoEnabled ? tM('runnerStatus.toggle.disableAria', { job: card.label }) : tM('runnerStatus.toggle.enableAria', { job: card.label })"
+                  :disabled="card.toggleDisabled"
+                  :data-testid="`runner-toggle-${card.key}`"
+                  class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="card.autoEnabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+                  @click="toggleRunnerAutoJob(card.key)"
+                >
+                  <span
+                    class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition"
+                    :class="card.autoEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -299,28 +377,29 @@
           <div v-if="metricsRefreshResult.expanded" data-testid="metrics-refresh-details" class="mt-3 grid gap-2">
             <div
               v-for="item in metricsRefreshResult.items"
-              :key="item.connector.id"
+              :key="item.connector_id"
               class="rounded-md border border-gray-100 bg-white px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900"
             >
               <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div class="font-medium text-gray-900 dark:text-white">{{ item.connector.name || `Connector #${item.connector.id}` }}</div>
+                  <div class="font-medium text-gray-900 dark:text-white">{{ monitoringRefreshItemConnectorLabel(item) }}</div>
                   <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                    <span>{{ metricsBalanceDetailLabel(item) }}</span>
-                    <span>{{ metricsUsageDetailLabel(item) }}</span>
+                    <span>{{ monitoringSnapshotDetailLabel(item) }}</span>
+                    <span>{{ monitoringBalanceDetailLabel(item) }}</span>
+                    <span>{{ monitoringUsageDetailLabel(item) }}</span>
                   </div>
                 </div>
                 <span :class="metricsRefreshStatusClass(item.status)" class="inline-flex w-fit rounded-md px-2 py-1 text-xs font-medium">
                   {{ metricsRefreshStatusLabel(item.status) }}
                 </span>
               </div>
-              <div v-if="item.balance_detail.error || item.usage_detail.error" class="mt-2 text-xs text-red-600 dark:text-red-300">
-                {{ item.balance_detail.error || item.usage_detail.error }}
+              <div v-if="monitoringRefreshItemError(item)" class="mt-2 text-xs text-red-600 dark:text-red-300">
+                {{ monitoringRefreshItemError(item) }}
               </div>
-              <div v-if="metricsMissingGroups(item.usage_detail).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <div v-if="monitoringMissingGroups(item).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
                 <span
-                  v-for="group in metricsMissingGroups(item.usage_detail).slice(0, 6)"
-                  :key="`${item.connector.id}-${group.upstream_group_id}`"
+                  v-for="group in monitoringMissingGroups(item).slice(0, 6)"
+                  :key="`${item.connector_id}-${group.upstream_group_id}`"
                   class="inline-flex rounded bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
                 >
                   {{ group.name || group.upstream_group_id }} · {{ metricsMissingGroupReasonLabel(group.reason) }}
@@ -523,6 +602,9 @@
         <div v-if="usageHistoryDateRangeInvalid" class="border-b border-amber-100 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
           {{ tM('usageHistory.invalidDateRange') }}
         </div>
+        <div v-if="usageHistorySummary.pendingFinalize > 0" class="border-b border-sky-100 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-100">
+          {{ tM('usageHistory.pendingFinalizeHint', { n: usageHistorySummary.pendingFinalize }) }}
+        </div>
         <div class="flex flex-wrap gap-2 border-b border-gray-100 px-4 py-2 dark:border-dark-700">
           <button
             v-for="shortcut in usageHistoryDateShortcuts"
@@ -542,7 +624,7 @@
           <div class="px-4 pt-3 text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ tM('usageHistory.currentPageScopeHint', { shown: usageHistoryDisplayItems.length, loaded: usageHistory.length, total: usageHistoryTotal }) }}
           </div>
-          <div class="grid gap-3 px-4 py-3 md:grid-cols-2 xl:grid-cols-6">
+          <div class="grid gap-3 px-4 py-3 md:grid-cols-2 xl:grid-cols-7">
           <div>
             <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryCost') }}</div>
             <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(usageHistorySummary.cost) }}</div>
@@ -567,6 +649,10 @@
             <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryLatestCheckedAt') }}</div>
             <div class="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatDate(usageHistorySummary.latestCheckedAt) }}</div>
             <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ usageHistorySummary.dateRange }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.summaryPendingFinalize') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usageHistorySummary.pendingFinalize }}</div>
           </div>
           </div>
         </div>
@@ -623,7 +709,12 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                   <tr v-for="item in group.items" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70" :class="usageHistoryRowFlags(item).length > 0 ? 'bg-amber-50/40 dark:bg-amber-950/10' : ''">
-                    <td class="px-3 py-3 whitespace-nowrap tabular-nums">{{ item.usage_date }}</td>
+                    <td class="px-3 py-3 whitespace-nowrap tabular-nums">
+                      <div>{{ item.usage_date }}</div>
+                      <span :class="usageHistoryStatusBadgeClass(item)" class="mt-1 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium">
+                        {{ usageHistoryStatusLabel(item) }}
+                      </span>
+                    </td>
                     <td class="px-3 py-3">
                       <div class="font-medium text-gray-900 dark:text-white">{{ item.group_name || item.upstream_group_id }}</div>
                       <div class="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">{{ item.upstream_group_id }}</div>
@@ -641,7 +732,18 @@
                     <td class="px-3 py-3 text-right font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatUsageCost(item.actual_cost) }}</td>
                     <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillions(item.total_tokens) }}</td>
                     <td class="px-3 py-3 text-right tabular-nums">{{ formatUsageTokenMillionsPerQuota(item.actual_cost, item.total_tokens) }}</td>
-                    <td class="px-3 py-3 whitespace-nowrap">{{ formatDate(item.checked_at) }}</td>
+                    <td class="px-3 py-3 whitespace-nowrap">
+                      <div>{{ usageHistoryCheckedAtLabel(item) }}</div>
+                      <button
+                        v-if="usageHistoryRowStatus(item) === 'pending'"
+                        class="btn btn-secondary mt-2 px-2 py-1 text-xs"
+                        type="button"
+                        :disabled="finalizingUsageKey === usageHistoryFinalizeKey(item)"
+                        @click="finalizeUsageHistoryRow(item)"
+                      >
+                        {{ finalizingUsageKey === usageHistoryFinalizeKey(item) ? tM('usageHistory.manualFinalizeRunning') : tM('usageHistory.manualFinalizeButton') }}
+                      </button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -1349,6 +1451,7 @@
           <select v-model="candidateForm.probe_protocol" class="input w-full">
             <option value="chat_completions">chat_completions</option>
             <option value="responses">responses</option>
+            <option value="anthropic">anthropic</option>
           </select>
         </label>
       </div>
@@ -1541,6 +1644,7 @@ import RateSourceTag from '@/components/admin/upstreamRelay/RateSourceTag.vue'
 import CandidateHealthDialog from '@/components/admin/upstreamRelay/CandidateHealthDialog.vue'
 import accountsAPI from '@/api/admin/accounts'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
+import { formatRelativeTime } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
 import upstreamRelayAPI, {
   type UpstreamRelayCandidate,
@@ -1555,8 +1659,12 @@ import upstreamRelayAPI, {
   type UpstreamRelayMetricsMissingGroupDetail,
   type UpstreamRelayMetricsUsageDetail,
   type UpstreamRelayMetricsRefreshStatus,
+  type UpstreamRelayMonitoringRefreshItem,
+  type UpstreamRelayMonitoringRefreshResult,
+  type UpstreamRelayMonitoringJobStatus,
   type UpstreamRelayMonitoringPolicy,
   type UpstreamRelayMonitoringPolicyInput,
+  type UpstreamRelayMonitoringRunnerStatus,
   type UpstreamRelayProbeProtocol,
   type UpstreamRelayRecommendationActionType,
   type UpstreamRelayRecommendationPolicy,
@@ -1564,7 +1672,8 @@ import upstreamRelayAPI, {
   type UpstreamRelayRecommendationSuggestion,
   type UpstreamRelayRecommendationRun,
   type UpstreamRelayRecommendationSortField,
-  type UpstreamRelaySnapshotChangeType
+  type UpstreamRelaySnapshotChangeType,
+  type UpstreamRelayUsageHistorySummary
 } from '@/api/admin/upstreamRelayGroupMonitors'
 import type { Account, PaginatedResponse } from '@/types'
 
@@ -1578,6 +1687,7 @@ type UsageHistorySubtotal = {
   groups: number
   latestCheckedAt: string | null
 }
+type UsageHistoryStatus = 'live' | 'finalized' | 'pending'
 type ConnectorGroupRow =
   | { kind: 'candidate'; key: string; candidate: UpstreamRelayCandidate }
   | { kind: 'snapshot'; key: string; snapshot: UpstreamRelayGroupRateSnapshot }
@@ -1592,7 +1702,7 @@ type TodayUsageOverview = {
   records: number
 }
 type MetricsRefreshResultState = {
-  items: UpstreamRelayConnectorMetricsRefreshResult[]
+  items: UpstreamRelayMonitoringRefreshItem[]
   updatedAt: string
   expanded: boolean
 }
@@ -1622,6 +1732,7 @@ const USAGE_HISTORY_STALE_MS = 24 * 60 * 60 * 1000
 const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
 const MANUAL_CANDIDATE_GROUP_OPTION = '__manual__'
 const BULK_OPERATION_DETAIL_LIMIT = 5
+const UPSTREAM_RELAY_USAGE_TIME_ZONE = 'Asia/Shanghai'
 
 const loading = ref(false)
 const error = ref('')
@@ -1631,6 +1742,7 @@ const overviewSnapshots = ref<UpstreamRelayGroupRateSnapshot[]>([])
 const overviewTodayUsage = ref<TodayUsageOverview>({ loaded: false, cost: 0, tokens: 0, records: 0 })
 const snapshotChanges = ref<UpstreamRelayGroupRateSnapshotChange[]>([])
 const usageHistory = ref<UpstreamRelayGroupUsageHistory[]>([])
+const usageHistoryBackendSummary = ref<UpstreamRelayUsageHistorySummary | null>(null)
 const candidates = ref<UpstreamRelayCandidate[]>([])
 const recommendationRuns = ref<UpstreamRelayRecommendationRun[]>([])
 const accounts = ref<Account[]>([])
@@ -1666,6 +1778,10 @@ const policyPreview = ref<UpstreamRelayRecommendationPreview | null>(null)
 const policyPreviewLastUpdatedAt = ref<string | null>(null)
 const policyPreviewResultRef = ref<HTMLElement | null>(null)
 const monitoringPolicySavedAt = ref<string | null>(null)
+const runnerStatus = ref<UpstreamRelayMonitoringRunnerStatus | null>(null)
+const savingRunnerToggleKey = ref<RunnerJobKey | ''>('')
+const runnerToggleOverrides = ref<Partial<Record<RunnerJobKey, boolean>>>({})
+const freshnessClock = ref(Date.now())
 const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
 const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
 const candidateProbeFeedback = ref<CandidateProbeFeedback | null>(null)
@@ -1700,6 +1816,7 @@ const usageHistoryPageSize = 50
 const usageHistoryTotal = ref(0)
 const usageHistoryPages = ref(1)
 const usageHistoryFiltersDirty = ref(false)
+const finalizingUsageKey = ref('')
 const recommendationRunPage = ref(1)
 const recommendationRunPageSize = 20
 const recommendationRunTotal = ref(0)
@@ -1719,6 +1836,7 @@ const autoRefreshEnabled = ref(false)
 const autoRefreshInterval = ref(30)
 const autoRefreshCountdown = ref(30)
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
+let freshnessTimer: ReturnType<typeof setInterval> | null = null
 
 const { t } = useI18n()
 const tM = (k: string, params?: Record<string, unknown>) => t(`admin.upstreamRelayGroupMonitoring.${k}`, params ?? {})
@@ -1749,7 +1867,7 @@ const candidateForm = reactive({
   upstream_api_key_name: '',
   upstream_api_key_masked: '',
   probe_model: '',
-  probe_protocol: 'chat_completions' as 'chat_completions' | 'responses',
+  probe_protocol: 'chat_completions' as UpstreamRelayProbeProtocol,
   enabled: true,
   notes: ''
 })
@@ -2034,6 +2152,7 @@ const savedMonitoringRecommendationInterval = computed(() => positiveInteger(sav
 const monitoringSnapshotStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
 const monitoringUsageDeltaStaleAfterMinutes = computed(() => normalizedMonitoringSyncInterval.value * 3)
 const monitoringProbeStaleAfterMinutes = computed(() => normalizedMonitoringProbeInterval.value * 3)
+const savedMonitoringSnapshotStaleAfterMinutes = computed(() => savedMonitoringSyncInterval.value * 3)
 const autoMonitoringEnabled = computed(() => Boolean(savedMonitoringPolicy.value?.auto_sync_enabled || savedMonitoringPolicy.value?.auto_probe_enabled || savedMonitoringPolicy.value?.auto_recommendation_enabled))
 const autoMonitoringStatusTitleKey = computed(() => autoMonitoringEnabled.value ? 'monitoring.status.running' : 'monitoring.status.disabled')
 const autoMonitoringStatusDetailKey = computed(() => {
@@ -2075,9 +2194,9 @@ const bulkFailedHiddenCount = computed(() => Math.max(0, bulkFailedTotal.value -
 const bulkSuccessHiddenCount = computed(() => Math.max(0, bulkSuccessTotal.value - bulkSuccessItems.value.length))
 
 const metricsRefreshResultByConnectorId = computed(() => {
-  const out = new Map<number, UpstreamRelayConnectorMetricsRefreshResult>()
+  const out = new Map<number, UpstreamRelayMonitoringRefreshItem>()
   for (const item of metricsRefreshResult.value?.items || []) {
-    out.set(item.connector.id, item)
+    out.set(item.connector_id, item)
   }
   return out
 })
@@ -2090,9 +2209,9 @@ const metricsRefreshSummary = computed(() => {
       if (item.status === 'success') summary.success++
       else if (item.status === 'partial') summary.partial++
       else summary.failed++
-      if (item.balance_detail.status === 'success') summary.balance++
-      if (item.usage_detail.status === 'success' || item.usage_detail.status === 'partial') summary.usage++
-      summary.missingGroups += metricsMissingGroups(item.usage_detail).length
+      if (item.metrics?.balance_detail.status === 'success') summary.balance++
+      if (item.metrics?.usage_detail.status === 'success' || item.metrics?.usage_detail.status === 'partial') summary.usage++
+      summary.missingGroups += monitoringMissingGroups(item).length
       return summary
     },
     { total: 0, success: 0, partial: 0, failed: 0, balance: 0, usage: 0, missingGroups: 0 }
@@ -2179,12 +2298,19 @@ const usageHistoryGroups = computed(() => {
 })
 
 const usageHistorySummary = computed(() => {
-  const connectorIds = new Set<number>()
-  for (const item of usageHistory.value) connectorIds.add(item.connector_id)
-  const summary = summarizeUsageHistoryItems(usageHistory.value)
+  const backendSummary = usageHistoryBackendSummary.value
+  const summary = backendSummary
+    ? {
+        cost: Number(backendSummary.total_cost ?? 0),
+        tokens: Number(backendSummary.total_tokens ?? 0),
+        groups: Number(backendSummary.group_count ?? 0),
+        latestCheckedAt: backendSummary.latest_checked_at || null,
+        connectors: Number(backendSummary.connector_count ?? 0),
+        pendingFinalize: Number(backendSummary.pending_finalize ?? 0)
+      }
+    : { ...emptyUsageHistorySubtotal(), connectors: 0, pendingFinalize: 0 }
   return {
     ...summary,
-    connectors: connectorIds.size,
     dateRange: usageHistoryDateRangeLabel.value
   }
 })
@@ -2233,9 +2359,67 @@ const overviewStats = computed(() => {
     todayUsageTokens: overviewTodayUsage.value.loaded ? formatUsageTokenMillions(overviewTodayUsage.value.tokens) : '-',
     todayUsageCost: overviewTodayUsage.value.loaded ? formatUsageCost(overviewTodayUsage.value.cost) : '-',
     todayUsageRecords: overviewTodayUsage.value.records,
-    latestSyncedAt: formatDate(latestSyncedAt)
+    latestSyncedAt: formatDate(latestSyncedAt),
+    latestSyncedAtRaw: latestSyncedAt ?? null
   }
 })
+
+type FreshnessTone = 'fresh' | 'stale' | 'critical' | 'none'
+interface FreshnessBadge {
+  tone: FreshnessTone
+  label: string
+  relative: string
+  absolute: string
+}
+
+function computeFreshnessBadge(iso: string | null | undefined, staleAfterMinutes: number): FreshnessBadge {
+  if (!iso) {
+    return {
+      tone: 'none',
+      label: tM('freshness.never'),
+      relative: tM('freshness.never'),
+      absolute: '-'
+    }
+  }
+  const now = freshnessClock.value
+  const at = new Date(iso).getTime()
+  if (Number.isNaN(at)) {
+    return { tone: 'none', label: tM('freshness.never'), relative: '-', absolute: '-' }
+  }
+  const diffMinutes = Math.max(0, Math.floor((now - at) / 60000))
+  const stale = Math.max(1, staleAfterMinutes)
+  let tone: FreshnessTone = 'fresh'
+  if (diffMinutes >= stale * 2) tone = 'critical'
+  else if (diffMinutes >= stale) tone = 'stale'
+  const labelKey = tone === 'fresh' ? 'freshness.fresh' : tone === 'stale' ? 'freshness.stale' : 'freshness.critical'
+  return {
+    tone,
+    label: tM(labelKey),
+    relative: formatRelativeTime(iso),
+    absolute: formatDate(iso)
+  }
+}
+
+const lastRefreshedFreshness = computed<FreshnessBadge>(() =>
+  computeFreshnessBadge(lastLoadedAt.value, Math.max(2, Math.round(autoRefreshInterval.value / 60) * 3))
+)
+
+const lastSyncedFreshness = computed<FreshnessBadge>(() =>
+  computeFreshnessBadge(overviewStats.value.latestSyncedAtRaw, savedMonitoringSnapshotStaleAfterMinutes.value)
+)
+
+function freshnessBadgeClass(tone: FreshnessTone): string {
+  switch (tone) {
+    case 'fresh':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    case 'stale':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    case 'critical':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+  }
+}
 
 const overviewCards = computed(() => [
   {
@@ -2267,6 +2451,134 @@ const overviewCards = computed(() => [
     section: 'connectors' as SectionKey
   }
 ])
+
+type RunnerJobKey = 'sync' | 'probe' | 'recommendation'
+
+interface RunnerStatusCard {
+  key: RunnerJobKey
+  label: string
+  enabled: boolean
+  autoEnabled: boolean
+  inFlight: boolean
+  lastFinishedAt: string | null
+  lastSucceeded: boolean | null
+  nextRunAt: string | null
+  intervalMinutes: number
+  stateLabel: string
+  stateTone: 'idle' | 'running' | 'disabled' | 'success' | 'failed'
+  hintText: string
+  toggleDisabled: boolean
+}
+
+const RUNNER_JOB_TOGGLE_KEYS: Record<RunnerJobKey, 'auto_sync_enabled' | 'auto_probe_enabled' | 'auto_recommendation_enabled'> = {
+  sync: 'auto_sync_enabled',
+  probe: 'auto_probe_enabled',
+  recommendation: 'auto_recommendation_enabled'
+}
+type RunnerJobToggleField = (typeof RUNNER_JOB_TOGGLE_KEYS)[RunnerJobKey]
+
+const RUNNER_JOB_INTERVAL_KEYS: Record<RunnerJobKey, 'sync_interval_minutes' | 'probe_interval_minutes' | 'recommendation_interval_minutes'> = {
+  sync: 'sync_interval_minutes',
+  probe: 'probe_interval_minutes',
+  recommendation: 'recommendation_interval_minutes'
+}
+
+function savedRunnerAutoEnabled(key: RunnerJobKey, source?: UpstreamRelayMonitoringJobStatus): boolean {
+  const override = runnerToggleOverrides.value[key]
+  if (override !== undefined) return override
+  const policy = savedMonitoringPolicy.value
+  if (policy) return Boolean(policy[RUNNER_JOB_TOGGLE_KEYS[key]])
+  return Boolean(source?.enabled)
+}
+
+const runnerStatusCards = computed<RunnerStatusCard[]>(() => {
+  const status = runnerStatus.value
+  const jobs: { key: RunnerJobKey; source: UpstreamRelayMonitoringJobStatus | undefined }[] = [
+    { key: 'sync', source: status?.sync },
+    { key: 'probe', source: status?.probe },
+    { key: 'recommendation', source: status?.recommendation }
+  ]
+  return jobs.map(({ key, source }) => {
+    const autoEnabled = savedRunnerAutoEnabled(key, source)
+    const enabled = autoEnabled
+    const inFlight = !!source?.in_flight
+    const lastFinishedAt = source?.last_finished_at ?? null
+    const lastSucceeded = source?.last_succeeded ?? null
+    const lastError = source?.last_error || ''
+    const nextRunAt = source?.next_run_at ?? null
+    const intervalMinutes = source?.interval_minutes ?? positiveInteger(savedMonitoringPolicy.value?.[RUNNER_JOB_INTERVAL_KEYS[key]], 0)
+
+    let stateTone: RunnerStatusCard['stateTone'] = 'idle'
+    let stateLabel = tM('runnerStatus.states.idle')
+    if (inFlight) {
+      stateTone = 'running'
+      stateLabel = tM('runnerStatus.states.running')
+    } else if (!enabled) {
+      stateTone = 'disabled'
+      stateLabel = tM('runnerStatus.states.disabled')
+    } else if (lastSucceeded === false) {
+      stateTone = 'failed'
+      stateLabel = tM('runnerStatus.states.failed')
+    } else if (lastSucceeded === true) {
+      stateTone = 'success'
+      stateLabel = tM('runnerStatus.states.success')
+    }
+
+    let hintText = ''
+    if (inFlight) {
+      hintText = tM('runnerStatus.hints.running')
+    } else if (!enabled) {
+      hintText = tM('runnerStatus.hints.disabled')
+    } else if (lastSucceeded === false && lastError) {
+      hintText = tM('runnerStatus.hints.lastError', { error: lastError })
+    } else if (nextRunAt) {
+      hintText = tM('runnerStatus.hints.nextRun', { time: formatDate(nextRunAt) })
+    } else {
+      hintText = tM('runnerStatus.hints.waiting')
+    }
+
+    return {
+      key,
+      label: tM(`runnerStatus.jobs.${key}`),
+      enabled,
+      autoEnabled,
+      inFlight,
+      lastFinishedAt,
+      lastSucceeded,
+      nextRunAt,
+      intervalMinutes,
+      stateLabel,
+      stateTone,
+      hintText,
+      toggleDisabled: loading.value || savingMonitoringPolicy.value || !savedMonitoringPolicy.value || savingRunnerToggleKey.value !== ''
+    }
+  })
+})
+
+async function toggleRunnerAutoJob(key: RunnerJobKey) {
+  if (loading.value || savingRunnerToggleKey.value || !savedMonitoringPolicy.value) return
+  const field = RUNNER_JOB_TOGGLE_KEYS[key]
+  const previous = savedRunnerAutoEnabled(key)
+  const next = !previous
+  runnerToggleOverrides.value = { ...runnerToggleOverrides.value, [key]: next }
+  savingRunnerToggleKey.value = key
+  error.value = ''
+  try {
+    const saved = await persistMonitoringPolicyPayload({
+      ...normalizedMonitoringPolicyPayload(savedMonitoringPolicy.value),
+      [field]: next
+    })
+    applySavedMonitoringPolicy(saved, { preserveDraft: true, changedFields: [field] })
+    await refreshRunnerStatusSilent()
+  } catch (err) {
+    runnerToggleOverrides.value = { ...runnerToggleOverrides.value, [key]: previous }
+    error.value = err instanceof Error ? err.message : tM('errors.saveMonitoringPolicyFailed')
+  } finally {
+    const { [key]: _removed, ...rest } = runnerToggleOverrides.value
+    runnerToggleOverrides.value = rest
+    savingRunnerToggleKey.value = ''
+  }
+}
 
 const snapshotDialogTitle = computed(() =>
   snapshotConnector.value
@@ -2334,10 +2646,14 @@ const applyDialogNoticeClass = computed(() => {
 
 onMounted(() => {
   loadAll()
+  freshnessTimer = setInterval(() => {
+    freshnessClock.value = Date.now()
+  }, 60_000)
 })
 
 onBeforeUnmount(() => {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer)
+  if (freshnessTimer) clearInterval(freshnessTimer)
 })
 
 watch(autoRefreshEnabled, (val) => {
@@ -2389,7 +2705,7 @@ async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [connectorItems, candidateItems, runRes, accountRes, policy, monitoringPolicy, todayUsage] = await Promise.all([
+    const [connectorItems, candidateItems, runRes, accountRes, policy, monitoringPolicy, todayUsage, runnerStatusRes] = await Promise.all([
       loadAllPages<UpstreamRelayConnector>((params) => upstreamRelayAPI.listConnectors(params)),
       loadAllPages<UpstreamRelayCandidate>((params) => upstreamRelayAPI.listCandidates(params)),
       upstreamRelayAPI.listRecommendationRuns({
@@ -2400,7 +2716,8 @@ async function loadAll() {
       accountsAPI.list(1, 200, { status: 'active' }),
       upstreamRelayAPI.getRecommendationPolicy(),
       upstreamRelayAPI.getMonitoringPolicy(),
-      loadTodayUsageOverview()
+      loadTodayUsageOverview(),
+      upstreamRelayAPI.getRunnerStatus().catch(() => null)
     ])
     connectors.value = connectorItems
     candidates.value = candidateItems
@@ -2410,6 +2727,7 @@ async function loadAll() {
     recommendationRunPage.value = runRes.page || recommendationRunPage.value
     accounts.value = accountRes.items
     overviewTodayUsage.value = todayUsage
+    runnerStatus.value = runnerStatusRes
     assignPolicyForm(policy)
     assignMonitoringPolicyForm(monitoringPolicy)
     if (!selectedConnectorId.value && connectors.value.length > 0) {
@@ -2433,6 +2751,25 @@ async function refreshCandidatesSilent() {
   } catch { /* silent */ }
 }
 
+async function refreshRunnerStatusSilent() {
+  try {
+    runnerStatus.value = await upstreamRelayAPI.getRunnerStatus()
+  } catch { /* silent */ }
+}
+
+async function autoRefreshTick() {
+  if (connectors.value.length === 0) {
+    await Promise.all([refreshCandidatesSilent(), refreshRunnerStatusSilent()])
+    return
+  }
+  await Promise.all([
+    refreshMonitoringData({ silent: true }),
+    refreshCandidatesSilent(),
+    refreshTodayUsageOverviewSilent(),
+    refreshRunnerStatusSilent()
+  ])
+}
+
 function startAutoRefresh() {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer)
   autoRefreshCountdown.value = autoRefreshInterval.value
@@ -2440,11 +2777,7 @@ function startAutoRefresh() {
     autoRefreshCountdown.value--
     if (autoRefreshCountdown.value <= 0) {
       autoRefreshCountdown.value = autoRefreshInterval.value
-      if (activeConnectors.value.length > 0) {
-        refreshMetricsForAllConnectors({ silent: true })
-      } else {
-        refreshCandidatesSilent()
-      }
+      void autoRefreshTick()
     }
   }, 1000)
 }
@@ -2578,6 +2911,7 @@ async function loadUsageHistory() {
       search: appliedUsageHistoryFilters.search || undefined
     })
     usageHistory.value = res.items
+    usageHistoryBackendSummary.value = res.summary
     usageHistoryTotal.value = res.total
     usageHistoryPages.value = res.pages || 1
     usageHistoryPage.value = res.page || usageHistoryPage.value
@@ -2617,19 +2951,19 @@ function resetUsageHistoryFilters() {
 }
 
 function applyUsageHistoryDateShortcut(shortcut: UsageHistoryDateShortcutKey) {
-  const today = new Date()
+  const today = localUsageDate()
   let start = today
   let end = today
   if (shortcut === 'yesterday') {
-    start = addLocalDays(today, -1)
+    start = addUsageDateDays(today, -1)
     end = start
   } else if (shortcut === 'last7d') {
-    start = addLocalDays(today, -6)
+    start = addUsageDateDays(today, -6)
   } else if (shortcut === 'last30d') {
-    start = addLocalDays(today, -29)
+    start = addUsageDateDays(today, -29)
   }
-  usageHistoryStartDate.value = localUsageDate(start)
-  usageHistoryEndDate.value = localUsageDate(end)
+  usageHistoryStartDate.value = start
+  usageHistoryEndDate.value = end
   reloadUsageHistory()
 }
 
@@ -2828,63 +3162,96 @@ async function refreshMetricsForConnector(connector: UpstreamRelayConnector): Pr
   return result
 }
 
-function setMetricsRefreshResultItems(items: UpstreamRelayConnectorMetricsRefreshResult[], expanded?: boolean) {
+function setMonitoringRefreshResult(result: UpstreamRelayMonitoringRefreshResult, expanded?: boolean) {
   metricsRefreshResult.value = {
-    items,
-    updatedAt: new Date().toISOString(),
-    expanded: expanded ?? items.some((item) => item.status !== 'success')
+    items: result.items || [],
+    updatedAt: result.refreshed_at || new Date().toISOString(),
+    expanded: expanded ?? result.status !== 'success'
+  }
+}
+
+function monitoringRefreshItemFromMetrics(result: UpstreamRelayConnectorMetricsRefreshResult): UpstreamRelayMonitoringRefreshItem {
+  return {
+    connector_id: result.connector.id,
+    connector_name: result.connector.name,
+    connector: result.connector,
+    status: result.status,
+    snapshot_status: result.snapshots.length > 0 ? 'success' : 'skipped',
+    snapshot_count: result.snapshots.length,
+    snapshots: result.snapshots,
+    metrics: result,
+    error_reason: metricsRefreshWarning(result) || undefined
   }
 }
 
 function mergeMetricsRefreshResultItem(result: UpstreamRelayConnectorMetricsRefreshResult) {
   const currentItems = metricsRefreshResult.value?.items || []
-  const nextItems = currentItems.some((item) => item.connector.id === result.connector.id)
-    ? currentItems.map((item) => (item.connector.id === result.connector.id ? result : item))
-    : [result, ...currentItems]
-  setMetricsRefreshResultItems(nextItems, Boolean(metricsRefreshResult.value?.expanded) || result.status !== 'success')
+  const nextItem = monitoringRefreshItemFromMetrics(result)
+  const nextItems = currentItems.some((item) => item.connector_id === result.connector.id)
+    ? currentItems.map((item) => (item.connector_id === result.connector.id ? nextItem : item))
+    : [nextItem, ...currentItems]
+  metricsRefreshResult.value = {
+    items: nextItems,
+    updatedAt: new Date().toISOString(),
+    expanded: Boolean(metricsRefreshResult.value?.expanded) || result.status !== 'success'
+  }
 }
 
-async function refreshMetricsForAllConnectors(options: { silent?: boolean } = {}) {
+async function refreshMonitoringData(options: { silent?: boolean } = {}) {
   if (refreshingMetrics.value) return
-  const targets = activeConnectors.value.length > 0 ? activeConnectors.value : connectors.value
-  if (targets.length === 0) return
+  if (connectors.value.length === 0) return
   refreshingMetrics.value = true
   refreshingMetricsConnectorId.value = null
-  if (!options.silent) error.value = ''
-  const warnings: string[] = []
-  const results: UpstreamRelayConnectorMetricsRefreshResult[] = []
+  if (!options.silent) {
+    error.value = ''
+    successMessage.value = ''
+  }
   try {
-    for (const connector of targets) {
-      let result: UpstreamRelayConnectorMetricsRefreshResult
-      try {
-        result = await refreshMetricsForConnector(connector)
-      } catch (err) {
-        result = buildMetricsRefreshFailureResult(connector, err)
-      }
-      results.push(result)
-      const warning = metricsRefreshWarning(result)
-      if (warning) warnings.push(warning)
-    }
-    await refreshCandidatesSilent()
-    await refreshTodayUsageOverviewSilent()
-    if (activeSection.value === 'usageHistory') {
-      if (!usageHistoryFiltersDirty.value) {
-        await loadUsageHistory()
-      }
-    }
+    const result = await upstreamRelayAPI.refreshMonitoringData()
+    applyMonitoringRefreshResult(result, !options.silent)
+    await refreshPostMonitoringData()
     if (!options.silent) {
-      setMetricsRefreshResultItems(results)
-    }
-    if (warnings.length > 0 && !options.silent) {
-      error.value = warnings[0]
+      if (result.failed > 0 || result.partial > 0) {
+        const warning = monitoringRefreshResultWarning(result)
+        if (warning) error.value = warning
+      } else {
+        successMessage.value = tM('metricsRefresh.monitoringSuccess', { success: result.success, total: result.total })
+      }
     }
   } catch (err) {
     if (!options.silent) {
-      error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+      error.value = err instanceof Error ? err.message : tM('errors.refreshMonitoringFailed')
     }
   } finally {
     refreshingMetrics.value = false
     refreshingMetricsConnectorId.value = null
+  }
+}
+
+function applyMonitoringRefreshResult(result: UpstreamRelayMonitoringRefreshResult, showDetails: boolean) {
+  const nextConnectors = new Map(connectors.value.map((item) => [item.id, item]))
+  for (const item of result.items || []) {
+    if (item.connector) nextConnectors.set(item.connector.id, item.connector)
+    const itemSnapshots = Array.isArray(item.snapshots) ? item.snapshots : null
+    const shouldApplySnapshots = Boolean(itemSnapshots && (item.snapshot_status === 'success' || itemSnapshots.length > 0))
+    if (shouldApplySnapshots && itemSnapshots) replaceOverviewSnapshotsForConnector(item.connector_id, itemSnapshots)
+    if (selectedConnectorId.value === item.connector_id) {
+      if (shouldApplySnapshots && itemSnapshots) snapshots.value = itemSnapshots
+      snapshotConnector.value = item.connector || snapshotConnector.value
+    }
+  }
+  connectors.value = Array.from(nextConnectors.values())
+  setMonitoringRefreshResult(result, showDetails ? undefined : false)
+}
+
+async function refreshPostMonitoringData() {
+  await refreshCandidatesSilent()
+  await refreshTodayUsageOverviewSilent()
+  if (activeSection.value === 'snapshotChanges') {
+    await loadSnapshotChanges()
+  }
+  if (activeSection.value === 'usageHistory' && !usageHistoryFiltersDirty.value) {
+    await loadUsageHistory()
   }
 }
 
@@ -3268,12 +3635,29 @@ function assignPolicyForm(policy: UpstreamRelayRecommendationPolicy) {
 }
 
 function assignMonitoringPolicyForm(policy: UpstreamRelayMonitoringPolicy) {
-  const normalized = {
+  applySavedMonitoringPolicy(policy)
+}
+
+function normalizeMonitoringPolicy(policy: UpstreamRelayMonitoringPolicy): UpstreamRelayMonitoringPolicy {
+  return {
     ...policy,
     min_auto_apply_confidence: normalizeAutoApplyConfidence(policy.min_auto_apply_confidence)
   }
-  Object.assign(monitoringPolicyForm, normalized)
+}
+
+function applySavedMonitoringPolicy(
+  policy: UpstreamRelayMonitoringPolicy,
+  options: { preserveDraft?: boolean; changedFields?: RunnerJobToggleField[] } = {}
+) {
+  const normalized = normalizeMonitoringPolicy(policy)
   savedMonitoringPolicy.value = { ...normalized }
+  if (options.preserveDraft) {
+    for (const field of options.changedFields || []) {
+      monitoringPolicyForm[field] = Boolean(normalized[field])
+    }
+    return
+  }
+  Object.assign(monitoringPolicyForm, normalized)
 }
 
 function positiveInteger(value: unknown, fallback: number) {
@@ -3313,23 +3697,27 @@ function normalizedPolicyPayload(): UpstreamRelayRecommendationPolicy {
   }
 }
 
-function normalizedMonitoringPolicyPayload(): UpstreamRelayMonitoringPolicyInput {
+function normalizedMonitoringPolicyPayload(policy: UpstreamRelayMonitoringPolicy = monitoringPolicyForm): UpstreamRelayMonitoringPolicyInput {
   return {
-    auto_sync_enabled: Boolean(monitoringPolicyForm.auto_sync_enabled),
-    sync_interval_minutes: normalizedMonitoringSyncInterval.value,
-    auto_probe_enabled: Boolean(monitoringPolicyForm.auto_probe_enabled),
-    probe_interval_minutes: normalizedMonitoringProbeInterval.value,
-    auto_recommendation_enabled: Boolean(monitoringPolicyForm.auto_recommendation_enabled),
-    recommendation_interval_minutes: normalizedMonitoringRecommendationInterval.value,
-    auto_apply_recommendations_enabled: Boolean(monitoringPolicyForm.auto_apply_recommendations_enabled),
-    max_auto_apply_suggestions: positiveInteger(monitoringPolicyForm.max_auto_apply_suggestions, 1),
-    max_auto_apply_priority_delta: Math.max(0, Math.floor(Number(monitoringPolicyForm.max_auto_apply_priority_delta) || 0)),
-    min_auto_apply_confidence: normalizeAutoApplyConfidence(monitoringPolicyForm.min_auto_apply_confidence),
-    allow_auto_apply_degraded_health: Boolean(monitoringPolicyForm.allow_auto_apply_degraded_health),
-    failure_retry_interval_minutes: positiveInteger(monitoringPolicyForm.failure_retry_interval_minutes, 1),
-    sync_concurrency: positiveInteger(monitoringPolicyForm.sync_concurrency, 1),
-    probe_concurrency: positiveInteger(monitoringPolicyForm.probe_concurrency, 1)
+    auto_sync_enabled: Boolean(policy.auto_sync_enabled),
+    sync_interval_minutes: positiveInteger(policy.sync_interval_minutes, 1),
+    auto_probe_enabled: Boolean(policy.auto_probe_enabled),
+    probe_interval_minutes: positiveInteger(policy.probe_interval_minutes, 1),
+    auto_recommendation_enabled: Boolean(policy.auto_recommendation_enabled),
+    recommendation_interval_minutes: positiveInteger(policy.recommendation_interval_minutes, 1),
+    auto_apply_recommendations_enabled: Boolean(policy.auto_apply_recommendations_enabled),
+    max_auto_apply_suggestions: positiveInteger(policy.max_auto_apply_suggestions, 1),
+    max_auto_apply_priority_delta: Math.max(0, Math.floor(Number(policy.max_auto_apply_priority_delta) || 0)),
+    min_auto_apply_confidence: normalizeAutoApplyConfidence(policy.min_auto_apply_confidence),
+    allow_auto_apply_degraded_health: Boolean(policy.allow_auto_apply_degraded_health),
+    failure_retry_interval_minutes: positiveInteger(policy.failure_retry_interval_minutes, 1),
+    sync_concurrency: positiveInteger(policy.sync_concurrency, 1),
+    probe_concurrency: positiveInteger(policy.probe_concurrency, 1)
   }
+}
+
+async function persistMonitoringPolicyPayload(payload: UpstreamRelayMonitoringPolicyInput): Promise<UpstreamRelayMonitoringPolicy> {
+  return upstreamRelayAPI.updateMonitoringPolicy(payload)
 }
 
 function normalizeAutoApplyConfidence(value: unknown): UpstreamRelayMonitoringPolicy['min_auto_apply_confidence'] {
@@ -3341,7 +3729,7 @@ async function saveMonitoringPolicy() {
   savingMonitoringPolicy.value = true
   error.value = ''
   try {
-    const saved = await upstreamRelayAPI.updateMonitoringPolicy(normalizedMonitoringPolicyPayload())
+    const saved = await persistMonitoringPolicyPayload(normalizedMonitoringPolicyPayload())
     assignMonitoringPolicyForm(saved)
     monitoringPolicySavedAt.value = saved.updated_at || new Date().toISOString()
   } catch (err) {
@@ -3562,14 +3950,26 @@ function formatDate(value?: string | null) {
 }
 
 function localUsageDate(value: Date = new Date()) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: UPSTREAM_RELAY_USAGE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value)
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+  if (!year || !month || !day) {
+    return value.toISOString().slice(0, 10)
+  }
+  return `${year}-${month}-${day}`
 }
 
-function addLocalDays(value: Date, days: number) {
-  const next = new Date(value)
-  next.setDate(next.getDate() + days)
-  return next
+function addUsageDateDays(value: string, days: number) {
+  const [year, month, day] = value.split('-').map((part) => Number(part))
+  const next = new Date(Date.UTC(year, month - 1, day, 12))
+  next.setUTCDate(next.getUTCDate() + days)
+  return next.toISOString().slice(0, 10)
 }
 
 function isLaterDate(value?: string | null, compareTo?: string | null) {
@@ -3709,10 +4109,56 @@ function usageHistoryRowFlags(item: UpstreamRelayGroupUsageHistory) {
   if (cost > 0 && tokens <= 0) flags.push(tM('usageHistory.flagCostWithoutTokens'))
   if (tokens > 0 && cost <= 0) flags.push(tM('usageHistory.flagTokensWithoutCost'))
   const checkedAt = new Date(item.checked_at)
-  if (!Number.isNaN(checkedAt.getTime()) && Date.now() - checkedAt.getTime() > USAGE_HISTORY_STALE_MS) {
+  if (usageHistoryRowStatus(item) === 'live' && !Number.isNaN(checkedAt.getTime()) && Date.now() - checkedAt.getTime() > USAGE_HISTORY_STALE_MS) {
     flags.push(tM('usageHistory.flagStaleCheckedAt'))
   }
   return flags
+}
+
+function usageHistoryRowStatus(item: UpstreamRelayGroupUsageHistory): UsageHistoryStatus {
+  if (item.usage_date === localUsageDate()) return 'live'
+  return item.finalized_at ? 'finalized' : 'pending'
+}
+
+function usageHistoryStatusLabel(item: UpstreamRelayGroupUsageHistory) {
+  const status = usageHistoryRowStatus(item)
+  if (status === 'live') return tM('usageHistory.badgeLive')
+  if (status === 'finalized') return tM('usageHistory.badgeFinalized')
+  return tM('usageHistory.badgePendingFinalize')
+}
+
+function usageHistoryStatusBadgeClass(item: UpstreamRelayGroupUsageHistory) {
+  const status = usageHistoryRowStatus(item)
+  if (status === 'live') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-100'
+  if (status === 'finalized') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100'
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-100'
+}
+
+function usageHistoryCheckedAtLabel(item: UpstreamRelayGroupUsageHistory) {
+  const status = usageHistoryRowStatus(item)
+  if (status === 'live') return formatRelativeTime(item.checked_at)
+  if (status === 'finalized') return tM('usageHistory.finalizedAtLabel')
+  return formatDate(item.checked_at)
+}
+
+function usageHistoryFinalizeKey(item: UpstreamRelayGroupUsageHistory) {
+  return `${item.connector_id}:${item.usage_date}`
+}
+
+async function finalizeUsageHistoryRow(item: UpstreamRelayGroupUsageHistory) {
+  const key = usageHistoryFinalizeKey(item)
+  finalizingUsageKey.value = key
+  error.value = ''
+  try {
+    await upstreamRelayAPI.finalizeUsage(item.connector_id, item.usage_date)
+    await loadUsageHistory()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : tM('errors.finalizeUsageHistoryFailed')
+  } finally {
+    if (finalizingUsageKey.value === key) {
+      finalizingUsageKey.value = ''
+    }
+  }
 }
 
 function candidateTodayUsageCostLabel(candidate: UpstreamRelayCandidate) {
@@ -3808,6 +4254,19 @@ function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResul
   return null
 }
 
+function monitoringRefreshResultWarning(result: UpstreamRelayMonitoringRefreshResult) {
+  const warnings = (result.items || [])
+    .map((item) => {
+      if (item.snapshot_error) return item.snapshot_error
+      if (item.metrics) return metricsRefreshWarning(item.metrics)
+      return item.error_reason && item.error_reason !== METRICS_REFRESH_LOCAL_BINDING_ERROR ? item.error_reason : null
+    })
+    .filter((warning): warning is string => Boolean(warning))
+  if (warnings.length > 0) return warnings[0]
+  if (result.failed > 0) return tM('errors.refreshMonitoringPartialFailed', { failed: result.failed, partial: result.partial })
+  return ''
+}
+
 function metricsRefreshFailureReasons(result: Pick<UpstreamRelayConnectorMetricsRefreshResult, 'balance_error' | 'usage_error'>) {
   return [result.balance_error, result.usage_error].filter((reason): reason is string => Boolean(reason))
 }
@@ -3864,13 +4323,44 @@ function metricsUsageDetailLabel(result: UpstreamRelayConnectorMetricsRefreshRes
   return tM('metricsRefresh.usageFailed', { reason: detail.error || '-' })
 }
 
-function connectorMetricsRefreshInlineLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
-  if (result.usage_detail.status === 'success') return tM('metricsRefresh.inlineUsageOk')
-  const missingGroups = metricsMissingGroups(result.usage_detail)
+function monitoringRefreshItemConnectorLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  return item.connector?.name || item.connector_name || `#${item.connector_id}`
+}
+
+function monitoringSnapshotDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (item.snapshot_status === 'success') {
+    return tM('metricsRefresh.snapshotSuccess', { count: item.snapshot_count || item.snapshots.length })
+  }
+  if (item.snapshot_status === 'skipped') return tM('metricsRefresh.snapshotSkipped')
+  return tM('metricsRefresh.snapshotFailed', { reason: item.snapshot_error || '-' })
+}
+
+function monitoringBalanceDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return tM('metricsRefresh.balanceSkipped')
+  return metricsBalanceDetailLabel(item.metrics)
+}
+
+function monitoringUsageDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return tM('metricsRefresh.usageSkipped', { missing: monitoringMissingGroups(item).length })
+  return metricsUsageDetailLabel(item.metrics)
+}
+
+function monitoringRefreshItemError(item: UpstreamRelayMonitoringRefreshItem) {
+  return item.error_reason || item.snapshot_error || item.metrics?.usage_error || item.metrics?.balance_error || ''
+}
+
+function monitoringMissingGroups(item: UpstreamRelayMonitoringRefreshItem): UpstreamRelayMetricsMissingGroupDetail[] {
+  return item.metrics ? metricsMissingGroups(item.metrics.usage_detail) : []
+}
+
+function connectorMetricsRefreshInlineLabel(item: UpstreamRelayMonitoringRefreshItem) {
+  if (!item.metrics) return metricsRefreshStatusLabel(item.status)
+  if (item.metrics.usage_detail.status === 'success') return tM('metricsRefresh.inlineUsageOk')
+  const missingGroups = metricsMissingGroups(item.metrics.usage_detail)
   if (missingGroups.length > 0) {
     return tM('metricsRefresh.inlineUsagePartial', { missing: missingGroups.length })
   }
-  return metricsRefreshStatusLabel(result.usage_detail.status)
+  return metricsRefreshStatusLabel(item.metrics.usage_detail.status)
 }
 
 function candidateRateLabel(candidate: UpstreamRelayCandidate) {

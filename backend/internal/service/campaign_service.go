@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ const (
 	CampaignConfigScopePublishSnapshot      = "publish_snapshot"
 	CampaignConfigScopeThresholdAdjustment  = "threshold_adjustment"
 	CampaignConfigScopeInjectionRateAdjust  = "injection_rate_adjustment"
+	CampaignConfigScopePoolScopeAdjustment  = "pool_scope_adjustment"
+	CampaignPoolInjectionScopeInviteesOnly  = "invitees_only"
+	CampaignPoolInjectionScopeAllUsers      = "all_users"
 	CampaignInviteStatusRegistered          = "registered"
 	CampaignInviteStatusRechargeUnqualified = "recharge_unqualified"
 	CampaignInviteStatusPendingAudit        = "pending_audit"
@@ -50,6 +54,7 @@ var (
 	ErrCampaignDuplicateActive   = infraerrors.Conflict("CAMPAIGN_ACTIVE_EXISTS", "only one active campaign is allowed")
 	ErrCampaignNoFinalSettlement = infraerrors.BadRequest("CAMPAIGN_NO_FINAL_SETTLEMENT", "final settlement is required before payout")
 	ErrCampaignAlreadyPaid       = infraerrors.Conflict("CAMPAIGN_ALREADY_PAID", "campaign payout already completed")
+	ErrCampaignDeleteBlocked     = infraerrors.Conflict("CAMPAIGN_DELETE_BLOCKED", "campaign has settlement or payout data and cannot be deleted")
 )
 
 var defaultCampaignRankWeights = []int64{30, 20, 15, 10, 8, 6, 4, 3, 2, 2}
@@ -85,6 +90,7 @@ type CampaignConfigVersion struct {
 	RechargeThresholdCents   int64           `json:"recharge_threshold_cents"`
 	AllowAccumulatedRecharge bool            `json:"allow_accumulated_recharge"`
 	PoolInjectionRate        decimal.Decimal `json:"pool_injection_rate"`
+	PoolInjectionScope       string          `json:"pool_injection_scope"`
 	RankPoolRatio            decimal.Decimal `json:"rank_pool_ratio"`
 	ContributionPoolRatio    decimal.Decimal `json:"contribution_pool_ratio"`
 	RankRewardCount          int             `json:"rank_reward_count"`
@@ -140,6 +146,18 @@ type CampaignInviteRecord struct {
 	AuditNote                    string     `json:"audit_note"`
 }
 
+type CampaignManualLeaderboardAdjustment struct {
+	ID                       int64     `json:"id"`
+	CampaignID               int64     `json:"campaign_id"`
+	UserID                   int64     `json:"user_id"`
+	AdjustmentType           string    `json:"adjustment_type"`
+	ValidInviteDelta         int       `json:"valid_invite_delta"`
+	RechargeAmountDeltaCents int64     `json:"recharge_amount_delta_cents"`
+	Reason                   string    `json:"reason"`
+	OperatorID               *int64    `json:"operator_id,omitempty"`
+	CreatedAt                time.Time `json:"created_at"`
+}
+
 type CampaignPoolSummary struct {
 	CampaignID              int64 `json:"campaign_id"`
 	ConfirmedPoolCents      int64 `json:"confirmed_pool_cents"`
@@ -150,13 +168,39 @@ type CampaignPoolSummary struct {
 	FinalPoolCents          int64 `json:"final_pool_cents"`
 }
 
+type CampaignDeleteImpact struct {
+	Participants         int64 `json:"participants"`
+	InviteRecords        int64 `json:"invite_records"`
+	PoolEntries          int64 `json:"pool_entries"`
+	PoolAdjustments      int64 `json:"pool_adjustments"`
+	LeaderboardSnapshots int64 `json:"leaderboard_snapshots"`
+	RewardResults        int64 `json:"reward_results"`
+	PayoutBatches        int64 `json:"payout_batches"`
+	PayoutItems          int64 `json:"payout_items"`
+}
+
+func (i CampaignDeleteImpact) HasBusinessData() bool {
+	return i.Participants+i.InviteRecords+i.PoolEntries+i.PoolAdjustments+
+		i.LeaderboardSnapshots+i.RewardResults+i.PayoutBatches+i.PayoutItems > 0
+}
+
+type CampaignDeleteResult struct {
+	Action   string               `json:"action"`
+	Campaign *Campaign            `json:"campaign,omitempty"`
+	Impact   CampaignDeleteImpact `json:"impact"`
+}
+
 type CampaignLeaderboardRow struct {
 	Rank                       int       `json:"rank"`
 	UserID                     int64     `json:"user_id"`
 	MaskedEmail                string    `json:"masked_email,omitempty"`
 	Username                   string    `json:"username,omitempty"`
 	ValidInviteCount           int       `json:"valid_invite_count"`
+	PendingInviteCount         int       `json:"pending_invite_count"`
 	InviteeRechargeAmountCents int64     `json:"invitee_recharge_amount_cents"`
+	ManualValidInviteDelta     int       `json:"manual_valid_invite_delta"`
+	ManualRechargeAmountCents  int64     `json:"manual_recharge_amount_delta_cents"`
+	HasManualAdjustment        bool      `json:"has_manual_adjustment"`
 	ReachedCountAt             time.Time `json:"reached_count_at"`
 	JoinedAt                   time.Time `json:"joined_at"`
 	EstimatedRewardCents       int64     `json:"estimated_reward_cents"`
@@ -231,6 +275,7 @@ type CampaignCreateInput struct {
 	RechargeThresholdCents   int64
 	AllowAccumulatedRecharge bool
 	PoolInjectionRate        decimal.Decimal
+	PoolInjectionScope       string
 	RankPoolRatio            decimal.Decimal
 	ContributionPoolRatio    decimal.Decimal
 	RankRewardCount          int
@@ -260,6 +305,7 @@ type CampaignConfigVersionInput struct {
 	EffectiveAt              time.Time
 	RechargeThresholdCents   *int64
 	PoolInjectionRate        *decimal.Decimal
+	PoolInjectionScope       *string
 	AllowAccumulatedRecharge *bool
 	ChangeReason             string
 	OperatorID               *int64
@@ -270,6 +316,22 @@ type CampaignPoolAdjustmentInput struct {
 	AmountCents    int64
 	Reason         string
 	OperatorID     *int64
+}
+
+type CampaignInviteRecordAdjustmentInput struct {
+	RecordID                     int64
+	Status                       string
+	EffectiveRechargeAmountCents int64
+	Reason                       string
+	OperatorID                   *int64
+}
+
+type CampaignLeaderboardAdjustmentInput struct {
+	UserID                   int64
+	ValidInviteDelta         int
+	RechargeAmountDeltaCents int64
+	Reason                   string
+	OperatorID               *int64
 }
 
 type CampaignRegisterInviteInput struct {
@@ -345,16 +407,22 @@ type CampaignRepository interface {
 	ListCampaigns(ctx context.Context, page, pageSize int) ([]Campaign, int64, error)
 	GetActiveCampaign(ctx context.Context, now time.Time) (*Campaign, error)
 	CreateConfigVersion(ctx context.Context, campaignID int64, input CampaignConfigVersionInput, cfg CampaignConfigVersion) (*CampaignConfigVersion, error)
+	GetLatestConfigVersion(ctx context.Context, campaignID int64) (*CampaignConfigVersion, error)
 	GetLatestConfigVersionAt(ctx context.Context, campaignID int64, at time.Time) (*CampaignConfigVersion, error)
 	GetPublishedConfigVersion(ctx context.Context, campaignID int64) (*CampaignConfigVersion, error)
 	PublishCampaign(ctx context.Context, campaignID int64, operatorID *int64, now time.Time) (*Campaign, error)
 	UpdateCampaignStatus(ctx context.Context, campaignID int64, status string, operatorID *int64) (*Campaign, error)
 	HasActiveCampaign(ctx context.Context, excludeCampaignID int64) (bool, error)
+	GetCampaignDeleteImpact(ctx context.Context, campaignID int64) (*CampaignDeleteImpact, error)
+	DeleteCampaign(ctx context.Context, campaignID int64) error
 
 	GetInviterByAffiliateCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	RecordInviteRegistration(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, inviter *AffiliateSummary, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error)
 	RecordRecharge(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, input CampaignRechargeInput, poolAmountCents int64) (*CampaignInviteRecord, bool, error)
+	InsertPoolEntry(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion, invite *CampaignInviteRecord, input CampaignRechargeInput, poolAmountCents int64) (bool, error)
 	ListInviteRecords(ctx context.Context, campaignID, inviterUserID int64, page, pageSize int) ([]CampaignInviteRecord, int64, error)
+	AdjustInviteRecord(ctx context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error)
+	AddLeaderboardAdjustment(ctx context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error)
 	GetParticipantStats(ctx context.Context, campaignID, userID int64) (*CampaignParticipant, error)
 	ListLeaderboardRows(ctx context.Context, campaignID int64, limit int) ([]CampaignLeaderboardRow, error)
 	GetLeaderboardRowForUser(ctx context.Context, campaignID, userID int64) (*CampaignLeaderboardRow, error)
@@ -375,6 +443,10 @@ type CampaignRepository interface {
 	ListPayoutItems(ctx context.Context, batchID int64) ([]CampaignPayoutItem, error)
 	UpdatePayoutBatchSummary(ctx context.Context, batchID int64) (*CampaignPayoutBatch, error)
 	GetSuccessfulPayoutBatch(ctx context.Context, campaignID int64) (*CampaignPayoutBatch, error)
+}
+
+type campaignAffiliateProfileRepository interface {
+	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 }
 
 type CampaignBalanceGrantService interface {
@@ -419,7 +491,53 @@ func (s *CampaignService) CreateCampaign(ctx context.Context, input CampaignCrea
 	return campaign, version, nil
 }
 
+func (s *CampaignService) CopyCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*Campaign, *CampaignConfigVersion, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "campaign service unavailable")
+	}
+	if campaignID <= 0 {
+		return nil, nil, ErrCampaignNotFound
+	}
+	source, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg, err := s.repo.GetLatestConfigVersion(ctx, campaignID)
+	if err != nil {
+		return nil, nil, err
+	}
+	input := CampaignCreateInput{
+		Name:                     copiedCampaignName(source.Name),
+		Description:              source.Description,
+		CoverURL:                 source.CoverURL,
+		RulesText:                source.RulesText,
+		WarmupStartAt:            source.WarmupStartAt,
+		StartAt:                  source.StartAt,
+		EndAt:                    source.EndAt,
+		AuditStartAt:             source.AuditStartAt,
+		AuditEndAt:               source.AuditEndAt,
+		PublicityStartAt:         source.PublicityStartAt,
+		PublicityEndAt:           source.PublicityEndAt,
+		PayoutDueAt:              source.PayoutDueAt,
+		InitialBonusCents:        0,
+		RechargeThresholdCents:   cfg.RechargeThresholdCents,
+		AllowAccumulatedRecharge: cfg.AllowAccumulatedRecharge,
+		PoolInjectionRate:        cfg.PoolInjectionRate,
+		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope),
+		RankPoolRatio:            cfg.RankPoolRatio,
+		ContributionPoolRatio:    cfg.ContributionPoolRatio,
+		RankRewardCount:          cfg.RankRewardCount,
+		RankWeights:              append([]int64(nil), cfg.RankWeights...),
+		MinPayoutAmountCents:     cfg.MinPayoutAmountCents,
+		OperatorID:               operatorID,
+	}
+	return s.CreateCampaign(ctx, input)
+}
+
 func (s *CampaignService) UpdateCampaign(ctx context.Context, campaignID int64, input CampaignUpdateInput) (*Campaign, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "campaign service unavailable")
+	}
 	if campaignID <= 0 {
 		return nil, ErrCampaignNotFound
 	}
@@ -427,8 +545,16 @@ func (s *CampaignService) UpdateCampaign(ctx context.Context, campaignID int64, 
 	if err != nil {
 		return nil, err
 	}
-	if current.Status != CampaignStatusDraft && current.Status != CampaignStatusWarmup {
-		return nil, ErrCampaignImmutableRule
+	nextStart := current.StartAt
+	if input.StartAt != nil {
+		nextStart = *input.StartAt
+	}
+	nextEnd := current.EndAt
+	if input.EndAt != nil {
+		nextEnd = *input.EndAt
+	}
+	if err := validateCampaignTime(nextStart, nextEnd); err != nil {
+		return nil, err
 	}
 	return s.repo.UpdateCampaign(ctx, campaignID, input)
 }
@@ -448,6 +574,41 @@ func (s *CampaignService) GetCampaign(ctx context.Context, campaignID int64) (*C
 		return nil, ErrCampaignNotFound
 	}
 	return s.repo.GetCampaign(ctx, campaignID)
+}
+
+func (s *CampaignService) DeleteCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*CampaignDeleteResult, error) {
+	if campaignID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if campaign.Status == CampaignStatusPaid {
+		return nil, ErrCampaignDeleteBlocked
+	}
+	impact, err := s.repo.GetCampaignDeleteImpact(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if !impact.HasBusinessData() && (campaign.Status == CampaignStatusDraft || campaign.Status == CampaignStatusWarmup) {
+		if err := s.repo.DeleteCampaign(ctx, campaignID); err != nil {
+			return nil, err
+		}
+		return &CampaignDeleteResult{Action: "deleted", Impact: *impact}, nil
+	}
+	if campaign.Status == CampaignStatusCancelled || campaign.Status == CampaignStatusTerminated {
+		return &CampaignDeleteResult{Action: "archived", Campaign: campaign, Impact: *impact}, nil
+	}
+	nextStatus := CampaignStatusCancelled
+	if campaign.Status == CampaignStatusActive {
+		nextStatus = CampaignStatusTerminated
+	}
+	archived, err := s.repo.UpdateCampaignStatus(ctx, campaignID, nextStatus, operatorID)
+	if err != nil {
+		return nil, err
+	}
+	return &CampaignDeleteResult{Action: "archived", Campaign: archived, Impact: *impact}, nil
 }
 
 func (s *CampaignService) PublishCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*Campaign, error) {
@@ -479,7 +640,7 @@ func (s *CampaignService) CreateConfigVersion(ctx context.Context, campaignID in
 	if campaign.Status == CampaignStatusPaid || campaign.Status == CampaignStatusCancelled || campaign.Status == CampaignStatusTerminated {
 		return nil, ErrCampaignImmutableRule
 	}
-	if input.VersionScope != CampaignConfigScopeThresholdAdjustment && input.VersionScope != CampaignConfigScopeInjectionRateAdjust {
+	if input.VersionScope != CampaignConfigScopeThresholdAdjustment && input.VersionScope != CampaignConfigScopeInjectionRateAdjust && input.VersionScope != CampaignConfigScopePoolScopeAdjustment {
 		return nil, ErrCampaignImmutableRule
 	}
 	base, err := s.repo.GetLatestConfigVersionAt(ctx, campaignID, input.EffectiveAt)
@@ -497,6 +658,9 @@ func (s *CampaignService) CreateConfigVersion(ctx context.Context, campaignID in
 	if input.PoolInjectionRate != nil {
 		next.PoolInjectionRate = *input.PoolInjectionRate
 	}
+	if input.PoolInjectionScope != nil {
+		next.PoolInjectionScope = normalizedCampaignPoolInjectionScope(*input.PoolInjectionScope)
+	}
 	if input.AllowAccumulatedRecharge != nil {
 		next.AllowAccumulatedRecharge = *input.AllowAccumulatedRecharge
 	}
@@ -512,6 +676,9 @@ func (s *CampaignService) AddPoolAdjustment(ctx context.Context, campaignID int6
 	}
 	if input.AmountCents == 0 {
 		return ErrCampaignInvalidConfig
+	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return err
 	}
 	return s.repo.AddPoolAdjustment(ctx, campaignID, input)
 }
@@ -534,6 +701,59 @@ func (s *CampaignService) ListInviteRecords(ctx context.Context, campaignID, inv
 		pageSize = 20
 	}
 	return s.repo.ListInviteRecords(ctx, campaignID, inviterUserID, page, pageSize)
+}
+
+func (s *CampaignService) AdjustInviteRecord(ctx context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error) {
+	if campaignID <= 0 || input.RecordID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	if !isCampaignInviteAdjustableStatus(input.Status) || input.EffectiveRechargeAmountCents < 0 {
+		return nil, ErrCampaignInvalidConfig
+	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return nil, err
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	return s.repo.AdjustInviteRecord(ctx, campaignID, input)
+}
+
+func (s *CampaignService) AddLeaderboardAdjustment(ctx context.Context, campaignID int64, input CampaignLeaderboardAdjustmentInput) (*CampaignManualLeaderboardAdjustment, error) {
+	if campaignID <= 0 || input.UserID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	if input.ValidInviteDelta == 0 && input.RechargeAmountDeltaCents == 0 {
+		return nil, ErrCampaignInvalidConfig
+	}
+	if err := s.ensureCampaignAdjustable(ctx, campaignID); err != nil {
+		return nil, err
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	return s.repo.AddLeaderboardAdjustment(ctx, campaignID, input)
+}
+
+func (s *CampaignService) ensureCampaignAdjustable(ctx context.Context, campaignID int64) error {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return err
+	}
+	if campaign.Status == CampaignStatusPaid {
+		return ErrCampaignAlreadyPaid
+	}
+	if paid, err := s.repo.GetSuccessfulPayoutBatch(ctx, campaignID); err == nil && paid != nil {
+		return ErrCampaignAlreadyPaid
+	} else if err != nil && !errors.Is(err, ErrCampaignNotFound) {
+		return err
+	}
+	return nil
+}
+
+func isCampaignInviteAdjustableStatus(status string) bool {
+	switch status {
+	case CampaignInviteStatusRegistered, CampaignInviteStatusRechargeUnqualified, CampaignInviteStatusPendingAudit, CampaignInviteStatusEffective, CampaignInviteStatusInvalid, CampaignInviteStatusRiskReview:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *CampaignService) GetActiveHome(ctx context.Context) (*CampaignHome, error) {
@@ -604,12 +824,16 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 		result.EstimatedContributionRewardCents = participant.EstimatedContributionRewardCents
 		result.EstimatedTotalRewardCents = participant.EstimatedTotalRewardCents
 	}
+	if err := fillCampaignInviteIdentity(ctx, s.repo, &result); err != nil {
+		return nil, err
+	}
 	var previousCount int
 	for i, row := range rows {
 		if row.UserID == userID {
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
 			if i > 0 {
@@ -627,6 +851,7 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
 		}
@@ -655,6 +880,44 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 	}
 	result.InviteRecords = invites
 	return &result, nil
+}
+
+func fillCampaignInviteIdentity(ctx context.Context, repo CampaignRepository, result *CampaignMyData) error {
+	if result == nil {
+		return nil
+	}
+	code := strings.TrimSpace(result.InviteCode)
+	if code == "" {
+		profileRepo, ok := repo.(campaignAffiliateProfileRepository)
+		if !ok {
+			return nil
+		}
+		summary, err := profileRepo.EnsureUserAffiliate(ctx, result.UserID)
+		if err != nil {
+			if errors.Is(err, ErrAffiliateProfileNotFound) || errors.Is(err, ErrCampaignNotFound) {
+				return nil
+			}
+			return err
+		}
+		if summary != nil {
+			code = strings.TrimSpace(summary.AffCode)
+		}
+	}
+	if strings.TrimSpace(result.InviteCode) == "" {
+		result.InviteCode = code
+	}
+	if strings.TrimSpace(result.InviteLink) == "" && code != "" {
+		result.InviteLink = campaignInviteLink(code)
+	}
+	return nil
+}
+
+func campaignInviteLink(inviteCode string) string {
+	code := strings.TrimSpace(inviteCode)
+	if code == "" {
+		return ""
+	}
+	return "/register?aff=" + url.QueryEscape(code)
 }
 
 func (s *CampaignService) RegisterInvite(ctx context.Context, input CampaignRegisterInviteInput) (*CampaignInviteRecord, error) {
@@ -719,6 +982,13 @@ func (s *CampaignService) RecordRecharge(ctx context.Context, input CampaignRech
 	}
 	poolAmount := calculatePoolInjectionCents(input.RechargeAmountCents, cfg.PoolInjectionRate)
 	invite, _, err := s.repo.RecordRecharge(ctx, campaign, cfg, input, poolAmount)
+	if errors.Is(err, ErrCampaignNotFound) {
+		if normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope) != CampaignPoolInjectionScopeAllUsers {
+			return nil, nil
+		}
+		_, err = s.repo.InsertPoolEntry(ctx, campaign, cfg, nil, input, poolAmount)
+		return nil, err
+	}
 	return invite, err
 }
 
@@ -775,6 +1045,9 @@ func (s *CampaignService) RecalculateRewards(ctx context.Context, campaignID int
 	if err != nil {
 		return nil, err
 	}
+	if status == CampaignCalculationFinal && time.Now().Before(campaign.EndAt) {
+		return nil, ErrCampaignInvalidConfig
+	}
 	cfg, err := s.repo.GetPublishedConfigVersion(ctx, campaignID)
 	if err != nil {
 		if campaign.Status == CampaignStatusDraft {
@@ -812,6 +1085,31 @@ func (s *CampaignService) RecalculateRewards(ctx context.Context, campaignID int
 		_ = s.repo.SaveLeaderboardSnapshot(ctx, campaignID, "final", finalRows)
 	}
 	return summary, nil
+}
+
+func (s *CampaignService) GetFinalRewardResults(ctx context.Context, campaignID int64) (*CampaignCalculationSummary, error) {
+	if campaignID <= 0 {
+		return nil, ErrCampaignNotFound
+	}
+	pool, err := s.repo.GetPoolSummary(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := s.repo.GetPublishedConfigVersion(ctx, campaignID)
+	if err != nil {
+		cfg, err = s.repo.GetLatestConfigVersionAt(ctx, campaignID, time.Now())
+		if err != nil {
+			return nil, err
+		}
+	}
+	results, err := s.repo.ListRewardResults(ctx, campaignID, CampaignCalculationFinal)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, ErrCampaignNoFinalSettlement
+	}
+	return summarizeCampaignRewardResults(campaignID, cfg, pool.FinalPoolCents, CampaignCalculationFinal, results), nil
 }
 
 func (s *CampaignService) Payout(ctx context.Context, campaignID int64, operatorID *int64) (*CampaignPayoutBatch, error) {
@@ -896,6 +1194,7 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 		RechargeThresholdCents:   input.RechargeThresholdCents,
 		AllowAccumulatedRecharge: input.AllowAccumulatedRecharge,
 		PoolInjectionRate:        input.PoolInjectionRate,
+		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(input.PoolInjectionScope),
 		RankPoolRatio:            input.RankPoolRatio,
 		ContributionPoolRatio:    input.ContributionPoolRatio,
 		RankRewardCount:          input.RankRewardCount,
@@ -912,6 +1211,7 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 	if cfg.PoolInjectionRate.IsZero() {
 		cfg.PoolInjectionRate = decimal.NewFromFloat(0.10)
 	}
+	cfg.PoolInjectionScope = normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope)
 	if cfg.RankPoolRatio.IsZero() {
 		cfg.RankPoolRatio = decimal.NewFromFloat(0.80)
 	}
@@ -930,6 +1230,14 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 	return cfg, validateCampaignConfig(cfg)
 }
 
+func copiedCampaignName(name string) string {
+	base := strings.TrimSpace(name)
+	if base == "" {
+		base = "Campaign"
+	}
+	return base + " 副本"
+}
+
 func validateCampaignTime(startAt, endAt time.Time) error {
 	if startAt.IsZero() || endAt.IsZero() || !endAt.After(startAt) {
 		return ErrCampaignInvalidConfig
@@ -942,6 +1250,9 @@ func validateCampaignConfig(cfg CampaignConfigVersion) error {
 		return ErrCampaignInvalidConfig
 	}
 	if cfg.PoolInjectionRate.IsNegative() || cfg.RankPoolRatio.IsNegative() || cfg.ContributionPoolRatio.IsNegative() {
+		return ErrCampaignInvalidConfig
+	}
+	if !isCampaignPoolInjectionScope(cfg.PoolInjectionScope) {
 		return ErrCampaignInvalidConfig
 	}
 	if !cfg.RankPoolRatio.Add(cfg.ContributionPoolRatio).Equal(decimal.NewFromInt(1)) {
@@ -961,6 +1272,23 @@ func validateCampaignConfig(cfg CampaignConfigVersion) error {
 		return ErrCampaignInvalidConfig
 	}
 	return nil
+}
+
+func normalizedCampaignPoolInjectionScope(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return CampaignPoolInjectionScopeInviteesOnly
+	}
+	return scope
+}
+
+func isCampaignPoolInjectionScope(scope string) bool {
+	switch normalizedCampaignPoolInjectionScope(scope) {
+	case CampaignPoolInjectionScopeInviteesOnly, CampaignPoolInjectionScopeAllUsers:
+		return true
+	default:
+		return false
+	}
 }
 
 func calculatePoolInjectionCents(rechargeAmountCents int64, rate decimal.Decimal) int64 {
@@ -1052,6 +1380,35 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 		FinalPoolCents:        finalPoolCents,
 		RankPoolCents:         rankPool,
 		ContributionPoolCents: contributionPool,
+		Results:               results,
+	}
+	for _, result := range results {
+		summary.TotalGrossRewardCents += result.GrossRewardAmountCents
+		summary.TotalFinalPayoutCents += result.FinalPayoutAmountCents
+		summary.TotalWithheldCents += result.WithheldAmountCents
+		summary.TotalRoundingResidualCents += result.RoundingResidualCents
+	}
+	return summary
+}
+
+func summarizeCampaignRewardResults(campaignID int64, cfg *CampaignConfigVersion, finalPoolCents int64, status string, results []CampaignRewardResult) *CampaignCalculationSummary {
+	rankPoolCents := int64(0)
+	contributionPoolCents := int64(0)
+	if cfg != nil {
+		rankPoolCents = decimal.NewFromInt(finalPoolCents).Mul(cfg.RankPoolRatio).Floor().IntPart()
+		contributionPoolCents = decimal.NewFromInt(finalPoolCents).Mul(cfg.ContributionPoolRatio).Floor().IntPart()
+	}
+	batchNo := ""
+	if len(results) > 0 {
+		batchNo = results[0].CalculationBatchNo
+	}
+	summary := &CampaignCalculationSummary{
+		CampaignID:            campaignID,
+		CalculationStatus:     status,
+		CalculationBatchNo:    batchNo,
+		FinalPoolCents:        finalPoolCents,
+		RankPoolCents:         rankPoolCents,
+		ContributionPoolCents: contributionPoolCents,
 		Results:               results,
 	}
 	for _, result := range results {

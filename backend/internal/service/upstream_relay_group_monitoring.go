@@ -43,6 +43,8 @@ const (
 	UpstreamRelaySuggestionActionAccountPause   = "account_pause"
 	UpstreamRelaySuggestionActionAccountResume  = "account_resume"
 
+	UpstreamRelayProbeProtocolAnthropic = MonitorProviderAnthropic
+
 	upstreamRelayDefaultPriorityStart            = 10
 	upstreamRelayPriorityStep                    = 10
 	upstreamRelayDefaultSyncInterval             = 480
@@ -183,18 +185,19 @@ type UpstreamRelayGroupTodayUsage struct {
 }
 
 type UpstreamRelayGroupUsageHistory struct {
-	ID              int64     `json:"id"`
-	UsageDate       string    `json:"usage_date"`
-	ConnectorID     int64     `json:"connector_id"`
-	ConnectorName   string    `json:"connector_name,omitempty"`
-	UpstreamGroupID string    `json:"upstream_group_id"`
-	GroupName       string    `json:"group_name"`
-	Platform        string    `json:"platform"`
-	ActualCost      float64   `json:"actual_cost"`
-	TotalTokens     int64     `json:"total_tokens"`
-	CheckedAt       time.Time `json:"checked_at"`
-	CreatedAt       time.Time `json:"created_at,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	ID              int64      `json:"id"`
+	UsageDate       string     `json:"usage_date"`
+	ConnectorID     int64      `json:"connector_id"`
+	ConnectorName   string     `json:"connector_name,omitempty"`
+	UpstreamGroupID string     `json:"upstream_group_id"`
+	GroupName       string     `json:"group_name"`
+	Platform        string     `json:"platform"`
+	ActualCost      float64    `json:"actual_cost"`
+	TotalTokens     int64      `json:"total_tokens"`
+	CheckedAt       time.Time  `json:"checked_at"`
+	FinalizedAt     *time.Time `json:"finalized_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at,omitempty"`
+	UpdatedAt       time.Time  `json:"updated_at,omitempty"`
 }
 
 type UpstreamRelayGroupUsageHistoryUpsert struct {
@@ -206,6 +209,17 @@ type UpstreamRelayGroupUsageHistoryUpsert struct {
 	ActualCost      float64
 	TotalTokens     int64
 	CheckedAt       time.Time
+	Finalized       bool
+}
+
+type UpstreamRelayUsageHistorySummary struct {
+	TotalCost       float64    `json:"total_cost"`
+	TotalTokens     int64      `json:"total_tokens"`
+	ConnectorCount  int        `json:"connector_count"`
+	GroupCount      int        `json:"group_count"`
+	LatestCheckedAt *time.Time `json:"latest_checked_at,omitempty"`
+	PendingFinalize int        `json:"pending_finalize"`
+	RowCount        int64      `json:"-"`
 }
 
 type UpstreamRelayCandidateUsageBinding struct {
@@ -228,6 +242,29 @@ type UpstreamRelayConnectorMetricsRefreshResult struct {
 	UsageAvailable   bool                              `json:"usage_available"`
 	UsageError       string                            `json:"usage_error,omitempty"`
 	RefreshedAt      time.Time                         `json:"refreshed_at"`
+}
+
+type UpstreamRelayMonitoringRefreshResult struct {
+	Status      string                               `json:"status"`
+	Total       int                                  `json:"total"`
+	Success     int                                  `json:"success"`
+	Partial     int                                  `json:"partial"`
+	Failed      int                                  `json:"failed"`
+	Items       []UpstreamRelayMonitoringRefreshItem `json:"items"`
+	RefreshedAt time.Time                            `json:"refreshed_at"`
+}
+
+type UpstreamRelayMonitoringRefreshItem struct {
+	ConnectorID    int64                                       `json:"connector_id"`
+	ConnectorName  string                                      `json:"connector_name,omitempty"`
+	Connector      *UpstreamRelayConnector                     `json:"connector,omitempty"`
+	Status         string                                      `json:"status"`
+	SnapshotStatus string                                      `json:"snapshot_status"`
+	SnapshotCount  int                                         `json:"snapshot_count"`
+	SnapshotError  string                                      `json:"snapshot_error,omitempty"`
+	Snapshots      []UpstreamRelayGroupRateSnapshot            `json:"snapshots"`
+	Metrics        *UpstreamRelayConnectorMetricsRefreshResult `json:"metrics,omitempty"`
+	ErrorReason    string                                      `json:"error_reason,omitempty"`
 }
 
 type UpstreamRelayMetricsBalanceDetail struct {
@@ -560,6 +597,7 @@ type UpstreamRelayRepository interface {
 	UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error
 	UpsertUsageHistory(ctx context.Context, rows []UpstreamRelayGroupUsageHistoryUpsert) error
 	ListUsageHistory(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelayUsageHistoryListFilters) ([]UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error)
+	SummarizeUsageHistory(ctx context.Context, filters UpstreamRelayUsageHistoryListFilters) (*UpstreamRelayUsageHistorySummary, error)
 	ListCandidateUsageBindings(ctx context.Context, connectorID int64) ([]UpstreamRelayCandidateUsageBinding, error)
 
 	ListCandidates(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelayCandidateListFilters) ([]UpstreamRelayCandidate, *pagination.PaginationResult, error)
@@ -705,6 +743,7 @@ func (s *UpstreamRelayGroupMonitoringService) SyncConnector(ctx context.Context,
 	if err := s.persistKnownUsageHistory(ctx, id, snapshots); err != nil {
 		return nil, err
 	}
+	s.finalizePendingUsageForConnector(ctx, id)
 	if err := s.refreshConnectorAccountBalance(ctx, connector); err != nil {
 		return nil, err
 	}
@@ -787,6 +826,7 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 			return nil, err
 		}
 	}
+	s.finalizePendingUsageForConnector(ctx, connector.ID)
 
 	refreshedConnector, err := s.GetConnector(ctx, id)
 	if err != nil {
@@ -801,6 +841,88 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	result.UsageDetail = buildUpstreamRelayMetricsUsageDetail(bindings, bindingsErr, snapshots, usageCheckedAt, result.UsageAvailable, result.UsageError)
 	result.Status = buildUpstreamRelayMetricsRefreshStatus(result.BalanceDetail.Status, result.UsageDetail.Status)
 	return result, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) RefreshMonitoringData(ctx context.Context) (*UpstreamRelayMonitoringRefreshResult, error) {
+	policy, err := s.GetMonitoringPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	connectors, err := s.listAllConnectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := &UpstreamRelayMonitoringRefreshResult{
+		Total:       len(connectors),
+		Items:       make([]UpstreamRelayMonitoringRefreshItem, len(connectors)),
+		RefreshedAt: time.Now(),
+	}
+	limit := positiveOrDefault(policy.SyncConcurrency, upstreamRelayDefaultSyncLimit)
+	s.runLimited(len(connectors), limit, func(index int) {
+		result.Items[index] = s.refreshMonitoringConnector(ctx, connectors[index])
+	})
+	result.summarize()
+	return result, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) refreshMonitoringConnector(ctx context.Context, connector UpstreamRelayConnector) UpstreamRelayMonitoringRefreshItem {
+	item := UpstreamRelayMonitoringRefreshItem{
+		ConnectorID:    connector.ID,
+		ConnectorName:  connector.Name,
+		Connector:      &connector,
+		Status:         upstreamRelayMetricsRefreshStatusFailed,
+		SnapshotStatus: upstreamRelayMetricsRefreshStatusFailed,
+		Snapshots:      []UpstreamRelayGroupRateSnapshot{},
+	}
+
+	snapshots, syncErr := s.SyncConnector(ctx, connector.ID)
+	if syncErr != nil {
+		item.SnapshotError = sanitizeUpstreamRelayError(syncErr.Error())
+	} else {
+		item.SnapshotStatus = upstreamRelayMetricsRefreshStatusSuccess
+		item.SnapshotCount = len(snapshots)
+		item.Snapshots = snapshots
+	}
+
+	metrics, metricsErr := s.RefreshConnectorMetrics(ctx, connector.ID)
+	if metricsErr == nil {
+		item.Metrics = metrics
+		if metrics.Connector != nil {
+			item.Connector = metrics.Connector
+			item.ConnectorName = metrics.Connector.Name
+		}
+		if len(metrics.Snapshots) > 0 {
+			item.Snapshots = metrics.Snapshots
+		}
+	}
+
+	item.Status = buildUpstreamRelayMonitoringRefreshItemStatus(item.SnapshotStatus, item.Metrics)
+	item.ErrorReason = firstNonEmpty(item.SnapshotError, monitoringMetricsError(metricsErr, item.Metrics))
+	return item
+}
+
+func buildUpstreamRelayMonitoringRefreshItemStatus(snapshotStatus string, metrics *UpstreamRelayConnectorMetricsRefreshResult) string {
+	metricsStatus := upstreamRelayMetricsRefreshStatusFailed
+	if metrics != nil {
+		metricsStatus = metrics.Status
+	}
+	if snapshotStatus == upstreamRelayMetricsRefreshStatusSuccess && metricsStatus == upstreamRelayMetricsRefreshStatusSuccess {
+		return upstreamRelayMetricsRefreshStatusSuccess
+	}
+	if snapshotStatus == upstreamRelayMetricsRefreshStatusFailed && metricsStatus == upstreamRelayMetricsRefreshStatusFailed {
+		return upstreamRelayMetricsRefreshStatusFailed
+	}
+	return upstreamRelayMetricsRefreshStatusPartial
+}
+
+func monitoringMetricsError(err error, metrics *UpstreamRelayConnectorMetricsRefreshResult) string {
+	if err != nil {
+		return sanitizeUpstreamRelayError(err.Error())
+	}
+	if metrics == nil {
+		return ""
+	}
+	return firstNonEmpty(metrics.BalanceError, metrics.UsageError)
 }
 
 func buildUpstreamRelayMetricsBalanceDetail(available bool, value *float64, checkedAt *time.Time, errText string) UpstreamRelayMetricsBalanceDetail {
@@ -935,7 +1057,7 @@ func (s *UpstreamRelayGroupMonitoringService) ListSnapshotChanges(ctx context.Co
 	return s.repo.ListSnapshotChanges(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
 }
 
-func (s *UpstreamRelayGroupMonitoringService) ListUsageHistory(ctx context.Context, page, pageSize int, filters UpstreamRelayUsageHistoryListFilters) ([]UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error) {
+func (s *UpstreamRelayGroupMonitoringService) ListUsageHistory(ctx context.Context, page, pageSize int, filters UpstreamRelayUsageHistoryListFilters) ([]UpstreamRelayGroupUsageHistory, *UpstreamRelayUsageHistorySummary, *pagination.PaginationResult, error) {
 	if strings.TrimSpace(filters.EndDate) == "" {
 		filters.EndDate = upstreamRelayUsageDate(time.Now())
 	}
@@ -943,12 +1065,20 @@ func (s *UpstreamRelayGroupMonitoringService) ListUsageHistory(ctx context.Conte
 		filters.StartDate = filters.EndDate
 	}
 	if !isRelayUsageDate(filters.StartDate) || !isRelayUsageDate(filters.EndDate) {
-		return nil, nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_USAGE_DATE", "usage date must use YYYY-MM-DD")
+		return nil, nil, nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_USAGE_DATE", "usage date must use YYYY-MM-DD")
 	}
 	if filters.StartDate > filters.EndDate {
-		return nil, nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_USAGE_DATE_RANGE", "start_date must be before or equal to end_date")
+		return nil, nil, nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_USAGE_DATE_RANGE", "start_date must be before or equal to end_date")
 	}
-	return s.repo.ListUsageHistory(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	items, pageResult, err := s.repo.ListUsageHistory(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	summary, err := s.repo.SummarizeUsageHistory(ctx, filters)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return items, summary, pageResult, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ListCandidates(ctx context.Context, page, pageSize int, filters UpstreamRelayCandidateListFilters) ([]UpstreamRelayCandidate, *pagination.PaginationResult, error) {
@@ -1197,6 +1327,34 @@ func (r *UpstreamRelayBulkOperationResult) summarize() {
 			r.Failed++
 		}
 	}
+}
+
+func (r *UpstreamRelayMonitoringRefreshResult) summarize() {
+	if r == nil {
+		return
+	}
+	r.Success = 0
+	r.Partial = 0
+	r.Failed = 0
+	for _, item := range r.Items {
+		switch item.Status {
+		case upstreamRelayMetricsRefreshStatusSuccess:
+			r.Success++
+		case upstreamRelayMetricsRefreshStatusPartial, upstreamRelayMetricsRefreshStatusSkipped:
+			r.Partial++
+		default:
+			r.Failed++
+		}
+	}
+	if r.Total == 0 || (r.Success == r.Total && r.Partial == 0 && r.Failed == 0) {
+		r.Status = upstreamRelayMetricsRefreshStatusSuccess
+		return
+	}
+	if r.Failed == r.Total {
+		r.Status = upstreamRelayMetricsRefreshStatusFailed
+		return
+	}
+	r.Status = upstreamRelayMetricsRefreshStatusPartial
 }
 
 func positiveOrDefault(value int, fallback int) int {
@@ -1775,13 +1933,19 @@ func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistoryFromRefres
 }
 
 func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx context.Context, connector *UpstreamRelayConnector, now time.Time) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, error) {
+	return s.fetchUpstreamGroupUsageForDate(ctx, connector, upstreamRelayUsageDate(now))
+}
+
+func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx context.Context, connector *UpstreamRelayConnector, date string) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, error) {
 	if s == nil || s.repo == nil {
 		return nil, nil, fmt.Errorf("usage refresh requires repository")
 	}
 	if connector == nil {
 		return nil, nil, fmt.Errorf("connector not found")
 	}
-	today := upstreamRelayUsageDate(now)
+	if !isRelayUsageDate(date) {
+		return nil, nil, fmt.Errorf("usage date must use YYYY-MM-DD")
+	}
 	checkedAt := time.Now()
 	out := map[string]UpstreamRelayGroupTodayUsage{}
 	bindings, err := s.repo.ListCandidateUsageBindings(ctx, connector.ID)
@@ -1805,7 +1969,7 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx c
 			continue
 		}
 		seenKeys[dedupeKey] = struct{}{}
-		usage, err := s.fetchUpstreamAPIKeyUsageStats(ctx, connector, upstreamKeyID, today)
+		usage, err := s.fetchUpstreamAPIKeyUsageStats(ctx, connector, upstreamKeyID, date)
 		if err != nil {
 			return nil, nil, fmt.Errorf("fetch upstream api key %d usage stats: %w", upstreamKeyID, err)
 		}
@@ -1815,6 +1979,100 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx c
 		out[binding.UpstreamGroupID] = groupUsage
 	}
 	return out, &checkedAt, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) FinalizeUsageForConnectorDate(ctx context.Context, connectorID int64, date string) error {
+	targetEnd, err := upstreamRelayUsageDateEndOfDay(date)
+	if err != nil {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_USAGE_DATE", "usage date must use YYYY-MM-DD")
+	}
+	if date >= upstreamRelayUsageDate(time.Now()) {
+		return infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_FINALIZE_USAGE_DATE", "only historical usage dates can be finalized")
+	}
+	connector, err := s.repo.GetConnector(ctx, connectorID)
+	if err != nil {
+		return err
+	}
+	if err := s.decryptConnector(connector); err != nil {
+		_ = s.repo.MarkConnectorSync(ctx, connectorID, UpstreamRelayConnectorStatusNeedsReauth, err.Error())
+		return err
+	}
+	usageByGroup, _, err := s.fetchUpstreamGroupUsageForDate(ctx, connector, date)
+	if err != nil {
+		return err
+	}
+	snapshots, err := s.repo.ListSnapshots(ctx, connectorID)
+	if err != nil {
+		return err
+	}
+	rows := make([]UpstreamRelayGroupUsageHistoryUpsert, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		usage := usageByGroup[snapshot.UpstreamGroupID]
+		rows = append(rows, UpstreamRelayGroupUsageHistoryUpsert{
+			UsageDate:       date,
+			ConnectorID:     connectorID,
+			UpstreamGroupID: snapshot.UpstreamGroupID,
+			GroupName:       snapshot.Name,
+			Platform:        snapshot.Platform,
+			ActualCost:      usage.ActualCost,
+			TotalTokens:     usage.TotalTokens,
+			CheckedAt:       targetEnd,
+			Finalized:       true,
+		})
+	}
+	return s.repo.UpsertUsageHistory(ctx, rows)
+}
+
+func (s *UpstreamRelayGroupMonitoringService) FinalizeYesterdayUsage(ctx context.Context) (*UpstreamRelayBulkOperationResult, error) {
+	connectors, err := s.listAllConnectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	targetDate := upstreamRelayPreviousUsageDate(time.Now())
+	result := &UpstreamRelayBulkOperationResult{
+		Total: len(connectors),
+		Items: make([]UpstreamRelayBulkOperationItem, len(connectors)),
+	}
+	for i, connector := range connectors {
+		item := UpstreamRelayBulkOperationItem{
+			ID:            connector.ID,
+			ConnectorID:   connector.ID,
+			ConnectorName: connector.Name,
+		}
+		if err := s.FinalizeUsageForConnectorDate(ctx, connector.ID, targetDate); err != nil {
+			item.ErrorReason = sanitizeUpstreamRelayError(err.Error())
+			slog.Warn("upstream relay usage finalize failed", "connector_id", connector.ID, "date", targetDate, "error", err)
+		} else {
+			item.Success = true
+			item.Count = 1
+		}
+		result.Items[i] = item
+	}
+	result.summarize()
+	return result, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) finalizePendingUsageForConnector(ctx context.Context, connectorID int64) {
+	if s == nil || s.repo == nil || connectorID <= 0 {
+		return
+	}
+	for _, date := range upstreamRelayRecentHistoricalUsageDates(time.Now(), 7) {
+		summary, err := s.repo.SummarizeUsageHistory(ctx, UpstreamRelayUsageHistoryListFilters{
+			StartDate:   date,
+			EndDate:     date,
+			ConnectorID: connectorID,
+		})
+		if err != nil {
+			slog.Warn("upstream relay usage finalize status failed", "connector_id", connectorID, "date", date, "error", err)
+			continue
+		}
+		if summary != nil && summary.RowCount > 0 && summary.PendingFinalize == 0 {
+			continue
+		}
+		if err := s.FinalizeUsageForConnectorDate(ctx, connectorID, date); err != nil {
+			slog.Warn("upstream relay pending usage finalize failed", "connector_id", connectorID, "date", date, "error", err)
+		}
+	}
 }
 
 func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAPIKeyOptions(ctx context.Context, connector *UpstreamRelayConnector) ([]UpstreamRelayAPIKeyOption, error) {
@@ -1867,6 +2125,41 @@ func upstreamRelayUsageDate(t time.Time) string {
 		return t.Format("2006-01-02")
 	}
 	return t.In(loc).Format("2006-01-02")
+}
+
+func upstreamRelayUsageLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.Local
+	}
+	return loc
+}
+
+func upstreamRelayUsageDateEndOfDay(date string) (time.Time, error) {
+	loc := upstreamRelayUsageLocation()
+	parsed, err := time.ParseInLocation("2006-01-02", date, loc)
+	if err != nil || parsed.Format("2006-01-02") != date {
+		return time.Time{}, fmt.Errorf("invalid usage date")
+	}
+	return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 0, loc), nil
+}
+
+func upstreamRelayPreviousUsageDate(now time.Time) string {
+	loc := upstreamRelayUsageLocation()
+	return now.In(loc).AddDate(0, 0, -1).Format("2006-01-02")
+}
+
+func upstreamRelayRecentHistoricalUsageDates(now time.Time, days int) []string {
+	if days <= 0 {
+		return nil
+	}
+	loc := upstreamRelayUsageLocation()
+	base := now.In(loc)
+	out := make([]string, 0, days)
+	for i := 1; i <= days; i++ {
+		out = append(out, base.AddDate(0, 0, -i).Format("2006-01-02"))
+	}
+	return out
 }
 
 func isRelayUsageDate(v string) bool {
@@ -2123,6 +2416,11 @@ func (s *UpstreamRelayGroupMonitoringService) runCandidateProbe(ctx context.Cont
 		result.ErrorMessage = "account test service is not configured"
 		return result
 	}
+	if candidate.ProbeProtocol == UpstreamRelayProbeProtocolAnthropic && !account.IsAnthropic() {
+		result.ErrorClass = "invalid_request"
+		result.ErrorMessage = "anthropic probe_protocol requires an anthropic account"
+		return result
+	}
 	start := time.Now()
 	testAccount := accountForUpstreamRelayProbe(account, candidate.ProbeProtocol)
 	testResult, err := s.accountTestService.RunAccountTestBackground(ctx, testAccount, candidate.ProbeModel, "answer: 2", AccountTestModeDefault)
@@ -2186,8 +2484,8 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 	if input.ConnectorID <= 0 || input.AccountID <= 0 || upstreamGroupID == "" || probeModel == "" {
 		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_CANDIDATE", "connector_id, account_id, upstream_group_id and probe_model are required")
 	}
-	if protocol != MonitorAPIModeChatCompletions && protocol != MonitorAPIModeResponses {
-		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_PROBE_PROTOCOL", "probe_protocol must be chat_completions or responses")
+	if !isValidUpstreamRelayProbeProtocol(protocol) {
+		return nil, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_PROBE_PROTOCOL", "probe_protocol must be chat_completions, responses or anthropic")
 	}
 	enabled := true
 	if input.Enabled != nil {
@@ -2212,6 +2510,15 @@ func normalizeUpstreamRelayCandidateInput(input UpstreamRelayCandidateInput, id 
 		Notes:                strings.TrimSpace(input.Notes),
 		CreatedBy:            operatorID,
 	}, nil
+}
+
+func isValidUpstreamRelayProbeProtocol(protocol string) bool {
+	switch protocol {
+	case MonitorAPIModeChatCompletions, MonitorAPIModeResponses, UpstreamRelayProbeProtocolAnthropic:
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultUpstreamRelayRecommendationPolicy() UpstreamRelayRecommendationPolicy {

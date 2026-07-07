@@ -309,6 +309,8 @@ const baseSettingsResponse = {
   doc_url: "",
   home_content: "",
   hide_ccs_import_button: false,
+  purchase_subscription_enabled: false,
+  purchase_subscription_url: "",
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
   backend_mode_enabled: false,
@@ -603,6 +605,36 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("submits the configurable purchase plan jump URL", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      purchase_subscription_enabled: true,
+      purchase_subscription_url: "https://pay.example.com/plans",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    const input = wrapper.get(
+      'input[placeholder="admin.settings.purchase.urlPlaceholder"]',
+    );
+    expect((input.element as HTMLInputElement).value).toBe(
+      "https://pay.example.com/plans",
+    );
+
+    await input.setValue("https://shop.example.com/plans");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purchase_subscription_enabled: true,
+        purchase_subscription_url: "https://shop.example.com/plans",
+      }),
+    );
   });
 
   it("submits Anthropic cache TTL injection gateway setting", async () => {

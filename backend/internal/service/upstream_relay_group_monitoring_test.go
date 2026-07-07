@@ -113,7 +113,9 @@ type upstreamRelayMetricsRefreshRepo struct {
 	UpstreamRelayRepository
 
 	connector            *UpstreamRelayConnector
+	connectors           []UpstreamRelayConnector
 	snapshots            []UpstreamRelayGroupRateSnapshot
+	snapshotsByConnector map[int64][]UpstreamRelayGroupRateSnapshot
 	bindings             []UpstreamRelayCandidateUsageBinding
 	upsertSnapshotsCalls int
 	tokenUpdateCalls     int
@@ -130,17 +132,44 @@ type upstreamRelayMetricsRefreshRepo struct {
 	usageHistoryRows     []UpstreamRelayGroupUsageHistoryUpsert
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) GetConnector(context.Context, int64) (*UpstreamRelayConnector, error) {
-	if r.connector == nil {
-		return nil, ErrUpstreamRelayConnectorNotFound
+func (r *upstreamRelayMetricsRefreshRepo) GetConnector(_ context.Context, id int64) (*UpstreamRelayConnector, error) {
+	if r.connector != nil && r.connector.ID == id {
+		copy := *r.connector
+		return &copy, nil
 	}
-	copy := *r.connector
-	return &copy, nil
+	for _, connector := range r.connectors {
+		if connector.ID != id {
+			continue
+		}
+		copy := connector
+		return &copy, nil
+	}
+	return nil, ErrUpstreamRelayConnectorNotFound
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) UpsertSnapshots(context.Context, int64, []UpstreamRelayGroupRateSnapshot) error {
+func (r *upstreamRelayMetricsRefreshRepo) ListConnectors(context.Context, pagination.PaginationParams, UpstreamRelayConnectorListFilters) ([]UpstreamRelayConnector, *pagination.PaginationResult, error) {
+	items := append([]UpstreamRelayConnector{}, r.connectors...)
+	if len(items) == 0 && r.connector != nil {
+		items = append(items, *r.connector)
+	}
+	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: 1, PageSize: len(items), Pages: 1}, nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) UpsertSnapshots(_ context.Context, connectorID int64, snapshots []UpstreamRelayGroupRateSnapshot) error {
 	r.upsertSnapshotsCalls++
+	next := append([]UpstreamRelayGroupRateSnapshot{}, snapshots...)
+	for i := range next {
+		next[i].ConnectorID = connectorID
+	}
+	r.snapshots = next
+	if r.snapshotsByConnector != nil {
+		r.snapshotsByConnector[connectorID] = append([]UpstreamRelayGroupRateSnapshot{}, next...)
+	}
 	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) GetMonitoringPolicy(context.Context) (*UpstreamRelayMonitoringPolicy, error) {
+	return nil, nil
 }
 
 func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorTokens(_ context.Context, connectorID int64, expectedCredentialVersion int64, bearerTokenEncrypted, refreshTokenEncrypted string) (*UpstreamRelayConnector, error) {
@@ -163,61 +192,99 @@ func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorTokens(_ context.Contex
 	return &copy, nil
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorAccountBalance(_ context.Context, _ int64, balance *float64, checkedAt *time.Time) error {
+func (r *upstreamRelayMetricsRefreshRepo) UpdateConnectorAccountBalance(_ context.Context, connectorID int64, balance *float64, checkedAt *time.Time) error {
 	r.updatedBalance = balance
 	r.updatedBalanceAt = checkedAt
-	if r.connector != nil {
+	if r.connector != nil && r.connector.ID == connectorID {
 		r.connector.UpstreamAccountBalance = balance
 		r.connector.UpstreamAccountBalanceCheckedAt = checkedAt
 	}
+	for i := range r.connectors {
+		if r.connectors[i].ID != connectorID {
+			continue
+		}
+		r.connectors[i].UpstreamAccountBalance = balance
+		r.connectors[i].UpstreamAccountBalanceCheckedAt = checkedAt
+	}
 	return nil
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) MarkConnectorSync(_ context.Context, _ int64, status string, errMessage string) error {
+func (r *upstreamRelayMetricsRefreshRepo) MarkConnectorSync(_ context.Context, connectorID int64, status string, errMessage string) error {
 	r.syncStatus = status
 	r.syncError = errMessage
-	if r.connector != nil {
+	if r.connector != nil && r.connector.ID == connectorID {
 		r.connector.Status = status
 		r.connector.LastError = errMessage
 	}
-	return nil
-}
-
-func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Context, _ int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
-	r.usageByGroup = usageByGroup
-	r.usageCheckedAt = checkedAt
-	for i := range r.snapshots {
-		if checkedAt == nil || usageByGroup == nil {
-			r.snapshots[i].TodayActualCost = nil
-			r.snapshots[i].TodayTotalTokens = nil
-			r.snapshots[i].TodayUsageCheckedAt = nil
+	for i := range r.connectors {
+		if r.connectors[i].ID != connectorID {
 			continue
 		}
-		usage := usageByGroup[r.snapshots[i].UpstreamGroupID]
-		actualCost := usage.ActualCost
-		totalTokens := usage.TotalTokens
-		r.snapshots[i].TodayActualCost = &actualCost
-		r.snapshots[i].TodayTotalTokens = &totalTokens
-		r.snapshots[i].TodayUsageCheckedAt = checkedAt
+		r.connectors[i].Status = status
+		r.connectors[i].LastError = errMessage
 	}
 	return nil
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) ListCandidateUsageBindings(context.Context, int64) ([]UpstreamRelayCandidateUsageBinding, error) {
-	out := make([]UpstreamRelayCandidateUsageBinding, len(r.bindings))
-	copy(out, r.bindings)
-	return out, nil
+func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+	r.usageByGroup = usageByGroup
+	r.usageCheckedAt = checkedAt
+	update := func(snapshots []UpstreamRelayGroupRateSnapshot) []UpstreamRelayGroupRateSnapshot {
+		out := append([]UpstreamRelayGroupRateSnapshot{}, snapshots...)
+		for i := range out {
+			if out[i].ConnectorID != 0 && out[i].ConnectorID != connectorID {
+				continue
+			}
+			if checkedAt == nil || usageByGroup == nil {
+				out[i].TodayActualCost = nil
+				out[i].TodayTotalTokens = nil
+				out[i].TodayUsageCheckedAt = nil
+				continue
+			}
+			usage := usageByGroup[out[i].UpstreamGroupID]
+			actualCost := usage.ActualCost
+			totalTokens := usage.TotalTokens
+			out[i].TodayActualCost = &actualCost
+			out[i].TodayTotalTokens = &totalTokens
+			out[i].TodayUsageCheckedAt = checkedAt
+		}
+		return out
+	}
+	r.snapshots = update(r.snapshots)
+	if r.snapshotsByConnector != nil {
+		r.snapshotsByConnector[connectorID] = update(r.snapshotsByConnector[connectorID])
+	}
+	return nil
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) ListSnapshots(context.Context, int64) ([]UpstreamRelayGroupRateSnapshot, error) {
-	out := make([]UpstreamRelayGroupRateSnapshot, len(r.snapshots))
-	copy(out, r.snapshots)
+func (r *upstreamRelayMetricsRefreshRepo) ListSnapshots(_ context.Context, connectorID int64) ([]UpstreamRelayGroupRateSnapshot, error) {
+	if r.snapshotsByConnector != nil {
+		out := append([]UpstreamRelayGroupRateSnapshot{}, r.snapshotsByConnector[connectorID]...)
+		return out, nil
+	}
+	out := make([]UpstreamRelayGroupRateSnapshot, 0, len(r.snapshots))
+	for _, snapshot := range r.snapshots {
+		if snapshot.ConnectorID != 0 && snapshot.ConnectorID != connectorID {
+			continue
+		}
+		out = append(out, snapshot)
+	}
 	return out, nil
 }
 
 func (r *upstreamRelayMetricsRefreshRepo) UpsertUsageHistory(_ context.Context, rows []UpstreamRelayGroupUsageHistoryUpsert) error {
 	r.usageHistoryRows = append([]UpstreamRelayGroupUsageHistoryUpsert{}, rows...)
 	return nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) SummarizeUsageHistory(context.Context, UpstreamRelayUsageHistoryListFilters) (*UpstreamRelayUsageHistorySummary, error) {
+	return &UpstreamRelayUsageHistorySummary{RowCount: 1}, nil
+}
+
+func (r *upstreamRelayMetricsRefreshRepo) ListCandidateUsageBindings(context.Context, int64) ([]UpstreamRelayCandidateUsageBinding, error) {
+	out := make([]UpstreamRelayCandidateUsageBinding, len(r.bindings))
+	copy(out, r.bindings)
+	return out, nil
 }
 
 type upstreamRelayMetricsRefreshAccountRepo struct {
@@ -710,6 +777,112 @@ func TestUpstreamRelayParseUsageStatsFallsBackToTokenBreakdown(t *testing.T) {
 	require.Equal(t, int64(37), usage.TotalTokens)
 }
 
+func TestUpstreamRelayRefreshMonitoringDataSyncsSnapshotsAndMetrics(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.25}]`))
+	})
+	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"g1":0.75}`))
+	})
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "855", r.URL.Query().Get("api_key_id"))
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":4.5,"total_tokens":1200}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                   7,
+			Name:                 "relay-a",
+			BaseURL:              server.URL,
+			BearerTokenEncrypted: "session-token",
+		},
+		bindings: []UpstreamRelayCandidateUsageBinding{
+			{CandidateID: 1, ConnectorID: 7, AccountID: 10, UpstreamGroupID: "g1", UpstreamAPIKeyID: 855},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshMonitoringData(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, result.Status)
+	require.Equal(t, 1, result.Total)
+	require.Equal(t, 1, result.Success)
+	require.Len(t, result.Items, 1)
+	item := result.Items[0]
+	require.Equal(t, int64(7), item.ConnectorID)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.SnapshotStatus)
+	require.Equal(t, 1, item.SnapshotCount)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.Status)
+	require.NotNil(t, item.Metrics)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.Metrics.Status)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.Metrics.BalanceDetail.Status)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.Metrics.UsageDetail.Status)
+	require.NotNil(t, item.Metrics.BalanceDetail.Value)
+	require.Equal(t, 12.34, *item.Metrics.BalanceDetail.Value)
+	require.Len(t, item.Snapshots, 1)
+	require.NotNil(t, item.Snapshots[0].TodayActualCost)
+	require.Equal(t, 4.5, *item.Snapshots[0].TodayActualCost)
+}
+
+func TestUpstreamRelayRefreshMonitoringDataReportsPartialSnapshotFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.25}]`))
+	})
+	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary upstream outage", http.StatusBadGateway)
+	})
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":4.5,"total_tokens":1200}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                   7,
+			Name:                 "relay-a",
+			BaseURL:              server.URL,
+			BearerTokenEncrypted: "session-token",
+		},
+		snapshots: []UpstreamRelayGroupRateSnapshot{
+			{ID: 1, ConnectorID: 7, UpstreamGroupID: "g1", Name: "Group 1", FinalRateMultiplier: 1.25},
+		},
+		bindings: []UpstreamRelayCandidateUsageBinding{
+			{CandidateID: 1, ConnectorID: 7, AccountID: 10, UpstreamGroupID: "g1", UpstreamAPIKeyID: 855},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshMonitoringData(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
+	require.Equal(t, 1, result.Partial)
+	require.Len(t, result.Items, 1)
+	item := result.Items[0]
+	require.Equal(t, upstreamRelayMetricsRefreshStatusFailed, item.SnapshotStatus)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, item.Status)
+	require.Contains(t, item.SnapshotError, "upstream HTTP 502")
+	require.Contains(t, item.ErrorReason, "upstream HTTP 502")
+	require.NotNil(t, item.Metrics)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSuccess, item.Metrics.Status)
+}
+
 func TestUpstreamRelayRefreshConnectorMetricsUpdatesUsageFromBoundAPIKeyStats(t *testing.T) {
 	usageListCalls := 0
 	statsCalls := 0
@@ -892,6 +1065,19 @@ func TestNormalizeUpstreamRelayCandidateMasksAPIKeyDisplayValue(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "sk-liv***ue-a", candidate.UpstreamAPIKeyMasked)
+}
+
+func TestNormalizeUpstreamRelayCandidateAcceptsAnthropicProbeProtocol(t *testing.T) {
+	candidate, err := normalizeUpstreamRelayCandidateInput(UpstreamRelayCandidateInput{
+		ConnectorID:     7,
+		AccountID:       10,
+		UpstreamGroupID: "g1",
+		ProbeModel:      "claude-sonnet-4-5",
+		ProbeProtocol:   UpstreamRelayProbeProtocolAnthropic,
+	}, 0, 88)
+
+	require.NoError(t, err)
+	require.Equal(t, UpstreamRelayProbeProtocolAnthropic, candidate.ProbeProtocol)
 }
 
 func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBinding(t *testing.T) {
@@ -2416,6 +2602,69 @@ data: {"type":"response.completed"}
 	require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+}
+
+func TestUpstreamRelayCandidateProbeHonorsAnthropicProtocolThroughAccountTest(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"pong"}}
+
+data: {"type":"message_stop"}
+
+`)),
+	}}
+	accountTest := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: accountTest}
+	account := &Account{
+		ID:          93,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-ant-test",
+			"base_url": "https://anthropic-upstream.example",
+		},
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:            14,
+		ProbeModel:    "claude-sonnet-4-5",
+		ProbeProtocol: UpstreamRelayProbeProtocolAnthropic,
+	}, account)
+
+	require.True(t, result.Success)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://anthropic-upstream.example/v1/messages?beta=true", upstream.lastReq.URL.String())
+	require.Equal(t, "sk-ant-test", upstream.lastReq.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", upstream.lastReq.Header.Get("anthropic-version"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("anthropic-beta"))
+	require.Equal(t, "claude-sonnet-4-5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "system").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+}
+
+func TestUpstreamRelayCandidateProbeRejectsAnthropicProtocolForNonAnthropicAccount(t *testing.T) {
+	svc := &UpstreamRelayGroupMonitoringService{accountTestService: &AccountTestService{}}
+	account := &Account{
+		ID:       94,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+
+	result := svc.runCandidateProbe(context.Background(), UpstreamRelayCandidate{
+		ID:            15,
+		ProbeModel:    "claude-sonnet-4-5",
+		ProbeProtocol: UpstreamRelayProbeProtocolAnthropic,
+	}, account)
+
+	require.False(t, result.Success)
+	require.Equal(t, "invalid_request", result.ErrorClass)
+	require.Contains(t, result.ErrorMessage, "anthropic account")
 }
 
 func TestUpstreamRelayCandidateProbeRequiresAccountTestService(t *testing.T) {

@@ -88,16 +88,16 @@
             <slot
               :name="`header-${column.key}`"
               :column="column"
-              :sort-key="sortKey"
-              :sort-order="sortOrder"
+              :sort-key="activeSortKey"
+              :sort-order="activeSortOrder"
             >
               <div class="flex items-center space-x-1">
                 <span>{{ column.label }}</span>
                 <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
                   <svg
-                    v-if="sortKey === column.key"
+                    v-if="activeSortKey === column.key"
                     class="h-4 w-4"
-                    :class="{ 'rotate-180 transform': sortOrder === 'desc' }"
+                    :class="{ 'rotate-180 transform': activeSortOrder === 'desc' }"
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -369,6 +369,11 @@ interface Props {
   defaultSortKey?: string
   defaultSortOrder?: 'asc' | 'desc'
   /**
+   * 受控排序配置：传入后由父组件状态决定排序图标和下次点击方向。
+   */
+  sortKey?: string
+  sortOrder?: 'asc' | 'desc'
+  /**
    * Persist sort state (key + order) to localStorage using this key.
    * If provided, DataTable will load the stored sort state on mount.
    */
@@ -393,8 +398,8 @@ const props = withDefaults(defineProps<Props>(), {
   serverSideSort: false
 })
 
-const sortKey = ref<string>('')
-const sortOrder = ref<'asc' | 'desc'>('asc')
+const activeSortKey = ref<string>('')
+const activeSortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
 
 type PersistedSortState = {
@@ -425,6 +430,13 @@ const normalizeSortOrder = (candidate: any): 'asc' | 'desc' => {
   return candidate === 'desc' ? 'desc' : 'asc'
 }
 
+const resolveControlledSortState = (): PersistedSortState | null => {
+  if (props.sortKey === undefined) return null
+  const key = normalizeSortKey(props.sortKey)
+  if (!key) return null
+  return { key, order: normalizeSortOrder(props.sortOrder) }
+}
+
 const readPersistedSortState = (): PersistedSortState | null => {
   if (!props.sortStorageKey) return null
   try {
@@ -450,6 +462,8 @@ const writePersistedSortState = (state: PersistedSortState) => {
 }
 
 const resolveInitialSortState = (): PersistedSortState | null => {
+  if (props.sortKey !== undefined) return resolveControlledSortState()
+
   const persisted = readPersistedSortState()
   if (persisted) return persisted
 
@@ -459,9 +473,8 @@ const resolveInitialSortState = (): PersistedSortState | null => {
 }
 
 const applySortState = (state: PersistedSortState | null) => {
-  if (!state) return
-  sortKey.value = state.key
-  sortOrder.value = state.order
+  activeSortKey.value = state?.key ?? ''
+  activeSortOrder.value = state?.order ?? 'asc'
 }
 
 const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''
@@ -559,28 +572,28 @@ watch(actionsExpanded, async () => {
 
 const handleSort = (key: string) => {
   let newOrder: 'asc' | 'desc' = 'asc'
-  if (sortKey.value === key) {
-    newOrder = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  if (activeSortKey.value === key) {
+    newOrder = activeSortOrder.value === 'asc' ? 'desc' : 'asc'
   }
 
   if (props.serverSideSort) {
     // Server-side sort mode: emit event and update internal state for UI feedback
-    sortKey.value = key
-    sortOrder.value = newOrder
+    activeSortKey.value = key
+    activeSortOrder.value = newOrder
     emit('sort', key, newOrder)
   } else {
     // Client-side sort mode: just update internal state
-    sortKey.value = key
-    sortOrder.value = newOrder
+    activeSortKey.value = key
+    activeSortOrder.value = newOrder
   }
 }
 
 const sortedData = computed(() => {
   // Server-side sort mode: return data as-is (server handles sorting)
-  if (props.serverSideSort || !sortKey.value || !props.data) return props.data
+  if (props.serverSideSort || !activeSortKey.value || !props.data) return props.data
 
-  const key = sortKey.value
-  const order = sortOrder.value
+  const key = activeSortKey.value
+  const order = activeSortOrder.value
 
   // Stable sort (tie-break with original index) to avoid jitter when values are equal.
   return props.data
@@ -690,9 +703,15 @@ onMounted(() => {
 watch(
   columnsSignature,
   () => {
+    const controlled = resolveControlledSortState()
+    if (props.sortKey !== undefined) {
+      applySortState(controlled)
+      return
+    }
+
     // If current sort key is no longer sortable/visible, fall back to default/persisted.
-    const normalized = normalizeSortKey(sortKey.value)
-    if (!sortKey.value) {
+    const normalized = normalizeSortKey(activeSortKey.value)
+    if (!activeSortKey.value) {
       const initial = resolveInitialSortState()
       applySortState(initial)
       return
@@ -703,8 +722,8 @@ watch(
       if (fallback) {
         applySortState(fallback)
       } else {
-        sortKey.value = ''
-        sortOrder.value = 'asc'
+        activeSortKey.value = ''
+        activeSortOrder.value = 'asc'
       }
     }
   },
@@ -712,9 +731,19 @@ watch(
 )
 
 watch(
-  [sortKey, sortOrder],
+  [() => props.sortKey, () => props.sortOrder],
+  () => {
+    if (props.sortKey === undefined) return
+    applySortState(resolveControlledSortState())
+  },
+  { flush: 'post' }
+)
+
+watch(
+  [activeSortKey, activeSortOrder],
   ([nextKey, nextOrder]) => {
     if (!didInitSort.value) return
+    if (props.sortKey !== undefined) return
     if (!props.sortStorageKey) return
     const key = normalizeSortKey(nextKey)
     if (!key) return

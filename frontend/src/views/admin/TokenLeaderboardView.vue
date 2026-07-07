@@ -208,10 +208,18 @@
                   <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">#{{ row.rank }}</td>
                   <td class="px-4 py-3">
                     <div class="min-w-0">
-                      <div class="truncate font-medium text-gray-900 dark:text-white">{{ displayUser(row) }}</div>
-                      <div v-if="secondaryUserText(row)" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ secondaryUserText(row) }}
-                      </div>
+                      <button
+                        type="button"
+                        class="block max-w-full truncate text-left font-medium text-gray-900 underline decoration-dashed decoration-gray-300 underline-offset-4 transition-colors hover:text-primary-600 disabled:cursor-wait disabled:opacity-60 dark:text-white dark:decoration-dark-500 dark:hover:text-primary-400"
+                        :title="t('admin.users.balanceHistoryTip')"
+                        :disabled="balanceHistoryLoadingUserId === row.user_id"
+                        @click="openBalanceHistory(row)"
+                      >
+                        <span class="block truncate">{{ displayUser(row) }}</span>
+                        <span v-if="secondaryUserText(row)" class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">
+                          {{ secondaryUserText(row) }}
+                        </span>
+                      </button>
                     </div>
                   </td>
                   <td class="px-4 py-3">
@@ -369,6 +377,12 @@
           </div>
         </template>
       </BaseDialog>
+      <UserBalanceHistoryModal
+        :show="showBalanceHistoryModal"
+        :user="balanceHistoryUser"
+        hide-actions
+        @close="closeBalanceHistory"
+      />
     </div>
   </AppLayout>
 </template>
@@ -383,6 +397,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
+import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { formatMultiplier as formatAdaptiveMultiplier } from '@/utils/formatters'
@@ -395,7 +410,7 @@ import type {
   AdminTokenLeaderboardUser,
   AdminTokenLeaderboardUserDetailsResponse
 } from '@/api/admin/dashboard'
-import type { AdminGroup } from '@/types'
+import type { AdminGroup, AdminUser } from '@/types'
 import { formatCostFixed, formatDateTime, formatNumber } from '@/utils/format'
 
 type LimitOption = 10 | 20 | 50 | 100
@@ -513,6 +528,10 @@ const grantNotes = ref('')
 const grantDialogOpen = ref(false)
 const granting = ref(false)
 const showUserIds = ref(false)
+const showBalanceHistoryModal = ref(false)
+const balanceHistoryUser = ref<AdminUser | null>(null)
+const balanceHistoryLoadingUserId = ref<number | null>(null)
+let balanceHistoryRequestSeq = 0
 
 const ranking = computed(() => leaderboard.value?.ranking || [])
 const latestLastUsedAt = computed(() => {
@@ -630,6 +649,34 @@ function secondaryUserText(row: AdminTokenLeaderboardUser): string {
   }
 
   return row.username?.trim() && row.email ? row.email : ''
+}
+
+async function openBalanceHistory(row: AdminTokenLeaderboardUser): Promise<void> {
+  const requestSeq = ++balanceHistoryRequestSeq
+  balanceHistoryLoadingUserId.value = row.user_id
+  try {
+    const user = await adminAPI.users.getById(row.user_id, true)
+    if (requestSeq !== balanceHistoryRequestSeq) return
+    balanceHistoryUser.value = user
+    showBalanceHistoryModal.value = true
+  } catch (error: any) {
+    if (requestSeq !== balanceHistoryRequestSeq) return
+    console.error('Failed to load token leaderboard user:', error)
+    showBalanceHistoryModal.value = false
+    balanceHistoryUser.value = null
+    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.tokenLeaderboard.failedToLoadDetails'))
+  } finally {
+    if (requestSeq === balanceHistoryRequestSeq) {
+      balanceHistoryLoadingUserId.value = null
+    }
+  }
+}
+
+function closeBalanceHistory(): void {
+  balanceHistoryRequestSeq += 1
+  showBalanceHistoryModal.value = false
+  balanceHistoryUser.value = null
+  balanceHistoryLoadingUserId.value = null
 }
 
 function isTopTen(row: AdminTokenLeaderboardUser): boolean {
