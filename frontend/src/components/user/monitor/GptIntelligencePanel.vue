@@ -17,7 +17,7 @@
               {{ statusLabel }}
             </span>
             <a
-              href="https://codexradar.com/current.json"
+              href="https://github.com/datacurve-ai/deep-swe"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 dark:border-dark-600 dark:bg-dark-900/70 dark:text-gray-300"

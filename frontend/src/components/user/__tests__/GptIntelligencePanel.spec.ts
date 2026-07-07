@@ -267,6 +267,7 @@ describe('GptIntelligencePanel', () => {
     expect(wrapper.text()).toContain('Reasoning Effort Trends')
     expect(wrapper.text()).toContain('Intelligence check')
     expect(wrapper.text()).not.toContain('GPT intelligence check')
+    expect(wrapper.get('a[href="https://github.com/datacurve-ai/deep-swe"]').attributes('target')).toBe('_blank')
 
     const charts = wrapper.findAll('.line-chart')
     expect(charts).toHaveLength(3)
