@@ -139,6 +139,59 @@ func TestCampaignLeaderboardAdjustmentRejectsPaidCampaign(t *testing.T) {
 	}
 }
 
+func TestCampaignSettlementInputsRejectAfterPayoutBatch(t *testing.T) {
+	repo := &campaignManualAdjustmentRepoStub{
+		campaign:         &Campaign{ID: 7, Status: CampaignStatusPublicizing},
+		successfulPayout: &CampaignPayoutBatch{ID: 9, CampaignID: 7, Status: "failed"},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	if err := svc.AddPoolAdjustment(context.Background(), 7, CampaignPoolAdjustmentInput{AdjustmentType: "additional_bonus", AmountCents: 100}); !errors.Is(err, ErrCampaignAlreadyPaid) {
+		t.Fatalf("已有发放批次后应拒绝奖池调整，实际 err=%v", err)
+	}
+	if _, err := svc.AdjustInviteRecord(context.Background(), 7, CampaignInviteRecordAdjustmentInput{RecordID: 11, Status: CampaignInviteStatusEffective}); !errors.Is(err, ErrCampaignAlreadyPaid) {
+		t.Fatalf("已有发放批次后应拒绝邀请记录调整，实际 err=%v", err)
+	}
+	if _, err := svc.AddLeaderboardAdjustment(context.Background(), 7, CampaignLeaderboardAdjustmentInput{UserID: 21, ValidInviteDelta: 1}); !errors.Is(err, ErrCampaignAlreadyPaid) {
+		t.Fatalf("已有发放批次后应拒绝排行榜调整，实际 err=%v", err)
+	}
+	if repo.added != nil || repo.addedPool != nil || repo.adjustedInvite != nil {
+		t.Fatalf("拒绝调整时不应写入任何结算输入，leaderboard=%+v pool=%+v invite=%+v", repo.added, repo.addedPool, repo.adjustedInvite)
+	}
+}
+
+func TestCampaignPoolAdjustmentInvalidatesFinalBeforePayout(t *testing.T) {
+	repo := &campaignManualAdjustmentRepoStub{campaign: &Campaign{ID: 7, Status: CampaignStatusPublicizing}}
+	svc := NewCampaignService(repo, nil)
+	svc.balanceGrant = campaignGrantStub{}
+
+	err := svc.AddPoolAdjustment(context.Background(), 7, CampaignPoolAdjustmentInput{AdjustmentType: "additional_bonus", AmountCents: 100, Reason: "补充奖池"})
+	if err != nil {
+		t.Fatalf("奖池调整失败：%v", err)
+	}
+	if repo.addedPool == nil {
+		t.Fatalf("奖池调整应写入仓储")
+	}
+	if _, err := svc.Payout(context.Background(), 7, nil); !errors.Is(err, ErrCampaignNoFinalSettlement) {
+		t.Fatalf("final 被奖池调整失效后应拒绝发放，实际 err=%v", err)
+	}
+}
+
+func TestCampaignFinalRecalculationRejectsBeforeCampaignEnd(t *testing.T) {
+	repo := &campaignRecalculateRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusActive, EndAt: time.Now().Add(time.Hour)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.RecalculateRewards(context.Background(), 7, CampaignCalculationFinal)
+	if !errors.Is(err, ErrCampaignInvalidConfig) {
+		t.Fatalf("活动结束前应拒绝 final 结算，实际 err=%v", err)
+	}
+	if repo.saved {
+		t.Fatalf("拒绝 final 时不应保存结算结果")
+	}
+}
+
 func TestCampaignRecordRechargeAllUsersInjectsPoolWithoutInviteRecord(t *testing.T) {
 	successAt := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
 	repo := &campaignRechargeRepoStub{
@@ -632,7 +685,10 @@ type campaignManualAdjustmentRepoStub struct {
 	campaign              *Campaign
 	successfulPayout      *CampaignPayoutBatch
 	added                 *CampaignLeaderboardAdjustmentInput
+	addedPool             *CampaignPoolAdjustmentInput
+	adjustedInvite        *CampaignInviteRecordAdjustmentInput
 	invalidatedCampaignID int64
+	results               []CampaignRewardResult
 }
 
 func (r *campaignManualAdjustmentRepoStub) GetCampaign(context.Context, int64) (*Campaign, error) {
@@ -660,6 +716,26 @@ func (r *campaignManualAdjustmentRepoStub) AddLeaderboardAdjustment(_ context.Co
 		ValidInviteDelta:         input.ValidInviteDelta,
 		RechargeAmountDeltaCents: input.RechargeAmountDeltaCents,
 	}, nil
+}
+
+func (r *campaignManualAdjustmentRepoStub) AddPoolAdjustment(_ context.Context, campaignID int64, input CampaignPoolAdjustmentInput) error {
+	r.addedPool = &input
+	r.invalidatedCampaignID = campaignID
+	return nil
+}
+
+func (r *campaignManualAdjustmentRepoStub) AdjustInviteRecord(_ context.Context, campaignID int64, input CampaignInviteRecordAdjustmentInput) (*CampaignInviteRecord, error) {
+	r.adjustedInvite = &input
+	r.invalidatedCampaignID = campaignID
+	return &CampaignInviteRecord{ID: input.RecordID, CampaignID: campaignID, Status: input.Status}, nil
+}
+
+func (r *campaignManualAdjustmentRepoStub) ListRewardResults(context.Context, int64, string) ([]CampaignRewardResult, error) {
+	return append([]CampaignRewardResult(nil), r.results...), nil
+}
+
+func (r *campaignManualAdjustmentRepoStub) GetPayoutBatchForRewardResult(context.Context, int64, int64) (*CampaignPayoutBatch, error) {
+	return nil, ErrCampaignNotFound
 }
 
 func (r *campaignPayoutRepoStub) GetSuccessfulPayoutBatch(context.Context, int64) (*CampaignPayoutBatch, error) {
@@ -788,6 +864,24 @@ func (r *campaignUpdateRepoStub) UpdateCampaign(_ context.Context, _ int64, inpu
 	return &updated, nil
 }
 
+type campaignRecalculateRepoStub struct {
+	CampaignRepository
+	campaign *Campaign
+	saved    bool
+}
+
+func (r *campaignRecalculateRepoStub) GetCampaign(context.Context, int64) (*Campaign, error) {
+	if r.campaign == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.campaign, nil
+}
+
+func (r *campaignRecalculateRepoStub) SaveRewardResults(context.Context, int64, string, string, []CampaignRewardResult) error {
+	r.saved = true
+	return nil
+}
+
 type campaignGrantStub struct{}
 
 func (campaignGrantStub) ListUsers(context.Context, int, int, UserListFilters, string, string) ([]User, int64, error) {
@@ -814,6 +908,7 @@ func campaignTestLeaderboardRow(userID int64, validInvites int, rechargeCents in
 	return CampaignLeaderboardRow{
 		UserID:                     userID,
 		ValidInviteCount:           validInvites,
+		PendingInviteCount:         1,
 		InviteeRechargeAmountCents: rechargeCents,
 		ReachedCountAt:             now,
 		JoinedAt:                   now.Add(-time.Hour),

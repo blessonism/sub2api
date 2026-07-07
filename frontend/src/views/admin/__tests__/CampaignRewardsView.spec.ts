@@ -223,6 +223,16 @@ describe('admin CampaignRewardsView', () => {
     expect(payoutCampaign).not.toHaveBeenCalled()
   })
 
+  it('keeps finalize disabled before the campaign ends', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const finalizeButton = wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.finalize'))
+    expect(finalizeButton).toBeTruthy()
+    expect(finalizeButton!.attributes('disabled')).toBeDefined()
+    expect(recalculateRewards).not.toHaveBeenCalled()
+  })
+
   it('loads persisted final calculation and allows payout after page reload', async () => {
     getFinalRewardResults.mockResolvedValue({
       campaign_id: 9,
