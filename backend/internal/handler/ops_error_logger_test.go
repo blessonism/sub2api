@@ -119,6 +119,30 @@ func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
 	require.Zero(t, reused.buf.Len(), "writer should be reset before reuse")
 }
 
+func TestBackfillOpsAccountIDFromUpstreamEvents_UsesLatestAttributedEvent(t *testing.T) {
+	entry := &service.OpsInsertErrorLogInput{}
+
+	backfillOpsAccountIDFromUpstreamEvents(entry, []*service.OpsUpstreamErrorEvent{
+		nil,
+		{AccountID: 12},
+		{AccountID: 0},
+		{AccountID: 34},
+	})
+
+	require.NotNil(t, entry.AccountID)
+	require.Equal(t, int64(34), *entry.AccountID)
+}
+
+func TestBackfillOpsAccountIDFromUpstreamEvents_PreservesExistingAccount(t *testing.T) {
+	existing := int64(9)
+	entry := &service.OpsInsertErrorLogInput{AccountID: &existing}
+
+	backfillOpsAccountIDFromUpstreamEvents(entry, []*service.OpsUpstreamErrorEvent{{AccountID: 34}})
+
+	require.NotNil(t, entry.AccountID)
+	require.Equal(t, int64(9), *entry.AccountID)
+}
+
 func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

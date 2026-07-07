@@ -63,6 +63,37 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
     expect(text).toContain('acct-A') // 账号列
   })
 
+  it('renders account id fallback when the account name is missing', () => {
+    const wrapper = mountTable({
+      account_id: 9,
+      account_name: '',
+    })
+
+    expect(wrapper.text()).toContain('#9')
+  })
+
+  it('labels upstream rows without account attribution explicitly', () => {
+    const wrapper = mountTable({
+      account_id: null,
+      account_name: '',
+      phase: 'upstream',
+      error_owner: 'provider',
+    })
+
+    expect(wrapper.text()).toContain('admin.ops.errorLog.accountAttributionMissing')
+  })
+
+  it('labels pre-scheduling request errors as unassigned account', () => {
+    const wrapper = mountTable({
+      account_id: null,
+      account_name: '',
+      phase: 'auth',
+      error_owner: 'client',
+    })
+
+    expect(wrapper.text()).toContain('admin.ops.errorLog.accountNotAssigned')
+  })
+
   it('shows the deleted badge for a soft-deleted api key', () => {
     const wrapper = mountTable({
       api_key_id: 5,
@@ -84,10 +115,15 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
 describe('OpsErrorLogTable i18n keys exist in the errorLog namespace', () => {
   const locales: Record<string, any> = { zh: zhLocale, en: enLocale }
   for (const [name, msgs] of Object.entries(locales)) {
-    it(`has apiKey & keyDeletedBadge for ${name}`, () => {
+    it(`has account attribution keys for ${name}`, () => {
       const errorLog = msgs?.admin?.ops?.errorLog
+      const errorDetail = msgs?.admin?.ops?.errorDetail
       expect(errorLog?.apiKey).toBeTruthy()
       expect(errorLog?.keyDeletedBadge).toBeTruthy()
+      expect(errorLog?.accountNotAssigned).toBeTruthy()
+      expect(errorLog?.accountAttributionMissing).toBeTruthy()
+      expect(errorDetail?.accountNotAssigned).toBeTruthy()
+      expect(errorDetail?.accountAttributionMissing).toBeTruthy()
     })
   }
 })
