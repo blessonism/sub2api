@@ -1,7 +1,7 @@
 # 邀请活动管理员侧 UI 优化方案
 
 > 视图：`frontend/src/views/admin/CampaignRewardsView.vue`
-> 路由：`AdminCampaignRewards`
+> 路由：`/admin/activities`（`AdminActivities`，`/admin/campaign-rewards` 为向后兼容的旧入口）
 > 接口：`frontend/src/api/admin/campaigns.ts`
 > 记录日期：2026-07-04
 > 对应 Trellis 任务：`.trellis/tasks/07-04-ui`
