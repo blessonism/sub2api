@@ -210,6 +210,14 @@ func (h *UpstreamRelayGroupMonitoringHandler) ListUsageHistory(c *gin.Context) {
 		}
 		filters.ConnectorID = v
 	}
+	if includeZeroUsage := c.Query("include_zero_usage"); includeZeroUsage != "" {
+		v, err := strconv.ParseBool(includeZeroUsage)
+		if err != nil {
+			response.BadRequest(c, "invalid include_zero_usage")
+			return
+		}
+		filters.IncludeZeroUsage = v
+	}
 	items, summary, pageResult, err := h.svc.ListUsageHistory(c.Request.Context(), page, pageSize, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)

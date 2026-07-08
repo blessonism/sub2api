@@ -535,7 +535,7 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	handler := NewUpstreamRelayGroupMonitoringHandler(svc)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/upstream-relay-group-monitors/usage-history?page=3&page_size=10&start_date=2026-06-28&end_date=2026-06-29&connector_id=42&upstream_group_id=gpt-pro&search=relay", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/upstream-relay-group-monitors/usage-history?page=3&page_size=10&start_date=2026-06-28&end_date=2026-06-29&connector_id=42&upstream_group_id=gpt-pro&search=relay&include_zero_usage=true", nil)
 
 	handler.ListUsageHistory(c)
 
@@ -547,6 +547,7 @@ func TestUpstreamRelayHandlerListUsageHistoryReturnsPaginatedShape(t *testing.T)
 	require.Equal(t, int64(42), repo.usageHistoryFilters.ConnectorID)
 	require.Equal(t, "gpt-pro", repo.usageHistoryFilters.UpstreamGroupID)
 	require.Equal(t, "relay", repo.usageHistoryFilters.Search)
+	require.True(t, repo.usageHistoryFilters.IncludeZeroUsage)
 	var envelope struct {
 		Data struct {
 			Items   []service.UpstreamRelayGroupUsageHistory `json:"items"`

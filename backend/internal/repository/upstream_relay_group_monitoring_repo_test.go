@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,27 @@ func testIntPtr(value int) *int {
 
 func testBoolPtr(value bool) *bool {
 	return &value
+}
+
+func TestRelayUsageHistoryWhereHidesZeroUsageByDefault(t *testing.T) {
+	where, args := relayUsageHistoryWhere(service.UpstreamRelayUsageHistoryListFilters{})
+
+	require.Empty(t, args)
+	require.Contains(t, where, "(h.actual_cost > 0 OR h.total_tokens > 0)")
+}
+
+func TestRelayUsageHistoryWhereCanIncludeZeroUsage(t *testing.T) {
+	where, args := relayUsageHistoryWhere(service.UpstreamRelayUsageHistoryListFilters{
+		StartDate:        "2026-06-28",
+		EndDate:          "2026-06-29",
+		IncludeZeroUsage: true,
+	})
+
+	require.Len(t, args, 2)
+	require.NotContains(t, where, "h.actual_cost > 0")
+	require.NotContains(t, where, "h.total_tokens > 0")
+	require.True(t, strings.Contains(where, "h.usage_date >= $1::date"))
+	require.True(t, strings.Contains(where, "h.usage_date <= $2::date"))
 }
 
 func TestUpstreamRelayRepositoryCreateConnectorPersistsPasswordLoginFields(t *testing.T) {

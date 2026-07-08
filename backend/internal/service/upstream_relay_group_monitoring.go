@@ -575,11 +575,12 @@ type UpstreamRelaySnapshotChangeListFilters struct {
 }
 
 type UpstreamRelayUsageHistoryListFilters struct {
-	StartDate       string
-	EndDate         string
-	ConnectorID     int64
-	UpstreamGroupID string
-	Search          string
+	StartDate        string
+	EndDate          string
+	ConnectorID      int64
+	UpstreamGroupID  string
+	Search           string
+	IncludeZeroUsage bool
 }
 
 type UpstreamRelayRepository interface {
@@ -2058,9 +2059,10 @@ func (s *UpstreamRelayGroupMonitoringService) finalizePendingUsageForConnector(c
 	}
 	for _, date := range upstreamRelayRecentHistoricalUsageDates(time.Now(), 7) {
 		summary, err := s.repo.SummarizeUsageHistory(ctx, UpstreamRelayUsageHistoryListFilters{
-			StartDate:   date,
-			EndDate:     date,
-			ConnectorID: connectorID,
+			StartDate:        date,
+			EndDate:          date,
+			ConnectorID:      connectorID,
+			IncludeZeroUsage: true,
 		})
 		if err != nil {
 			slog.Warn("upstream relay usage finalize status failed", "connector_id", connectorID, "date", date, "error", err)

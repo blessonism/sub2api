@@ -224,7 +224,7 @@ describe('admin upstream relay group monitors api', () => {
       pages: 1,
       summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 }
     }
-    const params = { page: 1, page_size: 50, start_date: '2026-06-28', end_date: '2026-06-29', connector_id: 7, upstream_group_id: 'g1', search: 'relay' }
+    const params = { page: 1, page_size: 50, start_date: '2026-06-28', end_date: '2026-06-29', connector_id: 7, upstream_group_id: 'g1', search: 'relay', include_zero_usage: true }
     get.mockResolvedValue({ data: response })
 
     await expect(listUsageHistory(params)).resolves.toEqual(response)
