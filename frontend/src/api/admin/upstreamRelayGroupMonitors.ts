@@ -514,6 +514,7 @@ export async function listUsageHistory(params?: {
   connector_id?: number
   upstream_group_id?: string
   search?: string
+  include_zero_usage?: boolean
 }): Promise<UsageHistoryListResponse> {
   const { data } = await apiClient.get<UsageHistoryListResponse>(`${base}/usage-history`, { params })
   return data

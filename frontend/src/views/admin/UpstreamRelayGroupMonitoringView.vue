@@ -564,7 +564,7 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('usageHistory.count', { n: usageHistoryTotal }) }}</span>
           </div>
         </div>
-        <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto_auto]">
+        <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 xl:grid-cols-[minmax(150px,180px)_minmax(150px,180px)_minmax(180px,220px)_minmax(160px,220px)_1fr_auto_auto_auto]">
           <label class="block space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.startDate') }}</span>
             <input v-model="usageHistoryStartDate" class="input w-full" type="date" />
@@ -587,6 +587,10 @@
           <label class="block space-y-1">
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('usageHistory.keyword') }}</span>
             <input v-model.trim="usageHistorySearch" class="input w-full" type="search" :placeholder="tM('usageHistory.searchPlaceholder')" @keyup.enter="reloadUsageHistory" />
+          </label>
+          <label class="flex items-end gap-2 pb-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="usageHistoryIncludeZeroUsage" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+            {{ tM('usageHistory.includeZeroUsage') }}
           </label>
           <label class="flex items-end gap-2 pb-2 text-sm text-gray-700 dark:text-gray-300">
             <input v-model="usageHistoryOnlyAnomalies" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
@@ -1810,6 +1814,7 @@ const usageHistoryStartDate = ref(localUsageDate())
 const usageHistoryEndDate = ref(localUsageDate())
 const usageHistoryGroupId = ref('')
 const usageHistorySearch = ref('')
+const usageHistoryIncludeZeroUsage = ref(false)
 const usageHistoryOnlyAnomalies = ref(false)
 const usageHistoryPage = ref(1)
 const usageHistoryPageSize = 50
@@ -1827,7 +1832,8 @@ const appliedUsageHistoryFilters = reactive({
   startDate: usageHistoryStartDate.value,
   endDate: usageHistoryEndDate.value,
   groupId: '',
-  search: ''
+  search: '',
+  includeZeroUsage: false
 })
 
 const AUTO_REFRESH_INTERVALS = [15, 30, 60] as const
@@ -2333,7 +2339,10 @@ const usageHistoryAppliedFilterLabel = computed(() => {
   const connectorName = appliedUsageHistoryFilters.connectorId
     ? connectors.value.find((item) => item.id === appliedUsageHistoryFilters.connectorId)?.name || `Connector #${appliedUsageHistoryFilters.connectorId}`
     : tM('usageHistory.allConnectors')
-  const extraFilters = [appliedUsageHistoryFilters.groupId, appliedUsageHistoryFilters.search].filter(Boolean)
+  const usageVisibilityFilter = appliedUsageHistoryFilters.includeZeroUsage
+    ? tM('usageHistory.includeZeroUsageFilter')
+    : tM('usageHistory.hideZeroUsageFilter')
+  const extraFilters = [usageVisibilityFilter, appliedUsageHistoryFilters.groupId, appliedUsageHistoryFilters.search].filter(Boolean)
   return tM('usageHistory.appliedFilterSummary', {
     range: usageHistoryDateRangeLabel.value,
     connector: connectorName,
@@ -2681,9 +2690,9 @@ watch([snapshotChangeConnectorId, snapshotChangeType], () => {
   }
 })
 
-watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate, usageHistoryGroupId, usageHistorySearch], () => {
+watch([usageHistoryConnectorId, usageHistoryStartDate, usageHistoryEndDate, usageHistoryGroupId, usageHistorySearch, usageHistoryIncludeZeroUsage], () => {
   if (activeSection.value === 'usageHistory') {
-    usageHistoryFiltersDirty.value = true
+    usageHistoryFiltersDirty.value = usageHistoryDraftFiltersChanged()
   }
 })
 
@@ -2908,13 +2917,16 @@ async function loadUsageHistory() {
       end_date: appliedUsageHistoryFilters.endDate || undefined,
       connector_id: appliedUsageHistoryFilters.connectorId || undefined,
       upstream_group_id: appliedUsageHistoryFilters.groupId || undefined,
-      search: appliedUsageHistoryFilters.search || undefined
+      search: appliedUsageHistoryFilters.search || undefined,
+      include_zero_usage: appliedUsageHistoryFilters.includeZeroUsage || undefined
     })
     usageHistory.value = res.items
     usageHistoryBackendSummary.value = res.summary
-    usageHistoryTotal.value = res.total
-    usageHistoryPages.value = res.pages || 1
-    usageHistoryPage.value = res.page || usageHistoryPage.value
+    usageHistoryTotal.value = Number(res.total || 0)
+    const responsePageSize = Number(res.page_size || usageHistoryPageSize)
+    const responsePages = Number(res.pages || 0)
+    usageHistoryPages.value = Math.max(1, responsePages, Math.ceil(usageHistoryTotal.value / Math.max(1, responsePageSize)))
+    usageHistoryPage.value = Math.min(res.page || usageHistoryPage.value, usageHistoryPages.value)
     usageHistoryFiltersDirty.value = false
   } catch (err) {
     error.value = err instanceof Error ? err.message : tM('errors.loadUsageHistoryFailed')
@@ -2933,10 +2945,20 @@ function reloadUsageHistory() {
     startDate: usageHistoryStartDate.value,
     endDate: usageHistoryEndDate.value,
     groupId: usageHistoryGroupId.value,
-    search: usageHistorySearch.value
+    search: usageHistorySearch.value,
+    includeZeroUsage: usageHistoryIncludeZeroUsage.value
   })
   usageHistoryPage.value = 1
   void loadUsageHistory()
+}
+
+function usageHistoryDraftFiltersChanged() {
+  return usageHistoryConnectorId.value !== appliedUsageHistoryFilters.connectorId
+    || usageHistoryStartDate.value !== appliedUsageHistoryFilters.startDate
+    || usageHistoryEndDate.value !== appliedUsageHistoryFilters.endDate
+    || usageHistoryGroupId.value !== appliedUsageHistoryFilters.groupId
+    || usageHistorySearch.value !== appliedUsageHistoryFilters.search
+    || usageHistoryIncludeZeroUsage.value !== appliedUsageHistoryFilters.includeZeroUsage
 }
 
 function resetUsageHistoryFilters() {
@@ -2946,6 +2968,7 @@ function resetUsageHistoryFilters() {
   usageHistoryEndDate.value = today
   usageHistoryGroupId.value = ''
   usageHistorySearch.value = ''
+  usageHistoryIncludeZeroUsage.value = false
   usageHistoryOnlyAnomalies.value = false
   reloadUsageHistory()
 }

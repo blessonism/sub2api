@@ -431,6 +431,9 @@ func relayUsageHistoryWhere(filters service.UpstreamRelayUsageHistoryListFilters
 		args = append(args, "%"+strings.ToLower(strings.TrimSpace(filters.Search))+"%")
 		conditions = append(conditions, fmt.Sprintf("(LOWER(COALESCE(c.name, '')) LIKE $%d OR LOWER(h.upstream_group_id) LIKE $%d OR LOWER(h.group_name) LIKE $%d OR LOWER(h.platform) LIKE $%d)", len(args), len(args), len(args), len(args)))
 	}
+	if !filters.IncludeZeroUsage {
+		conditions = append(conditions, "(h.actual_cost > 0 OR h.total_tokens > 0)")
+	}
 	return strings.Join(conditions, " AND "), args
 }
 

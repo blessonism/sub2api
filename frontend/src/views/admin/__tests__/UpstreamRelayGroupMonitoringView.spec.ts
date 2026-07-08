@@ -1267,6 +1267,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
       start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       end_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     }))
+    expect(usageHistoryTabCalls().at(-1)?.include_zero_usage).toBeUndefined()
     expect(wrapper.text()).toContain('relay-a')
     expect(wrapper.text()).toContain('Team A')
     expect(wrapper.text()).toContain('Team B')
@@ -1275,6 +1276,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('usageHistory.connector')
     expect(wrapper.text()).toContain('usageHistory.groupId')
     expect(wrapper.text()).toContain('usageHistory.keyword')
+    expect(wrapper.text()).toContain('usageHistory.includeZeroUsage')
     expect(wrapper.text()).toContain('usageHistory.onlyAnomalies')
     expect(wrapper.text()).toContain('usageHistory.summaryCost')
     expect(wrapper.text()).toContain('usageHistory.summaryTokens')
@@ -1300,11 +1302,121 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('$2.50')
     expect(wrapper.text()).toContain('1.50M')
 
-    await wrapper.findAll('input[type="checkbox"]').find((input) => input.element instanceof HTMLInputElement && !input.element.checked)!.setValue(true)
+    const anomaliesToggle = wrapper.findAll('label').find((label) => label.text().includes('usageHistory.onlyAnomalies'))!.find('input')
+    await anomaliesToggle.setValue(true)
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Team A')
     expect(wrapper.text()).toContain('Team B')
+  })
+
+  it('历史用量默认隐藏无消费分组，开启开关后包含无消费分组', async () => {
+    listUsageHistory.mockImplementation((params = {}) => Promise.resolve({
+      items: params.include_zero_usage
+        ? [{
+            id: 90,
+            usage_date: '2026-06-28',
+            connector_id: 7,
+            connector_name: 'relay-a',
+            upstream_group_id: 'team-zero',
+            group_name: 'Team Zero',
+            platform: 'openai',
+            actual_cost: 0,
+            total_tokens: 0,
+            checked_at: '2026-06-28T12:00:00Z',
+          }]
+        : [],
+      total: params.include_zero_usage ? 1 : 0,
+      page: 1,
+      page_size: params.page_size || 50,
+      pages: 1,
+      summary: { total_cost: 0, total_tokens: 0, connector_count: params.include_zero_usage ? 1 : 0, group_count: params.include_zero_usage ? 1 : 0, latest_checked_at: null, pending_finalize: 0 },
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+    await flushPromises()
+
+    expect(usageHistoryTabCalls().at(-1)?.include_zero_usage).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Team Zero')
+
+    const includeZeroToggle = wrapper.findAll('label').find((label) => label.text().includes('usageHistory.includeZeroUsage'))!.find('input')
+    await includeZeroToggle.setValue(true)
+    await flushPromises()
+    expect(wrapper.text()).toContain('usageHistory.filtersPending')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('usageHistory.applyFilters'))!.trigger('click')
+    await flushPromises()
+
+    expect(usageHistoryTabCalls().at(-1)).toEqual(expect.objectContaining({ include_zero_usage: true }))
+    expect(wrapper.text()).toContain('Team Zero')
+  })
+
+  it('历史用量在后端页数字段异常时仍可按总数进入下一页', async () => {
+    const firstPageItem = {
+      id: 88,
+      usage_date: '2026-06-28',
+      connector_id: 7,
+      connector_name: 'relay-a',
+      upstream_group_id: 'team-a',
+      group_name: 'Team A',
+      platform: 'openai',
+      actual_cost: 2.5,
+      total_tokens: 1500000,
+      checked_at: '2026-06-28T12:00:00Z',
+    }
+    const secondPageItem = {
+      ...firstPageItem,
+      id: 139,
+      connector_name: 'relay-b',
+      upstream_group_id: 'team-b',
+      group_name: 'Team B',
+    }
+    listUsageHistory.mockImplementation((params = {}) => {
+      if (params.page_size === 200) {
+        return Promise.resolve({
+          items: [],
+          total: 0,
+          page: 1,
+          page_size: 200,
+          pages: 1,
+          summary: { total_cost: 0, total_tokens: 0, connector_count: 0, group_count: 0, latest_checked_at: null, pending_finalize: 0 },
+        })
+      }
+      if (params.page === 2) {
+        return Promise.resolve({
+          items: [secondPageItem],
+          total: 75,
+          page: 2,
+          page_size: 50,
+          pages: 1,
+          summary: { total_cost: 3.75, total_tokens: 1500000, connector_count: 2, group_count: 75, latest_checked_at: firstPageItem.checked_at, pending_finalize: 0 },
+        })
+      }
+      return Promise.resolve({
+        items: [firstPageItem],
+        total: 75,
+        page: 1,
+        page_size: 50,
+        pages: 1,
+        summary: { total_cost: 3.75, total_tokens: 1500000, connector_count: 2, group_count: 75, latest_checked_at: firstPageItem.checked_at, pending_finalize: 0 },
+      })
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.usageHistory'))!.trigger('click')
+    await flushPromises()
+
+    const nextButton = wrapper.findAll('button').find((button) => button.text().includes('usageHistory.next'))!
+    expect(nextButton.attributes('disabled')).toBeUndefined()
+
+    await nextButton.trigger('click')
+    await flushPromises()
+
+    expect(usageHistoryTabCalls()).toContainEqual(expect.objectContaining({ page: 2, page_size: 50 }))
+    expect(wrapper.text()).toContain('relay-b')
   })
 
   it('历史用量快捷日期会写入日期范围并立即查询', async () => {
