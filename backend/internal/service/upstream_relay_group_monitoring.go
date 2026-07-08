@@ -463,18 +463,23 @@ type UpstreamRelayRecommendationSuggestion struct {
 }
 
 type UpstreamRelayRecommendationPolicy struct {
-	SnapshotFreshnessMinutes   int       `json:"snapshot_freshness_minutes"`
-	UsageDeltaFreshnessMinutes int       `json:"usage_delta_freshness_minutes"`
-	ProbeFreshnessMinutes      int       `json:"probe_freshness_minutes"`
-	MinSuccessRate             float64   `json:"min_success_rate"`
-	MinSampleSize              int       `json:"min_sample_size"`
-	ExcludeConsecutiveFailures bool      `json:"exclude_consecutive_failures"`
-	PriorityStart              int       `json:"priority_start"`
-	PriorityStep               int       `json:"priority_step"`
-	SortFields                 []string  `json:"sort_fields"`
-	UpdatedBy                  int64     `json:"updated_by,omitempty"`
-	CreatedAt                  time.Time `json:"created_at,omitempty"`
-	UpdatedAt                  time.Time `json:"updated_at,omitempty"`
+	SnapshotFreshnessMinutes          int       `json:"snapshot_freshness_minutes"`
+	UsageDeltaFreshnessMinutes        int       `json:"usage_delta_freshness_minutes"`
+	ProbeFreshnessMinutes             int       `json:"probe_freshness_minutes"`
+	MinSuccessRate                    float64   `json:"min_success_rate"`
+	MinSampleSize                     int       `json:"min_sample_size"`
+	ExcludeConsecutiveFailures        bool      `json:"exclude_consecutive_failures"`
+	PriorityStart                     int       `json:"priority_start"`
+	PriorityStep                      int       `json:"priority_step"`
+	SortFields                        []string  `json:"sort_fields"`
+	PauseRateGapEnabled               bool      `json:"pause_rate_gap_enabled"`
+	PauseRateGapThreshold             float64   `json:"pause_rate_gap_threshold"`
+	PauseConsecutiveFailuresEnabled   bool      `json:"pause_consecutive_failures_enabled"`
+	PauseConsecutiveFailuresThreshold int       `json:"pause_consecutive_failures_threshold"`
+	PauseSuccessRateEnabled           bool      `json:"pause_success_rate_enabled"`
+	UpdatedBy                         int64     `json:"updated_by,omitempty"`
+	CreatedAt                         time.Time `json:"created_at,omitempty"`
+	UpdatedAt                         time.Time `json:"updated_at,omitempty"`
 }
 
 type UpstreamRelayMonitoringPolicy struct {
@@ -2525,14 +2530,19 @@ func isValidUpstreamRelayProbeProtocol(protocol string) bool {
 
 func defaultUpstreamRelayRecommendationPolicy() UpstreamRelayRecommendationPolicy {
 	return UpstreamRelayRecommendationPolicy{
-		SnapshotFreshnessMinutes:   int(upstreamRelaySnapshotFreshness / time.Minute),
-		UsageDeltaFreshnessMinutes: int(upstreamRelayUsageDeltaFreshness / time.Minute),
-		ProbeFreshnessMinutes:      int(upstreamRelayProbeFreshness / time.Minute),
-		MinSuccessRate:             0.5,
-		MinSampleSize:              3,
-		ExcludeConsecutiveFailures: true,
-		PriorityStart:              upstreamRelayDefaultPriorityStart,
-		PriorityStep:               upstreamRelayPriorityStep,
+		SnapshotFreshnessMinutes:          int(upstreamRelaySnapshotFreshness / time.Minute),
+		UsageDeltaFreshnessMinutes:        int(upstreamRelayUsageDeltaFreshness / time.Minute),
+		ProbeFreshnessMinutes:             int(upstreamRelayProbeFreshness / time.Minute),
+		MinSuccessRate:                    0.5,
+		MinSampleSize:                     3,
+		ExcludeConsecutiveFailures:        true,
+		PriorityStart:                     upstreamRelayDefaultPriorityStart,
+		PriorityStep:                      upstreamRelayPriorityStep,
+		PauseRateGapEnabled:               false,
+		PauseRateGapThreshold:             0.04,
+		PauseConsecutiveFailuresEnabled:   false,
+		PauseConsecutiveFailuresThreshold: 3,
+		PauseSuccessRateEnabled:           false,
 		SortFields: []string{
 			UpstreamRelaySortRateAsc,
 			UpstreamRelaySortSuccessRateDesc,
@@ -2642,6 +2652,12 @@ func normalizeUpstreamRelayRecommendationPolicy(input UpstreamRelayRecommendatio
 	if policy.PriorityStep == 0 {
 		policy.PriorityStep = defaults.PriorityStep
 	}
+	if policy.PauseRateGapThreshold == 0 {
+		policy.PauseRateGapThreshold = defaults.PauseRateGapThreshold
+	}
+	if policy.PauseConsecutiveFailuresThreshold == 0 {
+		policy.PauseConsecutiveFailuresThreshold = defaults.PauseConsecutiveFailuresThreshold
+	}
 	if len(policy.SortFields) == 0 {
 		policy.SortFields = append([]string{}, defaults.SortFields...)
 	}
@@ -2656,6 +2672,12 @@ func normalizeUpstreamRelayRecommendationPolicy(input UpstreamRelayRecommendatio
 	}
 	if policy.PriorityStep < 1 {
 		return UpstreamRelayRecommendationPolicy{}, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_POLICY_PRIORITY_STEP", "priority_step must be positive")
+	}
+	if policy.PauseRateGapThreshold <= 0 || math.IsNaN(policy.PauseRateGapThreshold) || math.IsInf(policy.PauseRateGapThreshold, 0) {
+		return UpstreamRelayRecommendationPolicy{}, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_POLICY_PAUSE_RATE_GAP", "pause_rate_gap_threshold must be positive")
+	}
+	if policy.PauseConsecutiveFailuresThreshold < 1 {
+		return UpstreamRelayRecommendationPolicy{}, infraerrors.BadRequest("UPSTREAM_RELAY_INVALID_POLICY_PAUSE_FAILURES", "pause_consecutive_failures_threshold must be positive")
 	}
 	seen := map[string]bool{}
 	for _, field := range policy.SortFields {
@@ -2676,6 +2698,22 @@ func buildUpstreamRelaySuggestions(candidates []UpstreamRelayCandidate) []Upstre
 	return buildUpstreamRelayRecommendationPreview(candidates, defaultUpstreamRelayRecommendationPolicy()).Suggestions
 }
 
+type upstreamRelayCandidateEvaluation struct {
+	candidate UpstreamRelayCandidate
+	exclusion UpstreamRelayRecommendationExclusion
+	excluded  bool
+}
+
+type upstreamRelayAccountPauseEvidence struct {
+	ReasonCode          string
+	Reason              string
+	FinalRateMultiplier float64
+	HealthStatus        string
+	Confidence          string
+	HealthSummary       string
+	RateSource          string
+}
+
 func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate, policy UpstreamRelayRecommendationPolicy) UpstreamRelayRecommendationPreview {
 	normalized, err := normalizeUpstreamRelayRecommendationPolicy(policy)
 	if err != nil {
@@ -2686,17 +2724,16 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 	exclusions := make([]UpstreamRelayRecommendationExclusion, 0)
 	accountGateSuggestions := make([]UpstreamRelayRecommendationSuggestion, 0)
 	schedulableByPlatform := countSchedulableRelayAccountsByPlatform(candidates)
+	evaluations := make([]upstreamRelayCandidateEvaluation, 0, len(candidates))
+	accountHasEligibleCandidate := map[int64]struct{}{}
 	seenGateAccounts := map[int64]struct{}{}
 	for _, candidate := range candidates {
 		if exclusion, ok := evaluateUpstreamRelayCandidateExclusion(candidate, now, normalized); ok {
-			if suggestion, ok := buildRelayAccountGatePauseSuggestion(candidate, exclusion, schedulableByPlatform); ok {
-				if _, seen := seenGateAccounts[suggestion.AccountID]; !seen {
-					accountGateSuggestions = append(accountGateSuggestions, suggestion)
-					seenGateAccounts[suggestion.AccountID] = struct{}{}
-					continue
-				}
-			}
-			exclusions = append(exclusions, exclusion)
+			evaluations = append(evaluations, upstreamRelayCandidateEvaluation{candidate: candidate, exclusion: exclusion, excluded: true})
+			continue
+		}
+		if exclusion, ok := evaluateUpstreamRelayCandidatePauseExclusion(candidate, now, normalized); ok {
+			evaluations = append(evaluations, upstreamRelayCandidateEvaluation{candidate: candidate, exclusion: exclusion, excluded: true})
 			continue
 		}
 		if suggestion, ok := buildRelayAccountGateResumeSuggestion(candidate, now, normalized); ok {
@@ -2707,6 +2744,40 @@ func buildUpstreamRelayRecommendationPreview(candidates []UpstreamRelayCandidate
 			continue
 		}
 		eligible = append(eligible, candidate)
+		if candidate.AccountSchedulable && !candidate.AccountGateActive {
+			accountHasEligibleCandidate[candidate.AccountID] = struct{}{}
+		}
+		evaluations = append(evaluations, upstreamRelayCandidateEvaluation{candidate: candidate})
+	}
+	if normalized.PauseRateGapEnabled {
+		for _, suggestion := range buildRelayRateGapPauseSuggestions(eligible, normalized, schedulableByPlatform, now) {
+			if _, seen := seenGateAccounts[suggestion.AccountID]; !seen {
+				accountGateSuggestions = append(accountGateSuggestions, suggestion)
+				seenGateAccounts[suggestion.AccountID] = struct{}{}
+			}
+		}
+	}
+	for _, evaluation := range evaluations {
+		if !evaluation.excluded {
+			continue
+		}
+		if _, hasEligible := accountHasEligibleCandidate[evaluation.candidate.AccountID]; hasEligible {
+			exclusions = append(exclusions, evaluation.exclusion)
+			continue
+		}
+		if evidence, ok := buildRelayAccountGatePauseEvidence(evaluation.candidate, evaluation.exclusion, normalized, now); ok {
+			suggestion, ok := buildRelayAccountGatePauseSuggestion(evaluation.candidate, evidence, schedulableByPlatform)
+			if !ok {
+				exclusions = append(exclusions, evaluation.exclusion)
+				continue
+			}
+			if _, seen := seenGateAccounts[suggestion.AccountID]; !seen {
+				accountGateSuggestions = append(accountGateSuggestions, suggestion)
+				seenGateAccounts[suggestion.AccountID] = struct{}{}
+				continue
+			}
+		}
+		exclusions = append(exclusions, evaluation.exclusion)
 	}
 	sortRelayCandidatesWithPolicy(eligible, normalized, now)
 	suggestions := make([]UpstreamRelayRecommendationSuggestion, 0, len(eligible))
@@ -2833,23 +2904,134 @@ func countSchedulableRelayAccountsByPlatform(candidates []UpstreamRelayCandidate
 	return out
 }
 
-func buildRelayAccountGatePauseSuggestion(candidate UpstreamRelayCandidate, exclusion UpstreamRelayRecommendationExclusion, schedulableByPlatform map[string]int) (UpstreamRelayRecommendationSuggestion, bool) {
+func buildRelayRateGapPauseSuggestions(eligible []UpstreamRelayCandidate, policy UpstreamRelayRecommendationPolicy, schedulableByPlatform map[string]int, now time.Time) []UpstreamRelayRecommendationSuggestion {
+	byAccount := map[int64][]UpstreamRelayCandidate{}
+	for _, candidate := range eligible {
+		if !candidate.AccountSchedulable || candidate.AccountGateActive {
+			continue
+		}
+		byAccount[candidate.AccountID] = append(byAccount[candidate.AccountID], candidate)
+	}
+	suggestions := make([]UpstreamRelayRecommendationSuggestion, 0)
+	for accountID, accountCandidates := range byAccount {
+		if len(accountCandidates) == 0 || schedulableByPlatform[accountCandidates[0].AccountPlatform] <= 1 {
+			continue
+		}
+		var selectedCandidate UpstreamRelayCandidate
+		var selectedReplacement UpstreamRelayCandidate
+		selectedRate := 0.0
+		selectedReplacementRate := 0.0
+		selectedReplacementSource := ""
+		maxGap := 0.0
+		allCovered := true
+		for _, candidate := range accountCandidates {
+			rate, _, ok := effectiveRelayRateWithPolicy(candidate, now, policy)
+			if !ok {
+				allCovered = false
+				break
+			}
+			replacement, replacementRate, replacementSource, ok := findRelayRateGapReplacement(candidate, rate, eligible, policy, now)
+			if !ok {
+				allCovered = false
+				break
+			}
+			gap := rate - replacementRate
+			if selectedCandidate.ID == 0 || gap > maxGap {
+				selectedCandidate = candidate
+				selectedReplacement = replacement
+				selectedRate = rate
+				selectedReplacementRate = replacementRate
+				selectedReplacementSource = replacementSource
+				maxGap = gap
+			}
+		}
+		if !allCovered || selectedCandidate.ID == 0 {
+			continue
+		}
+		rateSource := ""
+		if selectedCandidate.LatestSnapshot != nil {
+			rateSource = selectedCandidate.LatestSnapshot.Source
+		}
+		if rateSource == "" {
+			_, rateSource, _ = effectiveRelayRateWithPolicy(selectedCandidate, now, policy)
+		}
+		reason := fmt.Sprintf("账号所有健康候选均可由跨账号低倍率候选替代；当前候选 %s 倍率 %.4g，最低可替代候选 #%d %s 倍率 %.4g，差值 %.4g >= 策略阈值 %.4g，建议暂停账号承接",
+			relayCandidateMappingForReason(selectedCandidate),
+			selectedRate,
+			selectedReplacement.AccountID,
+			relayCandidateMappingForReason(selectedReplacement),
+			selectedReplacementRate,
+			maxGap,
+			policy.PauseRateGapThreshold,
+		)
+		if selectedReplacementSource != "" {
+			reason = fmt.Sprintf("%s；替代倍率来源 %s", reason, selectedReplacementSource)
+		}
+		evidence := upstreamRelayAccountPauseEvidence{
+			ReasonCode:          "rate_gap_exceeded",
+			Reason:              reason,
+			FinalRateMultiplier: selectedRate,
+			HealthStatus:        relayHealthStatus(selectedCandidate),
+			Confidence:          relayRateConfidence(rateSource),
+			HealthSummary:       relayHealthSummary(selectedCandidate),
+			RateSource:          rateSource,
+		}
+		if suggestion, ok := buildRelayAccountGatePauseSuggestion(selectedCandidate, evidence, schedulableByPlatform); ok {
+			suggestion.AccountID = accountID
+			suggestions = append(suggestions, suggestion)
+		}
+	}
+	return suggestions
+}
+
+func findRelayRateGapReplacement(candidate UpstreamRelayCandidate, candidateRate float64, eligible []UpstreamRelayCandidate, policy UpstreamRelayRecommendationPolicy, now time.Time) (UpstreamRelayCandidate, float64, string, bool) {
+	var best UpstreamRelayCandidate
+	bestRate := math.MaxFloat64
+	bestSource := ""
+	for _, replacement := range eligible {
+		if replacement.AccountID == candidate.AccountID ||
+			replacement.AccountPlatform != candidate.AccountPlatform ||
+			replacement.ProbeProtocol != candidate.ProbeProtocol ||
+			replacement.ProbeModel != candidate.ProbeModel {
+			continue
+		}
+		rate, source, ok := effectiveRelayRateWithPolicy(replacement, now, policy)
+		if !ok {
+			continue
+		}
+		if candidateRate-rate < policy.PauseRateGapThreshold {
+			continue
+		}
+		if rate < bestRate {
+			best = replacement
+			bestRate = rate
+			bestSource = source
+		}
+	}
+	if best.ID == 0 {
+		return UpstreamRelayCandidate{}, 0, "", false
+	}
+	return best, bestRate, bestSource, true
+}
+
+func relayCandidateMappingForReason(candidate UpstreamRelayCandidate) string {
+	group := strings.TrimSpace(candidate.UpstreamGroupName)
+	if group == "" {
+		group = strings.TrimSpace(candidate.UpstreamGroupID)
+	}
+	if group == "" {
+		group = fmt.Sprintf("candidate #%d", candidate.ID)
+	}
+	return group
+}
+
+func buildRelayAccountGatePauseSuggestion(candidate UpstreamRelayCandidate, evidence upstreamRelayAccountPauseEvidence, schedulableByPlatform map[string]int) (UpstreamRelayRecommendationSuggestion, bool) {
 	if !candidate.AccountSchedulable || candidate.AccountGateActive {
 		return UpstreamRelayRecommendationSuggestion{}, false
 	}
 	if schedulableByPlatform[candidate.AccountPlatform] <= 1 {
 		return UpstreamRelayRecommendationSuggestion{}, false
 	}
-	switch exclusion.ReasonCode {
-	case "missing_fresh_rate", "latest_probe_failed", "stale_probe", "consecutive_failures", "success_rate_below_threshold":
-	default:
-		return UpstreamRelayRecommendationSuggestion{}, false
-	}
-	rate := 0.0
-	if exclusion.FinalRateMultiplier != nil {
-		rate = *exclusion.FinalRateMultiplier
-	}
-	reason := fmt.Sprintf("%s；建议暂停账号承接，避免请求 fallback 到该高风险账号", exclusion.Reason)
 	return UpstreamRelayRecommendationSuggestion{
 		ActionType:          UpstreamRelaySuggestionActionAccountPause,
 		CandidateID:         candidate.ID,
@@ -2862,14 +3044,70 @@ func buildRelayAccountGatePauseSuggestion(candidate UpstreamRelayCandidate, excl
 		OldPriority:         candidate.CurrentPriority,
 		OldSchedulable:      boolPtr(true),
 		NewSchedulable:      boolPtr(false),
-		FinalRateMultiplier: rate,
-		HealthStatus:        exclusion.HealthStatus,
-		ReasonCode:          "account_gate_" + exclusion.ReasonCode,
-		Confidence:          exclusion.Confidence,
-		HealthSummary:       exclusion.HealthSummary,
-		RateSource:          exclusion.RateSource,
-		Reason:              reason,
+		FinalRateMultiplier: evidence.FinalRateMultiplier,
+		HealthStatus:        evidence.HealthStatus,
+		ReasonCode:          "account_gate_" + evidence.ReasonCode,
+		Confidence:          evidence.Confidence,
+		HealthSummary:       evidence.HealthSummary,
+		RateSource:          evidence.RateSource,
+		Reason:              evidence.Reason,
 	}, true
+}
+
+func buildRelayAccountGatePauseEvidence(candidate UpstreamRelayCandidate, exclusion UpstreamRelayRecommendationExclusion, policy UpstreamRelayRecommendationPolicy, now time.Time) (upstreamRelayAccountPauseEvidence, bool) {
+	if candidate.Health == nil {
+		return upstreamRelayAccountPauseEvidence{}, false
+	}
+	rate, rateSource, confidence := relayPauseEvidenceRate(candidate, exclusion, policy, now)
+	healthSummary := relayHealthSummary(candidate)
+	if policy.PauseConsecutiveFailuresEnabled && candidate.Health.ConsecutiveFailures >= policy.PauseConsecutiveFailuresThreshold {
+		reason := fmt.Sprintf("连续失败 %d 次，达到策略阈值 %d；%s；建议暂停账号承接", candidate.Health.ConsecutiveFailures, policy.PauseConsecutiveFailuresThreshold, relayLatestProbeFailureSummary(candidate))
+		return upstreamRelayAccountPauseEvidence{
+			ReasonCode:          "consecutive_failures",
+			Reason:              reason,
+			FinalRateMultiplier: rate,
+			HealthStatus:        relayHealthStatus(candidate),
+			Confidence:          confidence,
+			HealthSummary:       healthSummary,
+			RateSource:          rateSource,
+		}, true
+	}
+	if policy.PauseSuccessRateEnabled && candidate.Health.ProbeCount >= policy.MinSampleSize && candidate.Health.SuccessRate < policy.MinSuccessRate {
+		reason := fmt.Sprintf("样本数 %d 已达到门槛 %d，成功率 %.0f%% 低于策略 %.0f%%；建议暂停账号承接", candidate.Health.ProbeCount, policy.MinSampleSize, candidate.Health.SuccessRate*100, policy.MinSuccessRate*100)
+		return upstreamRelayAccountPauseEvidence{
+			ReasonCode:          "success_rate_below_threshold",
+			Reason:              reason,
+			FinalRateMultiplier: rate,
+			HealthStatus:        relayHealthStatus(candidate),
+			Confidence:          confidence,
+			HealthSummary:       healthSummary,
+			RateSource:          rateSource,
+		}, true
+	}
+	return upstreamRelayAccountPauseEvidence{}, false
+}
+
+func relayPauseEvidenceRate(candidate UpstreamRelayCandidate, exclusion UpstreamRelayRecommendationExclusion, policy UpstreamRelayRecommendationPolicy, now time.Time) (float64, string, string) {
+	if exclusion.FinalRateMultiplier != nil {
+		return *exclusion.FinalRateMultiplier, exclusion.RateSource, exclusion.Confidence
+	}
+	if rate, source, ok := effectiveRelayRateWithPolicy(candidate, now, policy); ok {
+		return rate, source, relayRateConfidence(source)
+	}
+	return 0, "", upstreamRelayConfidenceUnknown
+}
+
+func relayLatestProbeFailureSummary(candidate UpstreamRelayCandidate) string {
+	if candidate.LatestProbe == nil {
+		return "最近一次探测不存在"
+	}
+	if strings.TrimSpace(candidate.LatestProbe.ErrorMessage) != "" {
+		return fmt.Sprintf("最近错误：%s", candidate.LatestProbe.ErrorMessage)
+	}
+	if strings.TrimSpace(candidate.LatestProbe.ErrorClass) != "" {
+		return fmt.Sprintf("最近错误类型：%s", candidate.LatestProbe.ErrorClass)
+	}
+	return "最近一次探测未成功"
 }
 
 func buildRelayAccountGateResumeSuggestion(candidate UpstreamRelayCandidate, now time.Time, policy UpstreamRelayRecommendationPolicy) (UpstreamRelayRecommendationSuggestion, bool) {
@@ -2962,6 +3200,23 @@ func evaluateUpstreamRelayCandidateExclusion(candidate UpstreamRelayCandidate, n
 		if candidate.Health.ProbeCount >= policy.MinSampleSize && candidate.Health.SuccessRate < policy.MinSuccessRate {
 			return buildUpstreamRelayExclusion(candidate, now, policy, "success_rate_below_threshold", fmt.Sprintf("样本数 %d 已达到门槛 %d，但成功率 %.0f%% 低于策略 %.0f%%", candidate.Health.ProbeCount, policy.MinSampleSize, candidate.Health.SuccessRate*100, policy.MinSuccessRate*100), nil), true
 		}
+	}
+	return UpstreamRelayRecommendationExclusion{}, false
+}
+
+func evaluateUpstreamRelayCandidatePauseExclusion(candidate UpstreamRelayCandidate, now time.Time, policy UpstreamRelayRecommendationPolicy) (UpstreamRelayRecommendationExclusion, bool) {
+	if candidate.Health == nil {
+		return UpstreamRelayRecommendationExclusion{}, false
+	}
+	if policy.PauseConsecutiveFailuresEnabled && candidate.Health.ConsecutiveFailures >= policy.PauseConsecutiveFailuresThreshold {
+		return buildUpstreamRelayExclusion(
+			candidate,
+			now,
+			policy,
+			"consecutive_failures",
+			fmt.Sprintf("连续失败 %d 次，达到策略阈值 %d", candidate.Health.ConsecutiveFailures, policy.PauseConsecutiveFailuresThreshold),
+			nil,
+		), true
 	}
 	return UpstreamRelayRecommendationExclusion{}, false
 }

@@ -45,7 +45,12 @@ describe('admin upstream relay group monitors api', () => {
     exclude_consecutive_failures: true,
     priority_start: 10,
     priority_step: 10,
-    sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc']
+    sort_fields: ['rate_asc', 'success_rate_desc', 'latency_asc'],
+    pause_rate_gap_enabled: true,
+    pause_rate_gap_threshold: 0.04,
+    pause_consecutive_failures_enabled: true,
+    pause_consecutive_failures_threshold: 3,
+    pause_success_rate_enabled: true
   }
   const monitoringPolicy: UpstreamRelayMonitoringPolicy = {
     auto_sync_enabled: true,

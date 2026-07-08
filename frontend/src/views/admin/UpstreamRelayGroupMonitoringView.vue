@@ -1158,6 +1158,37 @@
               </select>
             </div>
           </div>
+          <div class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
+            <div class="mb-3">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ tM('policy.pauseStrategiesTitle') }}</div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ tM('policy.pauseStrategiesDescription') }}</div>
+            </div>
+            <div class="grid gap-3 lg:grid-cols-3">
+              <label class="rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <span class="flex items-center gap-2">
+                  <input v-model="policyForm.pause_rate_gap_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" data-testid="policy-pause-rate-gap-enabled" />
+                  <span class="font-medium">{{ tM('policy.pauseRateGap') }}</span>
+                </span>
+                <input v-if="policyForm.pause_rate_gap_enabled" v-model.number="policyForm.pause_rate_gap_threshold" class="input mt-2 w-full" type="number" min="0.0001" step="0.001" data-testid="policy-pause-rate-gap-threshold" />
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ tM('policy.pauseRateGapHint') }}</span>
+              </label>
+              <label class="rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <span class="flex items-center gap-2">
+                  <input v-model="policyForm.pause_consecutive_failures_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" data-testid="policy-pause-consecutive-failures-enabled" />
+                  <span class="font-medium">{{ tM('policy.pauseConsecutiveFailures') }}</span>
+                </span>
+                <input v-if="policyForm.pause_consecutive_failures_enabled" v-model.number="policyForm.pause_consecutive_failures_threshold" class="input mt-2 w-full" type="number" min="1" step="1" data-testid="policy-pause-consecutive-failures-threshold" />
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ tM('policy.pauseConsecutiveFailuresHint') }}</span>
+              </label>
+              <label class="rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <span class="flex items-center gap-2">
+                  <input v-model="policyForm.pause_success_rate_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" data-testid="policy-pause-success-rate-enabled" />
+                  <span class="font-medium">{{ tM('policy.pauseSuccessRate') }}</span>
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ tM('policy.pauseSuccessRateHint') }}</span>
+              </label>
+            </div>
+          </div>
           <div class="border-t border-gray-100 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:text-gray-300">
             <div class="font-medium text-gray-900 dark:text-white">{{ tM('policy.derivedFreshnessTitle') }}</div>
             <div class="mt-2 grid gap-3 md:grid-cols-3">
@@ -1737,6 +1768,8 @@ const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
 const MANUAL_CANDIDATE_GROUP_OPTION = '__manual__'
 const BULK_OPERATION_DETAIL_LIMIT = 5
 const UPSTREAM_RELAY_USAGE_TIME_ZONE = 'Asia/Shanghai'
+const DEFAULT_PAUSE_RATE_GAP_THRESHOLD = 0.04
+const DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD = 3
 
 const loading = ref(false)
 const error = ref('')
@@ -1887,7 +1920,12 @@ const policyForm = reactive<UpstreamRelayRecommendationPolicy>({
   exclude_consecutive_failures: true,
   priority_start: 10,
   priority_step: 10,
-  sort_fields: [...DEFAULT_POLICY_SORT_FIELDS]
+  sort_fields: [...DEFAULT_POLICY_SORT_FIELDS],
+  pause_rate_gap_enabled: false,
+  pause_rate_gap_threshold: DEFAULT_PAUSE_RATE_GAP_THRESHOLD,
+  pause_consecutive_failures_enabled: false,
+  pause_consecutive_failures_threshold: DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD,
+  pause_success_rate_enabled: false
 })
 
 const monitoringPolicyForm = reactive<UpstreamRelayMonitoringPolicy>({
@@ -3653,7 +3691,12 @@ function replaceRecommendationRunPreservingOrder(run: UpstreamRelayRecommendatio
 function assignPolicyForm(policy: UpstreamRelayRecommendationPolicy) {
   Object.assign(policyForm, {
     ...policy,
-    sort_fields: normalizePolicySortFields(policy.sort_fields)
+    sort_fields: normalizePolicySortFields(policy.sort_fields),
+    pause_rate_gap_enabled: Boolean(policy.pause_rate_gap_enabled),
+    pause_rate_gap_threshold: positiveNumber(policy.pause_rate_gap_threshold, DEFAULT_PAUSE_RATE_GAP_THRESHOLD),
+    pause_consecutive_failures_enabled: Boolean(policy.pause_consecutive_failures_enabled),
+    pause_consecutive_failures_threshold: positiveInteger(policy.pause_consecutive_failures_threshold, DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD),
+    pause_success_rate_enabled: Boolean(policy.pause_success_rate_enabled)
   })
 }
 
@@ -3689,6 +3732,12 @@ function positiveInteger(value: unknown, fallback: number) {
   return Math.floor(numeric)
 }
 
+function positiveNumber(value: unknown, fallback: number) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback
+  return numeric
+}
+
 function normalizePolicySortFields(fields: UpstreamRelayRecommendationSortField[] = []): UpstreamRelayRecommendationSortField[] {
   const allowed = new Set<UpstreamRelayRecommendationSortField>(DEFAULT_POLICY_SORT_FIELDS)
   const normalized: UpstreamRelayRecommendationSortField[] = []
@@ -3716,7 +3765,12 @@ function normalizedPolicyPayload(): UpstreamRelayRecommendationPolicy {
     exclude_consecutive_failures: Boolean(policyForm.exclude_consecutive_failures),
     priority_start: Number(policyForm.priority_start) || 0,
     priority_step: positiveInteger(policyForm.priority_step, 1),
-    sort_fields: sortFields
+    sort_fields: sortFields,
+    pause_rate_gap_enabled: Boolean(policyForm.pause_rate_gap_enabled),
+    pause_rate_gap_threshold: positiveNumber(policyForm.pause_rate_gap_threshold, DEFAULT_PAUSE_RATE_GAP_THRESHOLD),
+    pause_consecutive_failures_enabled: Boolean(policyForm.pause_consecutive_failures_enabled),
+    pause_consecutive_failures_threshold: positiveInteger(policyForm.pause_consecutive_failures_threshold, DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD),
+    pause_success_rate_enabled: Boolean(policyForm.pause_success_rate_enabled)
   }
 }
 

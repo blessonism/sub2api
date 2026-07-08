@@ -867,7 +867,10 @@ func (r *upstreamRelayRepository) GetRecommendationPolicy(ctx context.Context) (
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT snapshot_freshness_minutes, usage_delta_freshness_minutes, probe_freshness_minutes,
 		       min_success_rate, min_sample_size, exclude_consecutive_failures,
-		       priority_start, priority_step, sort_fields, COALESCE(updated_by, 0),
+		       priority_start, priority_step, sort_fields,
+		       pause_rate_gap_enabled, pause_rate_gap_threshold,
+		       pause_consecutive_failures_enabled, pause_consecutive_failures_threshold,
+		       pause_success_rate_enabled, COALESCE(updated_by, 0),
 		       created_at, updated_at
 		FROM upstream_relay_recommendation_policy
 		WHERE id = 1
@@ -891,9 +894,12 @@ func (r *upstreamRelayRepository) UpsertRecommendationPolicy(ctx context.Context
 		INSERT INTO upstream_relay_recommendation_policy (
 			id, snapshot_freshness_minutes, usage_delta_freshness_minutes, probe_freshness_minutes,
 			min_success_rate, min_sample_size, exclude_consecutive_failures,
-			priority_start, priority_step, sort_fields, updated_by, created_at, updated_at
+			priority_start, priority_step, sort_fields,
+			pause_rate_gap_enabled, pause_rate_gap_threshold,
+			pause_consecutive_failures_enabled, pause_consecutive_failures_threshold,
+			pause_success_rate_enabled, updated_by, created_at, updated_at
 		)
-		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
+		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			snapshot_freshness_minutes=EXCLUDED.snapshot_freshness_minutes,
 			usage_delta_freshness_minutes=EXCLUDED.usage_delta_freshness_minutes,
@@ -904,11 +910,19 @@ func (r *upstreamRelayRepository) UpsertRecommendationPolicy(ctx context.Context
 			priority_start=EXCLUDED.priority_start,
 			priority_step=EXCLUDED.priority_step,
 			sort_fields=EXCLUDED.sort_fields,
+			pause_rate_gap_enabled=EXCLUDED.pause_rate_gap_enabled,
+			pause_rate_gap_threshold=EXCLUDED.pause_rate_gap_threshold,
+			pause_consecutive_failures_enabled=EXCLUDED.pause_consecutive_failures_enabled,
+			pause_consecutive_failures_threshold=EXCLUDED.pause_consecutive_failures_threshold,
+			pause_success_rate_enabled=EXCLUDED.pause_success_rate_enabled,
 			updated_by=EXCLUDED.updated_by,
 			updated_at=NOW()
 	`, policy.SnapshotFreshnessMinutes, policy.UsageDeltaFreshnessMinutes, policy.ProbeFreshnessMinutes,
 		policy.MinSuccessRate, policy.MinSampleSize, policy.ExcludeConsecutiveFailures,
-		policy.PriorityStart, policy.PriorityStep, pq.Array(policy.SortFields), operatorID); err != nil {
+		policy.PriorityStart, policy.PriorityStep, pq.Array(policy.SortFields),
+		policy.PauseRateGapEnabled, policy.PauseRateGapThreshold,
+		policy.PauseConsecutiveFailuresEnabled, policy.PauseConsecutiveFailuresThreshold,
+		policy.PauseSuccessRateEnabled, operatorID); err != nil {
 		return nil, err
 	}
 	return r.GetRecommendationPolicy(ctx)
@@ -1625,6 +1639,11 @@ func scanRelayRecommendationPolicy(rows *sql.Rows) (service.UpstreamRelayRecomme
 		&policy.PriorityStart,
 		&policy.PriorityStep,
 		pq.Array(&sortFields),
+		&policy.PauseRateGapEnabled,
+		&policy.PauseRateGapThreshold,
+		&policy.PauseConsecutiveFailuresEnabled,
+		&policy.PauseConsecutiveFailuresThreshold,
+		&policy.PauseSuccessRateEnabled,
 		&policy.UpdatedBy,
 		&policy.CreatedAt,
 		&policy.UpdatedAt,

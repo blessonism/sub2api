@@ -405,6 +405,11 @@ export interface UpstreamRelayRecommendationPolicy {
   priority_start: number
   priority_step: number
   sort_fields: UpstreamRelayRecommendationSortField[]
+  pause_rate_gap_enabled?: boolean
+  pause_rate_gap_threshold?: number
+  pause_consecutive_failures_enabled?: boolean
+  pause_consecutive_failures_threshold?: number
+  pause_success_rate_enabled?: boolean
   updated_by?: number
   created_at?: string
   updated_at?: string
