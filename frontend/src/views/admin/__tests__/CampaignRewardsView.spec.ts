@@ -173,6 +173,10 @@ describe('admin CampaignRewardsView', () => {
     })
     getLeaderboard.mockResolvedValue({ items: [] })
     getFinalRewardResults.mockRejectedValue({ response: { data: { code: 'CAMPAIGN_NO_FINAL_SETTLEMENT' } } })
+    createCampaign.mockResolvedValue({
+      campaign: { ...campaign, id: 10, name: '邀请好友赢奖金' },
+      config_version: { id: 100 },
+    })
   })
 
   afterEach(() => {
@@ -288,18 +292,107 @@ describe('admin CampaignRewardsView', () => {
     await flushPromises()
 
     const dialog = wrapper.get('[data-testid="base-dialog"]')
-    const inputs = dialog.findAll('input')
-    await inputs[6].setValue('0.9')
+    expect(dialog.findAll('[data-testid="rank-weight-row"]')).toHaveLength(10)
+
+    const numberInputs = dialog.findAll('input[type="number"]')
+    await numberInputs[4].setValue('0.9')
     await flushPromises()
 
     expect(wrapper.text()).toContain('admin.campaignRewards.createPoolRatioInvalid')
 
-    await inputs[6].setValue('0.8')
-    await inputs[9].setValue('30,20,15,10,8,6,4,3,2,1')
+    await numberInputs[4].setValue('0.2')
+    await dialog.findAll('[data-testid="rank-weight-input"]')[9].setValue('1')
     await flushPromises()
 
     expect(wrapper.text()).toContain('admin.campaignRewards.createWeightsSumInvalid')
     expect(createCampaign).not.toHaveBeenCalled()
+  })
+
+  it('shows an invalid weight hint instead of a NaN total when a rank weight is empty', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="base-dialog"]')
+    await dialog.findAll('[data-testid="rank-weight-input"]')[0].setValue('')
+    await flushPromises()
+
+    expect(dialog.get('[data-testid="rank-weight-total"]').text()).toContain('admin.campaignRewards.createWeightsInvalid')
+    expect(dialog.get('[data-testid="rank-weight-total"]').text()).not.toContain('NaN')
+    expect(wrapper.text()).toContain('admin.campaignRewards.createWeightsInvalid')
+    expect(createCampaign).not.toHaveBeenCalled()
+  })
+
+  it('keeps the rank weight total in warning state when invalid weights still sum to 100', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="base-dialog"]')
+    const weightInputs = dialog.findAll('[data-testid="rank-weight-input"]')
+    await weightInputs[0].setValue('30.5')
+    await weightInputs[1].setValue('19.5')
+    await flushPromises()
+
+    const total = dialog.get('[data-testid="rank-weight-total"]')
+    expect(total.text()).toContain('admin.campaignRewards.createWeightsInvalid')
+    expect(total.classes()).toContain('text-amber-600')
+    expect(total.classes()).not.toContain('text-emerald-600')
+    expect(createCampaign).not.toHaveBeenCalled()
+  })
+
+  it('submits rank reward count and weights from the editable table after deleting a rank', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="base-dialog"]')
+    await dialog.findAll('[data-testid="remove-rank-weight-row"]')[9].trigger('click')
+    await dialog.findAll('[data-testid="rank-weight-input"]')[0].setValue('32')
+    await flushPromises()
+
+    expect(dialog.findAll('[data-testid="rank-weight-row"]')).toHaveLength(9)
+    expect(dialog.text()).toContain('admin.campaignRewards.rankWeightRankValue')
+
+    await dialog.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    expect(createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rank_reward_count: 9,
+      rank_weights: [32, 20, 15, 10, 8, 6, 4, 3, 2],
+    }))
+  })
+
+  it('adds a rank weight row and validates it as part of the total', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="base-dialog"]')
+    await dialog.get('[data-testid="add-rank-weight-row"]').trigger('click')
+    await flushPromises()
+
+    expect(dialog.findAll('[data-testid="rank-weight-row"]')).toHaveLength(11)
+    expect(wrapper.text()).toContain('admin.campaignRewards.createWeightsSumInvalid')
+
+    await dialog.findAll('[data-testid="rank-weight-input"]')[0].setValue('29')
+    await flushPromises()
+
+    await dialog.findAll('button').find(button => button.text().includes('admin.campaignRewards.createCampaign'))?.trigger('click')
+    await flushPromises()
+
+    expect(createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rank_reward_count: 11,
+      rank_weights: [29, 20, 15, 10, 8, 6, 4, 3, 2, 2, 1],
+    }))
   })
 
   it('requires confirmation before publishing a campaign', async () => {

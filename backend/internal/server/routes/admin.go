@@ -118,6 +118,9 @@ func RegisterAdminRoutes(
 
 		// 限时邀请奖励活动
 		registerCampaignRoutes(admin, h)
+
+		// Token 达标抽奖活动
+		registerLotteryCampaignRoutes(admin, h)
 	}
 }
 
@@ -819,5 +822,21 @@ func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		campaigns.POST("/:id/recalculate", h.Admin.Campaign.Recalculate)
 		campaigns.GET("/:id/reward-results/final", h.Admin.Campaign.FinalRewardResults)
 		campaigns.POST("/:id/payout", h.Admin.Campaign.Payout)
+	}
+}
+
+func registerLotteryCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	lotteries := admin.Group("/lottery-campaigns")
+	{
+		lotteries.GET("", h.Admin.LotteryCampaign.List)
+		lotteries.POST("", h.Admin.LotteryCampaign.Create)
+		lotteries.GET("/:id", h.Admin.LotteryCampaign.Get)
+		lotteries.PUT("/:id", h.Admin.LotteryCampaign.Update)
+		lotteries.POST("/:id/publish", h.Admin.LotteryCampaign.Publish)
+		lotteries.POST("/:id/cancel", h.Admin.LotteryCampaign.Cancel)
+		lotteries.POST("/:id/sync-entries", h.Admin.LotteryCampaign.SyncEntries)
+		lotteries.POST("/:id/draw", h.Admin.LotteryCampaign.Draw)
+		lotteries.GET("/:id/draw-batches", h.Admin.LotteryCampaign.ListBatches)
+		lotteries.GET("/:id/draw-batches/:batch_id/winners", h.Admin.LotteryCampaign.ListWinners)
 	}
 }

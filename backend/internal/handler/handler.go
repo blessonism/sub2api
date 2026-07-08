@@ -38,6 +38,7 @@ type AdminHandlers struct {
 	Payment                 *admin.PaymentHandler
 	Affiliate               *admin.AffiliateHandler
 	Campaign                *admin.CampaignHandler
+	LotteryCampaign         *admin.LotteryCampaignHandler
 	Compliance              *admin.ComplianceHandler
 	TokenUsagePolicy        *admin.TokenUsagePolicyHandler
 	UpstreamRelayMonitoring *admin.UpstreamRelayGroupMonitoringHandler

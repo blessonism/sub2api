@@ -6,7 +6,7 @@
           <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('admin.campaignRewards.pageTitle') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.pageDesc') }}</p>
         </div>
-        <div class="flex shrink-0 gap-2">
+        <div v-if="activeAdminActivity === 'invite'" class="flex shrink-0 gap-2">
           <button class="btn btn-secondary inline-flex items-center gap-2" type="button" @click="loadCampaigns">
             <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
             {{ t('admin.campaignRewards.refresh') }}
@@ -18,6 +18,30 @@
         </div>
       </div>
 
+      <div class="card p-1">
+        <div class="flex flex-wrap gap-1">
+          <button
+            class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition"
+            :class="activeAdminActivity === 'invite' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50 dark:text-dark-300 dark:hover:bg-dark-800'"
+            type="button"
+            @click="activeAdminActivity = 'invite'"
+          >
+            {{ t('admin.activities.inviteCampaignTitle') }}
+          </button>
+          <button
+            class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition"
+            :class="activeAdminActivity === 'lottery' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50 dark:text-dark-300 dark:hover:bg-dark-800'"
+            type="button"
+            @click="activeAdminActivity = 'lottery'"
+          >
+            {{ t('admin.lotteryCampaigns.title') }}
+          </button>
+        </div>
+      </div>
+
+      <LotteryCampaignAdminPanel v-if="activeAdminActivity === 'lottery'" />
+
+      <div v-else class="contents">
       <div class="space-y-6">
         <div data-testid="campaign-list-card" class="card overflow-hidden">
           <div class="border-b border-gray-100 p-4 dark:border-dark-700">
@@ -457,14 +481,59 @@
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.contributionPoolRatio') }}</span>
               <input v-model.number="createForm.contribution_pool_ratio" class="input" type="number" min="0" step="0.01" />
             </label>
-            <label class="space-y-1">
-              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rankRewardCount') }}</span>
-              <input v-model.number="createForm.rank_reward_count" class="input" type="number" min="1" step="1" />
-            </label>
-            <label class="space-y-1 md:col-span-3">
-              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rankWeights') }}</span>
-              <input v-model.trim="createForm.rank_weights" class="input" type="text" />
-            </label>
+            <div class="space-y-2 md:col-span-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rankWeights') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rankWeightTableHint') }}</p>
+                </div>
+                <button class="btn btn-secondary inline-flex items-center gap-2 text-xs" type="button" data-testid="add-rank-weight-row" @click="addRankWeightRow">
+                  <Icon name="plus" size="xs" />
+                  {{ t('admin.campaignRewards.addRankWeightRow') }}
+                </button>
+              </div>
+              <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
+                <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
+                  <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-medium">{{ t('admin.campaignRewards.rankWeightRank') }}</th>
+                      <th class="px-3 py-2 text-left font-medium">{{ t('admin.campaignRewards.rankWeightValue') }}</th>
+                      <th class="w-24 px-3 py-2 text-right font-medium">{{ t('admin.campaignRewards.rankWeightActions') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-700 dark:bg-dark-900">
+                    <tr v-for="(row, index) in rankWeightRows" :key="row.id" data-testid="rank-weight-row">
+                      <td class="px-3 py-2 text-gray-700 dark:text-dark-200">{{ t('admin.campaignRewards.rankWeightRankValue', { rank: index + 1 }) }}</td>
+                      <td class="px-3 py-2">
+                        <input
+                          v-model.number="row.weight"
+                          class="input h-9 max-w-32"
+                          type="number"
+                          min="1"
+                          step="1"
+                          data-testid="rank-weight-input"
+                        />
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <button
+                          class="btn btn-secondary inline-flex h-9 w-9 items-center justify-center p-0 text-red-600 disabled:text-gray-300 dark:text-red-300 dark:disabled:text-dark-500"
+                          type="button"
+                          :disabled="rankWeightRows.length <= 1"
+                          :title="t('admin.campaignRewards.removeRankWeightRow')"
+                          data-testid="remove-rank-weight-row"
+                          @click="removeRankWeightRow(index)"
+                        >
+                          <Icon name="trash" size="xs" />
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p data-testid="rank-weight-total" class="text-xs" :class="!hasInvalidRankWeights && rankWeightSum === 100 ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'">
+                {{ rankWeightTotalText }}
+              </p>
+            </div>
           </div>
           <p v-if="createValidationMessage" class="mt-3 text-xs text-amber-600 dark:text-amber-300">{{ createValidationMessage }}</p>
         </div>
@@ -671,6 +740,7 @@
         </div>
       </div>
     </BaseDialog>
+      </div>
   </AppLayout>
 </template>
 
@@ -683,6 +753,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import LotteryCampaignAdminPanel from '@/components/admin/activities/LotteryCampaignAdminPanel.vue'
 import { adminAPI } from '@/api/admin'
 import type { Campaign, CampaignInviteRecord, CampaignLeaderboardRow, CampaignPoolSummary } from '@/api/campaigns'
 import type { CampaignCalculationSummary, CampaignUpdateRequest } from '@/api/admin/campaigns'
@@ -692,6 +763,13 @@ import { getCampaignLifecycleState, getCampaignTimeWarnings } from '@/utils/camp
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
+const activeAdminActivity = ref<'invite' | 'lottery'>('invite')
+const defaultRankWeights = [30, 20, 15, 10, 8, 6, 4, 3, 2, 2]
+
+interface RankWeightRow {
+  id: number
+  weight: number
+}
 
 const loading = ref(false)
 const campaigns = ref<Campaign[]>([])
@@ -711,6 +789,7 @@ const createDialogOpen = ref(false)
 const createSubmitting = ref(false)
 const editDialogOpen = ref(false)
 const editSubmitting = ref(false)
+let rankWeightRowID = 0
 const adjustForm = reactive({
   adjustment_type: 'additional_bonus',
   reason: '',
@@ -726,10 +805,9 @@ const createForm = reactive({
   pool_injection_scope: 'invitees_only' as 'invitees_only' | 'all_users',
   rank_pool_ratio: 0.8,
   contribution_pool_ratio: 0.2,
-  rank_reward_count: 10,
-  rank_weights: '30,20,15,10,8,6,4,3,2,2',
   min_payout_yuan: 1,
 })
+const rankWeightRows = ref<RankWeightRow[]>([])
 const editForm = reactive({
   name: '',
   description: '',
@@ -782,13 +860,18 @@ const rewardResultsHiddenCount = computed(() => Math.max((calculation.value?.res
 
 const backendNoFinalSettlementCodes = new Set(['CAMPAIGN_NO_FINAL_SETTLEMENT', 'CAMPAIGN_NOT_FOUND'])
 
-const parsedRankWeights = computed(() => (
-  createForm.rank_weights
-    .split(',')
-    .map(item => Number(item.trim()))
-))
+const parsedRankWeights = computed(() => rankWeightRows.value.map(row => Number(row.weight)))
 
+const hasInvalidRankWeights = computed(() => parsedRankWeights.value.some(weight => !Number.isFinite(weight) || !Number.isInteger(weight) || weight <= 0))
 const rankWeightSum = computed(() => parsedRankWeights.value.reduce((sum, weight) => sum + weight, 0))
+const rankRewardCount = computed(() => rankWeightRows.value.length)
+const rankWeightTotalText = computed(() => {
+  if (hasInvalidRankWeights.value) return t('admin.campaignRewards.createWeightsInvalid')
+  const diff = 100 - rankWeightSum.value
+  if (diff === 0) return t('admin.campaignRewards.rankWeightTotalComplete', { total: rankWeightSum.value })
+  if (diff > 0) return t('admin.campaignRewards.rankWeightTotalShort', { total: rankWeightSum.value, diff })
+  return t('admin.campaignRewards.rankWeightTotalOver', { total: rankWeightSum.value, diff: Math.abs(diff) })
+})
 
 const createValidationMessage = computed(() => {
   if (!createForm.name.trim()) return t('admin.campaignRewards.createNameRequired')
@@ -798,9 +881,8 @@ const createValidationMessage = computed(() => {
   if (!isFiniteNonNegative(createForm.pool_injection_rate)) return t('admin.campaignRewards.createRateInvalid')
   if (!isFiniteNonNegative(createForm.rank_pool_ratio) || !isFiniteNonNegative(createForm.contribution_pool_ratio)) return t('admin.campaignRewards.createPoolRatioInvalid')
   if (!isApproximatelyEqual(createForm.rank_pool_ratio + createForm.contribution_pool_ratio, 1)) return t('admin.campaignRewards.createPoolRatioInvalid')
-  if (!Number.isInteger(createForm.rank_reward_count) || createForm.rank_reward_count <= 0) return t('admin.campaignRewards.createRankCountInvalid')
-  if (parsedRankWeights.value.length !== createForm.rank_reward_count) return t('admin.campaignRewards.createWeightsMismatch')
-  if (parsedRankWeights.value.some(weight => !Number.isInteger(weight) || weight <= 0)) return t('admin.campaignRewards.createWeightsInvalid')
+  if (rankRewardCount.value <= 0) return t('admin.campaignRewards.createRankCountInvalid')
+  if (hasInvalidRankWeights.value) return t('admin.campaignRewards.createWeightsInvalid')
   if (rankWeightSum.value !== 100) return t('admin.campaignRewards.createWeightsSumInvalid')
   return ''
 })
@@ -819,6 +901,25 @@ const editValidationMessage = computed(() => {
   ])) return t('admin.campaignRewards.editOptionalTimeInvalid')
   return ''
 })
+
+function resetRankWeightRows(weights = defaultRankWeights): void {
+  rankWeightRows.value = weights.map(weight => ({
+    id: ++rankWeightRowID,
+    weight,
+  }))
+}
+
+function addRankWeightRow(): void {
+  rankWeightRows.value.push({
+    id: ++rankWeightRowID,
+    weight: 1,
+  })
+}
+
+function removeRankWeightRow(index: number): void {
+  if (rankWeightRows.value.length <= 1) return
+  rankWeightRows.value.splice(index, 1)
+}
 
 const hasFinalCalculation = computed(() => calculation.value?.calculation_status === 'final')
 
@@ -1192,8 +1293,7 @@ function openCreateDialog(): void {
   createForm.pool_injection_scope = 'invitees_only'
   createForm.rank_pool_ratio = 0.8
   createForm.contribution_pool_ratio = 0.2
-  createForm.rank_reward_count = 10
-  createForm.rank_weights = '30,20,15,10,8,6,4,3,2,2'
+  resetRankWeightRows()
   createForm.min_payout_yuan = 1
   createDialogOpen.value = true
 }
@@ -1235,7 +1335,7 @@ async function submitCreateCampaign(): Promise<void> {
       pool_injection_scope: createForm.pool_injection_scope,
       rank_pool_ratio: createForm.rank_pool_ratio,
       contribution_pool_ratio: createForm.contribution_pool_ratio,
-      rank_reward_count: createForm.rank_reward_count,
+      rank_reward_count: rankRewardCount.value,
       rank_weights: parsedRankWeights.value,
       min_payout_amount_cents: yuanToCents(createForm.min_payout_yuan),
     })

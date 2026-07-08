@@ -22,6 +22,7 @@ export { totpAPI } from './totp'
 export { default as announcementsAPI } from './announcements'
 export { channelMonitorUserAPI } from './channelMonitor'
 export { campaignsAPI } from './campaigns'
+export { lotteryCampaignsAPI } from './lotteryCampaigns'
 
 // Admin APIs
 export { adminAPI } from './admin'

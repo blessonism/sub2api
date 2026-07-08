@@ -65,6 +65,13 @@ func RegisterUserRoutes(
 			campaigns.GET("/:id/rules", h.User.GetCampaignRules)
 		}
 
+		lotteries := authenticated.Group("/lottery-campaigns")
+		{
+			lotteries.GET("/active", h.User.GetActiveLotteryCampaign)
+			lotteries.GET("/:id/me", h.User.GetLotteryCampaignMe)
+			lotteries.POST("/:id/enroll", h.User.EnrollLotteryCampaign)
+		}
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

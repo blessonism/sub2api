@@ -17,13 +17,14 @@ import (
 
 // UserHandler handles user-related requests
 type UserHandler struct {
-	userService           *service.UserService
-	authService           *service.AuthService
-	emailService          *service.EmailService
-	emailCache            service.EmailCache
-	affiliateService      *service.AffiliateService
-	campaignService       *service.CampaignService
-	userPlatformQuotaRepo service.UserPlatformQuotaRepository
+	userService            *service.UserService
+	authService            *service.AuthService
+	emailService           *service.EmailService
+	emailCache             service.EmailCache
+	affiliateService       *service.AffiliateService
+	campaignService        *service.CampaignService
+	lotteryCampaignService *service.LotteryCampaignService
+	userPlatformQuotaRepo  service.UserPlatformQuotaRepository
 }
 
 // NewUserHandler creates a new UserHandler
@@ -49,6 +50,72 @@ func (h *UserHandler) SetCampaignService(campaignService *service.CampaignServic
 	if h != nil {
 		h.campaignService = campaignService
 	}
+}
+
+func (h *UserHandler) SetLotteryCampaignService(lotteryCampaignService *service.LotteryCampaignService) {
+	if h != nil {
+		h.lotteryCampaignService = lotteryCampaignService
+	}
+}
+
+// GetActiveLotteryCampaign 返回当前可见的 Token 抽奖活动。
+func (h *UserHandler) GetActiveLotteryCampaign(c *gin.Context) {
+	if h.lotteryCampaignService == nil {
+		response.Success(c, gin.H{"campaign": nil})
+		return
+	}
+	campaign, err := h.lotteryCampaignService.Active(c.Request.Context(), time.Now())
+	if err != nil {
+		response.Success(c, gin.H{"campaign": nil})
+		return
+	}
+	response.Success(c, gin.H{"campaign": campaign})
+}
+
+// GetLotteryCampaignMe 返回当前用户在 Token 抽奖活动中的资格与中奖结果。
+func (h *UserHandler) GetLotteryCampaignMe(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	if h.lotteryCampaignService == nil {
+		response.NotFound(c, "Lottery campaign service unavailable")
+		return
+	}
+	data, err := h.lotteryCampaignService.MyData(c.Request.Context(), campaignID, subject.UserID, time.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+// EnrollLotteryCampaign 手动报名 Token 抽奖活动。
+func (h *UserHandler) EnrollLotteryCampaign(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	if h.lotteryCampaignService == nil {
+		response.NotFound(c, "Lottery campaign service unavailable")
+		return
+	}
+	entry, err := h.lotteryCampaignService.Enroll(c.Request.Context(), campaignID, subject.UserID, time.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, entry)
 }
 
 // GetActiveCampaign 返回当前进行中的邀请奖励活动。

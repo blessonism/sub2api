@@ -86,6 +86,7 @@ func provideCleanup(
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	tokenUsagePolicyRunner *service.TokenUsageAutoPolicyRunner,
+	lotteryCampaignRunner *service.LotteryCampaignRunner,
 	batchImageCleanup *service.BatchImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
@@ -177,6 +178,12 @@ func provideCleanup(
 			{"TokenUsageAutoPolicyRunner", func() error {
 				if tokenUsagePolicyRunner != nil {
 					tokenUsagePolicyRunner.Stop()
+				}
+				return nil
+			}},
+			{"LotteryCampaignRunner", func() error {
+				if lotteryCampaignRunner != nil {
+					lotteryCampaignRunner.Stop()
 				}
 				return nil
 			}},
