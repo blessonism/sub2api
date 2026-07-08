@@ -1839,7 +1839,7 @@ func TestUpstreamRelayPreviewDeduplicatesSuggestionsByAccount(t *testing.T) {
 	require.Contains(t, preview.Exclusions[0].Reason, "同一账号")
 }
 
-func TestUpstreamRelayPreviewDoesNotMixAccountGateAndPriorityForSameAccount(t *testing.T) {
+func TestUpstreamRelayPreviewKeepsHealthyCandidateWhenSameAccountHasFailedCandidate(t *testing.T) {
 	now := time.Now()
 	priority50 := 50
 	candidates := []UpstreamRelayCandidate{
@@ -1890,12 +1890,13 @@ func TestUpstreamRelayPreviewDoesNotMixAccountGateAndPriorityForSameAccount(t *t
 
 	require.Len(t, preview.Suggestions, 2)
 	require.Equal(t, UpstreamRelaySuggestionActionPriorityUpdate, preview.Suggestions[0].ActionType)
-	require.Equal(t, int64(102), preview.Suggestions[0].AccountID)
-	require.Equal(t, UpstreamRelaySuggestionActionAccountPause, preview.Suggestions[1].ActionType)
-	require.Equal(t, int64(101), preview.Suggestions[1].AccountID)
+	require.Equal(t, int64(101), preview.Suggestions[0].AccountID)
+	require.Equal(t, int64(2), preview.Suggestions[0].CandidateID)
+	require.Equal(t, UpstreamRelaySuggestionActionPriorityUpdate, preview.Suggestions[1].ActionType)
+	require.Equal(t, int64(102), preview.Suggestions[1].AccountID)
 	require.Len(t, preview.Exclusions, 1)
-	require.Equal(t, "account_gate_suggestion_exists", preview.Exclusions[0].ReasonCode)
-	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
+	require.Equal(t, "latest_probe_failed", preview.Exclusions[0].ReasonCode)
+	require.Equal(t, int64(1), preview.Exclusions[0].CandidateID)
 }
 
 func TestUpstreamRelayPreviewKeepsRankForUnchangedAccount(t *testing.T) {
@@ -1959,6 +1960,25 @@ func TestUpstreamRelayPolicyCanAllowConsecutiveFailures(t *testing.T) {
 
 	require.Len(t, preview.Suggestions, 1)
 	require.Empty(t, preview.Exclusions)
+}
+
+func TestNormalizeUpstreamRelayRecommendationPolicyDefaultsPauseStrategies(t *testing.T) {
+	policy, err := normalizeUpstreamRelayRecommendationPolicy(UpstreamRelayRecommendationPolicy{})
+
+	require.NoError(t, err)
+	require.False(t, policy.PauseRateGapEnabled)
+	require.Equal(t, 0.04, policy.PauseRateGapThreshold)
+	require.False(t, policy.PauseConsecutiveFailuresEnabled)
+	require.Equal(t, 3, policy.PauseConsecutiveFailuresThreshold)
+	require.False(t, policy.PauseSuccessRateEnabled)
+}
+
+func TestNormalizeUpstreamRelayRecommendationPolicyRejectsInvalidPauseStrategyThresholds(t *testing.T) {
+	_, err := normalizeUpstreamRelayRecommendationPolicy(UpstreamRelayRecommendationPolicy{PauseRateGapThreshold: -0.01})
+	require.Error(t, err)
+
+	_, err = normalizeUpstreamRelayRecommendationPolicy(UpstreamRelayRecommendationPolicy{PauseConsecutiveFailuresThreshold: -1})
+	require.Error(t, err)
 }
 
 func TestUpstreamRelayPreviewRecommendationsDoesNotPersistRun(t *testing.T) {
@@ -2372,7 +2392,7 @@ func TestUpstreamRelayGenerateAndMaybeApplyRecommendationsSkipsUnsafeRuns(t *tes
 	}
 }
 
-func TestUpstreamRelayRecommendationPreviewCreatesAccountPauseSuggestion(t *testing.T) {
+func TestUpstreamRelayRecommendationPreviewDoesNotPauseWhenStrategiesDisabled(t *testing.T) {
 	now := time.Now()
 	priority := 50
 	candidates := []UpstreamRelayCandidate{
@@ -2414,6 +2434,171 @@ func TestUpstreamRelayRecommendationPreviewCreatesAccountPauseSuggestion(t *test
 
 	preview := buildUpstreamRelayRecommendationPreview(candidates, defaultUpstreamRelayRecommendationPolicy())
 
+	for _, suggestion := range preview.Suggestions {
+		require.NotEqual(t, UpstreamRelaySuggestionActionAccountPause, suggestion.ActionType)
+	}
+	require.NotEmpty(t, preview.Exclusions)
+}
+
+func TestUpstreamRelayRecommendationPreviewCreatesSingleAccountPauseWhenAllCandidatesExcluded(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountName:        "高风险账号",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "failed",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:          3,
+				SuccessCount:        0,
+				SuccessRate:         0,
+				ConsecutiveFailures: 3,
+				WindowMinutes:       30,
+				SampleSize:          3,
+			},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountName:        "高风险账号",
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "stale",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now.Add(-time.Hour)},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 0.8, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 3,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "healthy",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PauseConsecutiveFailuresEnabled = true
+	policy.PauseConsecutiveFailuresThreshold = 3
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
+
+	pauseCount := 0
+	for _, suggestion := range preview.Suggestions {
+		if suggestion.ActionType == UpstreamRelaySuggestionActionAccountPause {
+			pauseCount++
+			require.Equal(t, int64(101), suggestion.AccountID)
+		}
+	}
+	require.Equal(t, 1, pauseCount)
+	require.Len(t, preview.Exclusions, 1)
+	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
+	require.Equal(t, "stale_probe", preview.Exclusions[0].ReasonCode)
+}
+
+func TestUpstreamRelayRecommendationPreviewSkipsConsecutiveFailurePauseBelowThreshold(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "failed",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:          3,
+				SuccessCount:        1,
+				SuccessRate:         0.33,
+				ConsecutiveFailures: 2,
+				WindowMinutes:       30,
+				SampleSize:          3,
+			},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "healthy",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PauseConsecutiveFailuresEnabled = true
+	policy.PauseConsecutiveFailuresThreshold = 3
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
+
+	for _, suggestion := range preview.Suggestions {
+		require.NotEqual(t, UpstreamRelaySuggestionActionAccountPause, suggestion.ActionType)
+	}
+	require.NotEmpty(t, preview.Exclusions)
+}
+
+func TestUpstreamRelayRecommendationPreviewCreatesPauseForLowSuccessRateStrategy(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "low-success",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: false, ProbedAt: now},
+			Health: &UpstreamRelayCandidateHealth{
+				ProbeCount:          4,
+				SuccessCount:        1,
+				SuccessRate:         0.25,
+				ConsecutiveFailures: 1,
+				WindowMinutes:       30,
+				SampleSize:          4,
+			},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.5, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "healthy",
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PauseSuccessRateEnabled = true
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
+
 	require.NotEmpty(t, preview.Suggestions)
 	var pause *UpstreamRelayRecommendationSuggestion
 	for i := range preview.Suggestions {
@@ -2423,10 +2608,117 @@ func TestUpstreamRelayRecommendationPreviewCreatesAccountPauseSuggestion(t *test
 		}
 	}
 	require.NotNil(t, pause)
+	require.Equal(t, "account_gate_success_rate_below_threshold", pause.ReasonCode)
+	require.Contains(t, pause.Reason, "成功率")
+}
+
+func TestUpstreamRelayRecommendationPreviewCreatesPauseForReplaceableRateGap(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "expensive",
+			ProbeModel:         "gpt-5.5",
+			ProbeProtocol:      MonitorAPIModeChatCompletions,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "cheap",
+			ProbeModel:         "gpt-5.5",
+			ProbeProtocol:      MonitorAPIModeChatCompletions,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.0, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PauseRateGapEnabled = true
+	policy.PauseRateGapThreshold = 0.04
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
+
+	var pause *UpstreamRelayRecommendationSuggestion
+	for i := range preview.Suggestions {
+		if preview.Suggestions[i].ActionType == UpstreamRelaySuggestionActionAccountPause {
+			pause = &preview.Suggestions[i]
+			break
+		}
+	}
+	require.NotNil(t, pause)
 	require.Equal(t, int64(101), pause.AccountID)
-	require.Equal(t, boolPtr(true), pause.OldSchedulable)
-	require.Equal(t, boolPtr(false), pause.NewSchedulable)
-	require.Contains(t, pause.Reason, "建议暂停账号承接")
+	require.Equal(t, "account_gate_rate_gap_exceeded", pause.ReasonCode)
+	require.Contains(t, pause.Reason, "差值")
+	require.Contains(t, pause.Reason, "策略阈值")
+}
+
+func TestUpstreamRelayRecommendationPreviewSkipsRateGapPauseWhenAccountHasUncoveredHealthyCandidate(t *testing.T) {
+	now := time.Now()
+	candidates := []UpstreamRelayCandidate{
+		{
+			ID:                 1,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "expensive",
+			ProbeModel:         "gpt-5.5",
+			ProbeProtocol:      MonitorAPIModeChatCompletions,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.2, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 2,
+			ConnectorID:        10,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          101,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "uncovered",
+			ProbeModel:         "gpt-5.5-large",
+			ProbeProtocol:      MonitorAPIModeChatCompletions,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.1, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+		{
+			ID:                 3,
+			ConnectorID:        11,
+			ConnectorStatus:    UpstreamRelayConnectorStatusActive,
+			AccountID:          102,
+			AccountPlatform:    PlatformOpenAI,
+			AccountSchedulable: true,
+			Enabled:            true,
+			UpstreamGroupID:    "cheap",
+			ProbeModel:         "gpt-5.5",
+			ProbeProtocol:      MonitorAPIModeChatCompletions,
+			LatestProbe:        &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot:     &UpstreamRelayGroupRateSnapshot{FinalRateMultiplier: 1.0, Source: UpstreamRelayRateSourceOverride, LastSeenAt: now},
+		},
+	}
+	policy := defaultUpstreamRelayRecommendationPolicy()
+	policy.PauseRateGapEnabled = true
+	policy.PauseRateGapThreshold = 0.04
+
+	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
+
+	for _, suggestion := range preview.Suggestions {
+		require.NotEqual(t, UpstreamRelaySuggestionActionAccountPause, suggestion.ActionType)
+	}
 }
 
 func TestUpstreamRelayRecommendationPreviewSkipsPauseForLastSchedulablePlatformAccount(t *testing.T) {

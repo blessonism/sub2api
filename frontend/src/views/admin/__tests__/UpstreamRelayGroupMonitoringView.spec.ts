@@ -2564,6 +2564,32 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     }))
   })
 
+  it('推荐策略保存包含管理员可选 Pause 策略', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.policy'))!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="policy-pause-rate-gap-enabled"]').setValue(true)
+    await flushPromises()
+    await wrapper.get('[data-testid="policy-pause-rate-gap-threshold"]').setValue(0.08)
+    await wrapper.get('[data-testid="policy-pause-consecutive-failures-enabled"]').setValue(true)
+    await flushPromises()
+    await wrapper.get('[data-testid="policy-pause-consecutive-failures-threshold"]').setValue(5)
+    await wrapper.get('[data-testid="policy-pause-success-rate-enabled"]').setValue(true)
+
+    await wrapper.findAll('button').find((button) => button.text().includes('policy.save'))!.trigger('click')
+    await flushPromises()
+
+    expect(updateRecommendationPolicy).toHaveBeenCalledWith(expect.objectContaining({
+      pause_rate_gap_enabled: true,
+      pause_rate_gap_threshold: 0.08,
+      pause_consecutive_failures_enabled: true,
+      pause_consecutive_failures_threshold: 5,
+      pause_success_rate_enabled: true,
+    }))
+  })
+
   it('自动监控页在自动项关闭时展示未启用状态', async () => {
     getMonitoringPolicy.mockResolvedValueOnce(monitoringPolicy({
       auto_sync_enabled: false,
