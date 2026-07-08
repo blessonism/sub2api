@@ -827,7 +827,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     // 邀请返利是常驻返利，邀请活动是限时活动奖励，两个入口必须并存。
     { path: '/affiliate', label: t('nav.affiliate'), icon: AffiliateIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
-    { path: '/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true },
+    { path: '/activities', label: t('nav.activities'), icon: BadgeIcon, hideInSimpleMode: true },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -982,6 +982,10 @@ function handleMenuItemClick(itemPath: string) {
 }
 
 function isActive(path: string): boolean {
+  // 活动中心保留旧 `/campaign-rewards` 别名时，仍需点亮用户侧 `/activities` 导航。
+  if (path === '/activities' && route.path === '/campaign-rewards') {
+    return true
+  }
   return route.path === path || route.path.startsWith(path + '/')
 }
 

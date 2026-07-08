@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端路由、导航、视图和 i18n 变更入口规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "用户侧路由与页面类型/i18n/测试约束"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "活动中心容器与详情组件组合规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端测试与质量标准"}

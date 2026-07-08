@@ -415,6 +415,7 @@ export default {
     leaderboard: '排行榜',
     redeem: '兑换',
     affiliate: '邀请返利',
+    activities: '活动中心',
     campaignRewards: '邀请活动',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
@@ -1338,6 +1339,14 @@ export default {
       line3: '返利额度可随时转入账户余额。',
       line4: '新产生的返利需要经过冻结期后才能提现。'
     }
+  },
+
+  activities: {
+    title: '活动中心',
+    description: '邀请活动与后续营销活动的统一入口',
+    inviteCampaignTitle: '邀请活动',
+    activeLabel: '进行中',
+    switcherLabel: '活动切换',
   },
 
   campaignRewards: {

@@ -2,12 +2,173 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { h } from 'vue'
+import { mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import AppSidebar from '../AppSidebar.vue'
+
+const sidebarTestState = vi.hoisted(() => ({
+  route: {
+    path: '/dashboard',
+  },
+  router: {
+    push: vi.fn(),
+  },
+  appStore: {
+    sidebarCollapsed: false,
+    mobileOpen: false,
+    backendModeEnabled: false,
+    siteName: 'Sub2API',
+    siteLogo: '',
+    siteVersion: 'test-version',
+    publicSettingsLoaded: true,
+    cachedPublicSettings: {
+      custom_menu_items: [],
+      purchase_subscription_enabled: false,
+      purchase_subscription_url: '',
+    },
+    toggleSidebar: vi.fn(),
+    setMobileOpen: vi.fn(),
+  },
+  authStore: {
+    isAdmin: false,
+    isSimpleMode: false,
+  },
+  onboardingStore: {
+    isCurrentStep: vi.fn(() => false),
+    nextStep: vi.fn(),
+  },
+  adminSettingsStore: {
+    opsMonitoringEnabled: false,
+    paymentEnabled: false,
+    customMenuItems: [],
+    fetch: vi.fn(),
+  },
+  batchImageAccess: {
+    canUseBatchImage: { value: false },
+    refreshBatchImageAccess: vi.fn(),
+  },
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => sidebarTestState.route,
+  useRouter: () => sidebarTestState.router,
+}))
+
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  const messages: Record<string, string> = {
+    'nav.activities': 'Activity Center',
+    'nav.affiliate': 'Invite Rebates',
+    'nav.myAccount': 'My Account',
+  }
+
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string) => messages[key] ?? key,
+    }),
+  }
+})
+
+vi.mock('@/stores', () => ({
+  useAdminSettingsStore: () => sidebarTestState.adminSettingsStore,
+  useAppStore: () => sidebarTestState.appStore,
+  useAuthStore: () => sidebarTestState.authStore,
+  useOnboardingStore: () => sidebarTestState.onboardingStore,
+}))
+
+vi.mock('@/utils/featureFlags', () => ({
+  FeatureFlags: {
+    availableChannels: {},
+    channelMonitor: {},
+    payment: {},
+    affiliate: {},
+    riskControl: {},
+  },
+  makeSidebarFlag: () => () => true,
+}))
+
+vi.mock('@/composables/useBatchImageAccess', () => ({
+  useBatchImageAccess: () => sidebarTestState.batchImageAccess,
+}))
 
 const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSidebar.vue')
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
+
+const RouterLinkStub = {
+  name: 'RouterLink',
+  props: {
+    to: {
+      type: [String, Object],
+      required: true,
+    },
+  },
+  setup(props: { to: string | Record<string, unknown> }, { attrs, slots }: { attrs: Record<string, unknown>, slots: { default?: () => unknown } }) {
+    return () =>
+      h(
+        'a',
+        {
+          ...attrs,
+          href: typeof props.to === 'string' ? props.to : '#',
+          'data-router-link-to': typeof props.to === 'string' ? props.to : JSON.stringify(props.to),
+        },
+        slots.default?.()
+      )
+  },
+}
+
+function mountSidebar(routePath = '/dashboard') {
+  sidebarTestState.route.path = routePath
+
+  return mount(AppSidebar, {
+    global: {
+      stubs: {
+        RouterLink: RouterLinkStub,
+        VersionBadge: true,
+      },
+    },
+  })
+}
+
+function sidebarLinks(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('a.sidebar-link')
+}
+
+function sidebarLinkIndex(wrapper: ReturnType<typeof mount>, label: string): number {
+  return sidebarLinks(wrapper).findIndex((link) => link.text().includes(label))
+}
+
+function sidebarLinkByLabel(wrapper: ReturnType<typeof mount>, label: string) {
+  const link = sidebarLinks(wrapper).find((candidate) => candidate.text().includes(label))
+  expect(link, `${label} sidebar link`).toBeDefined()
+  return link!
+}
+
+beforeEach(() => {
+  sidebarTestState.route.path = '/dashboard'
+  sidebarTestState.router.push.mockReset()
+  sidebarTestState.appStore.sidebarCollapsed = false
+  sidebarTestState.appStore.mobileOpen = false
+  sidebarTestState.appStore.backendModeEnabled = false
+  sidebarTestState.appStore.cachedPublicSettings = {
+    custom_menu_items: [],
+    purchase_subscription_enabled: false,
+    purchase_subscription_url: '',
+  }
+  sidebarTestState.authStore.isAdmin = false
+  sidebarTestState.authStore.isSimpleMode = false
+  sidebarTestState.onboardingStore.isCurrentStep.mockReturnValue(false)
+  sidebarTestState.onboardingStore.nextStep.mockReset()
+  sidebarTestState.adminSettingsStore.fetch.mockReset()
+  sidebarTestState.batchImageAccess.canUseBatchImage.value = false
+  sidebarTestState.batchImageAccess.refreshBatchImageAccess.mockReset()
+  localStorage.clear()
+  document.documentElement.classList.remove('dark')
+})
 
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
@@ -68,13 +229,64 @@ describe('AppSidebar leaderboard entry', () => {
   })
 })
 
+describe('AppSidebar mounted activity center navigation', () => {
+  it('renders the regular user activity center entry after the affiliate rebate entry', () => {
+    const wrapper = mountSidebar()
+
+    const affiliateIndex = sidebarLinkIndex(wrapper, 'Invite Rebates')
+    const activitiesIndex = sidebarLinkIndex(wrapper, 'Activity Center')
+    const affiliateLink = sidebarLinkByLabel(wrapper, 'Invite Rebates')
+    const activitiesLink = sidebarLinkByLabel(wrapper, 'Activity Center')
+
+    expect(affiliateIndex).toBeGreaterThanOrEqual(0)
+    expect(activitiesIndex).toBeGreaterThanOrEqual(0)
+    expect(affiliateIndex).toBeLessThan(activitiesIndex)
+    expect(affiliateLink.attributes('data-router-link-to')).toBe('/affiliate')
+    expect(activitiesLink.attributes('data-router-link-to')).toBe('/activities')
+  })
+
+  it('marks activity center active when the legacy campaign rewards route is current', () => {
+    const wrapper = mountSidebar('/campaign-rewards')
+
+    const activitiesLink = sidebarLinkByLabel(wrapper, 'Activity Center')
+
+    expect(activitiesLink.classes()).toContain('sidebar-link-active')
+    expect(activitiesLink.attributes('data-router-link-to')).toBe('/activities')
+  })
+
+  it('renders the admin personal activity center entry and keeps it active for the legacy user route', () => {
+    sidebarTestState.authStore.isAdmin = true
+    sidebarTestState.authStore.isSimpleMode = false
+
+    const wrapper = mountSidebar('/campaign-rewards')
+    const personalSection = wrapper.findAll('.sidebar-section').find((section) => {
+      const title = section.find('.sidebar-section-title')
+      return title.exists() && title.text().includes('My Account')
+    })
+
+    expect(personalSection, 'admin personal section').toBeDefined()
+
+    const activitiesLink = personalSection!.findAll('a.sidebar-link').find((candidate) => candidate.text().includes('Activity Center'))
+
+    expect(activitiesLink, 'admin personal activity center link').toBeDefined()
+    expect(activitiesLink!.attributes('data-router-link-to')).toBe('/activities')
+    expect(activitiesLink!.classes()).toContain('sidebar-link-active')
+  })
+})
+
 describe('AppSidebar invite navigation entries', () => {
-  it('keeps the persistent affiliate rebate entry separate from campaign rewards', () => {
+  it('keeps the persistent affiliate rebate entry separate from the activity center', () => {
     const affiliateEntry = "{ path: '/affiliate', label: t('nav.affiliate'), icon: AffiliateIcon, hideInSimpleMode: true, featureFlag: flagAffiliate }"
-    const campaignRewardsEntry = "{ path: '/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true }"
+    const activitiesEntry = "{ path: '/activities', label: t('nav.activities'), icon: BadgeIcon, hideInSimpleMode: true }"
 
     expect(componentSource).toContain(affiliateEntry)
-    expect(componentSource).toContain(campaignRewardsEntry)
-    expect(componentSource.indexOf(affiliateEntry)).toBeLessThan(componentSource.indexOf(campaignRewardsEntry))
+    expect(componentSource).toContain(activitiesEntry)
+    expect(componentSource.indexOf(affiliateEntry)).toBeLessThan(componentSource.indexOf(activitiesEntry))
+  })
+
+  it('keeps the user activity center highlighted for the legacy user alias only', () => {
+    expect(componentSource).toContain("if (path === '/activities' && route.path === '/campaign-rewards')")
+    expect(componentSource).toContain("return route.path === path || route.path.startsWith(path + '/')")
+    expect(componentSource).toContain("{ path: '/admin/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true }")
   })
 })

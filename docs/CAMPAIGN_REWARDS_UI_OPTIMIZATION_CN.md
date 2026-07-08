@@ -2,7 +2,7 @@
 
 > 用户侧视图：`frontend/src/views/user/CampaignRewardsView.vue`
 > 管理员侧视图：`frontend/src/views/admin/CampaignRewardsView.vue`
-> 用户侧路由：`/campaign-rewards`
+> 用户侧主路由：`/activities`（`/campaign-rewards` 为向后兼容的旧入口）
 > 管理员侧路由：`/admin/campaign-rewards`
 > 最后更新：2026-07-04
 > Trellis 任务：`.trellis/tasks/07-04-ui`
