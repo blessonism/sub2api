@@ -723,6 +723,8 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationService,
 	NewAffiliateService,
 	ProvideCampaignService,
+	ProvideLotteryCampaignService,
+	ProvideLotteryCampaignRunner,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
@@ -747,6 +749,16 @@ func ProvideCampaignService(repo CampaignRepository, adminService AdminService, 
 		authService.SetCampaignService(svc)
 	}
 	return svc
+}
+
+func ProvideLotteryCampaignService(repo LotteryCampaignRepository, adminService AdminService) *LotteryCampaignService {
+	return NewLotteryCampaignService(repo, adminService)
+}
+
+func ProvideLotteryCampaignRunner(svc *LotteryCampaignService) *LotteryCampaignRunner {
+	runner := NewLotteryCampaignRunner(svc)
+	runner.Start()
+	return runner
 }
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

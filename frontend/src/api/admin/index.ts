@@ -37,6 +37,7 @@ import tokenUsagePoliciesAPI from './tokenUsagePolicies'
 import upstreamRelayGroupMonitorsAPI from './upstreamRelayGroupMonitors'
 import conversationsAPI from './conversations'
 import campaignsAPI from './campaigns'
+import lotteryCampaignsAPI from './lotteryCampaigns'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   tokenUsagePolicies: tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitors: upstreamRelayGroupMonitorsAPI,
   conversations: conversationsAPI,
-  campaigns: campaignsAPI
+  campaigns: campaignsAPI,
+  lotteryCampaigns: lotteryCampaignsAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitorsAPI,
   conversationsAPI,
-  campaignsAPI
+  campaignsAPI,
+  lotteryCampaignsAPI
 }
 
 export default adminAPI
@@ -138,3 +141,4 @@ export type {
   UpstreamRelayRecommendationRun,
   UpstreamRelayRecommendationSuggestion
 } from './upstreamRelayGroupMonitors'
+export type { LotteryCampaign, LotteryPrizeTier, LotteryWinner } from './lotteryCampaigns'

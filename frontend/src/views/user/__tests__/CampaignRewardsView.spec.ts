@@ -26,6 +26,8 @@ const {
   getActiveCampaign,
   getCampaignLeaderboard,
   getMyCampaignData,
+  getActiveLotteryCampaign,
+  getMyLotteryCampaignData,
   listCampaignInvites,
   showError,
 } = vi.hoisted(() => ({
@@ -33,6 +35,8 @@ const {
   getActiveCampaign: vi.fn(),
   getCampaignLeaderboard: vi.fn(),
   getMyCampaignData: vi.fn(),
+  getActiveLotteryCampaign: vi.fn(),
+  getMyLotteryCampaignData: vi.fn(),
   listCampaignInvites: vi.fn(),
   showError: vi.fn(),
 }))
@@ -43,6 +47,14 @@ vi.mock('@/api/campaigns', () => ({
     getMyCampaignData,
     listCampaignInvites,
     getCampaignLeaderboard,
+  },
+}))
+
+vi.mock('@/api/lotteryCampaigns', () => ({
+  default: {
+    getActiveLotteryCampaign,
+    getMyLotteryCampaignData,
+    enrollLotteryCampaign: vi.fn(),
   },
 }))
 
@@ -112,8 +124,19 @@ describe('user CampaignRewardsView', () => {
     getActiveCampaign.mockReset()
     getCampaignLeaderboard.mockReset()
     getMyCampaignData.mockReset()
+    getActiveLotteryCampaign.mockReset()
+    getMyLotteryCampaignData.mockReset()
     listCampaignInvites.mockReset()
     showError.mockReset()
+    getActiveLotteryCampaign.mockResolvedValue({ campaign: null })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign: null,
+      today_tokens: 0,
+      threshold_tokens: 0,
+      entry_count: 0,
+      entry_status: 'not_eligible',
+      winners: [],
+    })
   })
 
   afterEach(() => {
@@ -320,5 +343,53 @@ describe('user CampaignRewardsView', () => {
     expect(inviteButtons.length).toBeGreaterThanOrEqual(2)
     expect(inviteButtons.every(button => button.attributes('disabled') !== undefined)).toBe(true)
     expect(copyToClipboard).not.toHaveBeenCalled()
+  })
+
+  it('shows the lottery activity without a switcher when only lottery is active', async () => {
+    getActiveCampaign.mockResolvedValue({
+      campaign: null,
+      config: null,
+      pool: null,
+      leaderboard: [],
+      data_delay_notice: '',
+      estimate_notice: '',
+    })
+    getActiveLotteryCampaign.mockResolvedValue({
+      campaign: {
+        id: 9,
+        name: 'Token Lottery',
+        description: '',
+        rules_text: '',
+        status: 'published',
+        participation_mode: 'auto',
+        draw_schedule_type: 'single',
+        prize_mode: 'single',
+        entry_mode: 'daily_once',
+        threshold_tokens: 100,
+        entry_step_tokens: 0,
+        max_entries_per_user: 1,
+        start_at: '2026-07-04T00:00:00.000Z',
+        end_at: '2026-07-05T00:00:00.000Z',
+        draw_at: '2026-07-04T20:00:00.000Z',
+        daily_draw_time: '',
+        created_at: '2026-07-04T00:00:00.000Z',
+        updated_at: '2026-07-04T00:00:00.000Z',
+      },
+    })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign: { id: 9 },
+      today_tokens: 150,
+      threshold_tokens: 100,
+      entry_count: 1,
+      entry_status: 'enrolled',
+      next_draw_at: '2026-07-04T20:00:00.000Z',
+      winners: [],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="activity-switcher"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Token Lottery')
   })
 })

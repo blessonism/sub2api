@@ -36,10 +36,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, ref } from 'vue'
+import { computed, markRaw, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import InviteCampaignActivity from '@/components/user/activities/InviteCampaignActivity.vue'
+import LotteryCampaignActivity from '@/components/user/activities/LotteryCampaignActivity.vue'
+import campaignsAPI from '@/api/campaigns'
+import lotteryCampaignsAPI from '@/api/lotteryCampaigns'
 
 interface ActivityEntry {
   id: string
@@ -50,16 +53,31 @@ interface ActivityEntry {
 }
 
 const { t } = useI18n()
+const hasInviteCampaign = ref(true)
+const hasLotteryCampaign = ref(false)
 
-const activities = computed<ActivityEntry[]>(() => [
-  {
-    id: 'invite-campaign',
-    title: t('activities.inviteCampaignTitle'),
-    status: 'active',
-    statusLabel: t('activities.activeLabel'),
-    component: markRaw(InviteCampaignActivity),
-  },
-])
+const activities = computed<ActivityEntry[]>(() => {
+  const entries: ActivityEntry[] = []
+  if (hasInviteCampaign.value || !hasLotteryCampaign.value) {
+    entries.push({
+      id: 'invite-campaign',
+      title: t('activities.inviteCampaignTitle'),
+      status: 'active',
+      statusLabel: t('activities.activeLabel'),
+      component: markRaw(InviteCampaignActivity),
+    })
+  }
+  if (hasLotteryCampaign.value) {
+    entries.push({
+      id: 'lottery-campaign',
+      title: t('activities.lotteryCampaignTitle'),
+      status: 'active',
+      statusLabel: t('activities.activeLabel'),
+      component: markRaw(LotteryCampaignActivity),
+    })
+  }
+  return entries
+})
 
 const selectedActivityId = ref(activities.value[0]?.id ?? '')
 
@@ -68,4 +86,16 @@ const activeActivity = computed<ActivityEntry>(() => {
 })
 
 const showSwitcher = computed(() => activities.value.length > 1 && Boolean(activeActivity.value))
+
+onMounted(async () => {
+  const [inviteResult, lotteryResult] = await Promise.allSettled([
+    campaignsAPI.getActiveCampaign(),
+    lotteryCampaignsAPI.getActiveLotteryCampaign(),
+  ])
+  hasInviteCampaign.value = inviteResult.status === 'fulfilled' && Boolean(inviteResult.value.campaign)
+  hasLotteryCampaign.value = lotteryResult.status === 'fulfilled' && Boolean(lotteryResult.value.campaign)
+  if (!activities.value.some(activity => activity.id === selectedActivityId.value)) {
+    selectedActivityId.value = activities.value[0]?.id ?? ''
+  }
+})
 </script>
