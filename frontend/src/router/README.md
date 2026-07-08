@@ -26,6 +26,8 @@ This directory contains the Vue Router configuration for the Sub2API frontend ap
 | `/dashboard` | DashboardView | User dashboard with stats    |
 | `/keys`      | KeysView      | API key management           |
 | `/usage`     | UsageView     | Usage records and statistics |
+| `/affiliate` | AffiliateView | Invite rebate account        |
+| `/activities` | CampaignRewardsView | Activity Center (legacy `/campaign-rewards`) |
 | `/redeem`    | RedeemView    | Redeem code interface        |
 | `/profile`   | ProfileView   | User profile settings        |
 
@@ -38,6 +40,7 @@ This directory contains the Vue Router configuration for the Sub2API frontend ap
 | `/admin/users`     | AdminUsersView     | User management                 |
 | `/admin/groups`    | AdminGroupsView    | Group management                |
 | `/admin/accounts`  | AdminAccountsView  | Account management              |
+| `/admin/activities` | CampaignRewardsView | Activity Center management (legacy `/admin/campaign-rewards`) |
 | `/admin/proxies`   | AdminProxiesView   | Proxy management                |
 | `/admin/redeem`    | AdminRedeemView    | Redeem code management          |
 

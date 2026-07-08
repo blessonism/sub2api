@@ -453,15 +453,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/campaign-rewards',
-    name: 'AdminCampaignRewards',
+    path: '/admin/activities',
+    alias: ['/admin/campaign-rewards'],
+    name: 'AdminActivities',
     component: () => import('@/views/admin/CampaignRewardsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Campaign Rewards',
-      titleKey: 'admin.campaignRewards.title',
-      descriptionKey: 'admin.campaignRewards.description'
+      title: 'Activity Center',
+      titleKey: 'admin.activities.title',
+      descriptionKey: 'admin.activities.description'
     }
   },
   {

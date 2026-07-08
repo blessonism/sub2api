@@ -873,7 +873,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/token-leaderboard', label: t('nav.tokenLeaderboard'), icon: LeaderboardIcon },
     { path: '/admin/token-usage-policies', label: t('nav.tokenUsagePolicies'), icon: PolicyIcon },
-    { path: '/admin/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true },
+    { path: '/admin/activities', label: t('nav.activities'), icon: BadgeIcon, hideInSimpleMode: true },
     { path: '/admin/conversations', label: t('nav.conversations'), icon: UsageIcon },
     { path: '/admin/upstream-relay-group-monitoring', label: t('nav.upstreamRelayGroupMonitoring'), icon: SignalIcon },
     { path: '/admin/balance-redemption', label: t('nav.balanceRedemption'), icon: WalletIcon },
@@ -984,6 +984,10 @@ function handleMenuItemClick(itemPath: string) {
 function isActive(path: string): boolean {
   // 活动中心保留旧 `/campaign-rewards` 别名时，仍需点亮用户侧 `/activities` 导航。
   if (path === '/activities' && route.path === '/campaign-rewards') {
+    return true
+  }
+  // 管理侧活动中心保留旧 `/admin/campaign-rewards` 别名时，仍需点亮 `/admin/activities` 导航。
+  if (path === '/admin/activities' && route.path === '/admin/campaign-rewards') {
     return true
   }
   return route.path === path || route.path.startsWith(path + '/')

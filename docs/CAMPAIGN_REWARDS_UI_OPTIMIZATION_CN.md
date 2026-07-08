@@ -3,7 +3,7 @@
 > 用户侧视图：`frontend/src/views/user/CampaignRewardsView.vue`
 > 管理员侧视图：`frontend/src/views/admin/CampaignRewardsView.vue`
 > 用户侧主路由：`/activities`（`/campaign-rewards` 为向后兼容的旧入口）
-> 管理员侧路由：`/admin/campaign-rewards`
+> 管理员侧路由：`/admin/activities`（`/admin/campaign-rewards` 为向后兼容的旧入口）
 > 最后更新：2026-07-04
 > Trellis 任务：`.trellis/tasks/07-04-ui`
 
@@ -55,7 +55,7 @@
 
 ### 2.2 已有管理员侧能力
 
-`AdminCampaignRewardsView.vue` 已经具备以下模块：
+`frontend/src/views/admin/CampaignRewardsView.vue` 已经具备以下模块：
 
 - 活动列表：活动名称、活动起止时间、状态。
 - 活动详情：名称、描述、起止时间、发布/冻结/预览/结算/发放操作。
@@ -130,7 +130,7 @@ AppLayout
 
 ```text
 AppLayout
-└── AdminCampaignRewardsView
+└── admin/CampaignRewardsView
     ├── 顶部操作区
     │   ├── 刷新
     │   └── 创建活动

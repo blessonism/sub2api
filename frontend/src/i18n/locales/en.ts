@@ -1788,6 +1788,11 @@ export default {
 
   // Admin
   admin: {
+    activities: {
+      title: 'Activity Center',
+      description: 'Unified home for invite campaign management and future promotional activities',
+    },
+
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',

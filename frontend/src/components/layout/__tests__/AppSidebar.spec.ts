@@ -61,6 +61,7 @@ vi.mock('vue-i18n', async () => {
   const messages: Record<string, string> = {
     'nav.activities': 'Activity Center',
     'nav.affiliate': 'Invite Rebates',
+    'nav.campaignRewards': 'Campaign Rewards',
     'nav.myAccount': 'My Account',
   }
 
@@ -272,6 +273,35 @@ describe('AppSidebar mounted activity center navigation', () => {
     expect(activitiesLink!.attributes('data-router-link-to')).toBe('/activities')
     expect(activitiesLink!.classes()).toContain('sidebar-link-active')
   })
+
+  it('renders the admin activity center entry and marks it active on the main admin route', () => {
+    sidebarTestState.authStore.isAdmin = true
+    sidebarTestState.authStore.isSimpleMode = false
+
+    const wrapper = mountSidebar('/admin/activities')
+    const activitiesLink = sidebarLinks(wrapper).find((candidate) => {
+      return candidate.attributes('data-router-link-to') === '/admin/activities'
+    })
+
+    expect(activitiesLink, 'admin activity center link').toBeDefined()
+    expect(activitiesLink!.text()).toContain('Activity Center')
+    expect(activitiesLink!.text()).not.toContain('Campaign Rewards')
+    expect(activitiesLink!.classes()).toContain('sidebar-link-active')
+  })
+
+  it('marks the admin activity center entry active when the legacy admin campaign rewards route is current', () => {
+    sidebarTestState.authStore.isAdmin = true
+    sidebarTestState.authStore.isSimpleMode = false
+
+    const wrapper = mountSidebar('/admin/campaign-rewards')
+    const activitiesLink = sidebarLinks(wrapper).find((candidate) => {
+      return candidate.text().includes('Activity Center') && candidate.classes().includes('sidebar-link-active')
+    })
+
+    expect(activitiesLink, 'active admin activity center link').toBeDefined()
+    expect(activitiesLink.attributes('data-router-link-to')).toBe('/admin/activities')
+    expect(activitiesLink.classes()).toContain('sidebar-link-active')
+  })
 })
 
 describe('AppSidebar invite navigation entries', () => {
@@ -284,9 +314,10 @@ describe('AppSidebar invite navigation entries', () => {
     expect(componentSource.indexOf(affiliateEntry)).toBeLessThan(componentSource.indexOf(activitiesEntry))
   })
 
-  it('keeps the user activity center highlighted for the legacy user alias only', () => {
+  it('keeps both activity center entries highlighted for their legacy aliases', () => {
     expect(componentSource).toContain("if (path === '/activities' && route.path === '/campaign-rewards')")
+    expect(componentSource).toContain("if (path === '/admin/activities' && route.path === '/admin/campaign-rewards')")
     expect(componentSource).toContain("return route.path === path || route.path.startsWith(path + '/')")
-    expect(componentSource).toContain("{ path: '/admin/campaign-rewards', label: t('nav.campaignRewards'), icon: BadgeIcon, hideInSimpleMode: true }")
+    expect(componentSource).toContain("{ path: '/admin/activities', label: t('nav.activities'), icon: BadgeIcon, hideInSimpleMode: true }")
   })
 })

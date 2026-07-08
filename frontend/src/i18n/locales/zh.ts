@@ -1792,6 +1792,11 @@ export default {
 
   // Admin
   admin: {
+    activities: {
+      title: '活动中心',
+      description: '统一承载邀请活动管理与后续营销活动运营入口',
+    },
+
     // Dashboard
     dashboard: {
       title: '管理控制台',
