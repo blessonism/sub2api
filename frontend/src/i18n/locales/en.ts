@@ -415,6 +415,7 @@ export default {
     leaderboard: 'Leaderboard',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
+    activities: 'Activity Center',
     campaignRewards: 'Campaign Rewards',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',
@@ -1334,6 +1335,14 @@ export default {
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
     }
+  },
+
+  activities: {
+    title: 'Activity Center',
+    description: 'Unified home for invite campaigns and future promotional activities',
+    inviteCampaignTitle: 'Invite Campaign',
+    activeLabel: 'Active',
+    switcherLabel: 'Activity switcher',
   },
 
   campaignRewards: {

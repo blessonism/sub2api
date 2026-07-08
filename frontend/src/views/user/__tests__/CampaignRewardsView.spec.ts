@@ -198,6 +198,7 @@ describe('user CampaignRewardsView', () => {
     await flushPromises()
 
     const text = wrapper.text()
+    expect(wrapper.find('[data-testid="activity-switcher"]').exists()).toBe(false)
     expect(text).toContain('七月邀请活动')
     expect(text).toContain('campaignRewards.lifecycle.active')
     expect(text).toContain('campaignRewards.lifecycle.endsAt')

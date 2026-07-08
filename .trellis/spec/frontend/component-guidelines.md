@@ -72,6 +72,22 @@ Questions to answer:
 
 <!-- Component-related mistakes your team has made -->
 
+### Convention: Lightweight user activity center
+
+**What**: User-facing promotional activity pages should use a lightweight activity-center container when multiple marketing activities may coexist. Keep the persistent sidebar entry generic (for example, "Activity Center"), keep activity-specific copy inside each activity component, and render the single active activity directly when only one activity is registered.
+
+**Why**: The product usually has only one to three active campaigns. A separate activity marketplace or landing page adds unnecessary clicks and empty UI for the common case, while a small registry keeps future lottery / limited-time activities easy to add.
+
+**Example**:
+```vue
+<ActivityCenter>
+  <!-- One registered activity: render directly. Two or more: show compact tabs. -->
+  <InviteCampaignActivity />
+</ActivityCenter>
+```
+
+**Related**: Keep legacy activity URLs as aliases or redirects when renaming the navigation entry, and keep permanent affiliate/rebate pages separate from limited-time promotional activities.
+
 ### Common Mistake: Credential dialogs closing during local mode switches
 
 **Symptom**: Browser password managers, credential pickers, or local auth-mode buttons may close a `BaseDialog` form while users select credential-related options, causing unsaved input to be lost.
