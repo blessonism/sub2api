@@ -77,3 +77,25 @@ type UserGroupRateRepository interface {
 	// DeleteByUserID 删除指定用户的所有专属条目（用户删除时调用）
 	DeleteByUserID(ctx context.Context, userID int64) error
 }
+
+type tokenUsageAutoRateMatcher interface {
+	IsTokenUsageAutoRate(ctx context.Context, userID, groupID int64, rateMultiplier float64) (bool, error)
+}
+
+func capTokenUsageAutoRateMultiplier(ctx context.Context, repo any, userID, groupID int64, candidate, ceiling float64) (float64, error) {
+	if candidate <= ceiling {
+		return candidate, nil
+	}
+	matcher, ok := repo.(tokenUsageAutoRateMatcher)
+	if !ok || matcher == nil {
+		return candidate, nil
+	}
+	isAuto, err := matcher.IsTokenUsageAutoRate(ctx, userID, groupID, candidate)
+	if err != nil {
+		return 0, err
+	}
+	if isAuto {
+		return ceiling, nil
+	}
+	return candidate, nil
+}

@@ -978,7 +978,7 @@ func TestUsageLogRepositoryGetUserTokenLeaderboardUsesCurrentAutoMultiplier(t *t
 	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
 		AddRow("top", int64(1), currentUserID, "current@example.com", int64(3), int64(120), 0.7)
 
-	mock.ExpectQuery("MIN\\(COALESCE\\(ugr\\.visible_rate_multiplier, target_group\\.visible_rate_multiplier, ugr\\.rate_multiplier, target_group\\.rate_multiplier\\)\\)[\\s\\S]*JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = 'active'[\\s\\S]*JOIN user_group_rate_multipliers ugr ON ugr\\.user_id = a\\.user_id AND ugr\\.group_id = a\\.target_group_id[\\s\\S]*ugr\\.rate_multiplier = a\\.last_rate_multiplier").
+	mock.ExpectQuery("MIN\\([\\s\\S]*CASE[\\s\\S]*WHEN ugr\\.visible_rate_multiplier IS NOT NULL THEN ugr\\.visible_rate_multiplier[\\s\\S]*ELSE LEAST\\(ugr\\.rate_multiplier, COALESCE\\(target_group\\.visible_rate_multiplier, target_group\\.rate_multiplier\\)\\)[\\s\\S]*END[\\s\\S]*\\) AS rate_multiplier[\\s\\S]*JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = 'active'[\\s\\S]*JOIN user_group_rate_multipliers ugr ON ugr\\.user_id = a\\.user_id AND ugr\\.group_id = a\\.target_group_id[\\s\\S]*ugr\\.rate_multiplier = a\\.last_rate_multiplier").
 		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
 		WillReturnRows(rows)
 

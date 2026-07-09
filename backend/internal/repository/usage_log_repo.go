@@ -3136,7 +3136,12 @@ func (r *usageLogRepository) GetUserTokenLeaderboard(ctx context.Context, startT
 			auto_multipliers AS (
 				SELECT
 					a.user_id,
-					MIN(COALESCE(ugr.visible_rate_multiplier, target_group.visible_rate_multiplier, ugr.rate_multiplier, target_group.rate_multiplier)) AS rate_multiplier
+					MIN(
+						CASE
+							WHEN ugr.visible_rate_multiplier IS NOT NULL THEN ugr.visible_rate_multiplier
+							ELSE LEAST(ugr.rate_multiplier, COALESCE(target_group.visible_rate_multiplier, target_group.rate_multiplier))
+						END
+					) AS rate_multiplier
 				FROM token_usage_auto_assignments a
 				JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
 				JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = '` + service.StatusActive + `'

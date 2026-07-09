@@ -259,7 +259,12 @@ func (s *TokenUsageAutoPolicyService) UpdatePolicy(ctx context.Context, id int64
 	if policy.Enabled {
 		policy.NextRunAt = nextTokenUsagePolicyRunAt(policy.ScheduleFrequency, time.Now())
 	}
-	return s.repo.UpdatePolicy(ctx, policy, tiers)
+	updated, err := s.repo.UpdatePolicy(ctx, policy, tiers)
+	if err != nil {
+		return nil, err
+	}
+	invalidateUserGroupRateCacheForPolicyUpdate(*existing, *policy)
+	return updated, nil
 }
 
 func (s *TokenUsageAutoPolicyService) DeletePolicy(ctx context.Context, id int64) error {
@@ -602,6 +607,28 @@ func (s *TokenUsageAutoPolicyService) invalidateAuthCacheForPolicyChanges(ctx co
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, change.UserID)
 		}
 		invalidateUserGroupRateCache(change.UserID, change.TargetGroupID)
+	}
+}
+
+func invalidateUserGroupRateCacheForPolicyUpdate(existing, policy TokenUsageAutoPolicy) {
+	groups := make(map[int64]struct{}, 2)
+	addGroup := func(groupID int64) {
+		if groupID <= 0 {
+			return
+		}
+		groups[groupID] = struct{}{}
+	}
+
+	if existing.Enabled != policy.Enabled {
+		addGroup(existing.TargetGroupID)
+	}
+	if existing.TargetGroupID != policy.TargetGroupID {
+		addGroup(existing.TargetGroupID)
+		addGroup(policy.TargetGroupID)
+	}
+
+	for groupID := range groups {
+		invalidateUserGroupRateCacheByGroupID(groupID)
 	}
 }
 
