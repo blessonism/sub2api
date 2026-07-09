@@ -15,6 +15,7 @@ const messages: Record<string, string> = {
   'lotteryCampaign.participants': 'joining',
   'lotteryCampaign.nextDraw': 'Next draw',
   'lotteryCampaign.drawTime': 'Draw time',
+  'lotteryCampaign.pendingDraw': 'Pending draw',
   'lotteryCampaign.thresholdProgressPercent': '{percent}% complete',
   'lotteryCampaign.tokensToThreshold': '{amount} remaining to qualify',
   'lotteryCampaign.entryStatuses.enrolled': 'In pool',
@@ -218,5 +219,30 @@ describe('LotteryCampaignActivity', () => {
 
     expect(wrapper.text()).toContain('joining')
     expect(wrapper.text()).toContain('42')
+  })
+
+  it('keeps showing the scheduled draw time after the countdown ends', async () => {
+    getActiveLotteryCampaign.mockResolvedValue({
+      campaign: {
+        ...CAMPAIGN,
+        draw_schedule_type: 'single',
+        draw_at: '2000-01-01T00:00:00.000Z',
+      },
+    })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign: CAMPAIGN,
+      today_tokens: 2_000_000,
+      threshold_tokens: 1_000_000,
+      entry_count: 3,
+      entry_status: 'enrolled',
+      next_draw_at: '2000-01-01T00:00:00.000Z',
+      winners: [],
+    })
+
+    const wrapper = mountActivity()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Jan 1, 2000')
+    expect(wrapper.text()).not.toContain('Pending draw')
   })
 })
