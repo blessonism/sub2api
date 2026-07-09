@@ -293,6 +293,26 @@ func TestCampaignDeleteArchivesActiveCampaignWithBusinessData(t *testing.T) {
 	}
 }
 
+func TestCampaignDeleteArchivesFrozenCampaignAsTerminated(t *testing.T) {
+	operatorID := int64(99)
+	repo := &campaignDeleteRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusFrozen},
+		impact:   CampaignDeleteImpact{LeaderboardSnapshots: 1},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	result, err := svc.DeleteCampaign(context.Background(), 7, &operatorID)
+	if err != nil {
+		t.Fatalf("归档已冻结活动失败：%v", err)
+	}
+	if result.Action != "archived" || result.Campaign == nil || result.Campaign.Status != CampaignStatusTerminated {
+		t.Fatalf("已冻结活动应终止归档而非取消，result=%+v", result)
+	}
+	if repo.updatedStatus != CampaignStatusTerminated {
+		t.Fatalf("已冻结活动删除应落到 terminated，实际 status=%q", repo.updatedStatus)
+	}
+}
+
 func TestCampaignDeleteRejectsPaidCampaign(t *testing.T) {
 	repo := &campaignDeleteRepoStub{
 		campaign: &Campaign{ID: 7, Status: CampaignStatusPaid},
@@ -306,6 +326,200 @@ func TestCampaignDeleteRejectsPaidCampaign(t *testing.T) {
 	}
 	if repo.deleted || repo.updatedStatus != "" {
 		t.Fatalf("拒绝删除时不应变更活动，deleted=%v status=%q", repo.deleted, repo.updatedStatus)
+	}
+}
+
+func TestCampaignFreezeUpdatesStatus(t *testing.T) {
+	operatorID := int64(99)
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusActive},
+		cfg:      campaignTestConfig(0),
+		pool:     &CampaignPoolSummary{CampaignID: 7, FinalPoolCents: 1_000},
+		rows:     []CampaignLeaderboardRow{campaignTestLeaderboardRow(1, 2, 10_000)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	if err := svc.FreezeLeaderboard(context.Background(), 7, &operatorID); err != nil {
+		t.Fatalf("冻结榜单失败：%v", err)
+	}
+	if !repo.snapshotSaved || repo.snapshotType != "end_frozen" {
+		t.Fatalf("冻结时应保存榜单快照，saved=%v type=%q", repo.snapshotSaved, repo.snapshotType)
+	}
+	if repo.updatedStatus != CampaignStatusFrozen || repo.updatedOperator == nil || *repo.updatedOperator != operatorID {
+		t.Fatalf("冻结后应更新为 frozen 并记录操作者，status=%q operator=%v", repo.updatedStatus, repo.updatedOperator)
+	}
+}
+
+func TestCampaignPauseAndResumeWithinActiveWindow(t *testing.T) {
+	now := time.Now()
+	operatorID := int64(99)
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusActive, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	paused, err := svc.PauseCampaign(context.Background(), 7, &operatorID)
+	if err != nil {
+		t.Fatalf("暂停活动失败：%v", err)
+	}
+	if paused.Status != CampaignStatusPaused || repo.updatedStatus != CampaignStatusPaused {
+		t.Fatalf("暂停后状态应为 paused，campaign=%+v updated=%q", paused, repo.updatedStatus)
+	}
+
+	resumed, err := svc.ResumeCampaign(context.Background(), 7, &operatorID)
+	if err != nil {
+		t.Fatalf("恢复活动失败：%v", err)
+	}
+	if resumed.Status != CampaignStatusActive || repo.updatedStatus != CampaignStatusActive {
+		t.Fatalf("活动期内恢复应回到 active，campaign=%+v updated=%q", resumed, repo.updatedStatus)
+	}
+}
+
+func TestCampaignResumeReturnsToWarmupBeforeStart(t *testing.T) {
+	now := time.Now()
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusPaused, StartAt: now.Add(time.Hour), EndAt: now.Add(2 * time.Hour)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	resumed, err := svc.ResumeCampaign(context.Background(), 7, nil)
+	if err != nil {
+		t.Fatalf("恢复预热期活动失败：%v", err)
+	}
+	if resumed.Status != CampaignStatusWarmup || repo.updatedStatus != CampaignStatusWarmup {
+		t.Fatalf("开始前恢复应回到 warmup，campaign=%+v updated=%q", resumed, repo.updatedStatus)
+	}
+	if repo.hasActiveChecked {
+		t.Fatal("恢复到 warmup 时不应检查 active 单例约束")
+	}
+}
+
+func TestCampaignUnfreezeReturnsToActiveWithinWindow(t *testing.T) {
+	now := time.Now()
+	operatorID := int64(99)
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusFrozen, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	unfrozen, err := svc.UnfreezeLeaderboard(context.Background(), 7, &operatorID)
+	if err != nil {
+		t.Fatalf("取消冻结失败：%v", err)
+	}
+	if unfrozen.Status != CampaignStatusActive || repo.updatedStatus != CampaignStatusActive {
+		t.Fatalf("活动期内取消冻结应回到 active，campaign=%+v updated=%q", unfrozen, repo.updatedStatus)
+	}
+}
+
+func TestCampaignUnfreezeReturnsToAuditingAfterEnd(t *testing.T) {
+	now := time.Now()
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusFrozen, StartAt: now.Add(-2 * time.Hour), EndAt: now.Add(-time.Hour)},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	unfrozen, err := svc.UnfreezeLeaderboard(context.Background(), 7, nil)
+	if err != nil {
+		t.Fatalf("活动结束后取消冻结失败：%v", err)
+	}
+	if unfrozen.Status != CampaignStatusAuditing || repo.updatedStatus != CampaignStatusAuditing {
+		t.Fatalf("活动结束后取消冻结应回到 auditing，campaign=%+v updated=%q", unfrozen, repo.updatedStatus)
+	}
+	if repo.hasActiveChecked {
+		t.Fatal("取消冻结到 auditing 时不应检查 active 单例约束")
+	}
+}
+
+func TestCampaignUnfreezeRejectsWhenFinalSettlementExists(t *testing.T) {
+	repo := &campaignStatusRepoStub{
+		campaign: &Campaign{ID: 7, Status: CampaignStatusFrozen, StartAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)},
+		finalResults: []CampaignRewardResult{{
+			ID:                101,
+			CampaignID:        7,
+			CalculationStatus: CampaignCalculationFinal,
+		}},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.UnfreezeLeaderboard(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignSettlementLocked) {
+		t.Fatalf("存在最终结算结果时应拒绝取消冻结，实际 err=%v", err)
+	}
+	if repo.updatedStatus != "" {
+		t.Fatalf("拒绝取消冻结时不应更新状态，status=%q", repo.updatedStatus)
+	}
+}
+
+func TestCampaignUnfreezeRejectsWhenPayoutBatchExists(t *testing.T) {
+	repo := &campaignStatusRepoStub{
+		campaign:    &Campaign{ID: 7, Status: CampaignStatusFrozen, StartAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)},
+		payoutBatch: &CampaignPayoutBatch{ID: 9, CampaignID: 7, Status: "failed"},
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.UnfreezeLeaderboard(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignSettlementLocked) {
+		t.Fatalf("存在发放批次时应拒绝取消冻结，实际 err=%v", err)
+	}
+	if repo.updatedStatus != "" {
+		t.Fatalf("拒绝取消冻结时不应更新状态，status=%q", repo.updatedStatus)
+	}
+}
+
+func TestCampaignUnfreezeRejectsDuplicateActiveCampaign(t *testing.T) {
+	now := time.Now()
+	repo := &campaignStatusRepoStub{
+		campaign:       &Campaign{ID: 7, Status: CampaignStatusFrozen, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+		hasOtherActive: true,
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.UnfreezeLeaderboard(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignDuplicateActive) {
+		t.Fatalf("已有其他 active 活动时应拒绝取消冻结，实际 err=%v", err)
+	}
+	if repo.updatedStatus != "" {
+		t.Fatalf("拒绝取消冻结时不应更新状态，status=%q", repo.updatedStatus)
+	}
+}
+
+func TestCampaignResumeRejectsDuplicateActiveCampaign(t *testing.T) {
+	now := time.Now()
+	repo := &campaignStatusRepoStub{
+		campaign:       &Campaign{ID: 7, Status: CampaignStatusPaused, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+		hasOtherActive: true,
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.ResumeCampaign(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignDuplicateActive) {
+		t.Fatalf("已有其他 active 活动时应拒绝恢复，实际 err=%v", err)
+	}
+	if repo.updatedStatus != "" {
+		t.Fatalf("拒绝恢复时不应更新状态，status=%q", repo.updatedStatus)
+	}
+}
+
+// TestCampaignResumePropagatesDuplicateActiveFromUpdate 覆盖 HasActiveCampaign 检查通过、
+// 但落库瞬间被并发提升的 warmup 活动抢占单例索引的竞态：仓储层将唯一冲突翻译为
+// ErrCampaignDuplicateActive，服务层应原样上抛而非吞掉或改写成 500。
+func TestCampaignResumePropagatesDuplicateActiveFromUpdate(t *testing.T) {
+	now := time.Now()
+	repo := &campaignStatusRepoStub{
+		campaign:        &Campaign{ID: 7, Status: CampaignStatusPaused, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+		updateStatusErr: ErrCampaignDuplicateActive,
+	}
+	svc := NewCampaignService(repo, nil)
+
+	_, err := svc.ResumeCampaign(context.Background(), 7, nil)
+	if !errors.Is(err, ErrCampaignDuplicateActive) {
+		t.Fatalf("落库唯一冲突应上抛 ErrCampaignDuplicateActive，实际 err=%v", err)
+	}
+	if !repo.hasActiveChecked {
+		t.Fatal("恢复到 active 前应检查 active 单例约束")
+	}
+	if repo.updatedStatus != "" {
+		t.Fatalf("落库被拒时不应记录状态变更，status=%q", repo.updatedStatus)
 	}
 }
 
@@ -785,6 +999,89 @@ func (r *campaignDeleteRepoStub) UpdateCampaignStatus(_ context.Context, _ int64
 	updated.Status = status
 	r.campaign = &updated
 	return &updated, nil
+}
+
+type campaignStatusRepoStub struct {
+	CampaignRepository
+	campaign         *Campaign
+	cfg              *CampaignConfigVersion
+	pool             *CampaignPoolSummary
+	rows             []CampaignLeaderboardRow
+	finalResults     []CampaignRewardResult
+	payoutBatch      *CampaignPayoutBatch
+	hasOtherActive   bool
+	hasActiveChecked bool
+	snapshotSaved    bool
+	snapshotType     string
+	updatedStatus    string
+	updatedOperator  *int64
+	updateStatusErr  error
+}
+
+func (r *campaignStatusRepoStub) GetCampaign(context.Context, int64) (*Campaign, error) {
+	if r.campaign == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.campaign, nil
+}
+
+func (r *campaignStatusRepoStub) ListLeaderboardRows(context.Context, int64, int) ([]CampaignLeaderboardRow, error) {
+	return append([]CampaignLeaderboardRow(nil), r.rows...), nil
+}
+
+func (r *campaignStatusRepoStub) GetPoolSummary(context.Context, int64) (*CampaignPoolSummary, error) {
+	if r.pool == nil {
+		return &CampaignPoolSummary{CampaignID: r.campaign.ID}, nil
+	}
+	return r.pool, nil
+}
+
+func (r *campaignStatusRepoStub) GetPublishedConfigVersion(context.Context, int64) (*CampaignConfigVersion, error) {
+	if r.cfg == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.cfg, nil
+}
+
+func (r *campaignStatusRepoStub) GetLatestConfigVersionAt(context.Context, int64, time.Time) (*CampaignConfigVersion, error) {
+	if r.cfg == nil {
+		return nil, ErrCampaignNotFound
+	}
+	return r.cfg, nil
+}
+
+func (r *campaignStatusRepoStub) SaveLeaderboardSnapshot(_ context.Context, _ int64, snapshotType string, _ []CampaignLeaderboardRow) error {
+	r.snapshotSaved = true
+	r.snapshotType = snapshotType
+	return nil
+}
+
+func (r *campaignStatusRepoStub) UpdateCampaignStatus(_ context.Context, _ int64, status string, operatorID *int64) (*Campaign, error) {
+	if r.updateStatusErr != nil && status == CampaignStatusActive {
+		return nil, r.updateStatusErr
+	}
+	r.updatedStatus = status
+	r.updatedOperator = operatorID
+	updated := *r.campaign
+	updated.Status = status
+	r.campaign = &updated
+	return &updated, nil
+}
+
+func (r *campaignStatusRepoStub) HasActiveCampaign(context.Context, int64) (bool, error) {
+	r.hasActiveChecked = true
+	return r.hasOtherActive, nil
+}
+
+func (r *campaignStatusRepoStub) ListRewardResults(context.Context, int64, string) ([]CampaignRewardResult, error) {
+	return append([]CampaignRewardResult(nil), r.finalResults...), nil
+}
+
+func (r *campaignStatusRepoStub) GetSuccessfulPayoutBatch(context.Context, int64) (*CampaignPayoutBatch, error) {
+	if r.payoutBatch != nil {
+		return r.payoutBatch, nil
+	}
+	return nil, ErrCampaignNotFound
 }
 
 type campaignCopyRepoStub struct {

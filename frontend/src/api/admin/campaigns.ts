@@ -234,6 +234,21 @@ export async function freezeLeaderboard(id: number): Promise<{ ok: boolean }> {
   return data
 }
 
+export async function pauseCampaign(id: number): Promise<Campaign> {
+  const { data } = await apiClient.post<Campaign>(`/admin/campaigns/${id}/pause`)
+  return data
+}
+
+export async function unfreezeCampaign(id: number): Promise<Campaign> {
+  const { data } = await apiClient.post<Campaign>(`/admin/campaigns/${id}/unfreeze`)
+  return data
+}
+
+export async function resumeCampaign(id: number): Promise<Campaign> {
+  const { data } = await apiClient.post<Campaign>(`/admin/campaigns/${id}/resume`)
+  return data
+}
+
 export async function recalculateRewards(id: number, status: 'preview' | 'frozen' | 'final' = 'preview'): Promise<CampaignCalculationSummary> {
   const { data } = await apiClient.post<CampaignCalculationSummary>(`/admin/campaigns/${id}/recalculate`, undefined, {
     params: { status },
@@ -267,6 +282,9 @@ export const campaignsAdminAPI = {
   listInviterRecords,
   adjustInviteRecord,
   freezeLeaderboard,
+  pauseCampaign,
+  unfreezeCampaign,
+  resumeCampaign,
   recalculateRewards,
   getFinalRewardResults,
   payoutCampaign,

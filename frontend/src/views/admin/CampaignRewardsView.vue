@@ -111,6 +111,15 @@
                   <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canFreeze" :title="canFreeze ? undefined : t('admin.campaignRewards.freezeDisabledHint')" @click="freezeSelected">
                     {{ t('admin.campaignRewards.freeze') }}
                   </button>
+                  <button v-if="canUnfreeze" class="btn btn-secondary whitespace-nowrap" type="button" @click="unfreezeSelected">
+                    {{ t('admin.campaignRewards.unfreeze') }}
+                  </button>
+                  <button v-if="canResume" class="btn btn-secondary whitespace-nowrap" type="button" @click="resumeSelected">
+                    {{ t('admin.campaignRewards.resume') }}
+                  </button>
+                  <button v-else class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canPause" :title="canPause ? undefined : t('admin.campaignRewards.pauseDisabledHint')" @click="pauseSelected">
+                    {{ t('admin.campaignRewards.pause') }}
+                  </button>
                   <button class="btn btn-secondary whitespace-nowrap" type="button" :disabled="!canPreview" :title="canPreview ? undefined : t('admin.campaignRewards.previewDisabledHint')" @click="previewRewards">
                     {{ t('admin.campaignRewards.preview') }}
                   </button>
@@ -782,7 +791,7 @@ const versionThresholdYuan = ref(20)
 const versionRate = ref(0.1)
 const versionPoolInjectionScope = ref<'invitees_only' | 'all_users'>('invitees_only')
 const versionReason = ref('')
-const pendingRiskAction = ref<'publish' | 'freeze' | 'finalize' | 'payout' | 'deduct' | 'delete' | 'copy' | null>(null)
+const pendingRiskAction = ref<'publish' | 'freeze' | 'pause' | 'unfreeze' | 'resume' | 'finalize' | 'payout' | 'deduct' | 'delete' | 'copy' | null>(null)
 const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 const createDialogOpen = ref(false)
@@ -925,6 +934,9 @@ const hasFinalCalculation = computed(() => calculation.value?.calculation_status
 
 const canPublish = computed(() => selectedCampaign.value?.status === 'draft')
 const canFreeze = computed(() => selectedCampaign.value?.status === 'active')
+const canPause = computed(() => ['warmup', 'active'].includes(selectedCampaign.value?.status ?? ''))
+const canUnfreeze = computed(() => selectedCampaign.value?.status === 'frozen')
+const canResume = computed(() => selectedCampaign.value?.status === 'paused')
 const canPreview = computed(() => !!selectedCampaign.value && selectedCampaign.value.status !== 'draft')
 const canFinalize = computed(() => {
   const campaign = selectedCampaign.value
@@ -958,7 +970,7 @@ const lifecycleStageIndex = computed(() => {
   if (status === 'paid') return 5
   if (hasFinalCalculation.value || status === 'pending_payout' || status === 'auditing' || status === 'publicizing') return 4
   if (status === 'frozen') return 3
-  if (status === 'active') return 2
+  if (status === 'active' || status === 'paused') return 2
   if (status === 'warmup') return 1
   return 0
 })
@@ -984,6 +996,8 @@ const lifecycleHint = computed(() => {
   if (selectedCampaign.value.status === 'draft') return t('admin.campaignRewards.lifecycleHintDraft')
   if (selectedCampaign.value.status === 'warmup') return t('admin.campaignRewards.lifecycleHintWarmup')
   if (selectedCampaign.value.status === 'active') return t('admin.campaignRewards.lifecycleHintActive')
+  if (selectedCampaign.value.status === 'paused') return t('admin.campaignRewards.lifecycleHintPaused')
+  if (selectedCampaign.value.status === 'frozen') return t('admin.campaignRewards.lifecycleHintFrozen')
   if (hasFinalCalculation.value) return t('admin.campaignRewards.lifecycleHintSettled')
   if (selectedCampaign.value.status === 'paid') return t('admin.campaignRewards.lifecycleHintPaid')
   return t('admin.campaignRewards.lifecycleHintDefault')
@@ -1095,6 +1109,9 @@ const adjustmentRequiresReason = computed(() => adjustAmountYuan.value !== 0 && 
 const riskDialogTitle = computed(() => {
   if (pendingRiskAction.value === 'publish') return t('admin.campaignRewards.confirmPublishTitle')
   if (pendingRiskAction.value === 'freeze') return t('admin.campaignRewards.confirmFreezeTitle')
+  if (pendingRiskAction.value === 'pause') return t('admin.campaignRewards.confirmPauseTitle')
+  if (pendingRiskAction.value === 'unfreeze') return t('admin.campaignRewards.confirmUnfreezeTitle')
+  if (pendingRiskAction.value === 'resume') return t('admin.campaignRewards.confirmResumeTitle')
   if (pendingRiskAction.value === 'finalize') return t('admin.campaignRewards.confirmFinalizeTitle')
   if (pendingRiskAction.value === 'payout') return t('admin.campaignRewards.confirmPayoutTitle')
   if (pendingRiskAction.value === 'deduct') return t('admin.campaignRewards.confirmDeductTitle')
@@ -1106,6 +1123,9 @@ const riskDialogTitle = computed(() => {
 const riskDialogMessage = computed(() => {
   if (pendingRiskAction.value === 'publish') return t('admin.campaignRewards.confirmPublishMessage')
   if (pendingRiskAction.value === 'freeze') return t('admin.campaignRewards.confirmFreezeMessage')
+  if (pendingRiskAction.value === 'pause') return t('admin.campaignRewards.confirmPauseMessage')
+  if (pendingRiskAction.value === 'unfreeze') return t('admin.campaignRewards.confirmUnfreezeMessage')
+  if (pendingRiskAction.value === 'resume') return t('admin.campaignRewards.confirmResumeMessage')
   if (pendingRiskAction.value === 'finalize') return t('admin.campaignRewards.confirmFinalizeMessage')
   if (pendingRiskAction.value === 'payout') return t('admin.campaignRewards.confirmPayoutMessage')
   if (pendingRiskAction.value === 'deduct') return t('admin.campaignRewards.confirmDeductMessage')
@@ -1117,6 +1137,9 @@ const riskDialogMessage = computed(() => {
 const riskDialogConfirmText = computed(() => {
   if (pendingRiskAction.value === 'publish') return t('admin.campaignRewards.publish')
   if (pendingRiskAction.value === 'freeze') return t('admin.campaignRewards.freeze')
+  if (pendingRiskAction.value === 'pause') return t('admin.campaignRewards.pause')
+  if (pendingRiskAction.value === 'unfreeze') return t('admin.campaignRewards.unfreeze')
+  if (pendingRiskAction.value === 'resume') return t('admin.campaignRewards.resume')
   if (pendingRiskAction.value === 'finalize') return t('admin.campaignRewards.finalize')
   if (pendingRiskAction.value === 'payout') return t('admin.campaignRewards.payout')
   if (pendingRiskAction.value === 'deduct') return t('common.submit')
@@ -1413,6 +1436,45 @@ async function executeFreeze(): Promise<void> {
   }, t('admin.campaignRewards.frozen'))
 }
 
+async function pauseSelected(): Promise<void> {
+  if (!selectedCampaign.value) return
+  pendingRiskAction.value = 'pause'
+}
+
+async function executePause(): Promise<void> {
+  if (!selectedCampaign.value) return
+  await runAction(async () => {
+    selectedCampaign.value = await adminAPI.campaigns.pauseCampaign(selectedCampaign.value!.id)
+    await loadCampaigns()
+  }, t('admin.campaignRewards.paused'))
+}
+
+async function unfreezeSelected(): Promise<void> {
+  if (!selectedCampaign.value) return
+  pendingRiskAction.value = 'unfreeze'
+}
+
+async function executeUnfreeze(): Promise<void> {
+  if (!selectedCampaign.value) return
+  await runAction(async () => {
+    selectedCampaign.value = await adminAPI.campaigns.unfreezeCampaign(selectedCampaign.value!.id)
+    await loadCampaigns()
+  }, t('admin.campaignRewards.unfrozen'))
+}
+
+async function resumeSelected(): Promise<void> {
+  if (!selectedCampaign.value) return
+  pendingRiskAction.value = 'resume'
+}
+
+async function executeResume(): Promise<void> {
+  if (!selectedCampaign.value) return
+  await runAction(async () => {
+    selectedCampaign.value = await adminAPI.campaigns.resumeCampaign(selectedCampaign.value!.id)
+    await loadCampaigns()
+  }, t('admin.campaignRewards.resumed'))
+}
+
 async function previewRewards(): Promise<void> {
   if (!selectedCampaign.value) return
   await runAction(async () => {
@@ -1535,6 +1597,12 @@ async function confirmRiskAction(): Promise<void> {
     await executePublish()
   } else if (action === 'freeze') {
     await executeFreeze()
+  } else if (action === 'pause') {
+    await executePause()
+  } else if (action === 'unfreeze') {
+    await executeUnfreeze()
+  } else if (action === 'resume') {
+    await executeResume()
   } else if (action === 'finalize') {
     await executeFinalizeRewards()
   } else if (action === 'payout') {
@@ -1655,6 +1723,8 @@ function statusLabel(status: string): string {
 
 function statusClass(status: string): string {
   if (status === 'active') return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (status === 'paused') return 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+  if (status === 'frozen') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
   if (status === 'draft' || status === 'warmup') return 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
   if (status === 'paid') return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-dark-200'
   return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'

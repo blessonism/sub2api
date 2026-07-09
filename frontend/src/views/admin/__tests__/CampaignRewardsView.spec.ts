@@ -15,8 +15,11 @@ const {
   getPoolSummary,
   listCampaigns,
   payoutCampaign,
+  pauseCampaign,
   publishCampaign,
   recalculateRewards,
+  resumeCampaign,
+  unfreezeCampaign,
   updateCampaign,
   showError,
   showSuccess,
@@ -33,8 +36,11 @@ const {
   getPoolSummary: vi.fn(),
   listCampaigns: vi.fn(),
   payoutCampaign: vi.fn(),
+  pauseCampaign: vi.fn(),
   publishCampaign: vi.fn(),
   recalculateRewards: vi.fn(),
+  resumeCampaign: vi.fn(),
+  unfreezeCampaign: vi.fn(),
   updateCampaign: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -55,8 +61,11 @@ vi.mock('@/api/admin', () => ({
       getPoolSummary,
       listCampaigns,
       payoutCampaign,
+      pauseCampaign,
       publishCampaign,
       recalculateRewards,
+      resumeCampaign,
+      unfreezeCampaign,
       updateCampaign,
     },
   },
@@ -154,8 +163,11 @@ describe('admin CampaignRewardsView', () => {
     getPoolSummary.mockReset()
     listCampaigns.mockReset()
     payoutCampaign.mockReset()
+    pauseCampaign.mockReset()
     publishCampaign.mockReset()
     recalculateRewards.mockReset()
+    resumeCampaign.mockReset()
+    unfreezeCampaign.mockReset()
     updateCampaign.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -411,6 +423,84 @@ describe('admin CampaignRewardsView', () => {
     await flushPromises()
 
     expect(publishCampaign).toHaveBeenCalledWith(9)
+  })
+
+  it('requires confirmation before pausing an active campaign', async () => {
+    const activeCampaign = { ...campaign, status: 'active' }
+    listCampaigns.mockResolvedValue({ items: [activeCampaign], total: 1, page: 1, page_size: 50 })
+    getCampaign.mockResolvedValue(activeCampaign)
+    pauseCampaign.mockResolvedValue({ ...activeCampaign, status: 'paused' })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const pauseButton = wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.pause'))
+    expect(pauseButton).toBeTruthy()
+    expect(pauseButton!.attributes('disabled')).toBeUndefined()
+
+    await pauseButton!.trigger('click')
+    await flushPromises()
+
+    expect(pauseCampaign).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="confirm-dialog"]').text()).toContain('admin.campaignRewards.confirmPauseTitle')
+
+    await wrapper.get('[data-testid="confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(pauseCampaign).toHaveBeenCalledWith(9)
+    expect(showSuccess).toHaveBeenCalledWith('admin.campaignRewards.paused')
+  })
+
+  it('shows unfreeze only for frozen campaigns and confirms before calling the API', async () => {
+    const frozenCampaign = { ...campaign, status: 'frozen' }
+    listCampaigns.mockResolvedValue({ items: [frozenCampaign], total: 1, page: 1, page_size: 50 })
+    getCampaign.mockResolvedValue(frozenCampaign)
+    unfreezeCampaign.mockResolvedValue({ ...frozenCampaign, status: 'active' })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const unfreezeButton = wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.unfreeze'))
+    expect(unfreezeButton).toBeTruthy()
+    expect(wrapper.findAll('button').some(button => button.text().includes('admin.campaignRewards.resume'))).toBe(false)
+
+    await unfreezeButton!.trigger('click')
+    await flushPromises()
+
+    expect(unfreezeCampaign).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="confirm-dialog"]').text()).toContain('admin.campaignRewards.confirmUnfreezeTitle')
+
+    await wrapper.get('[data-testid="confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(unfreezeCampaign).toHaveBeenCalledWith(9)
+    expect(showSuccess).toHaveBeenCalledWith('admin.campaignRewards.unfrozen')
+  })
+
+  it('shows resume only for paused campaigns and confirms before calling the API', async () => {
+    const pausedCampaign = { ...campaign, status: 'paused' }
+    listCampaigns.mockResolvedValue({ items: [pausedCampaign], total: 1, page: 1, page_size: 50 })
+    getCampaign.mockResolvedValue(pausedCampaign)
+    resumeCampaign.mockResolvedValue({ ...pausedCampaign, status: 'active' })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const resumeButton = wrapper.findAll('button').find(button => button.text().includes('admin.campaignRewards.resume'))
+    expect(resumeButton).toBeTruthy()
+    expect(wrapper.findAll('button').some(button => button.text().includes('admin.campaignRewards.pause'))).toBe(false)
+
+    await resumeButton!.trigger('click')
+    await flushPromises()
+
+    expect(resumeCampaign).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="confirm-dialog"]').text()).toContain('admin.campaignRewards.confirmResumeTitle')
+
+    await wrapper.get('[data-testid="confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(resumeCampaign).toHaveBeenCalledWith(9)
+    expect(showSuccess).toHaveBeenCalledWith('admin.campaignRewards.resumed')
   })
 
   it('updates campaign details and lifecycle times from the edit dialog', async () => {

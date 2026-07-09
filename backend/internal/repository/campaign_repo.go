@@ -289,6 +289,9 @@ LIMIT 1`, campaignID).Scan(&publishedID); err != nil {
 func (r *campaignRepository) UpdateCampaignStatus(ctx context.Context, campaignID int64, status string, operatorID *int64) (*service.Campaign, error) {
 	res, err := r.db.ExecContext(ctx, `UPDATE campaigns SET status = $2, updated_by = $3, updated_at = NOW() WHERE id = $1`, campaignID, status, nullableInt64(operatorID))
 	if err != nil {
+		if strings.Contains(err.Error(), "campaigns_single_active_idx") {
+			return nil, service.ErrCampaignDuplicateActive
+		}
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -1012,7 +1015,7 @@ func (r *campaignRepository) GetSuccessfulPayoutBatch(ctx context.Context, campa
 SELECT id, campaign_id, batch_no, status, operator_id, total_users, total_amount_cents,
 	success_count, failed_count, started_at, finished_at, created_at
 FROM campaign_payout_batches
-WHERE campaign_id = $1 AND status IN ('processing', 'partial_success', 'success', 'failed')
+WHERE campaign_id = $1 AND status IN ('pending', 'processing', 'partial_success', 'success', 'failed')
 ORDER BY id DESC
 LIMIT 1`, campaignID)
 	batch, err := scanCampaignPayoutBatch(row)

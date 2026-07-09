@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查活动状态跨层合同一致性"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否遗漏相同状态与操作入口"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端状态流转和 API 质量"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端 API 类型和状态展示"}

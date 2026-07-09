@@ -290,6 +290,58 @@ func TestCampaignRepositoryDeleteCampaignDeletesRow(t *testing.T) {
 	}
 }
 
+func TestCampaignRepositoryUpdateCampaignStatusTranslatesDuplicateActive(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	campaignID := int64(7)
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE campaigns SET status = $2")).
+		WithArgs(campaignID, service.CampaignStatusActive, nil).
+		WillReturnError(errors.New(`pq: duplicate key value violates unique constraint "campaigns_single_active_idx"`))
+
+	_, err = repo.UpdateCampaignStatus(ctx, campaignID, service.CampaignStatusActive, nil)
+	if !errors.Is(err, service.ErrCampaignDuplicateActive) {
+		t.Fatalf("命中单例 active 索引时应翻译为 ErrCampaignDuplicateActive，实际 err=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCampaignRepositoryUpdateCampaignStatusPassesThroughOtherErrors(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db)
+	ctx := context.Background()
+	campaignID := int64(7)
+	dbErr := errors.New("connection reset")
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE campaigns SET status = $2")).
+		WithArgs(campaignID, service.CampaignStatusPaused, nil).
+		WillReturnError(dbErr)
+
+	_, err = repo.UpdateCampaignStatus(ctx, campaignID, service.CampaignStatusPaused, nil)
+	if !errors.Is(err, dbErr) {
+		t.Fatalf("非单例索引错误应原样透传，实际 err=%v", err)
+	}
+	if errors.Is(err, service.ErrCampaignDuplicateActive) {
+		t.Fatalf("普通数据库错误不应被误判为重复 active")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestCampaignRepositoryListLeaderboardRowsScansPendingInviteCount(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

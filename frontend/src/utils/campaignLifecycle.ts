@@ -4,6 +4,8 @@ export type CampaignLifecyclePhase =
   | 'draft'
   | 'warmup'
   | 'active'
+  | 'frozen'
+  | 'paused'
   | 'auditing'
   | 'publicizing'
   | 'pending_payout'
@@ -38,6 +40,8 @@ const PHASE_DESCRIPTION_KEYS: Record<CampaignLifecyclePhase, string> = {
   draft: 'campaignRewards.lifecycle.draftDesc',
   warmup: 'campaignRewards.lifecycle.warmupDesc',
   active: 'campaignRewards.lifecycle.activeDesc',
+  frozen: 'campaignRewards.lifecycle.frozenDesc',
+  paused: 'campaignRewards.lifecycle.pausedDesc',
   auditing: 'campaignRewards.lifecycle.auditingDesc',
   publicizing: 'campaignRewards.lifecycle.publicizingDesc',
   pending_payout: 'campaignRewards.lifecycle.pendingPayoutDesc',
@@ -51,6 +55,8 @@ const PHASE_LABEL_KEYS: Record<CampaignLifecyclePhase, string> = {
   draft: 'campaignRewards.lifecycle.draft',
   warmup: 'campaignRewards.lifecycle.warmup',
   active: 'campaignRewards.lifecycle.active',
+  frozen: 'campaignRewards.lifecycle.frozen',
+  paused: 'campaignRewards.lifecycle.paused',
   auditing: 'campaignRewards.lifecycle.auditing',
   publicizing: 'campaignRewards.lifecycle.publicizing',
   pending_payout: 'campaignRewards.lifecycle.pendingPayout',
@@ -68,6 +74,8 @@ function normalizePhase(status?: string | null): CampaignLifecyclePhase {
     status === 'draft' ||
     status === 'warmup' ||
     status === 'active' ||
+    status === 'frozen' ||
+    status === 'paused' ||
     status === 'auditing' ||
     status === 'publicizing' ||
     status === 'pending_payout' ||
