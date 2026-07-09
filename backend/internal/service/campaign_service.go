@@ -20,6 +20,8 @@ const (
 	CampaignStatusDraft         = "draft"
 	CampaignStatusWarmup        = "warmup"
 	CampaignStatusActive        = "active"
+	CampaignStatusFrozen        = "frozen"
+	CampaignStatusPaused        = "paused"
 	CampaignStatusAuditing      = "auditing"
 	CampaignStatusPublicizing   = "publicizing"
 	CampaignStatusPendingPayout = "pending_payout"
@@ -52,6 +54,7 @@ var (
 	ErrCampaignInvalidConfig     = infraerrors.BadRequest("CAMPAIGN_INVALID_CONFIG", "invalid campaign config")
 	ErrCampaignImmutableRule     = infraerrors.BadRequest("CAMPAIGN_IMMUTABLE_RULE", "campaign reward rules are frozen after publish")
 	ErrCampaignDuplicateActive   = infraerrors.Conflict("CAMPAIGN_ACTIVE_EXISTS", "only one active campaign is allowed")
+	ErrCampaignSettlementLocked  = infraerrors.Conflict("CAMPAIGN_SETTLEMENT_LOCKED", "campaign final settlement or payout batch already exists")
 	ErrCampaignNoFinalSettlement = infraerrors.BadRequest("CAMPAIGN_NO_FINAL_SETTLEMENT", "final settlement is required before payout")
 	ErrCampaignAlreadyPaid       = infraerrors.Conflict("CAMPAIGN_ALREADY_PAID", "campaign payout already completed")
 	ErrCampaignDeleteBlocked     = infraerrors.Conflict("CAMPAIGN_DELETE_BLOCKED", "campaign has settlement or payout data and cannot be deleted")
@@ -601,7 +604,7 @@ func (s *CampaignService) DeleteCampaign(ctx context.Context, campaignID int64, 
 		return &CampaignDeleteResult{Action: "archived", Campaign: campaign, Impact: *impact}, nil
 	}
 	nextStatus := CampaignStatusCancelled
-	if campaign.Status == CampaignStatusActive {
+	if campaign.Status == CampaignStatusActive || campaign.Status == CampaignStatusPaused || campaign.Status == CampaignStatusFrozen {
 		nextStatus = CampaignStatusTerminated
 	}
 	archived, err := s.repo.UpdateCampaignStatus(ctx, campaignID, nextStatus, operatorID)
@@ -1029,12 +1032,100 @@ func (s *CampaignService) Leaderboard(ctx context.Context, campaignID int64, lim
 	return rows, nil
 }
 
-func (s *CampaignService) FreezeLeaderboard(ctx context.Context, campaignID int64) error {
+func (s *CampaignService) FreezeLeaderboard(ctx context.Context, campaignID int64, operatorID *int64) error {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return err
+	}
+	if campaign.Status == CampaignStatusFrozen {
+		return nil
+	}
+	if campaign.Status != CampaignStatusActive {
+		return ErrCampaignImmutableRule
+	}
 	rows, err := s.Leaderboard(ctx, campaignID, 200)
 	if err != nil {
 		return err
 	}
-	return s.repo.SaveLeaderboardSnapshot(ctx, campaignID, "end_frozen", rows)
+	if err := s.repo.SaveLeaderboardSnapshot(ctx, campaignID, "end_frozen", rows); err != nil {
+		return err
+	}
+	_, err = s.repo.UpdateCampaignStatus(ctx, campaignID, CampaignStatusFrozen, operatorID)
+	return err
+}
+
+func (s *CampaignService) PauseCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*Campaign, error) {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if campaign.Status == CampaignStatusPaused {
+		return campaign, nil
+	}
+	if campaign.Status != CampaignStatusWarmup && campaign.Status != CampaignStatusActive {
+		return nil, ErrCampaignImmutableRule
+	}
+	return s.repo.UpdateCampaignStatus(ctx, campaignID, CampaignStatusPaused, operatorID)
+}
+
+func (s *CampaignService) resolveResumedCampaignStatus(ctx context.Context, campaignID int64, campaign *Campaign) (string, error) {
+	now := time.Now()
+	nextStatus := CampaignStatusAuditing
+	if now.Before(campaign.StartAt) {
+		nextStatus = CampaignStatusWarmup
+	} else if now.Before(campaign.EndAt) {
+		hasActive, err := s.repo.HasActiveCampaign(ctx, campaignID)
+		if err != nil {
+			return "", err
+		}
+		if hasActive {
+			return "", ErrCampaignDuplicateActive
+		}
+		nextStatus = CampaignStatusActive
+	}
+	return nextStatus, nil
+}
+
+func (s *CampaignService) ResumeCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*Campaign, error) {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if campaign.Status != CampaignStatusPaused {
+		return nil, ErrCampaignImmutableRule
+	}
+	nextStatus, err := s.resolveResumedCampaignStatus(ctx, campaignID, campaign)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.UpdateCampaignStatus(ctx, campaignID, nextStatus, operatorID)
+}
+
+func (s *CampaignService) UnfreezeLeaderboard(ctx context.Context, campaignID int64, operatorID *int64) (*Campaign, error) {
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if campaign.Status != CampaignStatusFrozen {
+		return nil, ErrCampaignImmutableRule
+	}
+	results, err := s.repo.ListRewardResults(ctx, campaignID, CampaignCalculationFinal)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) > 0 {
+		return nil, ErrCampaignSettlementLocked
+	}
+	if payout, err := s.repo.GetSuccessfulPayoutBatch(ctx, campaignID); err == nil && payout != nil {
+		return nil, ErrCampaignSettlementLocked
+	} else if err != nil && !errors.Is(err, ErrCampaignNotFound) {
+		return nil, err
+	}
+	nextStatus, err := s.resolveResumedCampaignStatus(ctx, campaignID, campaign)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.UpdateCampaignStatus(ctx, campaignID, nextStatus, operatorID)
 }
 
 func (s *CampaignService) RecalculateRewards(ctx context.Context, campaignID int64, status string) (*CampaignCalculationSummary, error) {

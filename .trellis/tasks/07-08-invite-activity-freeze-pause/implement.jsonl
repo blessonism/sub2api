@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "活动状态跨数据库、服务、API 与前端展示"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "新增状态常量和操作入口前检查复用"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端状态流转和 API 质量约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型和状态展示约束"}

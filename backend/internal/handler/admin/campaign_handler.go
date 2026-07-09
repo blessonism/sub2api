@@ -375,11 +375,50 @@ func (h *CampaignHandler) Freeze(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.FreezeLeaderboard(c.Request.Context(), id); err != nil {
+	if err := h.svc.FreezeLeaderboard(c.Request.Context(), id, adminSubjectID(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{"ok": true})
+}
+
+func (h *CampaignHandler) Pause(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	campaign, err := h.svc.PauseCampaign(c.Request.Context(), id, adminSubjectID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, campaign)
+}
+
+func (h *CampaignHandler) Unfreeze(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	campaign, err := h.svc.UnfreezeLeaderboard(c.Request.Context(), id, adminSubjectID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, campaign)
+}
+
+func (h *CampaignHandler) Resume(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	campaign, err := h.svc.ResumeCampaign(c.Request.Context(), id, adminSubjectID(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, campaign)
 }
 
 func (h *CampaignHandler) Recalculate(c *gin.Context) {
