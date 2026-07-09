@@ -899,7 +899,10 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 				return nil, ErrBatchImageSettlementPricingMissing
 			}
 			if userRate != nil {
-				effectiveGroupMultiplier = *userRate
+				effectiveGroupMultiplier, rateErr = capTokenUsageAutoRateMultiplier(ctx, s.UserGroupRateRepo, owner.UserID, group.ID, *userRate, groupDefaultMultiplier)
+				if rateErr != nil {
+					return nil, ErrBatchImageSettlementPricingMissing
+				}
 			}
 		}
 		groupMultiplier = effectiveGroupMultiplier

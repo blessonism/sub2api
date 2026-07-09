@@ -75,6 +75,21 @@ func TestUserGroupRateRepositorySyncGroupRateMultipliersSupportsExplicitNull(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUserGroupRateRepositoryIsTokenUsageAutoRate(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUserGroupRateRepository(db).(*userGroupRateRepository)
+
+	mock.ExpectQuery("SELECT EXISTS \\([\\s\\S]*FROM token_usage_auto_assignments a[\\s\\S]*JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = \\$4[\\s\\S]*a\\.manual_takeover = FALSE").
+		WithArgs(int64(11), int64(7), 0.8, service.StatusActive).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	got, err := repo.IsTokenUsageAutoRate(context.Background(), 11, 7, 0.8)
+
+	require.NoError(t, err)
+	require.True(t, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func ptrFloat64ForUserGroupRateRepoTest(v float64) *float64 {
 	return &v
 }

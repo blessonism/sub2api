@@ -99,6 +99,63 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.InDelta(t, 0.1875, *job.HoldAmount, 1e-12)
 	})
 
+	t.Run("caps token usage auto group rate by group default for pricing snapshot", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				Platform:                     PlatformGemini,
+				RateMultiplier:               0.6,
+				AllowImageGeneration:         true,
+				AllowBatchImageGeneration:    true,
+				ImageRateIndependent:         false,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+			},
+		}}
+		userRate := 0.8
+		svc.UserGroupRateRepo = &publicBatchImageUserGroupRateRepo{
+			rates:     map[int64]*float64{groupID: &userRate},
+			autoRates: map[int64]bool{groupID: true},
+		}
+
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, validBatchImageSubmitRequest(), "")
+
+		require.NoError(t, err)
+		require.InDelta(t, 0.15, got.EstimatedCost, 1e-12)
+		require.InDelta(t, 0.6, repo.jobs[got.ID].GroupRateMultiplier, 1e-12)
+	})
+
+	t.Run("keeps independent image multiplier when token usage auto rate is capped", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		imageRate := 1.4
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				Platform:                     PlatformGemini,
+				RateMultiplier:               0.6,
+				AllowImageGeneration:         true,
+				AllowBatchImageGeneration:    true,
+				ImageRateIndependent:         true,
+				ImageRateMultiplier:          imageRate,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+			},
+		}}
+		userRate := 0.8
+		svc.UserGroupRateRepo = &publicBatchImageUserGroupRateRepo{
+			rates:     map[int64]*float64{groupID: &userRate},
+			autoRates: map[int64]bool{groupID: true},
+		}
+
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, validBatchImageSubmitRequest(), "")
+
+		require.NoError(t, err)
+		require.InDelta(t, imageRate, repo.jobs[got.ID].GroupRateMultiplier, 1e-12)
+	})
+
 	t.Run("uses configured group 1k image price for batch image base price", func(t *testing.T) {
 		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
 		groupID := int64(7)
@@ -947,7 +1004,8 @@ func (r *publicBatchImageGroupRepo) GetByIDLite(_ context.Context, id int64) (*G
 }
 
 type publicBatchImageUserGroupRateRepo struct {
-	rates map[int64]*float64
+	rates     map[int64]*float64
+	autoRates map[int64]bool
 }
 
 func (r *publicBatchImageUserGroupRateRepo) GetByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
@@ -955,6 +1013,13 @@ func (r *publicBatchImageUserGroupRateRepo) GetByUserAndGroup(_ context.Context,
 		return r.rates[groupID], nil
 	}
 	return nil, nil
+}
+
+func (r *publicBatchImageUserGroupRateRepo) IsTokenUsageAutoRate(_ context.Context, _ int64, groupID int64, _ float64) (bool, error) {
+	if r != nil && r.autoRates != nil {
+		return r.autoRates[groupID], nil
+	}
+	return false, nil
 }
 
 var _ BatchImageGroupPricingRepository = (*publicBatchImageGroupRepo)(nil)

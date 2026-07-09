@@ -14,10 +14,13 @@ type userGroupRateResolverRepoStub struct {
 
 	rate         *float64
 	visibleRate  *float64
+	autoRate     bool
 	err          error
 	visibleErr   error
+	autoErr      error
 	calls        int
 	visibleCalls int
+	autoCalls    int
 }
 
 func (s *userGroupRateResolverRepoStub) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
@@ -34,6 +37,14 @@ func (s *userGroupRateResolverRepoStub) GetVisibleByUserAndGroup(ctx context.Con
 		return nil, s.visibleErr
 	}
 	return s.visibleRate, nil
+}
+
+func (s *userGroupRateResolverRepoStub) IsTokenUsageAutoRate(ctx context.Context, userID, groupID int64, rateMultiplier float64) (bool, error) {
+	s.autoCalls++
+	if s.autoErr != nil {
+		return false, s.autoErr
+	}
+	return s.autoRate, nil
 }
 
 func TestNewUserGroupRateResolver_Defaults(t *testing.T) {
@@ -78,6 +89,42 @@ func TestUserGroupRateResolverResolve_InvalidCacheEntryLoadsRepoAndCaches(t *tes
 	require.Equal(t, int64(1), miss)
 	require.Equal(t, int64(1), load)
 	require.Equal(t, int64(0), fallback)
+}
+
+func TestUserGroupRateResolverResolve_CapsTokenUsageAutoRateAboveGroupDefault(t *testing.T) {
+	rate := 0.8
+	repo := &userGroupRateResolverRepoStub{rate: &rate, autoRate: true}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 0.6)
+
+	require.Equal(t, 0.6, got)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 1, repo.autoCalls)
+}
+
+func TestUserGroupRateResolverResolve_KeepsLowerTokenUsageAutoRate(t *testing.T) {
+	rate := 0.6
+	repo := &userGroupRateResolverRepoStub{rate: &rate, autoRate: true}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 0.8)
+
+	require.Equal(t, 0.6, got)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 0, repo.autoCalls)
+}
+
+func TestUserGroupRateResolverResolve_DoesNotCapManualUserRate(t *testing.T) {
+	rate := 0.8
+	repo := &userGroupRateResolverRepoStub{rate: &rate, autoRate: false}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 0.6)
+
+	require.Equal(t, 0.8, got)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 1, repo.autoCalls)
 }
 
 func TestInvalidateUserGroupRateCacheClearsRegisteredResolverCaches(t *testing.T) {
@@ -178,6 +225,20 @@ func TestUserGroupRateResolverResolveVisible_FallsBackToUserRateBeforeGroupVisib
 	require.Equal(t, userRate, got)
 	require.Equal(t, 1, repo.visibleCalls)
 	require.Equal(t, 1, repo.calls)
+}
+
+func TestUserGroupRateResolverResolveVisible_CapsFallbackTokenUsageAutoRate(t *testing.T) {
+	groupVisible := 0.6
+	userRate := 0.8
+	repo := &userGroupRateResolverRepoStub{rate: &userRate, autoRate: true}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got := resolver.ResolveVisible(context.Background(), 101, 202, &groupVisible, 0.6)
+
+	require.Equal(t, 0.6, got)
+	require.Equal(t, 1, repo.visibleCalls)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 1, repo.autoCalls)
 }
 
 func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolver(t *testing.T) {

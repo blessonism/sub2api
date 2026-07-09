@@ -404,6 +404,60 @@ func TestTokenUsagePolicyClearInvalidatesAuthCacheForPolicyGrantedGroups(t *test
 	require.False(t, ok)
 }
 
+func TestTokenUsagePolicyUpdateInvalidatesUserGroupRateCacheOnEnabledChange(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	userID := int64(101)
+	groupID := repo.policy.TargetGroupID
+	userRate := 0.8
+	rateRepo := &userGroupRateResolverRepoStub{rate: &userRate, autoRate: true}
+	resolver := newUserGroupRateResolver(rateRepo, nil, time.Minute, nil, "service.test")
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	got := resolver.Resolve(context.Background(), userID, groupID, 0.6)
+	require.Equal(t, 0.6, got)
+	require.Equal(t, 1, rateRepo.calls)
+
+	rateRepo.autoRate = false
+	input := tokenUsagePolicyInputForUpdate(repo.policy, false, groupID)
+	_, err := svc.UpdatePolicy(context.Background(), repo.policy.ID, input)
+
+	require.NoError(t, err)
+	got = resolver.Resolve(context.Background(), userID, groupID, 0.6)
+	require.Equal(t, userRate, got)
+	require.Equal(t, 2, rateRepo.calls)
+}
+
+func TestTokenUsagePolicyUpdateInvalidatesOldAndNewTargetGroupCaches(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	oldGroupID := repo.policy.TargetGroupID
+	newGroupID := oldGroupID + 10
+	otherGroupID := oldGroupID + 20
+	userID := int64(101)
+	resolver := newUserGroupRateResolver(nil, nil, time.Minute, nil, "service.test")
+	resolver.cache.Set(userGroupRateCacheKey(userID, oldGroupID), 1.7, time.Minute)
+	resolver.cache.Set(userGroupVisibleRateCacheKey(userID, oldGroupID), 1.3, time.Minute)
+	resolver.cache.Set(userGroupRateCacheKey(userID, newGroupID), 1.8, time.Minute)
+	resolver.cache.Set(userGroupVisibleRateCacheKey(userID, newGroupID), 1.4, time.Minute)
+	resolver.cache.Set(userGroupRateCacheKey(userID, otherGroupID), 1.9, time.Minute)
+	svc := NewTokenUsageAutoPolicyService(repo)
+	input := tokenUsagePolicyInputForUpdate(repo.policy, repo.policy.Enabled, newGroupID)
+
+	_, err := svc.UpdatePolicy(context.Background(), repo.policy.ID, input)
+
+	require.NoError(t, err)
+	_, ok := resolver.cache.Get(userGroupRateCacheKey(userID, oldGroupID))
+	require.False(t, ok)
+	_, ok = resolver.cache.Get(userGroupVisibleRateCacheKey(userID, oldGroupID))
+	require.False(t, ok)
+	_, ok = resolver.cache.Get(userGroupRateCacheKey(userID, newGroupID))
+	require.False(t, ok)
+	_, ok = resolver.cache.Get(userGroupVisibleRateCacheKey(userID, newGroupID))
+	require.False(t, ok)
+	cached, ok := resolver.cache.Get(userGroupRateCacheKey(userID, otherGroupID))
+	require.True(t, ok)
+	require.Equal(t, 1.9, cached)
+}
+
 func TestTokenUsagePolicyUpdateRejectsTargetGroupChangeWithAssignments(t *testing.T) {
 	repo := newTokenUsagePolicyFakeRepo()
 	repo.assignmentCount = 1
@@ -499,6 +553,20 @@ func tokenUsagePolicyBoolPtr(v bool) *bool {
 	return &v
 }
 
+func tokenUsagePolicyInputForUpdate(policy TokenUsageAutoPolicy, enabled bool, targetGroupID int64) TokenUsageAutoPolicyInput {
+	return TokenUsageAutoPolicyInput{
+		Name:              policy.Name,
+		Enabled:           tokenUsagePolicyBoolPtr(enabled),
+		WindowDays:        policy.WindowDays,
+		TargetGroupID:     targetGroupID,
+		ActionMode:        policy.ActionMode,
+		ConflictMode:      policy.ConflictMode,
+		ScheduleFrequency: policy.ScheduleFrequency,
+		Filters:           policy.Filters,
+		Tiers:             policy.Tiers,
+	}
+}
+
 type tokenUsagePolicyAuthCacheInvalidator struct {
 	userIDs []int64
 }
@@ -555,8 +623,10 @@ func (r *tokenUsagePolicyFakeRepo) CreatePolicy(context.Context, *TokenUsageAuto
 	return &r.policy, nil
 }
 
-func (r *tokenUsagePolicyFakeRepo) UpdatePolicy(context.Context, *TokenUsageAutoPolicy, []TokenUsageAutoPolicyTier) (*TokenUsageAutoPolicy, error) {
+func (r *tokenUsagePolicyFakeRepo) UpdatePolicy(_ context.Context, policy *TokenUsageAutoPolicy, tiers []TokenUsageAutoPolicyTier) (*TokenUsageAutoPolicy, error) {
 	r.updateCalled = true
+	r.policy = *policy
+	r.policy.Tiers = append([]TokenUsageAutoPolicyTier(nil), tiers...)
 	return &r.policy, nil
 }
 

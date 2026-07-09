@@ -244,6 +244,26 @@ func (r *userGroupRateRepository) GetByUserAndGroup(ctx context.Context, userID,
 	return &v, nil
 }
 
+func (r *userGroupRateRepository) IsTokenUsageAutoRate(ctx context.Context, userID, groupID int64, rateMultiplier float64) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM token_usage_auto_assignments a
+			JOIN token_usage_auto_policies p ON p.id = a.policy_id AND p.enabled = TRUE
+			JOIN groups target_group ON target_group.id = a.target_group_id AND target_group.status = $4
+			WHERE a.user_id = $1
+			  AND a.target_group_id = $2
+			  AND a.last_rate_multiplier = $3
+			  AND a.manual_takeover = FALSE
+		)
+	`
+	var exists bool
+	if err := scanSingleRow(ctx, r.sql, query, []any{userID, groupID, rateMultiplier, service.StatusActive}, &exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // GetVisibleByUserAndGroup 获取用户在特定分组的专属 visible_rate_multiplier（NULL 返回 nil）
 func (r *userGroupRateRepository) GetVisibleByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
 	query := `SELECT visible_rate_multiplier FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`

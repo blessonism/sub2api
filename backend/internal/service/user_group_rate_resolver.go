@@ -141,7 +141,11 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 
 		multiplier := groupDefaultMultiplier
 		if userRate != nil {
-			multiplier = *userRate
+			capped, capErr := capTokenUsageAutoRateMultiplier(ctx, r.repo, userID, groupID, *userRate, groupDefaultMultiplier)
+			if capErr != nil {
+				return nil, capErr
+			}
+			multiplier = capped
 		}
 		if r.cache != nil {
 			r.cache.Set(key, multiplier, r.cacheTTL)
@@ -213,7 +217,11 @@ func (r *userGroupRateResolver) ResolveVisible(ctx context.Context, userID, grou
 				return nil, rateErr
 			}
 			if userRate != nil {
-				multiplier = *userRate
+				capped, capErr := capTokenUsageAutoRateMultiplier(ctx, r.repo, userID, groupID, *userRate, defaultVisible)
+				if capErr != nil {
+					return nil, capErr
+				}
+				multiplier = capped
 			}
 		}
 		if r.cache != nil {
