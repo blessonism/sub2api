@@ -19,6 +19,13 @@ const messages: Record<string, string> = {
   'campaignRewards.copyLink': 'Copy Link',
   'campaignRewards.codeCopied': 'Invite code copied',
   'campaignRewards.linkCopied': 'Invite link copied',
+  'lotteryCampaign.thresholdProgress': 'Threshold progress',
+  'lotteryCampaign.thresholdProgressPercent': '{percent}% complete',
+  'lotteryCampaign.tokensToThreshold': '{amount} remaining to qualify',
+  'lotteryCampaign.thresholdReached': 'Threshold reached',
+  'lotteryCampaign.drawTime': 'Draw time',
+  'lotteryCampaign.cumulativeTokens': 'Campaign tokens',
+  'lotteryCampaign.defaultOneTimeDescription': 'Reach the campaign billable token threshold to join the lottery.',
 }
 
 const {
@@ -111,6 +118,9 @@ function mountView() {
         },
         Icon: { template: '<span data-testid="icon" />' },
         LoadingSpinner: { template: '<div data-testid="loading" />' },
+        // Pass-through so component swaps render synchronously; the real
+        // <Transition mode="out-in"> leave callback never fires under fake timers.
+        transition: { props: ['name', 'mode'], template: '<slot />' },
       },
     },
   })
@@ -120,6 +130,7 @@ describe('user CampaignRewardsView', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-04T00:00:00.000Z'))
+    localStorage.clear()
     copyToClipboard.mockReset()
     getActiveCampaign.mockReset()
     getCampaignLeaderboard.mockReset()
@@ -365,7 +376,7 @@ describe('user CampaignRewardsView', () => {
         draw_schedule_type: 'single',
         prize_mode: 'single',
         entry_mode: 'daily_once',
-        threshold_tokens: 100,
+        threshold_tokens: 1_250_000,
         entry_step_tokens: 0,
         max_entries_per_user: 1,
         start_at: '2026-07-04T00:00:00.000Z',
@@ -378,8 +389,8 @@ describe('user CampaignRewardsView', () => {
     })
     getMyLotteryCampaignData.mockResolvedValue({
       campaign: { id: 9 },
-      today_tokens: 150,
-      threshold_tokens: 100,
+      today_tokens: 180_000,
+      threshold_tokens: 1_250_000,
       entry_count: 1,
       entry_status: 'enrolled',
       next_draw_at: '2026-07-04T20:00:00.000Z',
@@ -391,5 +402,89 @@ describe('user CampaignRewardsView', () => {
 
     expect(wrapper.find('[data-testid="activity-switcher"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Token Lottery')
+    expect(wrapper.text()).toContain('Reach the campaign billable token threshold to join the lottery.')
+    expect(wrapper.text()).toContain('Draw time')
+    expect(wrapper.text()).toContain('Campaign tokens')
+    expect(wrapper.text()).toContain('0.18M')
+    expect(wrapper.text()).toContain('1.25M')
+    expect(wrapper.text()).toContain('14% complete')
+    expect(wrapper.text()).toContain('1.07M remaining to qualify')
+    const thresholdProgress = wrapper.get('[data-testid="lottery-threshold-progress"]')
+    expect(thresholdProgress.attributes('aria-valuenow')).toBe('14')
+  })
+
+  it('renders an accessible switcher with real status badges when both activities are active', async () => {
+    getActiveCampaign.mockResolvedValue({
+      campaign,
+      config: null,
+      pool: null,
+      leaderboard: [],
+      data_delay_notice: '',
+      estimate_notice: '',
+    })
+    getMyCampaignData.mockResolvedValue({
+      campaign_id: 7,
+      user_id: 42,
+      invite_code: 'INV42',
+      invite_link: '/invite/INV42',
+      valid_invite_count: 0,
+      pending_invite_count: 0,
+      invalid_invite_count: 0,
+      current_rank: null,
+      estimated_rank_reward_cents: 0,
+      estimated_contribution_reward_cents: 0,
+      estimated_total_reward_cents: 0,
+      invitee_recharge_amount_cents: 0,
+      distance_to_previous: 0,
+      distance_to_top10: 0,
+      invite_records: [],
+    })
+    listCampaignInvites.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 })
+    getCampaignLeaderboard.mockResolvedValue({ items: [] })
+    getActiveLotteryCampaign.mockResolvedValue({
+      campaign: {
+        id: 9,
+        name: 'Token Lottery',
+        description: '',
+        rules_text: '',
+        status: 'published',
+        participation_mode: 'auto',
+        draw_schedule_type: 'single',
+        prize_mode: 'single',
+        entry_mode: 'daily_once',
+        threshold_tokens: 1_250_000,
+        entry_step_tokens: 0,
+        max_entries_per_user: 1,
+        start_at: '2026-07-04T00:00:00.000Z',
+        end_at: '2026-07-05T00:00:00.000Z',
+        draw_at: '2026-07-04T20:00:00.000Z',
+        daily_draw_time: '',
+        created_at: '2026-07-04T00:00:00.000Z',
+        updated_at: '2026-07-04T00:00:00.000Z',
+      },
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const switcher = wrapper.find('[data-testid="activity-switcher"]')
+    expect(switcher.exists()).toBe(true)
+    expect(switcher.find('[role="tablist"]').exists()).toBe(true)
+
+    const tabs = wrapper.findAll('[role="tab"]')
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0]!.attributes('aria-selected')).toBe('true')
+    expect(tabs[1]!.attributes('aria-selected')).toBe('false')
+    expect(tabs[0]!.text()).toContain('campaignRewards.statuses.active')
+    expect(tabs[1]!.text()).toContain('lotteryCampaign.statuses.published')
+
+    await tabs[1]!.trigger('click')
+    await flushPromises()
+
+    const tabsAfter = wrapper.findAll('[role="tab"]')
+    expect(tabsAfter[0]!.attributes('aria-selected')).toBe('false')
+    expect(tabsAfter[1]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.text()).toContain('Token Lottery')
+    expect(localStorage.getItem('activity-center:selected')).toBe('lottery-campaign')
   })
 })
