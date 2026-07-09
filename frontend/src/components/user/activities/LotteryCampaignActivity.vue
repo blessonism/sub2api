@@ -59,8 +59,8 @@
                 <span v-if="index < countdownSegments.length - 1" class="self-center text-xl font-semibold text-white/50">:</span>
               </template>
             </div>
-            <p v-else class="mt-3 text-center text-2xl font-semibold">{{ t('lotteryCampaign.pendingDraw') }}</p>
-            <p class="mt-3 text-center text-xs text-white/70">{{ nextDrawText }}</p>
+            <p v-else class="mt-3 text-center text-lg font-semibold leading-tight">{{ nextDrawText }}</p>
+            <p v-if="hasCountdown" class="mt-3 text-center text-xs text-white/70">{{ nextDrawText }}</p>
           </div>
         </div>
       </div>
@@ -488,4 +488,3 @@ onUnmounted(() => {
   }
 })
 </script>
-
