@@ -127,6 +127,31 @@ func (h *LotteryCampaignHandler) Cancel(c *gin.Context) {
 	response.Success(c, item)
 }
 
+func (h *LotteryCampaignHandler) Feature(c *gin.Context) {
+	id, ok := parseLotteryID(c)
+	if !ok {
+		return
+	}
+	item, err := h.svc.Feature(c.Request.Context(), id, adminSubjectID(c), timezone.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+func (h *LotteryCampaignHandler) Delete(c *gin.Context) {
+	id, ok := parseLotteryID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
 func (h *LotteryCampaignHandler) SyncEntries(c *gin.Context) {
 	id, ok := parseLotteryID(c)
 	if !ok {
@@ -195,6 +220,48 @@ func (h *LotteryCampaignHandler) ListWinners(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"items": items})
+}
+
+type lotteryDesignationsRequest struct {
+	Assignments []service.LotteryDesignationInput `json:"assignments"`
+}
+
+func (h *LotteryCampaignHandler) GetDesignations(c *gin.Context) {
+	id, ok := parseLotteryID(c)
+	if !ok {
+		return
+	}
+	drawDate, ok := parseLotteryDateQuery(c)
+	if !ok {
+		return
+	}
+	view, err := h.svc.GetDesignations(c.Request.Context(), id, drawDate)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, view)
+}
+
+func (h *LotteryCampaignHandler) ReplaceDesignations(c *gin.Context) {
+	id, ok := parseLotteryID(c)
+	if !ok {
+		return
+	}
+	drawDate, ok := parseLotteryDateQuery(c)
+	if !ok {
+		return
+	}
+	var req lotteryDesignationsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.svc.ReplaceDesignations(c.Request.Context(), id, drawDate, adminSubjectID(c), req.Assignments); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"saved": len(req.Assignments)})
 }
 
 func (req lotteryCampaignRequest) toInput(c *gin.Context) (service.LotteryCampaignInput, bool) {

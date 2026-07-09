@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { get, post, put } = vi.hoisted(() => ({
+const { get, post, put, del } = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   put: vi.fn(),
+  del: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => ({
@@ -11,16 +12,21 @@ vi.mock('@/api/client', () => ({
     get,
     post,
     put,
+    delete: del,
   },
 }))
 
-import { enrollLotteryCampaign, getActiveLotteryCampaign, getMyLotteryCampaignData } from '@/api/lotteryCampaigns'
+import { enrollLotteryCampaign, getActiveLotteryCampaign, getMyLotteryCampaignData, getRecentLotteryWinners } from '@/api/lotteryCampaigns'
 import {
   createLotteryCampaign,
+  cancelLotteryCampaign,
+  deleteLotteryCampaign,
   drawLotteryCampaign,
+  featureLotteryCampaign,
   listLotteryCampaigns,
   publishLotteryCampaign,
   syncLotteryEntries,
+  updateLotteryCampaign,
 } from '@/api/admin/lotteryCampaigns'
 
 describe('lottery campaigns api', () => {
@@ -28,6 +34,7 @@ describe('lottery campaigns api', () => {
     get.mockReset()
     post.mockReset()
     put.mockReset()
+    del.mockReset()
   })
 
   it('calls user lottery endpoints', async () => {
@@ -42,6 +49,14 @@ describe('lottery campaigns api', () => {
     post.mockResolvedValueOnce({ data: { id: 1 } })
     await enrollLotteryCampaign(7)
     expect(post).toHaveBeenCalledWith('/lottery-campaigns/7/enroll')
+
+    get.mockResolvedValueOnce({ data: { items: [] } })
+    await getRecentLotteryWinners(7)
+    expect(get).toHaveBeenCalledWith('/lottery-campaigns/7/winners', { params: undefined })
+
+    get.mockResolvedValueOnce({ data: { items: [] } })
+    await getRecentLotteryWinners(7, 5)
+    expect(get).toHaveBeenCalledWith('/lottery-campaigns/7/winners', { params: { limit: 5 } })
   })
 
   it('calls admin lottery endpoints', async () => {
@@ -67,9 +82,25 @@ describe('lottery campaigns api', () => {
     await createLotteryCampaign(payload)
     expect(post).toHaveBeenCalledWith('/admin/lottery-campaigns', payload)
 
+    put.mockResolvedValueOnce({ data: { id: 7 } })
+    await updateLotteryCampaign(7, payload)
+    expect(put).toHaveBeenCalledWith('/admin/lottery-campaigns/7', payload)
+
     post.mockResolvedValueOnce({ data: { id: 7, status: 'published' } })
     await publishLotteryCampaign(7)
     expect(post).toHaveBeenCalledWith('/admin/lottery-campaigns/7/publish')
+
+    post.mockResolvedValueOnce({ data: { id: 7, status: 'cancelled' } })
+    await cancelLotteryCampaign(7)
+    expect(post).toHaveBeenCalledWith('/admin/lottery-campaigns/7/cancel')
+
+    post.mockResolvedValueOnce({ data: { id: 7, is_featured: true } })
+    await featureLotteryCampaign(7)
+    expect(post).toHaveBeenCalledWith('/admin/lottery-campaigns/7/feature')
+
+    del.mockResolvedValueOnce({ data: { deleted: true } })
+    await deleteLotteryCampaign(7)
+    expect(del).toHaveBeenCalledWith('/admin/lottery-campaigns/7')
 
     post.mockResolvedValueOnce({ data: { synced: 3 } })
     await syncLotteryEntries(7, '2026-07-08')

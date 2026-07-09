@@ -835,11 +835,15 @@ func registerLotteryCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		lotteries.POST("", h.Admin.LotteryCampaign.Create)
 		lotteries.GET("/:id", h.Admin.LotteryCampaign.Get)
 		lotteries.PUT("/:id", h.Admin.LotteryCampaign.Update)
-			lotteries.POST("/:id/publish", h.Admin.LotteryCampaign.Publish)
+		lotteries.DELETE("/:id", h.Admin.LotteryCampaign.Delete)
+		lotteries.POST("/:id/publish", h.Admin.LotteryCampaign.Publish)
 		lotteries.POST("/:id/cancel", h.Admin.LotteryCampaign.Cancel)
-			lotteries.POST("/:id/sync-entries", h.Admin.LotteryCampaign.SyncEntries)
+		lotteries.POST("/:id/feature", h.Admin.LotteryCampaign.Feature)
+		lotteries.POST("/:id/sync-entries", h.Admin.LotteryCampaign.SyncEntries)
 		lotteries.POST("/:id/draw", h.Admin.LotteryCampaign.Draw)
 		lotteries.GET("/:id/draw-batches", h.Admin.LotteryCampaign.ListBatches)
 		lotteries.GET("/:id/draw-batches/:batch_id/winners", h.Admin.LotteryCampaign.ListWinners)
-			}
+		lotteries.GET("/:id/designations", h.Admin.LotteryCampaign.GetDesignations)
+		lotteries.PUT("/:id/designations", h.Admin.LotteryCampaign.ReplaceDesignations)
+	}
 }

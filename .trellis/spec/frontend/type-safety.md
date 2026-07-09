@@ -100,6 +100,22 @@ Required checks:
 - API test verifies the backend endpoint path, abort signal, and timeout forwarding.
 - Parser test covers backend-normalized payloads, legacy wrapped payloads, invalid payload rejection, and nullable optional fields.
 
+### Pattern: Admin lottery campaign API types
+
+When updating `frontend/src/api/lotteryCampaigns.ts` or `frontend/src/api/admin/lotteryCampaigns.ts`:
+
+- Keep `LotteryCampaign` fields aligned with backend JSON names, including `is_featured`, `prize_tiers`, `draw_schedule_type`, `daily_draw_time`, and all timestamp fields.
+- Add admin API methods for each backend management action instead of calling raw `apiClient` from Vue components. Current action paths include `/admin/lottery-campaigns/:id/feature` and `DELETE /admin/lottery-campaigns/:id`.
+- Reuse the full `LotteryCampaignRequest` payload for create and edit so published campaign edits stay contract-compatible with backend validation.
+- Keep destructive copy in i18n, not hardcoded component strings, and include zh/en keys for edit, hard delete, cascade warning, feature selection, and validation messages.
+- Validate obvious time errors in the admin UI before submit, but keep backend validation authoritative.
+
+Required checks:
+
+- API test verifies create, update, publish, cancel, feature, hard delete, sync, and draw endpoint paths.
+- `pnpm typecheck` passes after adding fields to `LotteryCampaign`.
+- Targeted i18n scan or component review confirms every `admin.lotteryCampaigns.*` key used by the panel exists in both locale files.
+
 ---
 
 ## Forbidden Patterns

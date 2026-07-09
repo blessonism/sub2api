@@ -118,6 +118,30 @@ func (h *UserHandler) EnrollLotteryCampaign(c *gin.Context) {
 	response.Success(c, entry)
 }
 
+// GetLotteryCampaignWinners 返回最近中奖名单（脱敏，仅成功记录）。
+func (h *UserHandler) GetLotteryCampaignWinners(c *gin.Context) {
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	if h.lotteryCampaignService == nil {
+		response.NotFound(c, "Lottery campaign service unavailable")
+		return
+	}
+	limit := 10
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	winners, err := h.lotteryCampaignService.RecentWinners(c.Request.Context(), campaignID, limit, time.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": winners})
+}
+
 // GetActiveCampaign 返回当前进行中的邀请奖励活动。
 func (h *UserHandler) GetActiveCampaign(c *gin.Context) {
 	if h.campaignService == nil {

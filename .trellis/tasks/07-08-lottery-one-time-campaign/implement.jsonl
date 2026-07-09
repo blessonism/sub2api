@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端服务与测试质量约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "抽奖活动 API 类型与前端类型安全约束"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "一次性抽奖跨后端服务、API 字段与前端展示语义"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有 single 调度与窗口工具，避免新增重复模式"}
