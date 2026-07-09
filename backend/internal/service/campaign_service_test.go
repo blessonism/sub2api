@@ -546,8 +546,8 @@ func TestCampaignCopyCreatesDraftFromLatestConfigWithoutBusinessData(t *testing.
 			EndAt:         startAt.Add(6 * 24 * time.Hour),
 			AuditStartAt:  &auditStartAt,
 			AuditEndAt:    &auditEndAt,
-			CreatedBy:     ptrInt64(1),
-			UpdatedBy:     ptrInt64(2),
+			CreatedBy:     campaignPtrInt64(1),
+			UpdatedBy:     campaignPtrInt64(2),
 			CreatedAt:     startAt.Add(-48 * time.Hour),
 			UpdatedAt:     startAt.Add(-time.Hour),
 		},
@@ -596,7 +596,7 @@ func TestCampaignUpdateAllowsTimelinePatchAndValidatesMergedTimeRange(t *testing
 	svc := NewCampaignService(repo, nil)
 
 	updated, err := svc.UpdateCampaign(context.Background(), 7, CampaignUpdateInput{
-		Name:           ptrString("夏季邀请活动"),
+		Name:           campaignPtrString("夏季邀请活动"),
 		WarmupStartAt:  &clearedWarmup,
 		EndAt:          campaignPtrTime(endAt.Add(24 * time.Hour)),
 		AuditStartAt:   ptrTimePatch(auditStartAt),
@@ -1212,11 +1212,11 @@ func campaignTestLeaderboardRow(userID int64, validInvites int, rechargeCents in
 	}
 }
 
-func ptrInt64(value int64) *int64 {
+func campaignPtrInt64(value int64) *int64 {
 	return &value
 }
 
-func ptrString(value string) *string {
+func campaignPtrString(value string) *string {
 	return &value
 }
 

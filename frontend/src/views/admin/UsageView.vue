@@ -64,200 +64,227 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" :mode="activeTab === 'errors' ? 'errors' : 'usage'" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
-        <template #after-reset>
+      <!-- 明细区：tab 栏 + 筛选 + 内容收进同一张卡片，消除割裂感 -->
+      <div class="card">
+        <div class="flex flex-wrap items-center border-b border-gray-200 px-2 dark:border-dark-700 sm:px-4">
           <button
+            v-for="tab in detailTabs"
+            :key="tab.key"
             type="button"
-            @click="toggleSharedIPUsers"
-            class="btn px-2 md:px-3"
-            :class="sharedIPUsersEnabled ? 'btn-warning' : 'btn-secondary'"
-            :title="t('admin.usage.sharedIPUsers.tooltip')"
+            data-testid="usage-detail-tab"
+            class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:px-4"
+            :class="activeTab === tab.key
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-dark-500 dark:hover:text-gray-200'"
+            @click="switchTab(tab.key)"
           >
-            <Icon name="search" size="sm" class="md:mr-1.5" :stroke-width="2" />
-            <span class="hidden md:inline">{{ t('admin.usage.sharedIPUsers.button') }}</span>
+            <Icon :name="tab.icon" size="sm" />
+            {{ tab.label }}
           </button>
-          <div class="relative" ref="columnDropdownRef">
+        </div>
+
+        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+          <template #after-reset>
             <button
-              @click="showColumnDropdown = !showColumnDropdown"
-              class="btn btn-secondary px-2 md:px-3"
-              :title="t('admin.users.columnSettings')"
+              v-if="activeTab === 'usage'"
+              type="button"
+              @click="toggleSharedIPUsers"
+              class="btn px-2 md:px-3"
+              :class="sharedIPUsersEnabled ? 'btn-warning' : 'btn-secondary'"
+              :title="t('admin.usage.sharedIPUsers.tooltip')"
             >
-              <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
-              <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
+              <Icon name="search" size="sm" class="md:mr-1.5" :stroke-width="2" />
+              <span class="hidden md:inline">{{ t('admin.usage.sharedIPUsers.button') }}</span>
             </button>
-            <div
-              v-if="showColumnDropdown"
-              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-            >
+            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
-                v-for="col in currentToggleableColumns"
-                :key="col.key"
-                @click="toggleCurrentColumn(col.key)"
-                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.columnSettings')"
               >
-                <span>{{ col.label }}</span>
-                <Icon
-                  v-if="isCurrentColumnVisible(col.key)"
-                  name="check"
-                  size="sm"
-                  class="text-primary-500"
-                  :stroke-width="2"
-                />
+                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
+                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
+              </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              >
+                <button
+                  v-for="col in currentToggleableColumns"
+                  :key="col.key"
+                  @click="toggleCurrentColumn(col.key)"
+                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                >
+                  <span>{{ col.label }}</span>
+                  <Icon
+                    v-if="isCurrentColumnVisible(col.key)"
+                    name="check"
+                    size="sm"
+                    class="text-primary-500"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
+            </div>
+          </template>
+        </UsageFilters>
+
+        <div v-show="activeTab === 'usage'" class="overflow-hidden rounded-b-2xl">
+          <div
+            v-if="sharedIPUsersEnabled"
+            class="m-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="font-medium">{{ t('admin.usage.sharedIPUsers.summaryTitle') }}</span>
+              <span>{{ t('admin.usage.sharedIPUsers.ipCount', { count: sharedIPUsersSummary?.ip_count ?? 0 }) }}</span>
+              <span>{{ t('admin.usage.sharedIPUsers.userCount', { count: sharedIPUsersSummary?.user_count ?? 0 }) }}</span>
+              <span>{{ t('admin.usage.sharedIPUsers.recordCount', { count: sharedIPUsersSummary?.record_count ?? 0 }) }}</span>
+              <button
+                type="button"
+                class="ml-auto inline-flex items-center rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                @click="toggleSharedIPRecords"
+              >
+                {{ sharedIPRecordsExpanded ? t('admin.usage.sharedIPUsers.hideRecords') : t('admin.usage.sharedIPUsers.showRecords') }}
               </button>
             </div>
-          </div>
-        </template>
-      </UsageFilters>
-      <div class="mb-4 flex gap-2 border-b border-gray-200 dark:border-dark-700">
-        <button class="tab" :class="{ 'tab-active': activeTab === 'usage' }" @click="activeTab = 'usage'">
-          {{ t('usage.tabs.usage') }}
-        </button>
-        <button class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrorsTab">
-          {{ t('usage.tabs.errors') }}
-        </button>
-      </div>
-      <div v-show="activeTab === 'usage'">
-        <div
-          v-if="sharedIPUsersEnabled"
-          class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
-        >
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="font-medium">{{ t('admin.usage.sharedIPUsers.summaryTitle') }}</span>
-            <span>{{ t('admin.usage.sharedIPUsers.ipCount', { count: sharedIPUsersSummary?.ip_count ?? 0 }) }}</span>
-            <span>{{ t('admin.usage.sharedIPUsers.userCount', { count: sharedIPUsersSummary?.user_count ?? 0 }) }}</span>
-            <span>{{ t('admin.usage.sharedIPUsers.recordCount', { count: sharedIPUsersSummary?.record_count ?? 0 }) }}</span>
-            <button
-              type="button"
-              class="ml-auto inline-flex items-center rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
-              @click="toggleSharedIPRecords"
-            >
-              {{ sharedIPRecordsExpanded ? t('admin.usage.sharedIPUsers.hideRecords') : t('admin.usage.sharedIPUsers.showRecords') }}
-            </button>
-          </div>
-          <div class="mt-3 border-t border-amber-200 pt-3 dark:border-amber-800">
-            <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
-              {{ t('admin.usage.sharedIPUsers.matchedIPGroupsTitle') }}
-            </div>
-            <div v-if="sharedIPUsersTruncatedHint" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
-              {{ sharedIPUsersTruncatedHint }}
-            </div>
-            <div v-if="sharedIPGroupRows.length" class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-amber-200 text-left text-xs dark:divide-amber-800">
-                <thead>
-                  <tr class="text-amber-700 dark:text-amber-200">
-                    <th class="w-8 py-2 pr-2 font-medium"></th>
-                    <th class="whitespace-nowrap py-2 pr-4 font-medium">{{ t('admin.usage.sharedIPUsers.ipAddressColumn') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.userCountColumn') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.lastUsed') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.tokens') }}</th>
-                    <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.cost') }}</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-amber-100 dark:divide-amber-900/70">
-                  <template v-for="group in sharedIPGroupRows" :key="group.ip_address">
-                    <tr>
-                      <td class="py-2 pr-2 align-top">
-                        <button
-                          type="button"
-                          class="inline-flex h-6 w-6 items-center justify-center rounded border border-amber-300 text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
-                          :title="isSharedIPGroupExpanded(group.ip_address) ? t('admin.usage.sharedIPUsers.collapseGroup') : t('admin.usage.sharedIPUsers.expandGroup')"
-                          @click="toggleSharedIPGroup(group.ip_address)"
-                        >
-                          <Icon :name="isSharedIPGroupExpanded(group.ip_address) ? 'chevronDown' : 'chevronRight'" size="xs" :stroke-width="2" />
-                        </button>
-                      </td>
-                      <td class="whitespace-nowrap py-2 pr-4 align-top font-mono font-medium">{{ group.ip_address }}</td>
-                      <td class="whitespace-nowrap px-4 py-2 align-top font-medium">{{ group.user_count }}</td>
-                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.record_count }}</td>
-                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.last_used_at ? formatDateTime(group.last_used_at) : '-' }}</td>
-                      <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.total_tokens.toLocaleString() }}</td>
-                      <td class="whitespace-nowrap px-4 py-2 align-top">${{ group.actual_cost.toFixed(6) }}</td>
+            <div class="mt-3 border-t border-amber-200 pt-3 dark:border-amber-800">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                {{ t('admin.usage.sharedIPUsers.matchedIPGroupsTitle') }}
+              </div>
+              <div v-if="sharedIPUsersTruncatedHint" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
+                {{ sharedIPUsersTruncatedHint }}
+              </div>
+              <div v-if="sharedIPGroupRows.length" class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-amber-200 text-left text-xs dark:divide-amber-800">
+                  <thead>
+                    <tr class="text-amber-700 dark:text-amber-200">
+                      <th class="w-8 py-2 pr-2 font-medium"></th>
+                      <th class="whitespace-nowrap py-2 pr-4 font-medium">{{ t('admin.usage.sharedIPUsers.ipAddressColumn') }}</th>
+                      <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.userCountColumn') }}</th>
+                      <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</th>
+                      <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('admin.usage.sharedIPUsers.lastUsed') }}</th>
+                      <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.tokens') }}</th>
+                      <th class="whitespace-nowrap px-4 py-2 font-medium">{{ t('usage.cost') }}</th>
                     </tr>
-                    <tr v-if="isSharedIPGroupExpanded(group.ip_address)">
-                      <td></td>
-                      <td colspan="6" class="pb-3 pr-4">
-                        <div class="rounded border border-amber-200 bg-white/50 p-2 dark:border-amber-800 dark:bg-dark-900/30">
-                          <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
-                            {{ t('admin.usage.sharedIPUsers.groupUsers') }}
-                          </div>
-                          <div v-if="formatSharedIPGroupUsersHint(group)" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
-                            {{ formatSharedIPGroupUsersHint(group) }}
-                          </div>
-                          <div class="grid gap-1">
-                            <div class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-200">
-                              <div>{{ t('admin.usage.sharedIPUsers.user') }}</div>
-                              <div>{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</div>
-                              <div>{{ t('admin.usage.sharedIPUsers.lastUsed') }}</div>
-                              <div>{{ t('usage.tokens') }}</div>
-                              <div>{{ t('usage.cost') }}</div>
+                  </thead>
+                  <tbody class="divide-y divide-amber-100 dark:divide-amber-900/70">
+                    <template v-for="group in sharedIPGroupRows" :key="group.ip_address">
+                      <tr>
+                        <td class="py-2 pr-2 align-top">
+                          <button
+                            type="button"
+                            class="inline-flex h-6 w-6 items-center justify-center rounded border border-amber-300 text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                            :title="isSharedIPGroupExpanded(group.ip_address) ? t('admin.usage.sharedIPUsers.collapseGroup') : t('admin.usage.sharedIPUsers.expandGroup')"
+                            @click="toggleSharedIPGroup(group.ip_address)"
+                          >
+                            <Icon :name="isSharedIPGroupExpanded(group.ip_address) ? 'chevronDown' : 'chevronRight'" size="xs" :stroke-width="2" />
+                          </button>
+                        </td>
+                        <td class="whitespace-nowrap py-2 pr-4 align-top font-mono font-medium">{{ group.ip_address }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 align-top font-medium">{{ group.user_count }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.record_count }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.last_used_at ? formatDateTime(group.last_used_at) : '-' }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 align-top">{{ group.total_tokens.toLocaleString() }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 align-top">${{ group.actual_cost.toFixed(6) }}</td>
+                      </tr>
+                      <tr v-if="isSharedIPGroupExpanded(group.ip_address)">
+                        <td></td>
+                        <td colspan="6" class="pb-3 pr-4">
+                          <div class="rounded border border-amber-200 bg-white/50 p-2 dark:border-amber-800 dark:bg-dark-900/30">
+                            <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                              {{ t('admin.usage.sharedIPUsers.groupUsers') }}
                             </div>
-                            <div
-                              v-for="user in group.users || []"
-                              :key="`${group.ip_address}-${user.user_id}`"
-                              class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 rounded px-2 py-1.5 text-xs text-amber-950 odd:bg-amber-100/50 dark:text-amber-50 dark:odd:bg-amber-900/20"
-                            >
-                              <div class="min-w-0">
-                                <button
-                                  type="button"
-                                  class="truncate font-medium text-primary-700 underline decoration-dashed underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-                                  @click="handleUserClick(user.user_id)"
-                                >
-                                  {{ user.email || `#${user.user_id}` }}
-                                </button>
-                                <span v-if="user.deleted" class="ml-1 rounded bg-rose-100 px-1 py-px text-[10px] font-medium text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-500/30">
-                                  {{ t('admin.usage.userDeletedBadge') }}
-                                </span>
-                                <span class="ml-1 text-amber-700/70 dark:text-amber-100/70">#{{ user.user_id }}</span>
+                            <div v-if="formatSharedIPGroupUsersHint(group)" class="mb-2 text-xs text-amber-800 dark:text-amber-100">
+                              {{ formatSharedIPGroupUsersHint(group) }}
+                            </div>
+                            <div class="grid gap-1">
+                              <div class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-200">
+                                <div>{{ t('admin.usage.sharedIPUsers.user') }}</div>
+                                <div>{{ t('admin.usage.sharedIPUsers.recordCountColumn') }}</div>
+                                <div>{{ t('admin.usage.sharedIPUsers.lastUsed') }}</div>
+                                <div>{{ t('usage.tokens') }}</div>
+                                <div>{{ t('usage.cost') }}</div>
                               </div>
-                              <div>{{ user.record_count }}</div>
-                              <div>{{ user.last_used_at ? formatDateTime(user.last_used_at) : '-' }}</div>
-                              <div>{{ user.total_tokens.toLocaleString() }}</div>
-                              <div>${{ user.actual_cost.toFixed(6) }}</div>
+                              <div
+                                v-for="user in group.users || []"
+                                :key="`${group.ip_address}-${user.user_id}`"
+                                class="grid grid-cols-[minmax(180px,1fr)_80px_150px_100px_100px] items-center gap-3 rounded px-2 py-1.5 text-xs text-amber-950 odd:bg-amber-100/50 dark:text-amber-50 dark:odd:bg-amber-900/20"
+                              >
+                                <div class="min-w-0">
+                                  <button
+                                    type="button"
+                                    class="truncate font-medium text-primary-700 underline decoration-dashed underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                                    @click="handleUserClick(user.user_id)"
+                                  >
+                                    {{ user.email || `#${user.user_id}` }}
+                                  </button>
+                                  <span v-if="user.deleted" class="ml-1 rounded bg-rose-100 px-1 py-px text-[10px] font-medium text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-500/30">
+                                    {{ t('admin.usage.userDeletedBadge') }}
+                                  </span>
+                                  <span class="ml-1 text-amber-700/70 dark:text-amber-100/70">#{{ user.user_id }}</span>
+                                </div>
+                                <div>{{ user.record_count }}</div>
+                                <div>{{ user.last_used_at ? formatDateTime(user.last_used_at) : '-' }}</div>
+                                <div>{{ user.total_tokens.toLocaleString() }}</div>
+                                <div>${{ user.actual_cost.toFixed(6) }}</div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="text-xs text-amber-700 dark:text-amber-200">
-              {{ t('admin.usage.sharedIPUsers.noMatchedIPGroups') }}
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class="text-xs text-amber-700 dark:text-amber-200">
+                {{ t('admin.usage.sharedIPUsers.noMatchedIPGroups') }}
+              </div>
             </div>
           </div>
+          <UsageTable
+            v-if="!sharedIPUsersEnabled || sharedIPRecordsExpanded"
+            flat
+            :data="usageLogs"
+            :loading="loading"
+            :columns="visibleColumns"
+            :server-side-sort="true"
+            :default-sort-key="'created_at'"
+            :default-sort-order="'desc'"
+            @sort="handleSort"
+            @userClick="handleUserClick"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed"
+          />
+          <Pagination v-if="(!sharedIPUsersEnabled || sharedIPRecordsExpanded) && pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
-        <UsageTable
-          v-if="!sharedIPUsersEnabled || sharedIPRecordsExpanded"
-          :data="usageLogs"
-          :loading="loading"
-          :columns="visibleColumns"
-          :server-side-sort="true"
-          :default-sort-key="'created_at'"
-          :default-sort-order="'desc'"
-          @sort="handleSort"
-          @userClick="handleUserClick"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed"
-        />
-        <Pagination v-if="(!sharedIPUsersEnabled || sharedIPRecordsExpanded) && pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
+        <div v-show="activeTab === 'errors'" class="overflow-hidden rounded-b-2xl">
+          <OpsErrorLogTable
+            flat
+            :rows="errRows" :total="errTotal" :loading="errLoading"
+            :page="errPage" :page-size="errPageSize"
+            :visible-column-keys="errVisibleColumnKeys"
+            user-clickable
+            @userClick="handleUserClick"
+            @openErrorDetail="openError"
+            @sort="onErrSort"
+            @update:page="onErrPage"
+            @update:pageSize="onErrPageSize"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed" />
+        </div>
+        <!-- 懒挂载：首次切到该 tab 才请求排行数据，之后随筛选自动刷新 -->
+        <div v-if="rankingMounted" v-show="activeTab === 'ranking'" class="overflow-hidden rounded-b-2xl">
+          <UserTokenRanking
+            ref="rankingRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :filters="breakdownFilters"
+            :model="filters.model"
+            @select-user="handleRankingSelectUser"
+          />
+        </div>
       </div>
-      <div v-show="activeTab === 'errors'">
-        <OpsErrorLogTable
-          :rows="errRows" :total="errTotal" :loading="errLoading"
-          :page="errPage" :page-size="errPageSize"
-          :visible-column-keys="errVisibleColumnKeys"
-          user-clickable
-          @userClick="handleUserClick"
-          @openErrorDetail="openError"
-          @sort="onErrSort"
-          @update:page="onErrPage"
-          @update:pageSize="onErrPageSize"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed" />
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
-      </div>
+      <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -289,6 +316,7 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
@@ -396,6 +424,15 @@ const handleUserClick = async (userId: number) => {
   } catch {
     appStore.showError(t('admin.usage.failedToLoadUser'))
   }
+}
+
+// Drill down from the per-user token ranking: scope the whole usage view to
+// that user and jump to the usage-detail tab so the drill-down is visible.
+const handleRankingSelectUser = (userId: number, email: string) => {
+  filters.value = { ...filters.value, user_id: userId }
+  usageFiltersRef.value?.setUserKeyword?.(email || '')
+  activeTab.value = 'usage'
+  applyFilters()
 }
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
@@ -645,6 +682,7 @@ const refreshData = () => {
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
+  if (rankingMounted.value) rankingRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
@@ -769,8 +807,7 @@ const allColumns = computed(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
-  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
   { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
@@ -890,8 +927,25 @@ const loadSavedColumns = () => {
   }
 }
 
+// Detail tabs
+type DetailTab = 'usage' | 'errors' | 'ranking'
+const activeTab = ref<DetailTab>('usage')
+const detailTabs = computed(() => [
+  { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
+  { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
+  { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+])
+const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
+const rankingMounted = ref(false)
+const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+
+const switchTab = (tab: DetailTab) => {
+  activeTab.value = tab
+  if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
+  if (tab === 'ranking') rankingMounted.value = true
+}
+
 // Error tab state
-const activeTab = ref<'usage' | 'errors'>('usage')
 const errRows = ref<OpsErrorLog[]>([])
 const errLoading = ref(false)
 const errPage = ref(1)
@@ -945,7 +999,6 @@ const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
-const switchToErrorsTab = () => { activeTab.value = 'errors'; if (errRows.value.length === 0) loadAdminErrors() }
 
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)

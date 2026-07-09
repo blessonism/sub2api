@@ -1,9 +1,11 @@
 <template>
-  <div class="card p-6">
-    <div class="space-y-4">
-      <!-- 主筛选：高频搜索项保持一行节奏，减少控件互相挤压 -->
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div ref="userSearchRef" class="usage-filter-dropdown relative w-full min-w-0">
+  <div :class="flat ? 'p-4 sm:p-6' : 'card p-6'">
+    <!-- Toolbar: left filters (multi-line) + right actions -->
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <!-- Left: filters (allowed to wrap to multiple rows) -->
+      <div class="flex flex-1 flex-wrap items-end gap-4">
+        <!-- User Search -->
+        <div ref="userSearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
           <label class="input-label">{{ t('admin.usage.userFilter') }}</label>
           <input
             v-model="userKeyword"
@@ -115,56 +117,61 @@
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- 次筛选 + 操作：把按钮收在同一行尾部，避免单独掉行产生大空白 -->
-      <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-end">
-        <div class="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div v-if="mode !== 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('usage.type') }}</label>
-            <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
-          </div>
-
-          <div v-if="mode !== 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('admin.usage.billingType') }}</label>
-            <Select v-model="filters.billing_type" :options="billingTypeOptions" @change="emitChange" />
-          </div>
-
-          <div v-if="mode !== 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
-            <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
-          </div>
-
-          <div v-if="mode === 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('admin.ops.errorLog.type') }}</label>
-            <Select v-model="filters.error_phase" :options="errorPhaseOptions" @change="emitChange" />
-          </div>
-
-          <div v-if="mode === 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('usage.errors.category') }}</label>
-            <Select v-model="filters.error_category" :options="errorCategoryOptions" @change="emitChange" />
-          </div>
-
-          <div v-if="mode === 'errors'" class="w-full min-w-0">
-            <label class="input-label">{{ t('admin.ops.errorLog.status') }}</label>
-            <Select v-model="filters.status_code" :options="statusCodeOptions" @change="emitChange" />
-          </div>
-
-          <div class="w-full min-w-0">
-            <label class="input-label">{{ t('admin.usage.group') }}</label>
-            <Select v-model="filters.group_id" :options="groupOptions" searchable @change="emitChange" />
-          </div>
+        <!-- Request Type Filter (usage only) -->
+        <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('usage.type') }}</label>
+          <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
         </div>
 
-        <div v-if="showActions" class="flex w-full flex-wrap items-center gap-2 sm:gap-3 2xl:w-auto 2xl:flex-none 2xl:justify-end">
-          <button type="button" @click="$emit('refresh')" class="btn btn-secondary">
-            {{ t('common.refresh') }}
-          </button>
-          <button type="button" @click="$emit('reset')" class="btn btn-secondary">
-            {{ t('common.reset') }}
-          </button>
-          <slot name="after-reset" />
-        <template v-if="mode !== 'errors'">
+        <!-- Billing Type Filter (usage only) -->
+        <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[200px]">
+          <label class="input-label">{{ t('admin.usage.billingType') }}</label>
+          <Select v-model="filters.billing_type" :options="billingTypeOptions" @change="emitChange" />
+        </div>
+
+        <!-- Billing Mode Filter (usage only；用户排行的 user-breakdown 接口不支持该维度) -->
+        <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]">
+          <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
+          <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
+        </div>
+
+        <!-- Error Phase Filter (errors only) -->
+        <div v-if="mode === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('admin.ops.errorLog.type') }}</label>
+          <Select v-model="filters.error_phase" :options="errorPhaseOptions" @change="emitChange" />
+        </div>
+
+        <!-- Error Category Filter (errors only) -->
+        <div v-if="mode === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('usage.errors.category') }}</label>
+          <Select v-model="filters.error_category" :options="errorCategoryOptions" @change="emitChange" />
+        </div>
+
+        <!-- Status Code Filter (errors only) -->
+        <div v-if="mode === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('admin.ops.errorLog.status') }}</label>
+          <Select v-model="filters.status_code" :options="statusCodeOptions" @change="emitChange" />
+        </div>
+
+        <!-- Group Filter -->
+        <div class="w-full sm:w-auto sm:min-w-[200px]">
+          <label class="input-label">{{ t('admin.usage.group') }}</label>
+          <Select v-model="filters.group_id" :options="groupOptions" searchable @change="emitChange" />
+        </div>
+
+      </div>
+
+      <!-- Right: actions -->
+      <div v-if="showActions" class="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+        <button type="button" @click="$emit('refresh')" class="btn btn-secondary">
+          {{ t('common.refresh') }}
+        </button>
+        <button type="button" @click="$emit('reset')" class="btn btn-secondary">
+          {{ t('common.reset') }}
+        </button>
+        <slot name="after-reset" />
+        <template v-if="mode === 'usage'">
           <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
             {{ t('admin.usage.cleanup.button') }}
           </button>
@@ -172,7 +179,6 @@
             {{ t('usage.exportExcel') }}
           </button>
         </template>
-        </div>
       </div>
     </div>
   </div>
@@ -195,13 +201,19 @@ interface Props {
   endDate: string
   showActions?: boolean
   modelOptions?: string[]
-  /** errors 模式:隐藏用量专属字段/按钮,显示错误类型+状态码(错误请求 tab 用) */
-  mode?: 'usage' | 'errors'
+  /**
+   * errors 模式:隐藏用量专属字段/按钮,显示错误类型+状态码(错误请求 tab 用)
+   * ranking 模式:同 usage 但隐藏计费模式筛选与清理/导出按钮(用户排行 tab 用)
+   */
+  mode?: 'usage' | 'errors' | 'ranking'
+  /** 嵌入统一卡片内使用：去掉自身卡片外观 */
+  flat?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showActions: true,
-  mode: 'usage'
+  mode: 'usage',
+  flat: false
 })
 const emit = defineEmits([
   'update:modelValue',
@@ -286,7 +298,8 @@ const billingModeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allBillingModes') },
   { value: 'token', label: t('admin.usage.billingModeToken') },
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
-  { value: 'image', label: t('admin.usage.billingModeImage') }
+  { value: 'image', label: t('admin.usage.billingModeImage') },
+  { value: 'video', label: t('admin.usage.billingModeVideo') }
 ])
 
 const emitChange = () => emit('change')
@@ -503,4 +516,13 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick)
 })
+
+// 供外部(如用户排行下钻)在程序化设置 user_id 后回显选中的用户邮箱
+const setUserKeyword = (email: string) => {
+  userKeyword.value = email
+  userResults.value = []
+  showUserDropdown.value = false
+}
+
+defineExpose({ setUserKeyword })
 </script>

@@ -381,6 +381,8 @@ const (
 	// shown beside the user-facing tier multiplier column.
 	SettingKeyTokenLeaderboardTierTooltip = "token_leaderboard_tier_tooltip"
 
+	TokenLeaderboardTierTooltipMaxLength = 500
+
 	// SettingKeyConversationCaptureConfig stores JSON config for OpenAI conversation capture.
 	SettingKeyConversationCaptureConfig = "conversation_capture_config"
 

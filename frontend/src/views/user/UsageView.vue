@@ -928,8 +928,7 @@ const columns = computed<Column[]>(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
-  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false }
 ])
@@ -1163,6 +1162,7 @@ const toApiKeyLike = (key: SimpleApiKey): ApiKey => ({
   ip_whitelist: [],
   ip_blacklist: [],
   last_used_at: null,
+  last_used_ip: null,
   quota: 0,
   quota_used: 0,
   current_concurrency: 0,
