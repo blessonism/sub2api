@@ -181,7 +181,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { formatMultiplier as formatAdaptiveMultiplier } from '@/utils/formatters'
-import { TOKENS_PER_MILLION } from '@/utils/usagePricing'
+import { formatTokenMillions } from '@/utils/usagePricing'
 import { usageAPI, type UserTokenLeaderboardItem, type UserTokenLeaderboardPeriod, type UserTokenLeaderboardResponse } from '@/api/usage'
 
 const { t } = useI18n()
@@ -242,10 +242,6 @@ const topTokenTotal = computed(() => ranking.value.reduce((sum, item) => sum + i
 
 function formatFullNumber(value: number): string {
   return value.toLocaleString()
-}
-
-function formatTokenMillions(value: number): string {
-  return `${(value / TOKENS_PER_MILLION).toFixed(2)}M`
 }
 
 function formatMultiplier(value: number | null): string {
