@@ -116,6 +116,22 @@ Required checks:
 - `pnpm typecheck` passes after adding fields to `LotteryCampaign`.
 - Targeted i18n scan or component review confirms every `admin.lotteryCampaigns.*` key used by the panel exists in both locale files.
 
+### Pattern: Downstream i18n locale overlays
+
+更新 `frontend/src/i18n/locales/**` 时，保留下游定制文案和上游模块化文案的边界：
+
+- 每个语言入口使用 `frontend/src/i18n/locales/<locale>/index.ts` 组装上游模块，并通过 `mergeLocale(base, custom)` 合并下游覆盖。
+- 下游专属或覆盖上游的 key 放在 `frontend/src/i18n/locales/<locale>/custom.ts`，不要恢复旧的单文件 `en.ts` / `zh.ts`。
+- `custom.ts` 只保存二开差异，避免复制整棵上游 locale tree；需要修改上游模块时优先确认是否属于真正的通用文案。
+- `frontend/src/i18n/locales/mergeLocale.ts` 负责递归合并对象树，overlay 的字符串或非对象值覆盖 base。
+- zh/en 必须同步添加同名 key，组件中新增 `t()` / `tM()` 调用时同步补齐测试覆盖。
+
+Required checks:
+
+- `pnpm typecheck` passes.
+- `pnpm exec vitest run src/i18n/__tests__/localesNoKeyCollision.spec.ts src/i18n/__tests__/opsLocaleKeys.spec.ts` passes.
+- When a component introduces new i18n surfaces, run or add the closest component test that renders those keys.
+
 ---
 
 ## Forbidden Patterns
