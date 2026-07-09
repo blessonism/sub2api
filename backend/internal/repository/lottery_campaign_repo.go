@@ -32,7 +32,7 @@ func (r *lotteryCampaignRepository) ListLotteryCampaigns(ctx context.Context, pa
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
 	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
-	daily_draw_time, created_by, updated_by, created_at, updated_at
+	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 ORDER BY created_at DESC, id DESC
 LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
@@ -99,7 +99,7 @@ SET name = $2, description = $3, rules_text = $4, participation_mode = $5, draw_
 	prize_mode = $7, entry_mode = $8, threshold_tokens = $9, entry_step_tokens = $10,
 	max_entries_per_user = $11, start_at = $12, end_at = $13, draw_at = $14, daily_draw_time = $15,
 	updated_by = $16, updated_at = NOW()
-WHERE id = $1 AND status = 'draft'`,
+WHERE id = $1`,
 		id, input.Name, input.Description, input.RulesText, input.ParticipationMode, input.DrawScheduleType,
 		input.PrizeMode, input.EntryMode, input.ThresholdTokens, input.EntryStepTokens, input.MaxEntriesPerUser,
 		input.StartAt, input.EndAt, nullableTime(input.DrawAt), input.DailyDrawTime, nullableInt64(input.OperatorID),
@@ -124,7 +124,7 @@ func (r *lotteryCampaignRepository) GetLotteryCampaign(ctx context.Context, id i
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
 	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
-	daily_draw_time, created_by, updated_by, created_at, updated_at
+	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE id = $1`, id)
 	item, err := scanLotteryCampaign(row)
@@ -143,12 +143,12 @@ func (r *lotteryCampaignRepository) GetActiveLotteryCampaign(ctx context.Context
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
 	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
-	daily_draw_time, created_by, updated_by, created_at, updated_at
+	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
   AND start_at <= $1
   AND end_at >= $1
-ORDER BY start_at ASC, id ASC
+ORDER BY is_featured DESC, start_at ASC, id ASC
 LIMIT 1`, now)
 	item, err := scanLotteryCampaign(row)
 	if err != nil {
@@ -177,11 +177,52 @@ WHERE id = $1`, id, status, nullableInt64(operatorID))
 	return r.GetLotteryCampaign(ctx, id)
 }
 
+func (r *lotteryCampaignRepository) SetFeaturedLotteryCampaign(ctx context.Context, id int64, operatorID *int64) (*service.LotteryCampaign, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+UPDATE lottery_campaigns
+SET is_featured = FALSE
+WHERE is_featured = TRUE`); err != nil {
+		return nil, err
+	}
+	res, err := tx.ExecContext(ctx, `
+UPDATE lottery_campaigns
+SET is_featured = TRUE, updated_by = $2, updated_at = NOW()
+WHERE id = $1`, id, nullableInt64(operatorID))
+	if err != nil {
+		return nil, err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return nil, service.ErrLotteryCampaignNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetLotteryCampaign(ctx, id)
+}
+
+func (r *lotteryCampaignRepository) DeleteLotteryCampaign(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM lottery_campaigns WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return service.ErrLotteryCampaignNotFound
+	}
+	return nil
+}
+
 func (r *lotteryCampaignRepository) ListPublishedLotteryCampaigns(ctx context.Context) ([]service.LotteryCampaign, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
 	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
-	daily_draw_time, created_by, updated_by, created_at, updated_at
+	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
 ORDER BY id ASC`)
@@ -292,6 +333,23 @@ ORDER BY user_id ASC`, campaignID, entryDate)
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+// CountLotteryQualifiedUsers 统计当前开奖窗口内用量已达门槛的去重用户数，
+// 直接以 usage_logs 为准，不依赖懒创建的 lottery_entries，因此开奖前也能反映真实可参与人数。
+func (r *lotteryCampaignRepository) CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error) {
+	var count int64
+	if err := r.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM (
+	SELECT user_id
+	FROM usage_logs
+	WHERE created_at >= $1 AND created_at < $2 AND actual_cost > 0
+	GROUP BY user_id
+	HAVING COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) >= $3
+) AS qualified`, startAt, endAt, minTokens).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *lotteryCampaignRepository) GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*service.LotteryDrawBatch, error) {
@@ -535,8 +593,105 @@ WHERE w.campaign_id = $1`
 	return out, rows.Err()
 }
 
+func (r *lotteryCampaignRepository) ListRecentPublicLotteryWinners(ctx context.Context, campaignID int64, limit int) ([]service.LotteryPublicWinner, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT COALESCE(u.email, ''), COALESCE(p.tier_name, ''), w.reward_amount_cents, w.created_at
+FROM lottery_winners w
+LEFT JOIN lottery_prize_tiers p ON p.id = w.prize_tier_id
+LEFT JOIN users u ON u.id = w.user_id
+WHERE w.campaign_id = $1 AND w.status = 'success'
+ORDER BY w.created_at DESC, w.id DESC
+LIMIT $2`, campaignID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]service.LotteryPublicWinner, 0)
+	for rows.Next() {
+		var email string
+		var item service.LotteryPublicWinner
+		if err := rows.Scan(&email, &item.PrizeName, &item.RewardAmountCents, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		item.MaskedEmail = maskEmail(email)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *lotteryCampaignRepository) ListLotteryDesignationCandidates(ctx context.Context, campaignID int64, drawDate time.Time) ([]service.LotteryDesignationCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT e.user_id, COALESCE(u.email, ''), e.entry_count, e.tokens
+FROM lottery_entries e
+LEFT JOIN users u ON u.id = e.user_id
+WHERE e.campaign_id = $1 AND e.entry_date = $2::date AND e.status = 'enrolled'
+ORDER BY e.tokens DESC, e.user_id ASC`, campaignID, drawDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]service.LotteryDesignationCandidate, 0)
+	for rows.Next() {
+		var email string
+		var item service.LotteryDesignationCandidate
+		if err := rows.Scan(&item.UserID, &email, &item.EntryCount, &item.Tokens); err != nil {
+			return nil, err
+		}
+		item.MaskedEmail = maskEmail(email)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *lotteryCampaignRepository) GetLotteryDesignations(ctx context.Context, campaignID int64, drawDate time.Time) ([]service.LotteryWinnerDesignation, error) {
+	// 仅返回仍指向活跃奖项的预置；奖项被编辑重建后陈旧预置自动失效。
+	rows, err := r.db.QueryContext(ctx, `
+SELECT d.id, d.campaign_id, d.draw_date, d.user_id, d.prize_tier_id, d.created_by, d.created_at
+FROM lottery_winner_designations d
+JOIN lottery_prize_tiers p ON p.id = d.prize_tier_id AND p.is_active = TRUE
+WHERE d.campaign_id = $1 AND d.draw_date = $2::date
+ORDER BY d.prize_tier_id ASC, d.id ASC`, campaignID, drawDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]service.LotteryWinnerDesignation, 0)
+	for rows.Next() {
+		var item service.LotteryWinnerDesignation
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.CampaignID, &item.DrawDate, &item.UserID, &item.PrizeTierID, &createdBy, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		item.CreatedBy = lotteryNullInt64Ptr(createdBy)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *lotteryCampaignRepository) ReplaceLotteryDesignations(ctx context.Context, campaignID int64, drawDate time.Time, operatorID *int64, inputs []service.LotteryDesignationInput) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM lottery_winner_designations
+WHERE campaign_id = $1 AND draw_date = $2::date`, campaignID, drawDate); err != nil {
+		return err
+	}
+	for _, inp := range inputs {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO lottery_winner_designations (campaign_id, draw_date, user_id, prize_tier_id, created_by, created_at)
+VALUES ($1, $2::date, $3, $4, $5, NOW())`,
+			campaignID, drawDate, inp.UserID, inp.PrizeTierID, nullableInt64(operatorID)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func replaceLotteryPrizeTiers(ctx context.Context, tx *sql.Tx, campaignID int64, tiers []service.LotteryPrizeTierInput) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM lottery_prize_tiers WHERE campaign_id = $1`, campaignID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE lottery_prize_tiers SET is_active = FALSE WHERE campaign_id = $1`, campaignID); err != nil {
 		return err
 	}
 	for i, tier := range tiers {
@@ -545,8 +700,8 @@ func replaceLotteryPrizeTiers(ctx context.Context, tx *sql.Tx, campaignID int64,
 			sortOrder = i + 1
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO lottery_prize_tiers (campaign_id, tier_name, winner_count, reward_amount_cents, sort_order, created_at)
-VALUES ($1, $2, $3, $4, $5, NOW())`, campaignID, tier.TierName, tier.WinnerCount, tier.RewardAmountCents, sortOrder); err != nil {
+INSERT INTO lottery_prize_tiers (campaign_id, tier_name, winner_count, reward_amount_cents, sort_order, is_active, created_at)
+VALUES ($1, $2, $3, $4, $5, TRUE, NOW())`, campaignID, tier.TierName, tier.WinnerCount, tier.RewardAmountCents, sortOrder); err != nil {
 			return err
 		}
 	}
@@ -568,7 +723,7 @@ func (r *lotteryCampaignRepository) listPrizeTiers(ctx context.Context, campaign
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, campaign_id, tier_name, winner_count, reward_amount_cents, sort_order, created_at
 FROM lottery_prize_tiers
-WHERE campaign_id = $1
+WHERE campaign_id = $1 AND is_active = TRUE
 ORDER BY sort_order ASC, id ASC`, campaignID)
 	if err != nil {
 		return nil, err
@@ -597,7 +752,7 @@ func scanLotteryCampaign(scanner lotteryScanner) (*service.LotteryCampaign, erro
 		&item.ID, &item.Name, &item.Description, &item.RulesText, &item.Status, &item.ParticipationMode,
 		&item.DrawScheduleType, &item.PrizeMode, &item.EntryMode, &item.ThresholdTokens, &item.EntryStepTokens,
 		&item.MaxEntriesPerUser, &item.StartAt, &item.EndAt, &drawAt, &item.DailyDrawTime,
-		&createdBy, &updatedBy, &item.CreatedAt, &item.UpdatedAt,
+		&createdBy, &updatedBy, &item.CreatedAt, &item.UpdatedAt, &item.IsFeatured,
 	); err != nil {
 		return nil, err
 	}

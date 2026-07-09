@@ -4,9 +4,61 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
+
+func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewLotteryCampaignRepository(db)
+	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
+	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
+FROM lottery_campaigns
+WHERE status = 'published'
+  AND start_at <= $1
+  AND end_at >= $1
+ORDER BY is_featured DESC, start_at ASC, id ASC
+LIMIT 1`)).
+		WithArgs(now).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "name", "description", "rules_text", "status", "participation_mode", "draw_schedule_type",
+			"prize_mode", "entry_mode", "threshold_tokens", "entry_step_tokens", "max_entries_per_user",
+			"start_at", "end_at", "draw_at", "daily_draw_time", "created_by", "updated_by",
+			"created_at", "updated_at", "is_featured",
+		}).AddRow(
+			int64(7), "Token 抽奖", "", "", "published", "auto", "single", "single", "daily_once",
+			int64(100), int64(0), 1, now.Add(-time.Hour), now.Add(time.Hour), now.Add(30*time.Minute),
+			"", nil, nil, now.Add(-2*time.Hour), now.Add(-time.Hour), true,
+		))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, campaign_id, tier_name, winner_count, reward_amount_cents, sort_order, created_at
+FROM lottery_prize_tiers
+WHERE campaign_id = $1 AND is_active = TRUE
+ORDER BY sort_order ASC, id ASC`)).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "campaign_id", "tier_name", "winner_count", "reward_amount_cents", "sort_order", "created_at"}).
+			AddRow(int64(1), int64(7), "一等奖", 1, int64(1000), 1, now))
+
+	campaign, err := repo.GetActiveLotteryCampaign(context.Background(), now)
+	if err != nil {
+		t.Fatalf("get active lottery campaign: %v", err)
+	}
+	if campaign == nil || !campaign.IsFeatured {
+		t.Fatalf("campaign = %+v, want featured", campaign)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
 
 func TestGrantLotteryWinnerBalanceCommitsUserBalanceAndWinnerAtomically(t *testing.T) {
 	db, mock, err := sqlmock.New()

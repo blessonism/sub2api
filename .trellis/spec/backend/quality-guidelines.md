@@ -628,6 +628,70 @@ monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 
 ---
 
+### Scenario: Admin lottery campaign management APIs
+
+#### 1. Scope / Trigger
+- Trigger: adding or changing Token lottery campaign management behavior, including edit, publish/cancel, featured activity-center selection, hard delete, draw scheduling, prize tiers, entries, batches, or winners.
+- These APIs cross migrations, repository queries, service validation, admin handlers/routes, user activity-center selection, frontend API types, and admin UI. They need code-spec depth because contract drift can hide campaigns, break draw eligibility, or remove audit history.
+
+#### 2. Signatures
+- Admin route prefix: `/api/v1/admin/lottery-campaigns`.
+- Required admin endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/publish`, `POST /:id/cancel`, `POST /:id/feature`, `POST /:id/sync-entries`, `POST /:id/draw`, `GET /:id/draw-batches`, `GET /:id/draw-batches/:batch_id/winners`.
+- User route: `GET /api/v1/lottery-campaigns/active` returns the currently visible campaign for the activity center.
+- Core tables: `lottery_campaigns`, `lottery_prize_tiers`, `lottery_entries`, `lottery_draw_batches`, `lottery_winners`.
+
+#### 3. Contracts
+- `LotteryCampaign` responses include snake_case fields matching frontend types, including `is_featured`.
+- Published lottery campaigns remain editable through the same full config payload as draft campaigns.
+- `POST /:id/feature` marks exactly one lottery campaign as featured; `/lottery-campaigns/active` prefers featured campaigns but still requires `status='published'` and current time inside `[start_at, end_at]`.
+- Hard delete intentionally deletes the selected campaign and cascading lottery records; do not silently convert it to archive/cancel behavior.
+- Prize tier edits must not break existing winner references. If historical winners can reference old tiers, preserve old tier rows through an active/inactive marker rather than deleting rows that may be referenced.
+
+#### 4. Validation & Error Matrix
+- Invalid campaign id -> `LOTTERY_CAMPAIGN_NOT_FOUND` / not found style error.
+- Feature a campaign that is not published or not currently in-window -> `LOTTERY_FEATURED_INVALID`.
+- `end_at <= start_at` -> `LOTTERY_INVALID_CONFIG`.
+- Single draw without `draw_at`, or with `draw_at` outside the campaign window -> `LOTTERY_INVALID_CONFIG`.
+- Daily draw with invalid `HH:mm`, or no scheduled draw time inside the campaign window -> `LOTTERY_INVALID_CONFIG`.
+- Empty prize tiers or non-positive winner/reward values -> `LOTTERY_INVALID_CONFIG`.
+
+#### 5. Good/Base/Bad Cases
+- Good: two published in-window lottery campaigns exist and the featured one is returned from `/lottery-campaigns/active`.
+- Good: editing a published campaign replaces visible prize tiers while old winner rows can still resolve their historical prize tier.
+- Base: no featured campaign is active, so the active endpoint falls back to deterministic time/id ordering.
+- Bad: updating a published campaign is rejected solely because `status != 'draft'`.
+- Bad: deleting prize tiers during edit causes existing `lottery_winners.prize_tier_id` rows to violate foreign keys.
+
+#### 6. Tests Required
+- Service tests cover time-window validation for single and daily draw campaigns, including one-day windows.
+- Service test covers feature validation for published/in-window versus future or unpublished campaigns.
+- Repository/API test covers featured campaign ordering for the active query.
+- Frontend API test covers admin delete and feature endpoint paths when those methods are introduced or changed.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+DELETE FROM lottery_prize_tiers WHERE campaign_id = $1
+```
+
+Correct:
+```sql
+UPDATE lottery_prize_tiers SET is_active = FALSE WHERE campaign_id = $1
+```
+
+Wrong:
+```sql
+ORDER BY start_at ASC, id ASC
+```
+
+Correct:
+```sql
+ORDER BY is_featured DESC, start_at ASC, id ASC
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

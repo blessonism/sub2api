@@ -71,6 +71,16 @@ export async function cancelLotteryCampaign(id: number): Promise<LotteryCampaign
   return data
 }
 
+export async function featureLotteryCampaign(id: number): Promise<LotteryCampaign> {
+  const { data } = await apiClient.post<LotteryCampaign>(`/admin/lottery-campaigns/${id}/feature`)
+  return data
+}
+
+export async function deleteLotteryCampaign(id: number): Promise<{ deleted: boolean }> {
+  const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/lottery-campaigns/${id}`)
+  return data
+}
+
 export async function syncLotteryEntries(id: number, date: string): Promise<{ synced: number }> {
   const { data } = await apiClient.post<{ synced: number }>(`/admin/lottery-campaigns/${id}/sync-entries`, undefined, { params: { date } })
   return data
@@ -91,6 +101,45 @@ export async function listLotteryWinners(id: number, batchId: number): Promise<{
   return data
 }
 
+export interface LotteryDesignationCandidate {
+  user_id: number
+  masked_email: string
+  entry_count: number
+  tokens: number
+  designated_tier_id?: number | null
+}
+
+export interface LotteryWinnerDesignation {
+  id: number
+  campaign_id: number
+  draw_date: string
+  user_id: number
+  prize_tier_id: number
+  created_by?: number | null
+  created_at: string
+}
+
+export interface LotteryDesignationView {
+  candidates: LotteryDesignationCandidate[]
+  designations: LotteryWinnerDesignation[]
+  locked: boolean
+}
+
+export interface LotteryDesignationInput {
+  user_id: number
+  prize_tier_id: number
+}
+
+export async function getLotteryDesignations(id: number, date: string): Promise<LotteryDesignationView> {
+  const { data } = await apiClient.get<LotteryDesignationView>(`/admin/lottery-campaigns/${id}/designations`, { params: { date } })
+  return data
+}
+
+export async function replaceLotteryDesignations(id: number, date: string, assignments: LotteryDesignationInput[]): Promise<{ saved: number }> {
+  const { data } = await apiClient.put<{ saved: number }>(`/admin/lottery-campaigns/${id}/designations`, { assignments }, { params: { date } })
+  return data
+}
+
 export type { LotteryCampaign, LotteryPrizeTier, LotteryWinner }
 
 export const lotteryCampaignsAdminAPI = {
@@ -99,10 +148,14 @@ export const lotteryCampaignsAdminAPI = {
   updateLotteryCampaign,
   publishLotteryCampaign,
   cancelLotteryCampaign,
+  featureLotteryCampaign,
+  deleteLotteryCampaign,
   syncLotteryEntries,
   drawLotteryCampaign,
   listLotteryDrawBatches,
   listLotteryWinners,
+  getLotteryDesignations,
+  replaceLotteryDesignations,
 }
 
 export default lotteryCampaignsAdminAPI

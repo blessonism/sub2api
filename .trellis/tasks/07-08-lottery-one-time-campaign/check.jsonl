@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端服务与测试质量"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端 API 类型、i18n 与类型安全"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查后端窗口语义与前端展示一致性"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否复用已有抽奖调度结构"}
