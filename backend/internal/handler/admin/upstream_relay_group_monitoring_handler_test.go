@@ -170,7 +170,7 @@ func (r *upstreamRelayHandlerRepo) UpdateConnectorAccountBalance(context.Context
 	return nil
 }
 
-func (r *upstreamRelayHandlerRepo) UpdateSnapshotTodayUsage(_ context.Context, _ int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+func (r *upstreamRelayHandlerRepo) UpdateSnapshotTodayUsage(_ context.Context, _ int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time, complete bool) error {
 	r.usageByGroup = usageByGroup
 	r.usageCheckedAt = checkedAt
 	for i := range r.snapshots {
@@ -180,7 +180,10 @@ func (r *upstreamRelayHandlerRepo) UpdateSnapshotTodayUsage(_ context.Context, _
 			r.snapshots[i].TodayUsageCheckedAt = nil
 			continue
 		}
-		usage := usageByGroup[r.snapshots[i].UpstreamGroupID]
+		usage, known := usageByGroup[r.snapshots[i].UpstreamGroupID]
+		if !known && !complete {
+			continue
+		}
 		actualCost := usage.ActualCost
 		totalTokens := usage.TotalTokens
 		r.snapshots[i].TodayActualCost = &actualCost

@@ -256,7 +256,27 @@ func TestUpstreamRelayRepositoryUpdateSnapshotTodayUsageDoesNotRebuildSnapshots(
 
 	err := repo.UpdateSnapshotTodayUsage(ctx, 42, map[string]service.UpstreamRelayGroupTodayUsage{
 		"g1": {ActualCost: 1.25, TotalTokens: 1234},
-	}, &checkedAt)
+	}, &checkedAt, true)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpstreamRelayRepositoryUpdateSnapshotTodayUsagePartialKeepsUnknownSnapshots(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewUpstreamRelayRepository(db)
+	ctx := context.Background()
+	checkedAt := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE upstream_relay_group_rate_snapshots").
+		WithArgs(int64(42), "g1", 1.25, int64(1234), &checkedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err := repo.UpdateSnapshotTodayUsage(ctx, 42, map[string]service.UpstreamRelayGroupTodayUsage{
+		"g1": {ActualCost: 1.25, TotalTokens: 1234},
+	}, &checkedAt, false)
 
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())

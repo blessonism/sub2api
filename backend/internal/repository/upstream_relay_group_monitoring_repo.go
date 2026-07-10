@@ -330,7 +330,7 @@ func (r *upstreamRelayRepository) UpdateConnectorAccountBalance(ctx context.Cont
 	return err
 }
 
-func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]service.UpstreamRelayGroupTodayUsage, checkedAt *time.Time, complete bool) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -349,15 +349,17 @@ func (r *upstreamRelayRepository) UpdateSnapshotTodayUsage(ctx context.Context, 
 		}
 		return tx.Commit()
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE upstream_relay_group_rate_snapshots
-		SET today_actual_cost=0,
-		    today_total_tokens=0,
-		    today_usage_checked_at=$2,
-		    updated_at=NOW()
-		WHERE connector_id=$1
-	`, connectorID, checkedAt); err != nil {
-		return err
+	if complete {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE upstream_relay_group_rate_snapshots
+			SET today_actual_cost=0,
+			    today_total_tokens=0,
+			    today_usage_checked_at=$2,
+			    updated_at=NOW()
+			WHERE connector_id=$1
+		`, connectorID, checkedAt); err != nil {
+			return err
+		}
 	}
 	for groupID, usage := range usageByGroup {
 		if _, err := tx.ExecContext(ctx, `
