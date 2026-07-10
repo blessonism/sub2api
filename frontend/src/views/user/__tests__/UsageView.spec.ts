@@ -73,6 +73,9 @@ const messages: Record<string, string> = {
   'usage.cost': 'Cost',
   'usage.firstToken': 'First Token',
   'usage.duration': 'Duration',
+  'usage.latency': 'Latency',
+  'usage.latencyFirstToken': 'First token',
+  'usage.latencyDuration': 'Duration',
   'usage.time': 'Time',
   'usage.userAgent': 'User Agent',
   'usage.imageUnit': ' images',
@@ -154,6 +157,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
       </div>
     </div>
   `,
@@ -304,6 +308,69 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('$0.092883')
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
+  })
+
+  it('renders the combined latency cell with compact durations and health styles', async () => {
+    query.mockResolvedValue({
+      items: [
+        {
+          request_id: 'req-user-latency',
+          actual_cost: 0.1,
+          total_cost: 0.1,
+          rate_multiplier: 1,
+          input_cost: 0,
+          output_cost: 0,
+          cache_creation_cost: 0,
+          cache_read_cost: 0,
+          input_tokens: 1,
+          output_tokens: 1,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+          image_count: 0,
+          first_token_ms: 65_000,
+          duration_ms: 125_000,
+          created_at: '2026-07-10T00:00:00Z',
+        },
+      ],
+      total: 1,
+      pages: 1,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 1,
+      total_tokens: 2,
+      total_cost: 0.1,
+      avg_duration_ms: 125_000,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('First token')
+    expect(wrapper.text()).toContain('1m 5s')
+    expect(wrapper.text()).toContain('2m 5s')
+    const latencyCell = wrapper.get('[data-testid="usage-latency-cell"]')
+    expect(latencyCell.find('.from-red-500').exists()).toBe(true)
+    expect(latencyCell.find('.to-amber-400').exists()).toBe(true)
+    expect(latencyCell.find('.text-red-600').text()).toBe('1m 5s')
+    expect(latencyCell.find('.text-amber-600').text()).toBe('2m 5s')
   })
 
   it('does not render a user-side csv export button', async () => {

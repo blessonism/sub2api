@@ -1,0 +1,8 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Dashboard 运营指标契约与测试要求"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 字段和用量页类型安全"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对仓储、handler、类型和视图数据流"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用延迟健康度实现"}
+{"file": ".trellis/tasks/07-10-dashboard-usage-regression/research/dashboard-four-fields.md", "reason": "Dashboard 四字段合并回归证据"}
+{"file": ".trellis/tasks/07-10-dashboard-usage-regression/research/usage-records-optimization.md", "reason": "用户用量 latency 合并回归证据"}
