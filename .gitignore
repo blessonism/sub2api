@@ -116,6 +116,9 @@ backend/.installed
 # 其他
 # ===================
 tests
+!tools/tests/
+!tools/tests/**
+__pycache__/
 CLAUDE.md
 .claude
 scripts

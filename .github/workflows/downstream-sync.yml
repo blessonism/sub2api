@@ -1,0 +1,232 @@
+name: Downstream Sync
+
+on:
+  push:
+    branches:
+      - 'sync/upstream-*'
+  pull_request:
+    branches:
+      - custom/main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: downstream-sync-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  BASE_REF: origin/custom/main
+  PLAN_ARTIFACT: downstream-sync-plan-${{ github.run_id }}
+
+jobs:
+  plan:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sync/upstream-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected_checks: ${{ steps.plan.outputs.selected_checks }}
+      selected_lanes: ${{ steps.plan.outputs.selected_lanes }}
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Fetch custom/main reference
+        run: git fetch --no-tags --prune origin custom/main:refs/remotes/origin/custom/main
+      - name: Generate targeted check plan
+        id: plan
+        run: |
+          mkdir -p artifacts
+          python3 tools/upstream_sync.py check \
+            --base "$BASE_REF" \
+            --head HEAD \
+            --dry-run \
+            --format json \
+            --output artifacts/downstream-sync-plan.json
+          echo "selected_checks=$(jq -c '.selected_checks' artifacts/downstream-sync-plan.json)" >> "$GITHUB_OUTPUT"
+          echo "selected_lanes=$(jq -c '.selected_lanes' artifacts/downstream-sync-plan.json)" >> "$GITHUB_OUTPUT"
+      - name: Summarize targeted check plan
+        run: |
+          {
+            echo "## Downstream sync quick plan"
+            echo
+            echo "Selected checks and reasons:"
+            jq -r '.selected_check_details[] | "- `\(.id)` [\(.lane)]: \(.reasons | join("; "))"' artifacts/downstream-sync-plan.json
+            echo
+            jq -r '"Plan duration: \(.duration_seconds)s"' artifacts/downstream-sync-plan.json
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload targeted check plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PLAN_ARTIFACT }}
+          path: artifacts/downstream-sync-plan.json
+          if-no-files-found: error
+
+  frontend:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.selected_lanes || '[]'), 'frontend')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download targeted check plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.PLAN_ARTIFACT }}
+          path: artifacts
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Run frontend targeted checks
+        run: |
+          python3 tools/upstream_sync.py check \
+            --report artifacts/downstream-sync-plan.json \
+            --format json \
+            --output artifacts/frontend-check.json \
+            --lane frontend \
+            --jobs 2
+      - name: Summarize frontend checks
+        if: always()
+        run: |
+          if [[ -f artifacts/frontend-check.json ]]; then
+            jq -r '"## Frontend quick checks\n\nStage duration: \(.duration_seconds)s", (.results[] | "- `\(.id)`: \(.status) (\(.duration_seconds)s)")' artifacts/frontend-check.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload frontend check result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: downstream-sync-frontend-${{ github.run_id }}
+          path: artifacts/frontend-check.json
+          if-no-files-found: warn
+
+  backend:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.selected_lanes || '[]'), 'backend')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download targeted check plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.PLAN_ARTIFACT }}
+          path: artifacts
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Run backend targeted checks
+        run: |
+          python3 tools/upstream_sync.py check \
+            --report artifacts/downstream-sync-plan.json \
+            --format json \
+            --output artifacts/backend-check.json \
+            --lane backend \
+            --jobs 2
+      - name: Summarize backend checks
+        if: always()
+        run: |
+          if [[ -f artifacts/backend-check.json ]]; then
+            jq -r '"## Backend quick checks\n\nStage duration: \(.duration_seconds)s", (.results[] | "- `\(.id)`: \(.status) (\(.duration_seconds)s)")' artifacts/backend-check.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload backend check result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: downstream-sync-backend-${{ github.run_id }}
+          path: artifacts/backend-check.json
+          if-no-files-found: warn
+
+  integration:
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.selected_lanes || '[]'), 'integration')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download targeted check plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.PLAN_ARTIFACT }}
+          path: artifacts
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Run integration targeted checks
+        run: |
+          python3 tools/upstream_sync.py check \
+            --report artifacts/downstream-sync-plan.json \
+            --format json \
+            --output artifacts/integration-check.json \
+            --lane integration \
+            --jobs 2
+      - name: Summarize integration checks
+        if: always()
+        run: |
+          if [[ -f artifacts/integration-check.json ]]; then
+            jq -r '"## Integration quick checks\n\nStage duration: \(.duration_seconds)s", (.results[] | "- `\(.id)`: \(.status) (\(.duration_seconds)s)")' artifacts/integration-check.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload integration check result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: downstream-sync-integration-${{ github.run_id }}
+          path: artifacts/integration-check.json
+          if-no-files-found: warn
+
+  quick-gate:
+    if: always()
+    needs:
+      - plan
+      - frontend
+      - backend
+      - integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every selected quick lane to pass
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: |
+          [[ "$PLAN_RESULT" == success ]]
+          [[ "$FRONTEND_RESULT" == success || "$FRONTEND_RESULT" == skipped ]]
+          [[ "$BACKEND_RESULT" == success || "$BACKEND_RESULT" == skipped ]]
+          [[ "$INTEGRATION_RESULT" == success || "$INTEGRATION_RESULT" == skipped ]]
+
+  full-gate:
+    needs: quick-gate
+    uses: ./.github/workflows/backend-ci.yml
+    with:
+      force: true
