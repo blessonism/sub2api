@@ -97,3 +97,12 @@ git merge <official-version-tag>
 - 修改 DNS、Cloudflare、反代或服务器防火墙
 
 确认前必须说明操作类型、影响范围和回滚方式。
+
+## OVH 生产部署边界
+
+OVH 生产机资源有限，部署下游二开版本时必须遵守：
+
+- 禁止在 OVH 生产机上执行 `docker build`、`pnpm run build`、`pnpm exec vite build`、`go build` 等构建命令。
+- 构建必须在本地工作站或 CI 完成，镜像标签使用 `sub2api-custom:<12位commit>`。
+- OVH 只允许加载/拉取已构建镜像、备份 override、切换 `sub2api` 应用容器、健康检查和回滚。
+- 默认使用 `deploy/ovh-safe-deploy.sh`；如必须偏离该脚本，需在任务记录中说明原因和等价安全措施。

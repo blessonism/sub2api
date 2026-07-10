@@ -16,6 +16,7 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `ovh-safe-deploy.sh` | OVH 下游二开生产安全部署脚本：本地/CI 构建，OVH 只加载镜像和切换应用容器 |
 | `.env.example` | Docker environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
 | `install.sh` | One-click binary installation script |
@@ -48,6 +49,34 @@ make dev-down
 ./deploy/start-local.sh --no-logs
 ./deploy/start-local.sh --rebuild
 ```
+
+### OVH Downstream Production Deployment
+
+OVH 生产机资源有限，禁止在生产机上执行 `docker build`、`pnpm run build`、`pnpm exec vite build` 或 `go build`。生产机只负责加载已构建镜像、备份 override、切换 `sub2api` 应用容器和健康检查。
+
+标准流程是在本地工作站或 CI 的干净 `custom/main` 上运行：
+
+```bash
+git switch custom/main
+git fetch origin custom/main
+git status --short --branch
+git rev-list --left-right --count origin/custom/main...custom/main
+./deploy/ovh-safe-deploy.sh
+```
+
+`ovh-safe-deploy.sh` 会构建 `sub2api-custom:<12位commit>`，通过 SSH 把镜像加载到 OVH，备份 `/opt/sub2api-deploy/docker-compose.override.yml`，只替换 `sub2api` 的镜像行并执行 `docker compose up -d sub2api`。健康检查失败时会恢复 override 备份并回滚旧应用容器。
+
+事故后或服务器重启后，先只做恢复检查，不要继续部署：
+
+```bash
+ssh ovh 'set -eu
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+sed -n "1,120p" /opt/sub2api-deploy/docker-compose.override.yml
+curl -fsS --max-time 5 http://127.0.0.1:8080/health
+'
+```
+
+如旧容器未恢复，优先恢复到上一个已知健康镜像，再考虑重新部署。
 
 ### Method 1: One-Click Deployment (Recommended)
 
