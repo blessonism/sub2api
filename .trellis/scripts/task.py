@@ -4,7 +4,7 @@
 Task Management Script.
 
 Usage:
-    python3 task.py create "<title>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>]
+    python3 task.py create "<title>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>] [--no-start]
     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
     python3 task.py validate <dir>              # Validate jsonl files
     python3 task.py list-context <dir>          # List jsonl entries
@@ -90,20 +90,39 @@ def cmd_start(args: argparse.Namespace) -> int:
     except ValueError:
         task_dir = str(full_path)
 
+    task_json_path = full_path / FILE_TASK_JSON
+
     if not resolve_context_key():
-        print(colored("Error: Cannot set active task without a session identity.", Colors.RED))
-        print(
+        # Degraded mode: no session identity available.
+        # Hook didn't inject TRELLIS_CONTEXT_ID (common on Windows + Claude Code,
+        # --continue resume path, fork distribution, hooks disabled, etc.). Skip
+        # per-session pointer write; AI continues based on conversation context.
+        print(colored(
+            "ℹ Session identity not available; active-task pointer not persisted "
+            "this session (degraded mode). AI continues based on conversation context.",
+            Colors.YELLOW,
+        ))
+        print(colored(
             "Hint: run inside an AI IDE/session that exposes session identity, "
-            "or set TRELLIS_CONTEXT_ID before running task.py start."
-        )
-        return 1
+            "or set TRELLIS_CONTEXT_ID before running task.py start.",
+            Colors.YELLOW,
+        ))
+
+        # Still flip task.json status: planning → in_progress so downstream phases proceed.
+        if task_json_path.is_file():
+            data = read_json(task_json_path)
+            if data and data.get("status") == "planning":
+                data["status"] = "in_progress"
+                if write_json(task_json_path, data):
+                    print(colored("✓ Status: planning → in_progress (degraded)", Colors.GREEN))
+            run_task_hooks("after_start", task_json_path, repo_root)
+        return 0
 
     active = set_active_task(task_dir, repo_root)
     if active:
         print(colored(f"✓ Current task set to: {task_dir}", Colors.GREEN))
         print(f"Source: {active.source}")
 
-        task_json_path = full_path / FILE_TASK_JSON
         if task_json_path.is_file():
             data = read_json(task_json_path)
             if data and data.get("status") == "planning":
@@ -288,6 +307,7 @@ Usage:
   python3 task.py create <title>                     Create new task directory
   python3 task.py create <title> --package <pkg>     Create task for a specific package
   python3 task.py create <title> --parent <dir>      Create task as child of parent
+  python3 task.py create <title> --no-start          Create without making it active in this session
   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
   python3 task.py validate <dir>                     Validate jsonl files
   python3 task.py list-context <dir>                 List jsonl entries
@@ -350,12 +370,12 @@ def main() -> int:
             file=sys.stderr,
         )
         print(
-            "sub-agent-capable platforms and curated by the AI during Phase 1.3.",
+            "sub-agent-capable platforms and curated by the AI during planning when needed.",
             file=sys.stderr,
         )
-        print("See .trellis/workflow.md Phase 1.3 or run:", file=sys.stderr)
+        print("See .trellis/workflow.md planning artifact guidance or run:", file=sys.stderr)
         print(
-            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1.3",
+            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1",
             file=sys.stderr,
         )
         print(
@@ -373,12 +393,17 @@ def main() -> int:
     # create
     p_create = subparsers.add_parser("create", help="Create new task")
     p_create.add_argument("title", help="Task title")
-    p_create.add_argument("--slug", "-s", help="Task slug")
+    p_create.add_argument("--slug", "-s", help="Task slug without the MM-DD date prefix")
     p_create.add_argument("--assignee", "-a", help="Assignee developer")
     p_create.add_argument("--priority", "-p", default="P2", help="Priority (P0-P3)")
     p_create.add_argument("--description", "-d", help="Task description")
     p_create.add_argument("--parent", help="Parent task directory (establishes subtask link)")
     p_create.add_argument("--package", help="Package name for monorepo projects")
+    p_create.add_argument(
+        "--no-start",
+        action="store_true",
+        help="Create the task without making it active in this session",
+    )
 
     # add-context
     p_add = subparsers.add_parser("add-context", help="Add context entry")

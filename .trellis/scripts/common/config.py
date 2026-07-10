@@ -36,6 +36,29 @@ def _unquote(s: str) -> str:
     return s
 
 
+def _strip_inline_comment(value: str) -> str:
+    """Strip ` # …` inline comments while preserving `#` inside quoted strings.
+
+    YAML treats ` #` (space-hash) as a comment opener; bare `#` inside a token
+    is part of the value. Quoted strings are immune.
+
+    Mirrors :func:`common.trellis_config._strip_inline_comment` so both
+    parsers handle ``key: value  # comment`` identically.
+    """
+    in_quote: str | None = None
+    for idx, ch in enumerate(value):
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            continue
+        if ch == "#" and (idx == 0 or value[idx - 1].isspace()):
+            return value[:idx]
+    return value
+
+
 def parse_simple_yaml(content: str) -> dict:
     """Parse simple YAML with nested dict support (no dependencies).
 
@@ -93,7 +116,8 @@ def _parse_yaml_block(
         elif ":" in stripped:
             key, _, value = stripped.partition(":")
             key = key.strip()
-            value = _unquote(value.strip())
+            value = _strip_inline_comment(value).strip()
+            value = _unquote(value)
             current_list = None
 
             if value:
@@ -142,6 +166,8 @@ def _next_content_line(lines: list[str], start: int) -> tuple[int, str]:
 # Defaults
 DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record journal"
 DEFAULT_MAX_JOURNAL_LINES = 2000
+DEFAULT_SESSION_AUTO_COMMIT = True
+DEFAULT_CODEX_DISPATCH_MODE = "inline"
 
 CONFIG_FILE = "config.yaml"
 
@@ -185,6 +211,65 @@ def get_max_journal_lines(repo_root: Path | None = None) -> int:
         return int(value)
     except (ValueError, TypeError):
         return DEFAULT_MAX_JOURNAL_LINES
+
+
+def get_session_auto_commit(repo_root: Path | None = None) -> bool:
+    """Whether scripts should auto-stage + auto-commit session/task changes.
+
+    Governs both ``add_session.py:_auto_commit_workspace`` and
+    ``task_store.py:_auto_commit_archive``.
+
+    Default: ``True`` (existing behavior — auto-stage + auto-commit).
+    Set ``session_auto_commit: false`` in ``.trellis/config.yaml`` to skip
+    auto-staging entirely; the journal/archive files are still written to
+    disk, but the user manages ``git add`` / ``git commit`` themselves.
+
+    Accepts native YAML booleans (``true`` / ``false``) and the string
+    aliases ``true / false / yes / no / 1 / 0 / on / off`` (case-insensitive).
+    Invalid values fall back to ``True`` with a stderr warning.
+    """
+    config = _load_config(repo_root)
+    raw = config.get("session_auto_commit", DEFAULT_SESSION_AUTO_COMMIT)
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("true", "yes", "1", "on"):
+        return True
+    if s in ("false", "no", "0", "off"):
+        return False
+    print(
+        f"[WARN] invalid session_auto_commit value: {raw!r}; using true (default)",
+        file=sys.stderr,
+    )
+    return DEFAULT_SESSION_AUTO_COMMIT
+
+
+def get_codex_dispatch_mode(repo_root: Path | None = None) -> str:
+    """Return Codex dispatch mode.
+
+    Default is ``inline``. ``sub-agent`` is an explicit opt-in because Codex
+    sub-agents do not inherit the parent session context.
+    """
+    config = _load_config(repo_root)
+    codex = config.get("codex")
+    if codex is None:
+        return DEFAULT_CODEX_DISPATCH_MODE
+    if not isinstance(codex, dict):
+        print(
+            f"[WARN] invalid codex config: {codex!r}; using {DEFAULT_CODEX_DISPATCH_MODE}",
+            file=sys.stderr,
+        )
+        return DEFAULT_CODEX_DISPATCH_MODE
+
+    raw = codex.get("dispatch_mode", DEFAULT_CODEX_DISPATCH_MODE)
+    mode = str(raw).strip().lower()
+    if mode in ("inline", "sub-agent"):
+        return mode
+    print(
+        f"[WARN] invalid codex.dispatch_mode value: {raw!r}; using {DEFAULT_CODEX_DISPATCH_MODE}",
+        file=sys.stderr,
+    )
+    return DEFAULT_CODEX_DISPATCH_MODE
 
 
 def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
