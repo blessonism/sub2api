@@ -692,6 +692,78 @@ ORDER BY is_featured DESC, start_at ASC, id ASC
 
 ---
 
+### Scenario: Upstream relay monitoring partial usage refresh
+
+#### 1. Scope / Trigger
+- Trigger: changing upstream relay connector metrics refresh, candidate API-key bindings, daily usage snapshots, Runner finalization errors, or the admin monitoring result UI.
+- This flow crosses repository snapshot writes, service aggregation, admin JSON responses, frontend API types, and user-facing recovery guidance.
+
+#### 2. Signatures
+- Aggregate refresh: `POST /api/v1/admin/upstream-relay-group-monitors/refresh`.
+- Connector metrics refresh: `POST /api/v1/admin/upstream-relay-group-monitors/connectors/:id/metrics/refresh`.
+- Repository write: `UpdateSnapshotTodayUsage(ctx, connectorID, usageByGroup, checkedAt, complete)`; `complete=false` updates known groups only.
+- Usage detail response includes `status`, `total_groups`, `updated_groups`, `missing_groups`, compatibility field `issue`, full list `issues`, and `checked_at`.
+
+#### 3. Contracts
+- Refresh each candidate API-key binding independently. A missing key or one upstream request failure records a structured issue and does not stop other valid bindings.
+- `issues` is the complete issue list; `issue` mirrors the first item for compatibility. Stable issue fields are `code`, `candidate_id`, `account_id`, and `upstream_group_id`; `message` is technical detail.
+- When any binding for a group fails, omit that group's aggregate from `usageByGroup` so incomplete totals cannot overwrite the last known snapshot.
+- Partial snapshot/history writes update known groups only and preserve unknown groups. A complete refresh may write zero for snapshot groups with no usage.
+- Runner finalization failures expose `connector_id`, `connector_name`, `date`, and `reason`; raw reasons remain technical detail in the UI.
+
+#### 4. Validation & Error Matrix
+- No candidate bindings -> `usage_detail.status=skipped`, issue code `no_candidate_bindings`, no existing usage snapshot is cleared.
+- Candidate missing API key -> issue code `missing_upstream_api_key_binding`; other valid groups continue.
+- Upstream key usage request fails -> issue code `upstream_usage_request_failed`; other valid keys continue.
+- Some groups updated and some missing -> `usage_detail.status=partial`.
+- No groups updated and at least one group failed -> `usage_detail.status=failed`.
+- Snapshot missing for an otherwise valid binding -> `missing_groups[].reason=no_snapshot`; request a full connector sync.
+
+#### 5. Good/Base/Bad Cases
+- Good: group A lacks a key, group B refreshes successfully, the response reports one updated and one skipped group, and group B is persisted.
+- Base: a connector has no candidate bindings; balance may refresh while usage is skipped without clearing old values.
+- Bad: returning on the first malformed candidate and losing all valid groups in the same connector.
+- Bad: writing an empty map as a complete refresh and replacing previously known usage with zero.
+
+#### 6. Tests Required
+- Service test covers one invalid candidate plus one valid candidate and asserts the valid group is fetched and persisted.
+- Service test covers total usage failure and asserts an empty partial write has a check time while the prior snapshot cost, Token count, and check time remain unchanged.
+- API/frontend types cover nullable collections and both `issue` / `issues` fields.
+- View tests cover localized cause, impact, next step, repair entry, repair-triggered refresh, and folded technical details.
+- Runner test asserts structured failed connector/date/reason data survives through `Status()`.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+if binding.UpstreamAPIKeyID == 0 {
+    return nil, fmt.Errorf("missing key")
+}
+```
+
+Correct:
+```go
+issues = append(issues, UpstreamRelayMetricsIssueDetail{
+    Code: upstreamRelayMetricsIssueMissingAPIKeyBinding,
+    CandidateID: binding.CandidateID,
+    AccountID: binding.AccountID,
+    UpstreamGroupID: binding.UpstreamGroupID,
+})
+continue
+```
+
+Wrong:
+```go
+UpdateSnapshotTodayUsage(ctx, connectorID, partialUsage, checkedAt, true)
+```
+
+Correct:
+```go
+UpdateSnapshotTodayUsage(ctx, connectorID, partialUsage, checkedAt, false)
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

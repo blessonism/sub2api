@@ -30,6 +30,7 @@ const {
   updateConnector,
   createCandidate,
   updateCandidate,
+  listConnectorAPIKeys,
   listAccounts,
   listGroups,
   getRunnerStatus,
@@ -58,6 +59,7 @@ const {
   updateConnector: vi.fn(),
   createCandidate: vi.fn(),
   updateCandidate: vi.fn(),
+  listConnectorAPIKeys: vi.fn(),
   listAccounts: vi.fn(),
   listGroups: vi.fn(),
   getRunnerStatus: vi.fn(),
@@ -107,6 +109,7 @@ vi.mock('@/api/admin/upstreamRelayGroupMonitors', () => ({
     updateConnector,
     createCandidate,
     updateCandidate,
+    listConnectorAPIKeys,
     getRunnerStatus,
   },
 }))
@@ -237,6 +240,7 @@ function runnerStatus(overrides: Record<string, unknown> = {}) {
     sync: { enabled: true, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 60, failure_retry_minutes: 5 },
     probe: { enabled: true, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 15, failure_retry_minutes: 5 },
     recommendation: { enabled: false, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 60, failure_retry_minutes: 5 },
+    finalize: { enabled: true, in_flight: false, last_finished_at: null, last_succeeded: null, last_error: '', next_run_at: null, interval_minutes: 0, failure_retry_minutes: 5 },
     ...overrides,
   }
 }
@@ -343,6 +347,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     updateConnector.mockReset()
     createCandidate.mockReset()
     updateCandidate.mockReset()
+    listConnectorAPIKeys.mockReset()
+    listConnectorAPIKeys.mockResolvedValue([])
     listAccounts.mockReset()
     listGroups.mockReset()
     login.mockReset()
@@ -1150,7 +1156,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
-    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="metrics-refresh-guidance"]').text()).toContain('metricsRefresh.guidance.syncConnector')
+    expect(wrapper.find('[data-testid="metrics-refresh-guidance"]').text()).toContain('metricsRefresh.actions.syncConnector')
   })
 
   it('快照弹窗内可手动拉取当前连接器倍率快照', async () => {
@@ -1216,7 +1224,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(syncAllConnectors).toHaveBeenCalled()
-    expect(wrapper.find('[data-testid="page-success"]').text()).toContain('admin.upstreamRelayGroupMonitoring.snapshotDialog.fetchAllSuccess')
+    const resultPanel = wrapper.find('[data-testid="operation-result-panel"]')
+    expect(resultPanel.text()).toContain('operationResult.titles.sync')
+    expect(resultPanel.text()).toContain('operationResult.results.bulk')
   })
 
   it('历史用量页按日期加载并展示每日分组汇总', async () => {
@@ -1795,7 +1805,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.text()).toContain('$12.34')
   })
 
-  it('轻量刷新接口失败时优先展示真实失败原因', async () => {
+  it('轻量刷新接口失败时展示处理建议并把原始原因收进技术详情', async () => {
     refreshConnectorMetrics.mockRejectedValueOnce(new Error('network failed'))
 
     const wrapper = mountView()
@@ -1811,7 +1821,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(summary.exists()).toBe(true)
     expect(wrapper.find('[data-testid="metrics-refresh-details"]').exists()).toBe(true)
     expect(summary.text()).toContain('relay-a')
-    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('network failed')
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.upstreamRelayGroupMonitoring.errors.unknownUpstreamError')
     expect(wrapper.text()).toContain('network failed')
     expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.metricsRefreshNeedsFullSync')
   })
@@ -1939,6 +1950,166 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(summary.text()).toContain('connector has no local account bindings')
     expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('metricsRefresh.inlineUsagePartial')
+  })
+
+  it('Usage 缺少上游 API Key 时展示账号定位、分组差异和直接修复入口', async () => {
+    const rawError = 'candidate 7 for bound account 122 has no upstream api key binding'
+    listConnectorAPIKeys.mockResolvedValue([{ id: 855, name: 'repair-key', masked_key: 'sk-***' }])
+    listAccounts.mockResolvedValue({
+      items: [{ id: 122, name: 'smart-account', platform: 'openai' }],
+      total: 1,
+      page: 1,
+      page_size: 200,
+      pages: 1,
+    })
+    listCandidates.mockResolvedValue({
+      items: [{
+        id: 7,
+        connector_id: 7,
+        connector_name: '聪明',
+        account_id: 122,
+        account_name: 'smart-account',
+        account_platform: 'openai',
+        upstream_group_id: 'fast',
+        upstream_group_name: '快速稳定分组1（倍率上限0.1）',
+        upstream_api_key_id: null,
+        upstream_api_key_name: '',
+        upstream_api_key_masked: '',
+        probe_model: 'gpt-4o-mini',
+        probe_protocol: 'chat_completions',
+        enabled: true,
+        notes: '',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+    refreshMonitoringData.mockResolvedValue(monitoringRefreshResultFromMetrics([{
+      connector: {
+        id: 7,
+        name: '聪明',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        upstream_account_balance: 38.6393,
+        upstream_account_balance_checked_at: '2026-06-28T12:05:00Z',
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [
+        { id: 1, connector_id: 7, upstream_group_id: 'fast', name: '快速稳定分组1（倍率上限0.1）' },
+        { id: 2, connector_id: 7, upstream_group_id: 'pro', name: 'pro分组' },
+      ],
+      status: 'partial',
+      balance_detail: { status: 'success', value: 38.6393, checked_at: '2026-06-28T12:05:00Z' },
+      usage_detail: {
+        status: 'partial',
+        total_groups: 2,
+        updated_groups: 1,
+        missing_groups: [
+          { upstream_group_id: 'fast', name: '快速稳定分组1（倍率上限0.1）', reason: 'missing_upstream_api_key_binding', message: rawError },
+        ],
+        error: rawError,
+        issue: {
+          code: 'missing_upstream_api_key_binding',
+          message: rawError,
+          candidate_id: 7,
+          account_id: 122,
+          upstream_group_id: 'fast',
+        },
+        issues: [{
+          code: 'missing_upstream_api_key_binding',
+          message: rawError,
+          candidate_id: 7,
+          account_id: 122,
+          upstream_group_id: 'fast',
+        }],
+      },
+      balance_available: true,
+      usage_available: false,
+      usage_error: rawError,
+      refreshed_at: '2026-06-28T12:05:00Z',
+    }]))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('candidates.identity 7 122')
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.upstreamRelayGroupMonitoring.refreshMonitoring'))!.trigger('click')
+    await flushPromises()
+
+    const summary = wrapper.find('[data-testid="metrics-refresh-summary"]')
+    const guidance = wrapper.find('[data-testid="metrics-refresh-guidance"]')
+    expect(guidance.text()).toContain('metricsRefresh.issues.missingApiKeyBinding #122')
+    expect(summary.text()).toContain('metricsRefresh.missingReasons.missing_upstream_api_key_binding')
+    expect(summary.text()).toContain('metricsRefresh.usagePartial 1 2 1')
+    expect(guidance.text()).toContain('metricsRefresh.guidance.bindApiKey')
+    expect(guidance.text()).toContain('metricsRefresh.actions.bindApiKey')
+    expect(guidance.find('details').text()).toContain(rawError)
+    expect(summary.text().split(rawError)).toHaveLength(2)
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+
+    await guidance.find('button').trigger('click')
+    await flushPromises()
+    expect(listConnectorAPIKeys).toHaveBeenCalledWith(7)
+    expect(wrapper.text()).toContain('candidateForm.updateCandidate')
+
+    updateCandidate.mockResolvedValue({
+      id: 7,
+      connector_id: 7,
+      account_id: 122,
+      upstream_group_id: 'fast',
+      upstream_api_key_id: 855,
+      probe_model: 'gpt-4o-mini',
+      probe_protocol: 'chat_completions',
+      enabled: true,
+      notes: '',
+    })
+    refreshConnectorMetrics.mockResolvedValue({
+      connector: {
+        id: 7,
+        name: '聪明',
+        base_url: 'https://relay.example.com',
+        auth_mode: 'manual_session',
+        status: 'active',
+        credential_version: 1,
+        has_bearer_token: true,
+        has_refresh_token: false,
+        has_login_email: false,
+        has_cookie: false,
+        has_user_agent: false,
+        created_at: '2026-06-28T12:00:00Z',
+        updated_at: '2026-06-28T12:05:00Z',
+      },
+      snapshots: [],
+      status: 'success',
+      balance_detail: { status: 'success', value: 38.6393 },
+      usage_detail: { status: 'success', total_groups: 2, updated_groups: 2, missing_groups: [] },
+      balance_available: true,
+      usage_available: true,
+      refreshed_at: '2026-06-28T12:06:00Z',
+    })
+    const candidateForm = wrapper.get('#candidate-form')
+    const candidateSelects = candidateForm.findAll('select')
+    await candidateSelects[0]!.setValue('7')
+    await candidateSelects[1]!.setValue('122')
+    await candidateSelects[2]!.setValue('fast')
+    await candidateSelects[3]!.setValue('855')
+    await candidateForm.find('input[type="text"]').setValue('gpt-4o-mini')
+    await candidateForm.trigger('submit')
+    await flushPromises()
+
+    expect(updateCandidate).toHaveBeenCalledWith(7, expect.objectContaining({ upstream_api_key_id: 855 }))
+    expect(refreshConnectorMetrics).toHaveBeenCalledWith(7)
+    expect(wrapper.find('[data-testid="monitoring-operation-result"]').text()).toContain('operationResult.results.monitoring')
   })
 
   it('余额成功但 usage 无本地绑定时即使没有快照也不显示顶部错误', async () => {
@@ -2150,7 +2321,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(expansion.text()).toContain('team-alpha')
     expect(expansion.text()).toContain('1.25')
     expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.health.success')
-    expect(expansion.text()).toContain('Priority 20')
+    expect(expansion.text()).toContain('admin.upstreamRelayGroupMonitoring.candidates.colPriority')
+    expect(expansion.text()).toContain('20')
     expect(expansion.text()).toContain('$1.25')
     expect(expansion.text()).toContain('0.00M')
     expect(expansion.text()).not.toContain('同步于')
@@ -2378,13 +2550,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(expansion.findAll('[data-testid="connector-group-item"]')).toHaveLength(1)
   })
 
-  it('保存候选失败时展示接口返回的详细原因', async () => {
-    createCandidate.mockRejectedValue({
-      status: 400,
-      code: 'UPSTREAM_RELAY_INVALID_CANDIDATE',
-      message: 'upstream_group_id 不能为空',
-    })
-
+  it('候选五个必填字段缺失时就地提示且不发出保存请求', async () => {
     const wrapper = mountView()
     await flushPromises()
 
@@ -2393,13 +2559,48 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await wrapper.find('#candidate-form').trigger('submit')
     await flushPromises()
 
-    expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({ connector_id: 7 }))
-    expect(createCandidate.mock.calls[0]?.[0]).not.toHaveProperty('target_group_id')
-    expect(wrapper.text()).toContain('upstream_group_id 不能为空')
-    expect(wrapper.text()).not.toContain('admin.upstreamRelayGroupMonitoring.errors.saveCandidateFailed')
+    expect(createCandidate).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('candidateForm.requiredAccount')
+    expect(wrapper.text()).toContain('candidateForm.requiredUpstreamGroup')
+    expect(wrapper.text()).toContain('candidateForm.requiredUpstreamApiKey')
+    expect(wrapper.text()).toContain('candidateForm.requiredProbeModel')
+  })
+
+  it('历史候选缺少 API Key 时展示配置不完整并支持一键筛选', async () => {
+    listCandidates.mockResolvedValue({
+      items: [
+        {
+          id: 101, connector_id: 7, account_id: 42, account_name: 'missing-key', upstream_group_id: 'g1',
+          upstream_api_key_id: null, probe_model: 'gpt-4o-mini', probe_protocol: 'chat_completions', enabled: true, notes: '',
+        },
+        {
+          id: 102, connector_id: 7, account_id: 43, account_name: 'configured', upstream_group_id: 'g2',
+          upstream_api_key_id: 855, probe_model: 'gpt-4o-mini', probe_protocol: 'chat_completions', enabled: true, notes: '',
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100,
+      pages: 1,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('candidates.configurationIncomplete')
+    expect(wrapper.text()).toContain('missing-key')
+    expect(wrapper.text()).toContain('configured')
+
+    await wrapper.get('[data-testid="candidate-incomplete-filter"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('missing-key')
+    expect(wrapper.text()).not.toContain('configured')
+    expect(wrapper.text()).toContain('candidates.showAll')
   })
 
   it('候选映射编辑可从已同步上游分组下拉选择并提交 Group ID', async () => {
+    listConnectorAPIKeys.mockResolvedValue([{ id: 855, name: 'team-key', masked_key: 'sk-***' }])
     listSnapshots.mockResolvedValue([{
       id: 501,
       connector_id: 7,
@@ -2440,10 +2641,15 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(wrapper.find('[data-testid="candidate-upstream-group-manual-input"]').exists()).toBe(true)
 
     await groupSelect.setValue('team-alpha')
+    const form = wrapper.get('#candidate-form')
+    const formSelects = form.findAll('select')
+    await formSelects[1]!.setValue('42')
+    await formSelects[3]!.setValue('855')
+    await form.find('input[type="text"]').setValue('gpt-4o-mini')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="candidate-upstream-group-manual-input"]').exists()).toBe(false)
-    await wrapper.find('#candidate-form').trigger('submit')
+    await form.trigger('submit')
     await flushPromises()
 
     expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({
@@ -2679,6 +2885,11 @@ describe('UpstreamRelayGroupMonitoringView', () => {
 
     expect(toggle.attributes('aria-checked')).toBe('true')
     expect(wrapper.find('[data-testid="page-error"]').text()).toContain('save failed')
+    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('operationResult.sources.candidates')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('tabs.connectors'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
   })
 
   it('顶部调度失败卡展示 last_error 详情', async () => {
@@ -2692,6 +2903,32 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     const card = wrapper.get('[data-testid="runner-status-card-sync"]')
     expect(card.text()).toContain('runnerStatus.states.failed')
     expect(card.text()).toContain('sync exploded')
+  })
+
+  it('定格失败卡展示日期、连接器并把原始原因放在技术详情', async () => {
+    getRunnerStatus.mockResolvedValueOnce(runnerStatus({
+      finalize: {
+        enabled: true,
+        in_flight: false,
+        last_finished_at: '2026-06-29T00:05:00Z',
+        last_succeeded: false,
+        last_error: 'finalize usage failed for 2026-06-28: relay-a (#7): upstream timeout',
+        last_failures: [{ connector_id: 7, connector_name: 'relay-a', date: '2026-06-28', reason: 'upstream timeout' }],
+        next_run_at: '2026-06-29T00:10:00Z',
+        interval_minutes: 0,
+        failure_retry_minutes: 5,
+      },
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const card = wrapper.get('[data-testid="runner-status-card-finalize"]')
+    expect(card.text()).toContain('runnerStatus.hints.finalizeFailures')
+    expect(card.text()).toContain('2026-06-28')
+    expect(card.text()).toContain('relay-a')
+    expect(card.find('details').text()).toContain('upstream timeout')
+    expect(card.find('[role="switch"]').exists()).toBe(false)
   })
 
   it('自动推荐和自动应用开启时展示安全门提示', async () => {
@@ -3044,9 +3281,8 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(applyRecommendationRun).toHaveBeenCalledWith(77)
-    expect(wrapper.find('[data-testid="page-success"]').text()).toContain('applyDialog.successMessage')
-    expect(wrapper.find('[data-testid="apply-success-summary"]').text()).toContain('applyDialog.successTitle')
-    expect(wrapper.find('[data-testid="apply-success-summary"]').text()).toContain('applyDialog.successDetail')
+    expect(wrapper.find('[data-testid="page-success"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="apply-operation-result"]').text()).toContain('operationResult.results.applySuccess')
     expect(wrapper.text()).toContain('applyDialog.appliedNotice')
     expect(wrapper.text()).toContain('Team Alpha')
     expect(wrapper.findAll('button').some((button) => button.text().includes('applyDialog.confirmApply'))).toBe(false)
@@ -3075,10 +3311,9 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(applyRecommendationRun).toHaveBeenCalledWith(77)
-    expect(wrapper.find('[data-testid="page-error"]').text()).toContain('账号 #42 的 priority 已变化')
-    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('applyDialog.failureTitle')
-    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('applyDialog.failureDetail')
-    expect(wrapper.find('[data-testid="apply-error-summary"]').text()).toContain('账号 #42 的 priority 已变化')
+    expect(wrapper.find('[data-testid="page-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="apply-operation-result"]').text()).toContain('operationResult.results.applyFailed')
+    expect(wrapper.find('[data-testid="apply-operation-result"]').text()).toContain('账号 #42 的 priority 已变化')
     expect(wrapper.text()).toContain('Team Alpha')
     expect(wrapper.html()).not.toContain('rate-source-tag-stub')
     expect(wrapper.text()).toContain('applyDialog.confirmApply')
@@ -3266,16 +3501,16 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     await flushPromises()
 
     expect(syncAllConnectors).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('monitoring.syncResultTitle')
+    expect(wrapper.text()).toContain('operationResult.titles.sync')
     expect(wrapper.text()).toContain('relay-a')
     expect(wrapper.text()).toContain('timeout')
-    expect(wrapper.text()).toContain('admin.upstreamRelayGroupMonitoring.errors.syncAllPartialFailed')
+    expect(wrapper.text()).toContain('operationResult.impacts.syncPartial')
 
     await wrapper.findAll('button').find((button) => button.text().includes('monitoring.probeAll'))!.trigger('click')
     await flushPromises()
 
     expect(probeAllCandidates).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('monitoring.probeResultTitle')
+    expect(wrapper.text()).toContain('operationResult.titles.probe')
     expect(wrapper.text()).toContain('#42 claude-relay')
     expect(wrapper.text()).toContain('rate limited')
     expect(wrapper.text()).toContain('1300ms')
@@ -3358,7 +3593,7 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     expect(feedback.text()).toContain('upstream timeout')
     expect(feedback.text()).toContain('failed-relay-b')
     expect(feedback.text()).toContain('invalid token')
-    expect(feedback.text()).toContain('admin.upstreamRelayGroupMonitoring.candidates.bulkProbeHiddenSuccess')
+    expect(feedback.text()).toContain('admin.upstreamRelayGroupMonitoring.operationResult.itemListWithMore')
     expect(feedback.text()).toContain('1')
   })
 })

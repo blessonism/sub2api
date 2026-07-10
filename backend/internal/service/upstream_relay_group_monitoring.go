@@ -231,6 +231,22 @@ type UpstreamRelayCandidateUsageBinding struct {
 	UpstreamAPIKeyName string
 }
 
+type UpstreamRelayMetricsIssueDetail struct {
+	Code            string `json:"code"`
+	Message         string `json:"message"`
+	CandidateID     int64  `json:"candidate_id,omitempty"`
+	AccountID       int64  `json:"account_id,omitempty"`
+	UpstreamGroupID string `json:"upstream_group_id,omitempty"`
+}
+
+type upstreamRelayMetricsIssueError struct {
+	issue UpstreamRelayMetricsIssueDetail
+}
+
+func (e *upstreamRelayMetricsIssueError) Error() string {
+	return e.issue.Message
+}
+
 type UpstreamRelayConnectorMetricsRefreshResult struct {
 	Connector        *UpstreamRelayConnector           `json:"connector"`
 	Snapshots        []UpstreamRelayGroupRateSnapshot  `json:"snapshots"`
@@ -280,6 +296,8 @@ type UpstreamRelayMetricsUsageDetail struct {
 	UpdatedGroups int                                      `json:"updated_groups"`
 	MissingGroups []UpstreamRelayMetricsMissingGroupDetail `json:"missing_groups"`
 	Error         string                                   `json:"error,omitempty"`
+	Issue         *UpstreamRelayMetricsIssueDetail         `json:"issue,omitempty"`
+	Issues        []UpstreamRelayMetricsIssueDetail        `json:"issues,omitempty"`
 	CheckedAt     *time.Time                               `json:"checked_at,omitempty"`
 }
 
@@ -295,6 +313,13 @@ const (
 	upstreamRelayMetricsRefreshStatusPartial = "partial"
 	upstreamRelayMetricsRefreshStatusFailed  = "failed"
 	upstreamRelayMetricsRefreshStatusSkipped = "skipped"
+
+	upstreamRelayMetricsIssueNoCandidateBindings   = "no_candidate_bindings"
+	upstreamRelayMetricsIssueMissingAPIKeyBinding  = "missing_upstream_api_key_binding"
+	upstreamRelayMetricsIssueUpstreamUsageRequest  = "upstream_usage_request_failed"
+	upstreamRelayMetricsIssueCandidateBindingsLoad = "candidate_bindings_load_failed"
+	upstreamRelayMetricsIssueUsageRefreshFailed    = "usage_refresh_failed"
+	upstreamRelayMetricsIssueUsageRefreshAborted   = "usage_refresh_aborted"
 
 	UpstreamRelaySnapshotChangeAdded       = "added"
 	UpstreamRelaySnapshotChangeRemoved     = "removed"
@@ -600,7 +625,7 @@ type UpstreamRelayRepository interface {
 	ListSnapshotChanges(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelaySnapshotChangeListFilters) ([]UpstreamRelayGroupRateSnapshotChange, *pagination.PaginationResult, error)
 	MarkConnectorSync(ctx context.Context, connectorID int64, status string, errMessage string) error
 	UpdateConnectorAccountBalance(ctx context.Context, connectorID int64, balance *float64, checkedAt *time.Time) error
-	UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error
+	UpdateSnapshotTodayUsage(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time, complete bool) error
 	UpsertUsageHistory(ctx context.Context, rows []UpstreamRelayGroupUsageHistoryUpsert) error
 	ListUsageHistory(ctx context.Context, params pagination.PaginationParams, filters UpstreamRelayUsageHistoryListFilters) ([]UpstreamRelayGroupUsageHistory, *pagination.PaginationResult, error)
 	SummarizeUsageHistory(ctx context.Context, filters UpstreamRelayUsageHistoryListFilters) (*UpstreamRelayUsageHistorySummary, error)
@@ -820,15 +845,19 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	}
 	result.BalanceDetail = buildUpstreamRelayMetricsBalanceDetail(result.BalanceAvailable, balance, &balanceCheckedAt, result.BalanceError)
 
-	usageByGroup, usageCheckedAt, usageErr := s.fetchUpstreamGroupTodayUsage(ctx, connector, result.RefreshedAt)
+	usageByGroup, usageCheckedAt, usageIssues, usageErr := s.fetchUpstreamGroupTodayUsage(ctx, connector, result.RefreshedAt)
 	if usageErr != nil {
 		result.UsageError = sanitizeUpstreamRelayError(usageErr.Error())
 	} else {
-		result.UsageAvailable = true
-		if err := s.repo.UpdateSnapshotTodayUsage(ctx, connector.ID, usageByGroup, usageCheckedAt); err != nil {
+		result.UsageAvailable = len(usageIssues) == 0
+		if len(usageIssues) > 0 {
+			result.UsageError = usageIssues[0].Message
+		}
+		complete := len(usageIssues) == 0
+		if err := s.repo.UpdateSnapshotTodayUsage(ctx, connector.ID, usageByGroup, usageCheckedAt, complete); err != nil {
 			return nil, err
 		}
-		if err := s.persistKnownUsageHistoryFromRefresh(ctx, connector.ID, usageByGroup, usageCheckedAt); err != nil {
+		if err := s.persistKnownUsageHistoryFromRefresh(ctx, connector.ID, usageByGroup, usageCheckedAt, complete); err != nil {
 			return nil, err
 		}
 	}
@@ -844,7 +873,10 @@ func (s *UpstreamRelayGroupMonitoringService) RefreshConnectorMetrics(ctx contex
 	}
 	result.Connector = refreshedConnector
 	result.Snapshots = snapshots
-	result.UsageDetail = buildUpstreamRelayMetricsUsageDetail(bindings, bindingsErr, snapshots, usageCheckedAt, result.UsageAvailable, result.UsageError)
+	if usageErr != nil {
+		usageIssues = []UpstreamRelayMetricsIssueDetail{*upstreamRelayMetricsIssueFromError(usageErr)}
+	}
+	result.UsageDetail = buildUpstreamRelayMetricsUsageDetail(bindings, bindingsErr, snapshots, usageByGroup, usageCheckedAt, result.UsageError, usageIssues)
 	result.Status = buildUpstreamRelayMetricsRefreshStatus(result.BalanceDetail.Status, result.UsageDetail.Status)
 	return result, nil
 }
@@ -949,14 +981,22 @@ func buildUpstreamRelayMetricsUsageDetail(
 	bindings []UpstreamRelayCandidateUsageBinding,
 	bindingsErr error,
 	snapshots []UpstreamRelayGroupRateSnapshot,
+	usageByGroup map[string]UpstreamRelayGroupTodayUsage,
 	checkedAt *time.Time,
-	available bool,
 	errText string,
+	issues []UpstreamRelayMetricsIssueDetail,
 ) UpstreamRelayMetricsUsageDetail {
 	if bindingsErr != nil {
+		message := sanitizeUpstreamRelayError(bindingsErr.Error())
+		issue := UpstreamRelayMetricsIssueDetail{
+			Code:    upstreamRelayMetricsIssueCandidateBindingsLoad,
+			Message: message,
+		}
 		return UpstreamRelayMetricsUsageDetail{
 			Status: upstreamRelayMetricsRefreshStatusFailed,
-			Error:  sanitizeUpstreamRelayError(bindingsErr.Error()),
+			Error:  message,
+			Issue:  &issue,
+			Issues: []UpstreamRelayMetricsIssueDetail{issue},
 		}
 	}
 
@@ -964,12 +1004,14 @@ func buildUpstreamRelayMetricsUsageDetail(
 	detail := UpstreamRelayMetricsUsageDetail{
 		TotalGroups: len(groupIDs),
 		CheckedAt:   checkedAt,
+		Issues:      issues,
+	}
+	if len(issues) > 0 {
+		detail.Issue = &detail.Issues[0]
+		detail.Error = errText
 	}
 	if len(groupIDs) == 0 {
 		detail.Status = upstreamRelayMetricsRefreshStatusSkipped
-		if errText != "" {
-			detail.Error = errText
-		}
 		return detail
 	}
 
@@ -994,18 +1036,19 @@ func buildUpstreamRelayMetricsUsageDetail(
 		return detail
 	}
 
-	if !available {
-		detail.Status = upstreamRelayMetricsRefreshStatusFailed
-		detail.Error = errText
-		for _, groupID := range groupIDs {
-			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
-				UpstreamGroupID: groupID,
-				Name:            snapshotNames[groupID],
-				Reason:          "usage_refresh_failed",
-				Message:         errText,
-			})
+	issueByGroup := make(map[string]UpstreamRelayMetricsIssueDetail, len(issues))
+	var globalIssue *UpstreamRelayMetricsIssueDetail
+	for i := range issues {
+		issue := issues[i]
+		if issue.UpstreamGroupID == "" {
+			if globalIssue == nil {
+				globalIssue = &issues[i]
+			}
+			continue
 		}
-		return detail
+		if _, exists := issueByGroup[issue.UpstreamGroupID]; !exists {
+			issueByGroup[issue.UpstreamGroupID] = issue
+		}
 	}
 
 	for _, groupID := range groupIDs {
@@ -1017,14 +1060,61 @@ func buildUpstreamRelayMetricsUsageDetail(
 			})
 			continue
 		}
+		if issue, exists := issueByGroup[groupID]; exists {
+			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
+				UpstreamGroupID: groupID,
+				Name:            snapshotNames[groupID],
+				Reason:          issue.Code,
+				Message:         issue.Message,
+			})
+			continue
+		}
+		if _, known := usageByGroup[groupID]; !known {
+			reason := upstreamRelayMetricsIssueUsageRefreshAborted
+			message := errText
+			if globalIssue != nil {
+				reason = globalIssue.Code
+				message = globalIssue.Message
+			}
+			if message == "" {
+				message = "usage was not refreshed for this group"
+			}
+			detail.MissingGroups = append(detail.MissingGroups, UpstreamRelayMetricsMissingGroupDetail{
+				UpstreamGroupID: groupID,
+				Name:            snapshotNames[groupID],
+				Reason:          reason,
+				Message:         message,
+			})
+			continue
+		}
 		detail.UpdatedGroups++
 	}
 	if len(detail.MissingGroups) > 0 {
-		detail.Status = upstreamRelayMetricsRefreshStatusPartial
+		if detail.UpdatedGroups > 0 {
+			detail.Status = upstreamRelayMetricsRefreshStatusPartial
+		} else {
+			detail.Status = upstreamRelayMetricsRefreshStatusFailed
+		}
 		return detail
 	}
 	detail.Status = upstreamRelayMetricsRefreshStatusSuccess
 	return detail
+}
+
+func upstreamRelayMetricsIssueFromError(err error) *UpstreamRelayMetricsIssueDetail {
+	if err == nil {
+		return nil
+	}
+	var issueErr *upstreamRelayMetricsIssueError
+	if errors.As(err, &issueErr) {
+		issue := issueErr.issue
+		issue.Message = sanitizeUpstreamRelayError(issue.Message)
+		return &issue
+	}
+	return &UpstreamRelayMetricsIssueDetail{
+		Code:    upstreamRelayMetricsIssueUsageRefreshFailed,
+		Message: sanitizeUpstreamRelayError(err.Error()),
+	}
 }
 
 func distinctUpstreamRelayCandidateUsageGroups(bindings []UpstreamRelayCandidateUsageBinding) []string {
@@ -1847,7 +1937,7 @@ func (s *UpstreamRelayGroupMonitoringService) fetchGroupSnapshots(ctx context.Co
 		return nil, err
 	}
 	now := time.Now()
-	usageByGroup, usageCheckedAt, _ := s.fetchUpstreamGroupTodayUsage(ctx, connector, now)
+	usageByGroup, usageCheckedAt, _, _ := s.fetchUpstreamGroupTodayUsage(ctx, connector, now)
 	snapshots := make([]UpstreamRelayGroupRateSnapshot, 0, len(available))
 	for _, group := range available {
 		finalRate := group.RateMultiplier
@@ -1862,8 +1952,7 @@ func (s *UpstreamRelayGroupMonitoringService) fetchGroupSnapshots(ctx context.Co
 		var todayActualCost *float64
 		var todayTotalTokens *int64
 		var todayUsageCheckedAt *time.Time
-		if usageCheckedAt != nil {
-			usage := usageByGroup[group.ID]
+		if usage, known := usageByGroup[group.ID]; usageCheckedAt != nil && known {
 			actualCost := usage.ActualCost
 			totalTokens := usage.TotalTokens
 			todayActualCost = &actualCost
@@ -1912,7 +2001,7 @@ func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistory(ctx conte
 	return s.repo.UpsertUsageHistory(ctx, rows)
 }
 
-func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistoryFromRefresh(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistoryFromRefresh(ctx context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time, complete bool) error {
 	if s == nil || s.repo == nil || usageByGroup == nil || checkedAt == nil {
 		return nil
 	}
@@ -1923,7 +2012,10 @@ func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistoryFromRefres
 	rows := make([]UpstreamRelayGroupUsageHistoryUpsert, 0, len(snapshots))
 	usageDate := upstreamRelayUsageDate(*checkedAt)
 	for _, snapshot := range snapshots {
-		usage := usageByGroup[snapshot.UpstreamGroupID]
+		usage, known := usageByGroup[snapshot.UpstreamGroupID]
+		if !complete && !known {
+			continue
+		}
 		rows = append(rows, UpstreamRelayGroupUsageHistoryUpsert{
 			UsageDate:       usageDate,
 			ConnectorID:     connectorID,
@@ -1938,53 +2030,90 @@ func (s *UpstreamRelayGroupMonitoringService) persistKnownUsageHistoryFromRefres
 	return s.repo.UpsertUsageHistory(ctx, rows)
 }
 
-func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx context.Context, connector *UpstreamRelayConnector, now time.Time) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, error) {
+func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupTodayUsage(ctx context.Context, connector *UpstreamRelayConnector, now time.Time) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, []UpstreamRelayMetricsIssueDetail, error) {
 	return s.fetchUpstreamGroupUsageForDate(ctx, connector, upstreamRelayUsageDate(now))
 }
 
-func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx context.Context, connector *UpstreamRelayConnector, date string) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, error) {
+func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx context.Context, connector *UpstreamRelayConnector, date string) (map[string]UpstreamRelayGroupTodayUsage, *time.Time, []UpstreamRelayMetricsIssueDetail, error) {
 	if s == nil || s.repo == nil {
-		return nil, nil, fmt.Errorf("usage refresh requires repository")
+		return nil, nil, nil, fmt.Errorf("usage refresh requires repository")
 	}
 	if connector == nil {
-		return nil, nil, fmt.Errorf("connector not found")
+		return nil, nil, nil, fmt.Errorf("connector not found")
 	}
 	if !isRelayUsageDate(date) {
-		return nil, nil, fmt.Errorf("usage date must use YYYY-MM-DD")
+		return nil, nil, nil, fmt.Errorf("usage date must use YYYY-MM-DD")
 	}
 	checkedAt := time.Now()
 	out := map[string]UpstreamRelayGroupTodayUsage{}
 	bindings, err := s.repo.ListCandidateUsageBindings(ctx, connector.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(bindings) == 0 {
-		return nil, nil, fmt.Errorf("connector has no local account bindings")
+		return out, &checkedAt, []UpstreamRelayMetricsIssueDetail{{
+			Code:    upstreamRelayMetricsIssueNoCandidateBindings,
+			Message: "connector has no local account bindings",
+		}}, nil
 	}
-	seenKeys := map[string]struct{}{}
+	issues := make([]UpstreamRelayMetricsIssueDetail, 0)
+	usageByKey := map[int64]UpstreamRelayGroupTodayUsage{}
+	failedKeys := map[int64]string{}
+	invalidGroups := map[string]struct{}{}
 	for _, binding := range bindings {
 		if binding.UpstreamGroupID == "" {
 			continue
 		}
 		if binding.UpstreamAPIKeyID <= 0 {
-			return nil, nil, fmt.Errorf("candidate %d for bound account %d has no upstream api key binding", binding.CandidateID, binding.AccountID)
-		}
-		upstreamKeyID := binding.UpstreamAPIKeyID
-		dedupeKey := fmt.Sprintf("id:%d", upstreamKeyID)
-		if _, ok := seenKeys[dedupeKey]; ok {
+			issues = append(issues, UpstreamRelayMetricsIssueDetail{
+				Code:            upstreamRelayMetricsIssueMissingAPIKeyBinding,
+				Message:         fmt.Sprintf("candidate %d for bound account %d has no upstream api key binding", binding.CandidateID, binding.AccountID),
+				CandidateID:     binding.CandidateID,
+				AccountID:       binding.AccountID,
+				UpstreamGroupID: binding.UpstreamGroupID,
+			})
+			invalidGroups[binding.UpstreamGroupID] = struct{}{}
 			continue
 		}
-		seenKeys[dedupeKey] = struct{}{}
-		usage, err := s.fetchUpstreamAPIKeyUsageStats(ctx, connector, upstreamKeyID, date)
-		if err != nil {
-			return nil, nil, fmt.Errorf("fetch upstream api key %d usage stats: %w", upstreamKeyID, err)
+		upstreamKeyID := binding.UpstreamAPIKeyID
+		if message, failed := failedKeys[upstreamKeyID]; failed {
+			issues = append(issues, UpstreamRelayMetricsIssueDetail{
+				Code:            upstreamRelayMetricsIssueUpstreamUsageRequest,
+				Message:         message,
+				CandidateID:     binding.CandidateID,
+				AccountID:       binding.AccountID,
+				UpstreamGroupID: binding.UpstreamGroupID,
+			})
+			invalidGroups[binding.UpstreamGroupID] = struct{}{}
+			continue
+		}
+		usage, cached := usageByKey[upstreamKeyID]
+		if !cached {
+			usage, err = s.fetchUpstreamAPIKeyUsageStats(ctx, connector, upstreamKeyID, date)
+			if err != nil {
+				message := fmt.Sprintf("fetch upstream api key %d usage stats: %s", upstreamKeyID, err.Error())
+				failedKeys[upstreamKeyID] = message
+				issues = append(issues, UpstreamRelayMetricsIssueDetail{
+					Code:            upstreamRelayMetricsIssueUpstreamUsageRequest,
+					Message:         message,
+					CandidateID:     binding.CandidateID,
+					AccountID:       binding.AccountID,
+					UpstreamGroupID: binding.UpstreamGroupID,
+				})
+				invalidGroups[binding.UpstreamGroupID] = struct{}{}
+				continue
+			}
+			usageByKey[upstreamKeyID] = usage
 		}
 		groupUsage := out[binding.UpstreamGroupID]
 		groupUsage.ActualCost += usage.ActualCost
 		groupUsage.TotalTokens += usage.TotalTokens
 		out[binding.UpstreamGroupID] = groupUsage
 	}
-	return out, &checkedAt, nil
+	for groupID := range invalidGroups {
+		delete(out, groupID)
+	}
+	return out, &checkedAt, issues, nil
 }
 
 func (s *UpstreamRelayGroupMonitoringService) FinalizeUsageForConnectorDate(ctx context.Context, connectorID int64, date string) error {
@@ -2003,9 +2132,12 @@ func (s *UpstreamRelayGroupMonitoringService) FinalizeUsageForConnectorDate(ctx 
 		_ = s.repo.MarkConnectorSync(ctx, connectorID, UpstreamRelayConnectorStatusNeedsReauth, err.Error())
 		return err
 	}
-	usageByGroup, _, err := s.fetchUpstreamGroupUsageForDate(ctx, connector, date)
+	usageByGroup, _, issues, err := s.fetchUpstreamGroupUsageForDate(ctx, connector, date)
 	if err != nil {
 		return err
+	}
+	if len(issues) > 0 {
+		return fmt.Errorf("usage unavailable for %s: %s", date, issues[0].Message)
 	}
 	snapshots, err := s.repo.ListSnapshots(ctx, connectorID)
 	if err != nil {

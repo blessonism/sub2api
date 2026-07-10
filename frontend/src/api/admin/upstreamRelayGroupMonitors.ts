@@ -160,7 +160,26 @@ export interface UpstreamRelayMetricsUsageDetail {
   updated_groups: number
   missing_groups?: UpstreamRelayMetricsMissingGroupDetail[] | null
   error?: string
+  issue?: UpstreamRelayMetricsIssueDetail | null
+  issues?: UpstreamRelayMetricsIssueDetail[] | null
   checked_at?: string | null
+}
+
+export type UpstreamRelayMetricsIssueCode =
+  | 'no_candidate_bindings'
+  | 'missing_upstream_api_key_binding'
+  | 'upstream_usage_request_failed'
+  | 'candidate_bindings_load_failed'
+  | 'usage_refresh_failed'
+  | 'usage_refresh_aborted'
+  | (string & {})
+
+export interface UpstreamRelayMetricsIssueDetail {
+  code: UpstreamRelayMetricsIssueCode
+  message: string
+  candidate_id?: number
+  account_id?: number
+  upstream_group_id?: string
 }
 
 export interface UpstreamRelayMetricsMissingGroupDetail {
@@ -200,9 +219,17 @@ export interface UpstreamRelayMonitoringJobStatus {
   last_finished_at?: string | null
   last_succeeded?: boolean | null
   last_error?: string | null
+  last_failures?: UpstreamRelayMonitoringJobFailureDetail[] | null
   next_run_at?: string | null
   interval_minutes: number
   failure_retry_minutes: number
+}
+
+export interface UpstreamRelayMonitoringJobFailureDetail {
+  connector_id: number
+  connector_name?: string
+  date: string
+  reason: string
 }
 
 export interface UpstreamRelayMonitoringRunnerStatus {

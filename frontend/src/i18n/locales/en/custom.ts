@@ -1135,13 +1135,66 @@ export default {
         "latestSyncHint": "Based on loaded connectors",
         "totalLoaded": "{n} loaded"
       },
+      "operationResult": {
+        "action": "What was done",
+        "result": "Result",
+        "impact": "Impact",
+        "nextStep": "Next step",
+        "technicalDetails": "Technical details",
+        "dismiss": "Dismiss operation result",
+        "none": "None",
+        "itemListWithMore": "{items}, plus {count} more",
+        "sources": {
+          "globalRefresh": "Global refresh", "candidates": "Candidate mappings", "connectors": "Connectors",
+          "usageHistory": "Usage history", "snapshotChanges": "Rate snapshots", "monitoring": "Auto monitoring",
+          "recommendations": "Scheduling priority", "policy": "Policy preview", "priorityApply": "Scheduling priority apply"
+        },
+        "titles": { "refresh": "Monitoring refresh result", "sync": "Bulk sync result", "probe": "Bulk probe result", "apply": "Scheduling priority apply result" },
+        "actions": {
+          "refresh": "Synced rate snapshots and refreshed balance and today's usage",
+          "sync": "Synced rate snapshots for all connectors",
+          "probe": "Probed all enabled candidate mappings",
+          "apply": "Applied this scheduling priority recommendation run",
+          "viewConnectorDetails": "View connector details"
+        },
+        "results": {
+          "monitoring": "{success} succeeded ({successItems}); {partial} partial and {failed} failed ({failedItems})",
+          "bulk": "{success} succeeded ({successItems}); {failed} failed ({failedItems})",
+          "running": "The operation is still running",
+          "requestFailed": "The request did not finish; no successful target can be confirmed",
+          "applyFailed": "Recommendation run #{id} was not applied",
+          "applySuccess": "Recommendation run #{id} was applied with {success} suggestion(s)"
+        },
+        "impacts": {
+          "refreshPartial": "Successful data remains usable; {skipped} upstream group(s) were not updated",
+          "refreshSuccess": "Visible monitoring data for every connector was updated",
+          "syncPartial": "Failed connectors kept their previous snapshots; the others were updated",
+          "syncSuccess": "All connector rate snapshots were updated",
+          "probePartial": "Failed candidates kept stale health inputs; successful candidates were updated",
+          "probeSuccess": "Latest health data was updated for all candidates",
+          "probeRunning": "Candidate health results remain unchanged until the operation finishes",
+          "requestFailed": "Page data remains at its pre-operation state",
+          "applyRunning": "This run will not be marked applied until the request finishes",
+          "applyFailed": "Existing account scheduling priorities were not confirmed changed by this attempt",
+          "applySuccess": "Scheduling priorities for affected accounts were updated"
+        },
+        "nextSteps": {
+          "none": "No action is required",
+          "inspectConnectors": "Inspect affected connectors, fix the reported issue, and refresh again",
+          "retryAfterCheck": "Check the connector and upstream service, then retry",
+          "fixAndRetry": "Fix failed targets and run the operation again",
+          "wait": "Wait for the operation to finish",
+          "retryApply": "Review technical details, resolve conflicts or permissions, then apply again"
+        }
+      },
       "runnerStatus": {
         "title": "Auto Scheduler",
         "subtitle": "Background jobs sync rates, probe candidates and generate recommendations per policy — no manual trigger required.",
         "jobs": {
           "sync": "Rate Sync",
           "probe": "Candidate Probe",
-          "recommendation": "Recommendation"
+          "recommendation": "Recommendation",
+          "finalize": "Usage finalization"
         },
         "states": {
           "idle": "Idle",
@@ -1156,6 +1209,7 @@ export default {
           "nextRun": "Next run {time}",
           "waiting": "Waiting for first run",
           "lastError": "Last error: {error}",
+          "finalizeFailures": "Finalization failed for {date}: {count} connector(s) ({connectors})",
           "lastFinished": "Last finished {time}",
           "interval": "Interval {minutes} min"
         },
@@ -1166,6 +1220,42 @@ export default {
           "enableAria": "Enable {job} auto-scheduling",
           "disableAria": "Pause {job} auto-scheduling",
           "saving": "Saving"
+        }
+      },
+      "rateSource": {
+        "loginUserGroupRates": { "label": "User-specific", "tip": "Read directly from the signed-in user's upstream group rates; highest confidence." },
+        "loginAvailableGroups": { "label": "Visible group", "tip": "Derived from upstream groups visible to the signed-in user; high confidence." },
+        "usageCostDelta": { "label": "Usage delta fallback", "tip": "Inferred from the cost difference around a probe when rates cannot be read directly; lower confidence." }
+      },
+      "healthDialog": {
+        "title": "Health details · Account #{account} {name}",
+        "calculatedAt": "Calculated at {time}", "stale": "Health data is stale", "recentError": "Latest error: {error}",
+        "technicalDetails": "Technical details", "usageDeltaTitle": "Usage delta", "status": "Status", "derivedRate": "Derived rate",
+        "stats": { "consecutiveSuccesses": "Consecutive successes", "consecutiveFailures": "Consecutive failures", "p95Latency": "P95 latency", "sampleSize": "Samples", "latencyValue": "{value} ms", "sampleValue": "{samples} / {minutes} min" },
+        "deltaStatus": { "reliable": "Reliable", "insufficient": "Insufficient samples", "unavailable": "Unavailable" },
+        "errorClasses": {
+          "auth_failed": "Authentication failed", "rate_limited": "Rate limited", "upstream_5xx": "Upstream service error", "timeout": "Timeout",
+          "model_unavailable": "Model unavailable", "insufficient_quota": "Insufficient balance or quota", "context_window_exceeded": "Context limit exceeded",
+          "browser_challenge": "Browser verification required", "network_error": "Network error", "invalid_request": "Invalid request", "request_failed": "Request failed"
+        },
+        "errors": {
+          "auth_failed": { "reason": "Connector authentication failed", "advice": "Update connector credentials and probe again." },
+          "rate_limited": { "reason": "The upstream service limited request frequency", "advice": "Retry later or reduce probe frequency." },
+          "upstream_5xx": { "reason": "The upstream service is temporarily unavailable", "advice": "Retry after the upstream service recovers." },
+          "timeout": { "reason": "The upstream response timed out", "advice": "Check the network, reverse proxy, and upstream load." },
+          "model_unavailable": { "reason": "The probe model is unavailable", "advice": "Select a model supported by this upstream service." },
+          "insufficient_quota": { "reason": "The upstream balance or quota is insufficient", "advice": "Add quota or select another API key." },
+          "context_window_exceeded": { "reason": "The probe exceeded the model context limit", "advice": "Check the configured probe model." },
+          "browser_challenge": { "reason": "The upstream service requires browser verification", "advice": "Complete verification in a browser and update the connector session." },
+          "network_error": { "reason": "The upstream service cannot be reached", "advice": "Check its URL, network, and reverse proxy." },
+          "invalid_request": { "reason": "The upstream service rejected probe parameters", "advice": "Check that protocol and probe model match." },
+          "request_failed": { "reason": "The probe request did not succeed", "advice": "Check the connector, API key, and model configuration." }
+        },
+        "deltaIssues": {
+          "missingSnapshot": { "reason": "A before or after usage snapshot is missing", "advice": "Verify the upstream usage endpoint and probe again." },
+          "probeFailed": { "reason": "The probe failed, so no rate can be derived", "advice": "Fix the probe error before sampling again." },
+          "nonPositiveDelta": { "reason": "The usage delta did not increase", "advice": "Wait for upstream billing data to settle, then probe again." },
+          "requestFailed": { "reason": "Usage sampling failed", "advice": "Check the upstream usage endpoint and connector session." }
         }
       },
       "freshness": {
@@ -1188,12 +1278,15 @@ export default {
         "balanceSuccess": "Balance {balance} refreshed",
         "balanceFailed": "Balance failed: {reason}",
         "balanceSkipped": "Balance skipped",
-        "usageSuccess": "Usage refreshed: {updated}/{total}",
-        "usagePartial": "Usage partially refreshed: {updated}/{total}, {missing} missing",
+        "usageSuccess": "Today's usage refreshed for {updated} group(s)",
+        "usagePartial": "Today's usage succeeded for {updated} group(s) and skipped {missing}",
         "usageSkipped": "Usage skipped: {missing} groups not updated",
         "usageFailed": "Usage failed: {reason}",
+        "usageNeedsAction": "Today's usage was not refreshed: {reason}",
         "inlineUsageOk": "Usage OK",
         "inlineUsagePartial": "Usage partial · {missing} groups not updated",
+        "affectedGroups": "Affected groups:",
+        "technicalDetails": "Technical details",
         "status": {
           "success": "Success",
           "partial": "Partial",
@@ -1202,13 +1295,44 @@ export default {
         },
         "missingReasons": {
           "no_snapshot": "Missing snapshot",
-          "usage_refresh_failed": "Usage failed"
+          "missing_upstream_api_key_binding": "Upstream API key not bound",
+          "upstream_usage_request_failed": "Upstream usage request failed",
+          "usage_refresh_aborted": "Retry after fixing the mapping",
+          "usage_refresh_failed": "Not updated this time"
+        },
+        "issues": {
+          "missingApiKeyBinding": "The candidate mapping for local account {account} has no upstream API key",
+          "noCandidateBindings": "This connector has no candidate mappings, so usage cannot be refreshed by group",
+          "noSnapshot": "This connector has no rate snapshots yet",
+          "upstreamUsageRequestFailed": "The upstream usage request for local account {account} failed",
+          "unknownAccount": "unknown account"
+        },
+        "guidance": {
+          "bindApiKey": "Select and save the matching upstream API key, then refresh again. Other affected groups will recover together.",
+          "createCandidate": "Add a local-account-to-upstream-group candidate mapping for this connector, then refresh again.",
+          "syncConnector": "Sync this connector's rate snapshots before refreshing balance and usage.",
+          "editConnectorAuth": "The connector credentials may have expired. Update and verify them, then retry.",
+          "retryUsage": "Check the upstream service and connector configuration, then refresh again."
+        },
+        "actions": {
+          "bindApiKey": "Bind API Key",
+          "createCandidate": "Add Candidate Mapping",
+          "syncConnector": "Sync Connector",
+          "editConnector": "Update Credentials",
+          "retry": "Refresh Again"
+        },
+        "errors": {
+          "candidateNotFound": "No candidate mapping for account {account} is currently loaded. Refresh the page and try again."
         }
       },
       "candidates": {
         "title": "Candidate Mappings",
         "description": "Core decision view: rate source, health status, and pending priority changes.",
         "count": "{total} candidates, {enabled} enabled",
+        "configurationIncomplete": "Incomplete configuration",
+        "filterIncomplete": "Incomplete configuration {count}",
+        "showAll": "Show all",
+        "noFilteredCandidates": "No incompletely configured candidates",
         "colCandidate": "Candidate",
         "colMapping": "Mapping",
         "colTodayUsage": "Today Usage",
@@ -1216,6 +1340,7 @@ export default {
         "colHealth": "Health",
         "colPriority": "Priority",
         "colActions": "Actions",
+        "identity": "Candidate #{candidate} · Account #{account}",
         "enabled": "Enabled",
         "disabled": "Disabled",
         "healthDetail": "Detail",
@@ -1623,6 +1748,15 @@ export default {
         "saveAndContinue": "Save & Add Another",
         "updateCandidate": "Update Candidate",
         "createCandidate": "Create Candidate",
+        "saveFailedTitle": "Candidate mapping was not saved",
+        "saveFailedImpact": "This change did not take effect; the existing candidate configuration is unchanged.",
+        "saveFailedAdvice": "Review field guidance and connector status, then retry.",
+        "refreshAfterSaveFailed": "The candidate was saved, but the automatic connector refresh failed. Review the result panel and retry.",
+        "requiredConnector": "Select a connector",
+        "requiredAccount": "Select a local account",
+        "requiredUpstreamGroup": "Select or enter an upstream group",
+        "requiredUpstreamApiKey": "Select an upstream API key",
+        "requiredProbeModel": "Enter a probe model",
         "snapshotSourceTitle": "From snapshot:",
         "snapshotConnector": "Connector:",
         "snapshotPlatform": "Platform:",
@@ -1760,6 +1894,12 @@ export default {
         "metricsRefreshNeedsFullSync": "This connector has no rate snapshots yet. Run a full sync before refreshing usage / balance.",
         "metricsUsageUnavailable": "Connector balance refreshed, but upstream usage is unavailable; candidate today usage remains not refreshed",
         "metricsUsageUnavailableWithReason": "Connector balance refreshed, but upstream usage is unavailable: {reason}",
+        "connectorAuthExpired": "The connector credentials have expired or lack permission. Update them and retry.",
+        "upstreamRateLimited": "The upstream service is rate limiting requests. Try again later.",
+        "upstreamTimeout": "The upstream service timed out. Check the network or try again later.",
+        "upstreamNetworkFailed": "The upstream service cannot be reached. Check its URL, network, and reverse proxy configuration.",
+        "upstreamBrowserChallenge": "The upstream service requires browser verification. Refresh the login session or Cookie.",
+        "unknownUpstreamError": "The upstream operation failed. Follow the guidance and open technical details for the original error.",
         "loadSnapshotFailed": "Failed to load snapshots",
         "loadApiKeysFailed": "Failed to load upstream API keys",
         "loadSnapshotChangesFailed": "Failed to load snapshot changes",
