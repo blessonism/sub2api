@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
@@ -20,7 +22,7 @@ func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
 	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
-	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	entry_mode, usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at,
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
@@ -31,12 +33,12 @@ LIMIT 1`)).
 		WithArgs(now).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "name", "description", "rules_text", "status", "participation_mode", "draw_schedule_type",
-			"prize_mode", "entry_mode", "threshold_tokens", "entry_step_tokens", "max_entries_per_user",
+			"prize_mode", "entry_mode", "usage_mode", "threshold_tokens", "entry_step_tokens", "threshold_cost_microusd", "entry_step_cost_microusd", "max_entries_per_user",
 			"start_at", "end_at", "draw_at", "daily_draw_time", "created_by", "updated_by",
 			"created_at", "updated_at", "is_featured",
 		}).AddRow(
-			int64(7), "Token 抽奖", "", "", "published", "auto", "single", "single", "daily_once",
-			int64(100), int64(0), 1, now.Add(-time.Hour), now.Add(time.Hour), now.Add(30*time.Minute),
+			int64(7), "Token 抽奖", "", "", "published", "auto", "single", "single", "daily_once", "token",
+			int64(100), int64(0), int64(0), int64(0), 1, now.Add(-time.Hour), now.Add(time.Hour), now.Add(30*time.Minute),
 			"", nil, nil, now.Add(-2*time.Hour), now.Add(-time.Hour), true,
 		))
 	mock.ExpectQuery(regexp.QuoteMeta(`
@@ -54,6 +56,54 @@ ORDER BY sort_order ASC, id ASC`)).
 	}
 	if campaign == nil || !campaign.IsFeatured {
 		t.Fatalf("campaign = %+v, want featured", campaign)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestUpsertLotteryEntryPersistsUSDUsageWithTypedStatus(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewLotteryCampaignRepository(db)
+	entryDate := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	now := entryDate.Add(time.Hour)
+	mock.ExpectQuery("INSERT INTO lottery_entries").
+		WithArgs(int64(7), int64(42), entryDate, int64(0), int64(1_250_000), 2, "enrolled").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "campaign_id", "user_id", "entry_date", "tokens", "cost_microusd", "entry_count", "status", "enrolled_at", "created_at", "updated_at"}).
+			AddRow(int64(9), int64(7), int64(42), entryDate, int64(0), int64(1_250_000), 2, "enrolled", now, now, now))
+
+	entry, err := repo.UpsertLotteryEntry(context.Background(), service.LotteryCampaign{ID: 7}, 42, entryDate, service.LotteryUsage{CostMicrousd: 1_250_000}, 2, true)
+	if err != nil {
+		t.Fatalf("upsert lottery entry: %v", err)
+	}
+	if entry.CostMicrousd != 1_250_000 || entry.EntryCount != 2 {
+		t.Fatalf("unexpected entry: %+v", entry)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestUpdateLotteryCampaignRejectsUsageModeChangeAfterDraw(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+	repo := NewLotteryCampaignRepository(db)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT usage_mode FROM lottery_campaigns").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"usage_mode"}).AddRow("token"))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	_, err = repo.UpdateLotteryCampaign(context.Background(), 7, service.LotteryCampaignInput{UsageMode: service.LotteryUsageUSD})
+	if !errors.Is(err, service.ErrLotteryUsageModeLocked) {
+		t.Fatalf("error = %v, want usage mode locked", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

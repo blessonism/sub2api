@@ -208,4 +208,44 @@ describe('LotteryCampaignAdminPanel', () => {
     expect(vm.form.threshold_token_millions).toBe(1.25)
     expect(vm.form.entry_step_token_millions).toBe(0.5)
   })
+
+  it('submits USD thresholds as integer microdollars', async () => {
+    createLotteryCampaign.mockResolvedValue({ id: 11 })
+    const wrapper = mountPanel()
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      openCreate: () => void
+      submitSave: () => Promise<void>
+      form: {
+        usage_mode: 'token' | 'usd'
+        threshold_cost_usd: number
+        entry_mode: 'daily_once' | 'stepped'
+        entry_step_cost_usd: number
+        max_entries_per_user: number
+      }
+    }
+
+    vm.openCreate()
+    vm.form.usage_mode = 'usd'
+    vm.form.threshold_cost_usd = 1.2345
+    vm.form.entry_mode = 'stepped'
+    vm.form.entry_step_cost_usd = 0.125
+    vm.form.max_entries_per_user = 4
+    await vm.submitSave()
+
+    expect(createLotteryCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      usage_mode: 'usd',
+      threshold_tokens: 0,
+      entry_step_tokens: 0,
+      threshold_cost_microusd: 1_234_500,
+      entry_step_cost_microusd: 125_000,
+      max_entries_per_user: 4,
+    }))
+
+    createLotteryCampaign.mockClear()
+    vm.form.threshold_cost_usd = 1.23456
+    await vm.submitSave()
+    expect(createLotteryCampaign).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.lotteryCampaigns.invalidThresholdCost')
+  })
 })

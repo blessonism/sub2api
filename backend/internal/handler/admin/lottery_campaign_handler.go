@@ -19,21 +19,24 @@ func NewLotteryCampaignHandler(svc *service.LotteryCampaignService) *LotteryCamp
 }
 
 type lotteryCampaignRequest struct {
-	Name              string                          `json:"name" binding:"required"`
-	Description       string                          `json:"description"`
-	RulesText         string                          `json:"rules_text"`
-	ParticipationMode string                          `json:"participation_mode" binding:"required"`
-	DrawScheduleType  string                          `json:"draw_schedule_type" binding:"required"`
-	PrizeMode         string                          `json:"prize_mode" binding:"required"`
-	EntryMode         string                          `json:"entry_mode" binding:"required"`
-	ThresholdTokens   int64                           `json:"threshold_tokens" binding:"required"`
-	EntryStepTokens   int64                           `json:"entry_step_tokens"`
-	MaxEntriesPerUser int                             `json:"max_entries_per_user"`
-	StartAt           string                          `json:"start_at" binding:"required"`
-	EndAt             string                          `json:"end_at" binding:"required"`
-	DrawAt            *string                         `json:"draw_at"`
-	DailyDrawTime     string                          `json:"daily_draw_time"`
-	PrizeTiers        []service.LotteryPrizeTierInput `json:"prize_tiers" binding:"required"`
+	Name                  string                          `json:"name" binding:"required"`
+	Description           string                          `json:"description"`
+	RulesText             string                          `json:"rules_text"`
+	ParticipationMode     string                          `json:"participation_mode" binding:"required"`
+	DrawScheduleType      string                          `json:"draw_schedule_type" binding:"required"`
+	PrizeMode             string                          `json:"prize_mode" binding:"required"`
+	EntryMode             string                          `json:"entry_mode" binding:"required"`
+	ThresholdTokens       int64                           `json:"threshold_tokens"`
+	EntryStepTokens       int64                           `json:"entry_step_tokens"`
+	UsageMode             string                          `json:"usage_mode"`
+	ThresholdCostMicrousd int64                           `json:"threshold_cost_microusd"`
+	EntryStepCostMicrousd int64                           `json:"entry_step_cost_microusd"`
+	MaxEntriesPerUser     int                             `json:"max_entries_per_user"`
+	StartAt               string                          `json:"start_at" binding:"required"`
+	EndAt                 string                          `json:"end_at" binding:"required"`
+	DrawAt                *string                         `json:"draw_at"`
+	DailyDrawTime         string                          `json:"daily_draw_time"`
+	PrizeTiers            []service.LotteryPrizeTierInput `json:"prize_tiers" binding:"required"`
 }
 
 func (h *LotteryCampaignHandler) List(c *gin.Context) {
@@ -282,21 +285,24 @@ func (req lotteryCampaignRequest) toInput(c *gin.Context) (service.LotteryCampai
 		drawAt = &parsed
 	}
 	return service.LotteryCampaignInput{
-		Name:              req.Name,
-		Description:       req.Description,
-		RulesText:         req.RulesText,
-		ParticipationMode: req.ParticipationMode,
-		DrawScheduleType:  req.DrawScheduleType,
-		PrizeMode:         req.PrizeMode,
-		EntryMode:         req.EntryMode,
-		ThresholdTokens:   req.ThresholdTokens,
-		EntryStepTokens:   req.EntryStepTokens,
-		MaxEntriesPerUser: req.MaxEntriesPerUser,
-		StartAt:           startAt,
-		EndAt:             endAt,
-		DrawAt:            drawAt,
-		DailyDrawTime:     req.DailyDrawTime,
-		PrizeTiers:        req.PrizeTiers,
+		Name:                  req.Name,
+		Description:           req.Description,
+		RulesText:             req.RulesText,
+		ParticipationMode:     req.ParticipationMode,
+		DrawScheduleType:      req.DrawScheduleType,
+		PrizeMode:             req.PrizeMode,
+		EntryMode:             req.EntryMode,
+		ThresholdTokens:       req.ThresholdTokens,
+		EntryStepTokens:       req.EntryStepTokens,
+		UsageMode:             req.UsageMode,
+		ThresholdCostMicrousd: req.ThresholdCostMicrousd,
+		EntryStepCostMicrousd: req.EntryStepCostMicrousd,
+		MaxEntriesPerUser:     req.MaxEntriesPerUser,
+		StartAt:               startAt,
+		EndAt:                 endAt,
+		DrawAt:                drawAt,
+		DailyDrawTime:         req.DailyDrawTime,
+		PrizeTiers:            req.PrizeTiers,
 	}, true
 }
 

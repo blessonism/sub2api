@@ -69,17 +69,17 @@
       <div class="grid gap-4 sm:grid-cols-3">
         <div class="card p-5">
           <div class="flex items-center justify-between gap-3">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ tokenMetricLabel }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ usageMetricLabel }}</p>
             <Icon name="bolt" size="sm" class="text-primary-500" />
           </div>
-          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatTokens(myData?.today_tokens) }}</p>
+          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatUsage(currentUsage) }}</p>
         </div>
         <div class="card p-5">
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.threshold') }}</p>
             <Icon name="chart" size="sm" class="text-primary-500" />
           </div>
-          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatTokens(home.campaign.threshold_tokens) }}</p>
+          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatUsage(thresholdUsage) }}</p>
         </div>
         <div class="card p-5">
           <div class="flex items-center justify-between gap-3">
@@ -291,7 +291,10 @@ const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 
 const isSingleDraw = computed(() => home.value?.campaign?.draw_schedule_type === 'single')
-const tokenMetricLabel = computed(() => isSingleDraw.value ? t('lotteryCampaign.cumulativeTokens') : t('lotteryCampaign.todayTokens'))
+const isUSDMode = computed(() => home.value?.campaign?.usage_mode === 'usd')
+const usageMetricLabel = computed(() => isUSDMode.value
+  ? t(isSingleDraw.value ? 'lotteryCampaign.cumulativeCost' : 'lotteryCampaign.todayCost')
+  : t(isSingleDraw.value ? 'lotteryCampaign.cumulativeTokens' : 'lotteryCampaign.todayTokens'))
 const drawTimeLabel = computed(() => isSingleDraw.value ? t('lotteryCampaign.drawTime') : t('lotteryCampaign.nextDraw'))
 const campaignDescription = computed(() => {
   const description = home.value?.campaign?.description
@@ -300,14 +303,16 @@ const campaignDescription = computed(() => {
 })
 
 const progressPct = computed(() => {
-  const threshold = home.value?.campaign?.threshold_tokens ?? 0
+  const threshold = thresholdUsage.value
   if (threshold <= 0) return 0
-  return Math.min(100, Math.round(((myData.value?.today_tokens ?? 0) / threshold) * 100))
+  return Math.min(100, Math.round((currentUsage.value / threshold) * 100))
 })
-const remainingTokens = computed(() => Math.max(0, (home.value?.campaign?.threshold_tokens ?? 0) - (myData.value?.today_tokens ?? 0)))
+const currentUsage = computed(() => isUSDMode.value ? (myData.value?.today_cost_microusd ?? 0) : (myData.value?.today_tokens ?? 0))
+const thresholdUsage = computed(() => isUSDMode.value ? (home.value?.campaign?.threshold_cost_microusd ?? 0) : (home.value?.campaign?.threshold_tokens ?? 0))
+const remainingUsage = computed(() => Math.max(0, thresholdUsage.value - currentUsage.value))
 const progressHintText = computed(() => {
-  if (remainingTokens.value <= 0) return t('lotteryCampaign.thresholdReached')
-  return t('lotteryCampaign.tokensToThreshold', { amount: formatTokens(remainingTokens.value) })
+  if (remainingUsage.value <= 0) return t('lotteryCampaign.thresholdReached')
+  return t(isUSDMode.value ? 'lotteryCampaign.costToThreshold' : 'lotteryCampaign.tokensToThreshold', { amount: formatUsage(remainingUsage.value) })
 })
 
 const nextDrawAt = computed(() => myData.value?.next_draw_at ?? home.value?.campaign?.draw_at ?? null)
@@ -359,12 +364,12 @@ const ladderHintText = computed(() => {
   const campaign = home.value?.campaign
   if (!campaign) return ''
   if (entryCount.value >= maxEntries.value) return t('lotteryCampaign.ladderMaxed')
-  const step = campaign.entry_step_tokens
-  const tokens = myData.value?.today_tokens ?? 0
+  const step = isUSDMode.value ? campaign.entry_step_cost_microusd : campaign.entry_step_tokens
+  const tokens = currentUsage.value
   if (step <= 0 || entryCount.value <= 0) return t('lotteryCampaign.ladderStart')
-  const nextAt = campaign.threshold_tokens + entryCount.value * step
+  const nextAt = thresholdUsage.value + entryCount.value * step
   const need = Math.max(0, nextAt - tokens)
-  return t('lotteryCampaign.ladderNext', { amount: formatTokens(need) })
+  return t('lotteryCampaign.ladderNext', { amount: formatUsage(need) })
 })
 
 const entryStatusTitle = computed(() => {
@@ -373,7 +378,7 @@ const entryStatusTitle = computed(() => {
 })
 const entryStatusDescription = computed(() => {
   const mode = home.value?.campaign?.participation_mode
-  if (entryCount.value <= 0) return t('lotteryCampaign.needMoreTokens')
+  if (entryCount.value <= 0) return t(isUSDMode.value ? 'lotteryCampaign.needMoreCost' : 'lotteryCampaign.needMoreTokens')
   if (mode === 'manual' && myData.value?.entry_status !== 'enrolled') return t('lotteryCampaign.manualReady')
   return t('lotteryCampaign.readyForDraw')
 })
@@ -452,6 +457,11 @@ async function enroll(): Promise<void> {
 
 function formatTokens(value?: number): string {
   return formatTokenMillions(value ?? 0)
+}
+
+function formatUsage(value: number): string {
+  if (!isUSDMode.value) return formatTokens(value)
+  return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value / 1_000_000)
 }
 
 function formatCents(cents?: number): string {

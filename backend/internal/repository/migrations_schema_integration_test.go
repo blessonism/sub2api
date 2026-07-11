@@ -98,6 +98,12 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
 	require.True(t, settingsRegclass.Valid, "expected settings table to exist")
 
+	// lottery campaigns: Token/USD qualification modes and exact micro-dollar snapshots
+	requireColumn(t, tx, "lottery_campaigns", "usage_mode", "character varying", 16, false)
+	requireColumn(t, tx, "lottery_campaigns", "threshold_cost_microusd", "bigint", 0, false)
+	requireColumn(t, tx, "lottery_campaigns", "entry_step_cost_microusd", "bigint", 0, false)
+	requireColumn(t, tx, "lottery_entries", "cost_microusd", "bigint", 0, false)
+
 	// security_secrets table should exist
 	var securitySecretsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.security_secrets')").Scan(&securitySecretsRegclass))
