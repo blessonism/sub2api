@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支、标签同步和高风险操作边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Fast/Flex 用户规则跨鉴权、服务、DTO 与前端的数据流"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端自动合并与测试质量约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 API 类型及下游 locale overlay 约束"}
