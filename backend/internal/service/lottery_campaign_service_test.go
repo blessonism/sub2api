@@ -34,6 +34,16 @@ func TestLotteryEntryCountModes(t *testing.T) {
 	if got := lotteryEntryCount(campaign, 1000); got != 4 {
 		t.Fatalf("capped entries = %d, want 4", got)
 	}
+
+	campaign.UsageMode = LotteryUsageUSD
+	campaign.ThresholdCostMicrousd = 1_000_000
+	campaign.EntryStepCostMicrousd = 500_000
+	if got := lotteryEntryCount(campaign, 999_999); got != 0 {
+		t.Fatalf("below USD threshold entries = %d, want 0", got)
+	}
+	if got := lotteryEntryCount(campaign, 2_000_000); got != 3 {
+		t.Fatalf("USD stepped entries = %d, want 3", got)
+	}
 }
 
 func TestSelectLotteryWinnersOneWinPerBatch(t *testing.T) {
@@ -564,25 +574,25 @@ func TestLotteryRecentWinnersDefaultsAndCapsLimit(t *testing.T) {
 }
 
 type lotteryServiceRepoStub struct {
-	campaign           LotteryCampaign
-	batch              *LotteryDrawBatch
-	winners            []LotteryWinner
-	qualified          []LotteryQualifiedUsage
-	candidates         []LotteryDrawCandidate
-	tokens             int64
-	createBatchCalls   int
-	createWinnersCalls int
-	grantCalls         int
-	upsertCalls        int
-	featureCalls       int
-	deleteCalls        int
-	userTokensStartAt  time.Time
-	userTokensEndAt    time.Time
-	qualifiedStartAt   time.Time
-	qualifiedEndAt     time.Time
-	upsertEntryDate    time.Time
-	publicWinners      []LotteryPublicWinner
-	recentLimitArg     int
+	campaign            LotteryCampaign
+	batch               *LotteryDrawBatch
+	winners             []LotteryWinner
+	qualified           []LotteryQualifiedUsage
+	candidates          []LotteryDrawCandidate
+	tokens              int64
+	createBatchCalls    int
+	createWinnersCalls  int
+	grantCalls          int
+	upsertCalls         int
+	featureCalls        int
+	deleteCalls         int
+	userTokensStartAt   time.Time
+	userTokensEndAt     time.Time
+	qualifiedStartAt    time.Time
+	qualifiedEndAt      time.Time
+	upsertEntryDate     time.Time
+	publicWinners       []LotteryPublicWinner
+	recentLimitArg      int
 	participantCount    int64
 	participantStartArg time.Time
 	participantEndArg   time.Time
@@ -623,17 +633,17 @@ func (r *lotteryServiceRepoStub) DeleteLotteryCampaign(context.Context, int64) e
 func (r *lotteryServiceRepoStub) ListPublishedLotteryCampaigns(context.Context) ([]LotteryCampaign, error) {
 	return []LotteryCampaign{r.campaign}, nil
 }
-func (r *lotteryServiceRepoStub) GetLotteryUserTokens(_ context.Context, _ int64, startAt, endAt time.Time) (int64, error) {
+func (r *lotteryServiceRepoStub) GetLotteryUserUsage(_ context.Context, userID int64, startAt, endAt time.Time) (LotteryUsage, error) {
 	r.userTokensStartAt = startAt
 	r.userTokensEndAt = endAt
-	return r.tokens, nil
+	return LotteryUsage{UserID: userID, Tokens: r.tokens}, nil
 }
-func (r *lotteryServiceRepoStub) ListLotteryQualifiedUsage(_ context.Context, startAt, endAt time.Time, _ int64) ([]LotteryQualifiedUsage, error) {
+func (r *lotteryServiceRepoStub) ListLotteryQualifiedUsage(_ context.Context, _ LotteryCampaign, startAt, endAt time.Time) ([]LotteryUsage, error) {
 	r.qualifiedStartAt = startAt
 	r.qualifiedEndAt = endAt
 	return r.qualified, nil
 }
-func (r *lotteryServiceRepoStub) UpsertLotteryEntry(_ context.Context, _ LotteryCampaign, _ int64, entryDate time.Time, _ int64, entryCount int, _ bool) (*LotteryEntry, error) {
+func (r *lotteryServiceRepoStub) UpsertLotteryEntry(_ context.Context, _ LotteryCampaign, _ int64, entryDate time.Time, _ LotteryUsage, entryCount int, _ bool) (*LotteryEntry, error) {
 	r.upsertCalls++
 	r.upsertEntryDate = entryDate
 	return &LotteryEntry{Status: LotteryEntryEnrolled, EntryCount: entryCount}, nil
@@ -644,7 +654,7 @@ func (r *lotteryServiceRepoStub) GetLotteryEntry(context.Context, int64, int64, 
 func (r *lotteryServiceRepoStub) ListLotteryDrawCandidates(context.Context, int64, time.Time) ([]LotteryDrawCandidate, error) {
 	return r.candidates, nil
 }
-func (r *lotteryServiceRepoStub) CountLotteryQualifiedUsers(_ context.Context, startAt, endAt time.Time, _ int64) (int64, error) {
+func (r *lotteryServiceRepoStub) CountLotteryQualifiedUsers(_ context.Context, _ LotteryCampaign, startAt, endAt time.Time) (int64, error) {
 	r.participantStartArg = startAt
 	r.participantEndArg = endAt
 	return r.participantCount, nil

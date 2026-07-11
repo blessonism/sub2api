@@ -33,6 +33,8 @@ const (
 	LotteryEntryStepped        = "stepped"
 	LotteryEntryEligible       = "eligible"
 	LotteryEntryEnrolled       = "enrolled"
+	LotteryUsageToken          = "token"
+	LotteryUsageUSD            = "usd"
 	lotteryDrawStatusSuccess   = "success"
 	lotteryDrawStatusPartial   = "partial_success"
 	lotteryDrawStatusFailed    = "failed"
@@ -43,7 +45,7 @@ const (
 var (
 	ErrLotteryCampaignNotFound     = infraerrors.NotFound("LOTTERY_CAMPAIGN_NOT_FOUND", "lottery campaign not found")
 	ErrLotteryInvalidConfig        = infraerrors.BadRequest("LOTTERY_INVALID_CONFIG", "invalid lottery campaign config")
-	ErrLotteryNotEligible          = infraerrors.BadRequest("LOTTERY_NOT_ELIGIBLE", "token threshold is not reached")
+	ErrLotteryNotEligible          = infraerrors.BadRequest("LOTTERY_NOT_ELIGIBLE", "lottery usage threshold is not reached")
 	ErrLotteryAlreadyDrawn         = infraerrors.Conflict("LOTTERY_ALREADY_DRAWN", "lottery draw already completed")
 	ErrLotteryNotPublished         = infraerrors.Conflict("LOTTERY_NOT_PUBLISHED", "lottery campaign must be published before syncing entries or drawing")
 	ErrLotteryDrawNotDue           = infraerrors.Conflict("LOTTERY_DRAW_NOT_DUE", "lottery draw time has not arrived")
@@ -53,33 +55,37 @@ var (
 	ErrLotteryDesignationNotEnroll = infraerrors.BadRequest("LOTTERY_DESIGNATION_NOT_ENROLLED", "user is not enrolled for this draw date")
 	ErrLotteryDesignationTierFull  = infraerrors.BadRequest("LOTTERY_DESIGNATION_TIER_FULL", "prize tier designation count exceeds winner_count")
 	ErrLotteryDesignationTierInval = infraerrors.BadRequest("LOTTERY_DESIGNATION_TIER_INVALID", "prize tier does not belong to this campaign")
+	ErrLotteryUsageModeLocked      = infraerrors.Conflict("LOTTERY_USAGE_MODE_LOCKED", "lottery usage mode cannot change after a draw batch exists")
 )
 
 const lotteryProcessingRecoveryAfter = 10 * time.Minute
 
 type LotteryCampaign struct {
-	ID                int64              `json:"id"`
-	Name              string             `json:"name"`
-	Description       string             `json:"description"`
-	RulesText         string             `json:"rules_text"`
-	Status            string             `json:"status"`
-	ParticipationMode string             `json:"participation_mode"`
-	DrawScheduleType  string             `json:"draw_schedule_type"`
-	PrizeMode         string             `json:"prize_mode"`
-	EntryMode         string             `json:"entry_mode"`
-	ThresholdTokens   int64              `json:"threshold_tokens"`
-	EntryStepTokens   int64              `json:"entry_step_tokens"`
-	MaxEntriesPerUser int                `json:"max_entries_per_user"`
-	StartAt           time.Time          `json:"start_at"`
-	EndAt             time.Time          `json:"end_at"`
-	DrawAt            *time.Time         `json:"draw_at,omitempty"`
-	DailyDrawTime     string             `json:"daily_draw_time"`
-	CreatedBy         *int64             `json:"created_by,omitempty"`
-	UpdatedBy         *int64             `json:"updated_by,omitempty"`
-	CreatedAt         time.Time          `json:"created_at"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	IsFeatured        bool               `json:"is_featured"`
-	PrizeTiers        []LotteryPrizeTier `json:"prize_tiers,omitempty"`
+	ID                    int64              `json:"id"`
+	Name                  string             `json:"name"`
+	Description           string             `json:"description"`
+	RulesText             string             `json:"rules_text"`
+	Status                string             `json:"status"`
+	ParticipationMode     string             `json:"participation_mode"`
+	DrawScheduleType      string             `json:"draw_schedule_type"`
+	PrizeMode             string             `json:"prize_mode"`
+	EntryMode             string             `json:"entry_mode"`
+	ThresholdTokens       int64              `json:"threshold_tokens"`
+	EntryStepTokens       int64              `json:"entry_step_tokens"`
+	UsageMode             string             `json:"usage_mode"`
+	ThresholdCostMicrousd int64              `json:"threshold_cost_microusd"`
+	EntryStepCostMicrousd int64              `json:"entry_step_cost_microusd"`
+	MaxEntriesPerUser     int                `json:"max_entries_per_user"`
+	StartAt               time.Time          `json:"start_at"`
+	EndAt                 time.Time          `json:"end_at"`
+	DrawAt                *time.Time         `json:"draw_at,omitempty"`
+	DailyDrawTime         string             `json:"daily_draw_time"`
+	CreatedBy             *int64             `json:"created_by,omitempty"`
+	UpdatedBy             *int64             `json:"updated_by,omitempty"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+	IsFeatured            bool               `json:"is_featured"`
+	PrizeTiers            []LotteryPrizeTier `json:"prize_tiers,omitempty"`
 }
 
 type LotteryPrizeTier struct {
@@ -93,16 +99,17 @@ type LotteryPrizeTier struct {
 }
 
 type LotteryEntry struct {
-	ID         int64      `json:"id"`
-	CampaignID int64      `json:"campaign_id"`
-	UserID     int64      `json:"user_id"`
-	EntryDate  time.Time  `json:"entry_date"`
-	Tokens     int64      `json:"tokens"`
-	EntryCount int        `json:"entry_count"`
-	Status     string     `json:"status"`
-	EnrolledAt *time.Time `json:"enrolled_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID           int64      `json:"id"`
+	CampaignID   int64      `json:"campaign_id"`
+	UserID       int64      `json:"user_id"`
+	EntryDate    time.Time  `json:"entry_date"`
+	Tokens       int64      `json:"tokens"`
+	CostMicrousd int64      `json:"cost_microusd"`
+	EntryCount   int        `json:"entry_count"`
+	Status       string     `json:"status"`
+	EnrolledAt   *time.Time `json:"enrolled_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type LotteryDrawBatch struct {
@@ -157,22 +164,25 @@ type LotteryPublicWinner struct {
 }
 
 type LotteryCampaignInput struct {
-	Name              string
-	Description       string
-	RulesText         string
-	ParticipationMode string
-	DrawScheduleType  string
-	PrizeMode         string
-	EntryMode         string
-	ThresholdTokens   int64
-	EntryStepTokens   int64
-	MaxEntriesPerUser int
-	StartAt           time.Time
-	EndAt             time.Time
-	DrawAt            *time.Time
-	DailyDrawTime     string
-	PrizeTiers        []LotteryPrizeTierInput
-	OperatorID        *int64
+	Name                  string
+	Description           string
+	RulesText             string
+	ParticipationMode     string
+	DrawScheduleType      string
+	PrizeMode             string
+	EntryMode             string
+	ThresholdTokens       int64
+	EntryStepTokens       int64
+	UsageMode             string
+	ThresholdCostMicrousd int64
+	EntryStepCostMicrousd int64
+	MaxEntriesPerUser     int
+	StartAt               time.Time
+	EndAt                 time.Time
+	DrawAt                *time.Time
+	DailyDrawTime         string
+	PrizeTiers            []LotteryPrizeTierInput
+	OperatorID            *int64
 }
 
 type LotteryPrizeTierInput struct {
@@ -182,16 +192,20 @@ type LotteryPrizeTierInput struct {
 	SortOrder         int    `json:"sort_order"`
 }
 
-type LotteryQualifiedUsage struct {
-	UserID int64
-	Tokens int64
+type LotteryUsage struct {
+	UserID       int64
+	Tokens       int64
+	CostMicrousd int64
 }
 
+type LotteryQualifiedUsage = LotteryUsage
+
 type LotteryDrawCandidate struct {
-	UserID     int64
-	EntryDate  time.Time
-	Tokens     int64
-	EntryCount int
+	UserID       int64
+	EntryDate    time.Time
+	Tokens       int64
+	CostMicrousd int64
+	EntryCount   int
 }
 
 // LotteryWinnerDesignation 是管理员在开奖前为某日期预置的获奖者记录（与批次解耦）。
@@ -213,10 +227,11 @@ type LotteryDesignationInput struct {
 
 // LotteryDesignationCandidate 是候选人视图，包含脱敏信息与当前预置状态。
 type LotteryDesignationCandidate struct {
-	UserID          int64  `json:"user_id"`
-	MaskedEmail     string `json:"masked_email"`
-	EntryCount      int    `json:"entry_count"`
-	Tokens          int64  `json:"tokens"`
+	UserID           int64  `json:"user_id"`
+	MaskedEmail      string `json:"masked_email"`
+	EntryCount       int    `json:"entry_count"`
+	Tokens           int64  `json:"tokens"`
+	CostMicrousd     int64  `json:"cost_microusd"`
 	DesignatedTierID *int64 `json:"designated_tier_id,omitempty"`
 }
 
@@ -228,14 +243,16 @@ type LotteryDesignationView struct {
 }
 
 type LotteryMyData struct {
-	Campaign         *LotteryCampaign `json:"campaign"`
-	TodayTokens      int64            `json:"today_tokens"`
-	ThresholdTokens  int64            `json:"threshold_tokens"`
-	EntryCount       int              `json:"entry_count"`
-	EntryStatus      string           `json:"entry_status"`
-	NextDrawAt       *time.Time       `json:"next_draw_at,omitempty"`
-	ParticipantCount int64            `json:"participant_count"`
-	Winners          []LotteryWinner  `json:"winners"`
+	Campaign              *LotteryCampaign `json:"campaign"`
+	TodayTokens           int64            `json:"today_tokens"`
+	TodayCostMicrousd     int64            `json:"today_cost_microusd"`
+	ThresholdTokens       int64            `json:"threshold_tokens"`
+	ThresholdCostMicrousd int64            `json:"threshold_cost_microusd"`
+	EntryCount            int              `json:"entry_count"`
+	EntryStatus           string           `json:"entry_status"`
+	NextDrawAt            *time.Time       `json:"next_draw_at,omitempty"`
+	ParticipantCount      int64            `json:"participant_count"`
+	Winners               []LotteryWinner  `json:"winners"`
 }
 
 type LotteryCampaignRepository interface {
@@ -248,12 +265,12 @@ type LotteryCampaignRepository interface {
 	SetFeaturedLotteryCampaign(ctx context.Context, id int64, operatorID *int64) (*LotteryCampaign, error)
 	DeleteLotteryCampaign(ctx context.Context, id int64) error
 	ListPublishedLotteryCampaigns(ctx context.Context) ([]LotteryCampaign, error)
-	GetLotteryUserTokens(ctx context.Context, userID int64, startAt, endAt time.Time) (int64, error)
-	ListLotteryQualifiedUsage(ctx context.Context, startAt, endAt time.Time, minTokens int64) ([]LotteryQualifiedUsage, error)
-	UpsertLotteryEntry(ctx context.Context, campaign LotteryCampaign, userID int64, entryDate time.Time, tokens int64, entryCount int, enrolled bool) (*LotteryEntry, error)
+	GetLotteryUserUsage(ctx context.Context, userID int64, startAt, endAt time.Time) (LotteryUsage, error)
+	ListLotteryQualifiedUsage(ctx context.Context, campaign LotteryCampaign, startAt, endAt time.Time) ([]LotteryUsage, error)
+	UpsertLotteryEntry(ctx context.Context, campaign LotteryCampaign, userID int64, entryDate time.Time, usage LotteryUsage, entryCount int, enrolled bool) (*LotteryEntry, error)
 	GetLotteryEntry(ctx context.Context, campaignID, userID int64, entryDate time.Time) (*LotteryEntry, error)
 	ListLotteryDrawCandidates(ctx context.Context, campaignID int64, entryDate time.Time) ([]LotteryDrawCandidate, error)
-	CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error)
+	CountLotteryQualifiedUsers(ctx context.Context, campaign LotteryCampaign, startAt, endAt time.Time) (int64, error)
 	GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*LotteryDrawBatch, error)
 	CreateLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate, scheduledDrawAt time.Time, triggerType string, operatorID *int64) (*LotteryDrawBatch, error)
 	CreateLotteryWinners(ctx context.Context, batch LotteryDrawBatch, campaign LotteryCampaign, winners []LotteryWinner) error
@@ -342,15 +359,15 @@ func (s *LotteryCampaignService) MyData(ctx context.Context, campaignID, userID 
 		return nil, ErrLotteryCampaignNotFound
 	}
 	drawDate, windowStart, windowEnd, nextDrawAt := lotteryCurrentWindow(*campaign, now)
-	tokens, err := s.repo.GetLotteryUserTokens(ctx, userID, windowStart, lotteryMinTime(now, windowEnd))
+	usage, err := s.repo.GetLotteryUserUsage(ctx, userID, windowStart, lotteryMinTime(now, windowEnd))
 	if err != nil {
 		return nil, err
 	}
-	entryCount := lotteryEntryCount(*campaign, tokens)
+	entryCount := lotteryEntryCount(*campaign, lotteryUsageValue(*campaign, usage))
 	var status string
 	if entryCount > 0 && lotteryCampaignAcceptsEntries(*campaign, now) {
 		enrolled := campaign.ParticipationMode == LotteryParticipationAuto
-		entry, err := s.repo.UpsertLotteryEntry(ctx, *campaign, userID, drawDate, tokens, entryCount, enrolled)
+		entry, err := s.repo.UpsertLotteryEntry(ctx, *campaign, userID, drawDate, usage, entryCount, enrolled)
 		if err != nil {
 			return nil, err
 		}
@@ -364,19 +381,21 @@ func (s *LotteryCampaignService) MyData(ctx context.Context, campaignID, userID 
 	if err != nil {
 		return nil, err
 	}
-	participantCount, err := s.repo.CountLotteryQualifiedUsers(ctx, windowStart, lotteryMinTime(now, windowEnd), campaign.ThresholdTokens)
+	participantCount, err := s.repo.CountLotteryQualifiedUsers(ctx, *campaign, windowStart, lotteryMinTime(now, windowEnd))
 	if err != nil {
 		return nil, err
 	}
 	return &LotteryMyData{
-		Campaign:         campaign,
-		TodayTokens:      tokens,
-		ThresholdTokens:  campaign.ThresholdTokens,
-		EntryCount:       entryCount,
-		EntryStatus:      status,
-		NextDrawAt:       nextDrawAt,
-		Winners:          winners,
-		ParticipantCount: participantCount,
+		Campaign:              campaign,
+		TodayTokens:           usage.Tokens,
+		TodayCostMicrousd:     usage.CostMicrousd,
+		ThresholdTokens:       campaign.ThresholdTokens,
+		ThresholdCostMicrousd: campaign.ThresholdCostMicrousd,
+		EntryCount:            entryCount,
+		EntryStatus:           status,
+		NextDrawAt:            nextDrawAt,
+		Winners:               winners,
+		ParticipantCount:      participantCount,
 	}, nil
 }
 
@@ -415,15 +434,15 @@ func (s *LotteryCampaignService) Enroll(ctx context.Context, campaignID, userID 
 		return nil, ErrLotteryEntriesClosed
 	}
 	drawDate, windowStart, windowEnd, _ := lotteryCurrentWindow(*campaign, now)
-	tokens, err := s.repo.GetLotteryUserTokens(ctx, userID, windowStart, lotteryMinTime(now, windowEnd))
+	usage, err := s.repo.GetLotteryUserUsage(ctx, userID, windowStart, lotteryMinTime(now, windowEnd))
 	if err != nil {
 		return nil, err
 	}
-	entryCount := lotteryEntryCount(*campaign, tokens)
+	entryCount := lotteryEntryCount(*campaign, lotteryUsageValue(*campaign, usage))
 	if entryCount <= 0 {
 		return nil, ErrLotteryNotEligible
 	}
-	return s.repo.UpsertLotteryEntry(ctx, *campaign, userID, drawDate, tokens, entryCount, true)
+	return s.repo.UpsertLotteryEntry(ctx, *campaign, userID, drawDate, usage, entryCount, true)
 }
 
 func (s *LotteryCampaignService) SyncEntries(ctx context.Context, campaignID int64, drawDate time.Time, now time.Time) (int, error) {
@@ -435,17 +454,17 @@ func (s *LotteryCampaignService) SyncEntries(ctx context.Context, campaignID int
 		return 0, ErrLotteryNotPublished
 	}
 	drawDate, windowStart, windowEnd := lotterySyncWindow(*campaign, drawDate, now)
-	usages, err := s.repo.ListLotteryQualifiedUsage(ctx, windowStart, windowEnd, campaign.ThresholdTokens)
+	usages, err := s.repo.ListLotteryQualifiedUsage(ctx, *campaign, windowStart, windowEnd)
 	if err != nil {
 		return 0, err
 	}
 	count := 0
 	for _, usage := range usages {
-		entryCount := lotteryEntryCount(*campaign, usage.Tokens)
+		entryCount := lotteryEntryCount(*campaign, lotteryUsageValue(*campaign, usage))
 		if entryCount <= 0 {
 			continue
 		}
-		_, err := s.repo.UpsertLotteryEntry(ctx, *campaign, usage.UserID, drawDate, usage.Tokens, entryCount, campaign.ParticipationMode == LotteryParticipationAuto)
+		_, err := s.repo.UpsertLotteryEntry(ctx, *campaign, usage.UserID, drawDate, usage, entryCount, campaign.ParticipationMode == LotteryParticipationAuto)
 		if err != nil {
 			return count, err
 		}
@@ -658,7 +677,13 @@ func (s *LotteryCampaignService) RunDueDraws(ctx context.Context, now time.Time)
 }
 
 func validateLotteryInput(input LotteryCampaignInput) error {
-	if strings.TrimSpace(input.Name) == "" || input.ThresholdTokens <= 0 || input.EndAt.Before(input.StartAt) || input.EndAt.Equal(input.StartAt) {
+	if strings.TrimSpace(input.Name) == "" || input.EndAt.Before(input.StartAt) || input.EndAt.Equal(input.StartAt) {
+		return ErrLotteryInvalidConfig
+	}
+	if input.UsageMode == LotteryUsageToken && input.ThresholdTokens <= 0 || input.UsageMode == LotteryUsageUSD && input.ThresholdCostMicrousd <= 0 {
+		return ErrLotteryInvalidConfig
+	}
+	if input.UsageMode != LotteryUsageToken && input.UsageMode != LotteryUsageUSD {
 		return ErrLotteryInvalidConfig
 	}
 	if input.ParticipationMode != LotteryParticipationAuto && input.ParticipationMode != LotteryParticipationManual {
@@ -673,7 +698,7 @@ func validateLotteryInput(input LotteryCampaignInput) error {
 	if input.EntryMode != LotteryEntryDailyOnce && input.EntryMode != LotteryEntryStepped {
 		return ErrLotteryInvalidConfig
 	}
-	if input.EntryMode == LotteryEntryStepped && (input.EntryStepTokens <= 0 || input.MaxEntriesPerUser <= 1) {
+	if input.EntryMode == LotteryEntryStepped && (lotteryInputStep(input) <= 0 || input.MaxEntriesPerUser <= 1) {
 		return ErrLotteryInvalidConfig
 	}
 	if input.DrawScheduleType == LotteryDrawSingle && input.DrawAt == nil {
@@ -728,8 +753,19 @@ func normalizeLotteryInput(input *LotteryCampaignInput) {
 	if input == nil {
 		return
 	}
+	if input.UsageMode == "" {
+		input.UsageMode = LotteryUsageToken
+	}
+	if input.UsageMode == LotteryUsageToken {
+		input.ThresholdCostMicrousd = 0
+		input.EntryStepCostMicrousd = 0
+	} else if input.UsageMode == LotteryUsageUSD {
+		input.ThresholdTokens = 0
+		input.EntryStepTokens = 0
+	}
 	if input.EntryMode == LotteryEntryDailyOnce {
 		input.EntryStepTokens = 0
+		input.EntryStepCostMicrousd = 0
 		input.MaxEntriesPerUser = 1
 	}
 	if input.EntryMode == LotteryEntryStepped && input.MaxEntriesPerUser <= 0 {
@@ -738,17 +774,22 @@ func normalizeLotteryInput(input *LotteryCampaignInput) {
 }
 
 func lotteryEntryCount(campaign LotteryCampaign, tokens int64) int {
-	if tokens < campaign.ThresholdTokens {
+	threshold := campaign.ThresholdTokens
+	step := campaign.EntryStepTokens
+	if campaign.UsageMode == LotteryUsageUSD {
+		threshold = campaign.ThresholdCostMicrousd
+		step = campaign.EntryStepCostMicrousd
+	}
+	if tokens < threshold {
 		return 0
 	}
 	if campaign.EntryMode == LotteryEntryDailyOnce {
 		return 1
 	}
-	step := campaign.EntryStepTokens
 	if step <= 0 {
 		return 1
 	}
-	count := 1 + int((tokens-campaign.ThresholdTokens)/step)
+	count := 1 + int((tokens-threshold)/step)
 	if campaign.MaxEntriesPerUser > 0 && count > campaign.MaxEntriesPerUser {
 		return campaign.MaxEntriesPerUser
 	}
@@ -756,6 +797,20 @@ func lotteryEntryCount(campaign LotteryCampaign, tokens int64) int {
 		return 1
 	}
 	return count
+}
+
+func lotteryUsageValue(campaign LotteryCampaign, usage LotteryUsage) int64 {
+	if campaign.UsageMode == LotteryUsageUSD {
+		return usage.CostMicrousd
+	}
+	return usage.Tokens
+}
+
+func lotteryInputStep(input LotteryCampaignInput) int64 {
+	if input.UsageMode == LotteryUsageUSD {
+		return input.EntryStepCostMicrousd
+	}
+	return input.EntryStepTokens
 }
 
 func lotteryCurrentWindow(campaign LotteryCampaign, now time.Time) (time.Time, time.Time, time.Time, *time.Time) {

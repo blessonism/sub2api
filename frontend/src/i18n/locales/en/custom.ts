@@ -152,6 +152,10 @@ export default {
     "switcherLabel": "Activity switcher"
   },
   "lotteryCampaign": {
+    "todayCost": "Today's spend",
+    "cumulativeCost": "Cumulative spend",
+    "costToThreshold": "Spend {amount} more to qualify",
+    "needMoreCost": "Your spend has not reached the entry threshold yet.",
     "emptyTitle": "Next lucky draw coming soon",
     "emptyDescription": "Usage progress, draw entries, and your results will appear here once a draw is live.",
     "defaultDescription": "Hit the daily usage threshold to earn draw entries — big cash prizes up for grabs!",
@@ -410,6 +414,14 @@ export default {
       "drawAt": "Draw time",
       "dailyDrawTime": "Daily draw time",
       "thresholdTokens": "Token threshold",
+      "thresholdCost": "USD spend threshold",
+      "entryStepCost": "USD step amount",
+      "invalidThresholdCost": "The USD threshold must be positive with at most 4 decimal places.",
+      "invalidEntryStepCost": "The USD step must be positive with at most 4 decimal places.",
+      "usageModes": {
+        "token": "Token usage",
+        "usd": "USD spend"
+      },
       "entryStepTokens": "Step tokens",
       "thresholdTokenMillions": "Token threshold",
       "entryStepTokenMillions": "Step size",

@@ -146,14 +146,26 @@
 
         <section class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.lotteryCampaigns.thresholdConfiguration') }}</h3>
+          <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
+            <button v-for="mode in (['token', 'usd'] as const)" :key="mode" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium" :class="form.usage_mode === mode ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 dark:text-dark-300'" @click="form.usage_mode = mode">
+              {{ t(`admin.lotteryCampaigns.usageModes.${mode}`) }}
+            </button>
+          </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="space-y-1">
+            <label v-if="form.usage_mode === 'token'" class="space-y-1">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.thresholdTokenMillions') }}</span>
               <span class="relative block">
                 <input v-model.number="form.threshold_token_millions" class="input pr-12" type="number" min="0.01" step="0.01" inputmode="decimal" />
                 <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-gray-400">{{ t('admin.lotteryCampaigns.millionUnit') }}</span>
               </span>
               <span class="block text-xs text-gray-500 dark:text-dark-400">{{ thresholdRawTokenHint }}</span>
+            </label>
+            <label v-else class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.thresholdCost') }}</span>
+              <span class="relative block">
+                <input v-model.number="form.threshold_cost_usd" class="input pl-8" type="number" min="0.0001" step="0.0001" inputmode="decimal" />
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-gray-400">$</span>
+              </span>
             </label>
             <label class="space-y-1">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.entryMode') }}</span>
@@ -162,13 +174,20 @@
                 <option value="stepped">{{ t('admin.lotteryCampaigns.stepped') }}</option>
               </select>
             </label>
-            <label v-if="form.entry_mode === 'stepped'" class="space-y-1">
+            <label v-if="form.entry_mode === 'stepped' && form.usage_mode === 'token'" class="space-y-1">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.entryStepTokenMillions') }}</span>
               <span class="relative block">
                 <input v-model.number="form.entry_step_token_millions" class="input pr-12" type="number" min="0.01" step="0.01" inputmode="decimal" />
                 <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-gray-400">{{ t('admin.lotteryCampaigns.millionUnit') }}</span>
               </span>
               <span class="block text-xs text-gray-500 dark:text-dark-400">{{ entryStepRawTokenHint }}</span>
+            </label>
+            <label v-if="form.entry_mode === 'stepped' && form.usage_mode === 'usd'" class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.entryStepCost') }}</span>
+              <span class="relative block">
+                <input v-model.number="form.entry_step_cost_usd" class="input pl-8" type="number" min="0.0001" step="0.0001" inputmode="decimal" />
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-gray-400">$</span>
+              </span>
             </label>
             <label v-if="form.entry_mode === 'stepped'" class="space-y-1">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.maxEntries') }}</span>
@@ -320,9 +339,11 @@ import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { TOKENS_PER_MILLION, formatTokenMillions } from '@/utils/usagePricing'
 
-type LotteryCampaignFormState = Omit<LotteryCampaignRequest, 'threshold_tokens' | 'entry_step_tokens'> & {
+type LotteryCampaignFormState = Omit<LotteryCampaignRequest, 'threshold_tokens' | 'entry_step_tokens' | 'threshold_cost_microusd' | 'entry_step_cost_microusd'> & {
   threshold_token_millions: number
   entry_step_token_millions: number
+  threshold_cost_usd: number
+  entry_step_cost_usd: number
 }
 
 interface SelectedMetric {
@@ -358,8 +379,11 @@ const form = reactive<LotteryCampaignFormState>({
   draw_schedule_type: 'single',
   prize_mode: 'single',
   entry_mode: 'daily_once',
+  usage_mode: 'token',
   threshold_token_millions: 0.1,
   entry_step_token_millions: 0.1,
+  threshold_cost_usd: 1,
+  entry_step_cost_usd: 1,
   max_entries_per_user: 1,
   start_at: '',
   end_at: '',
@@ -377,11 +401,11 @@ const canFeatureSelected = computed(() => {
 const thresholdRawTokenHint = computed(() => rawTokenEquivalent(form.threshold_token_millions))
 const entryStepRawTokenHint = computed(() => rawTokenEquivalent(form.entry_step_token_millions))
 const rulePreviewText = computed(() => {
-  const threshold = formatTokenMillions(tokenMillionsToTokensForDisplay(form.threshold_token_millions))
+  const threshold = form.usage_mode === 'usd' ? formatUSD(form.threshold_cost_usd) : formatTokenMillions(tokenMillionsToTokensForDisplay(form.threshold_token_millions))
   if (form.entry_mode === 'stepped') {
     return t(form.draw_schedule_type === 'single' ? 'admin.lotteryCampaigns.oneTimeSteppedRulePreview' : 'admin.lotteryCampaigns.steppedRulePreview', {
       threshold,
-      step: formatTokenMillions(tokenMillionsToTokensForDisplay(form.entry_step_token_millions)),
+      step: form.usage_mode === 'usd' ? formatUSD(form.entry_step_cost_usd) : formatTokenMillions(tokenMillionsToTokensForDisplay(form.entry_step_token_millions)),
       max: form.max_entries_per_user,
     })
   }
@@ -394,9 +418,9 @@ const selectedMetrics = computed<SelectedMetric[]>(() => {
     { label: t('admin.lotteryCampaigns.participationMode'), value: t(`admin.lotteryCampaigns.${selected.value.participation_mode}`) },
     { label: t('admin.lotteryCampaigns.drawSchedule'), value: t(`admin.lotteryCampaigns.${selected.value.draw_schedule_type}Draw`) },
     {
-      label: t('admin.lotteryCampaigns.thresholdTokens'),
-      value: formatTokens(selected.value.threshold_tokens),
-      subValue: rawTokenText(selected.value.threshold_tokens),
+      label: t(selected.value.usage_mode === 'usd' ? 'admin.lotteryCampaigns.thresholdCost' : 'admin.lotteryCampaigns.thresholdTokens'),
+      value: formatCampaignUsage(selected.value, selected.value.usage_mode === 'usd' ? selected.value.threshold_cost_microusd : selected.value.threshold_tokens),
+      subValue: selected.value.usage_mode === 'token' ? rawTokenText(selected.value.threshold_tokens) : undefined,
     },
     { label: t('admin.lotteryCampaigns.entryMode'), value: t(`admin.lotteryCampaigns.${selected.value.entry_mode}`) },
   ]
@@ -455,7 +479,7 @@ function selectCampaign(campaign: LotteryCampaign): void {
 
 function campaignTags(campaign: LotteryCampaign): string[] {
   const tags = [
-    t('admin.lotteryCampaigns.thresholdTag', { threshold: formatTokens(campaign.threshold_tokens) }),
+    t('admin.lotteryCampaigns.thresholdTag', { threshold: formatCampaignUsage(campaign, campaign.usage_mode === 'usd' ? campaign.threshold_cost_microusd : campaign.threshold_tokens) }),
     t(`admin.lotteryCampaigns.${campaign.draw_schedule_type}Draw`),
     t(`admin.lotteryCampaigns.${campaign.prize_mode}Prize`),
   ]
@@ -598,16 +622,18 @@ async function saveDesignations(): Promise<void> {
 }
 
 function buildPayload(): LotteryCampaignRequest {
-  const { threshold_token_millions, entry_step_token_millions, ...rest } = form
+  const { threshold_token_millions, entry_step_token_millions, threshold_cost_usd, entry_step_cost_usd, ...rest } = form
   return {
     ...rest,
-    threshold_tokens: tokenMillionsToTokens(threshold_token_millions),
+    threshold_tokens: form.usage_mode === 'token' ? tokenMillionsToTokens(threshold_token_millions) : 0,
+    threshold_cost_microusd: form.usage_mode === 'usd' ? usdToMicrousd(threshold_cost_usd) : 0,
     draw_at: form.draw_schedule_type === 'single' && form.draw_at ? new Date(form.draw_at).toISOString() : null,
     daily_draw_time: form.draw_schedule_type === 'daily' ? form.daily_draw_time : '',
     start_at: new Date(form.start_at).toISOString(),
     end_at: new Date(form.end_at).toISOString(),
     max_entries_per_user: form.entry_mode === 'daily_once' ? 1 : form.max_entries_per_user,
-    entry_step_tokens: form.entry_mode === 'daily_once' ? 0 : tokenMillionsToTokens(entry_step_token_millions),
+    entry_step_tokens: form.entry_mode === 'stepped' && form.usage_mode === 'token' ? tokenMillionsToTokens(entry_step_token_millions) : 0,
+    entry_step_cost_microusd: form.entry_mode === 'stepped' && form.usage_mode === 'usd' ? usdToMicrousd(entry_step_cost_usd) : 0,
     prize_tiers: form.prize_tiers.map((tier, index) => ({ ...tier, sort_order: index + 1 })),
   }
 }
@@ -630,12 +656,20 @@ function validateForm(): boolean {
     appStore.showError(t('admin.lotteryCampaigns.invalidDailyDrawTime'))
     return false
   }
-  if (!isPositiveFiniteNumber(form.threshold_token_millions)) {
+  if (form.usage_mode === 'token' && !isPositiveFiniteNumber(form.threshold_token_millions)) {
     appStore.showError(t('admin.lotteryCampaigns.invalidThresholdTokens'))
     return false
   }
-  if (form.entry_mode === 'stepped' && !isPositiveFiniteNumber(form.entry_step_token_millions)) {
+  if (form.usage_mode === 'usd' && !isValidUSD(form.threshold_cost_usd)) {
+    appStore.showError(t('admin.lotteryCampaigns.invalidThresholdCost'))
+    return false
+  }
+  if (form.entry_mode === 'stepped' && form.usage_mode === 'token' && !isPositiveFiniteNumber(form.entry_step_token_millions)) {
     appStore.showError(t('admin.lotteryCampaigns.invalidEntryStepTokens'))
+    return false
+  }
+  if (form.entry_mode === 'stepped' && form.usage_mode === 'usd' && !isValidUSD(form.entry_step_cost_usd)) {
+    appStore.showError(t('admin.lotteryCampaigns.invalidEntryStepCost'))
     return false
   }
   return true
@@ -649,8 +683,11 @@ function resetForm(): void {
   form.draw_schedule_type = 'single'
   form.prize_mode = 'single'
   form.entry_mode = 'daily_once'
+  form.usage_mode = 'token'
   form.threshold_token_millions = 0.1
   form.entry_step_token_millions = 0.1
+  form.threshold_cost_usd = 1
+  form.entry_step_cost_usd = 1
   form.max_entries_per_user = 1
   form.start_at = ''
   form.end_at = ''
@@ -667,8 +704,11 @@ function fillForm(campaign: LotteryCampaign): void {
   form.draw_schedule_type = campaign.draw_schedule_type
   form.prize_mode = campaign.prize_mode
   form.entry_mode = campaign.entry_mode
+  form.usage_mode = campaign.usage_mode ?? 'token'
   form.threshold_token_millions = tokensToMillions(campaign.threshold_tokens)
   form.entry_step_token_millions = tokensToMillions(campaign.entry_step_tokens)
+  form.threshold_cost_usd = campaign.threshold_cost_microusd / 1_000_000
+  form.entry_step_cost_usd = campaign.entry_step_cost_microusd / 1_000_000
   form.max_entries_per_user = campaign.max_entries_per_user
   form.start_at = toDateTimeLocal(new Date(campaign.start_at))
   form.end_at = toDateTimeLocal(new Date(campaign.end_at))
@@ -710,6 +750,23 @@ function formatDateTime(value: string): string {
 
 function formatTokens(value: number): string {
   return formatTokenMillions(value)
+}
+
+function formatUSD(value: number): string {
+  return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
+}
+
+function formatCampaignUsage(campaign: LotteryCampaign, value: number): string {
+  return campaign.usage_mode === 'usd' ? formatUSD(value / 1_000_000) : formatTokens(value)
+}
+
+function usdToMicrousd(value: number): number {
+  return Math.round(value * 1_000_000)
+}
+
+function isValidUSD(value: number): boolean {
+  if (!isPositiveFiniteNumber(value) || !Number.isSafeInteger(usdToMicrousd(value))) return false
+  return Math.abs(value * 10_000 - Math.round(value * 10_000)) < 1e-7
 }
 
 function formatRawTokens(value: number): string {

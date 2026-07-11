@@ -31,7 +31,7 @@ func (r *lotteryCampaignRepository) ListLotteryCampaigns(ctx context.Context, pa
 	}
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
-	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	entry_mode, usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at,
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 ORDER BY created_at DESC, id DESC
@@ -67,12 +67,13 @@ func (r *lotteryCampaignRepository) CreateLotteryCampaign(ctx context.Context, i
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO lottery_campaigns (
 	name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode, entry_mode,
-	threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at, daily_draw_time,
+	usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at, daily_draw_time,
 	created_by, updated_by, created_at, updated_at
-) VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, NOW(), NOW())
+) VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, NOW(), NOW())
 RETURNING id`,
 		input.Name, input.Description, input.RulesText, input.ParticipationMode, input.DrawScheduleType,
-		input.PrizeMode, input.EntryMode, input.ThresholdTokens, input.EntryStepTokens, input.MaxEntriesPerUser,
+		input.PrizeMode, input.EntryMode, input.UsageMode, input.ThresholdTokens, input.EntryStepTokens,
+		input.ThresholdCostMicrousd, input.EntryStepCostMicrousd, input.MaxEntriesPerUser,
 		input.StartAt, input.EndAt, nullableTime(input.DrawAt), input.DailyDrawTime, nullableInt64(input.OperatorID),
 	).Scan(&id)
 	if err != nil {
@@ -93,15 +94,32 @@ func (r *lotteryCampaignRepository) UpdateLotteryCampaign(ctx context.Context, i
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var currentUsageMode string
+	if err := tx.QueryRowContext(ctx, `SELECT usage_mode FROM lottery_campaigns WHERE id = $1 FOR UPDATE`, id).Scan(&currentUsageMode); err != nil {
+		return nil, lotteryRepoErr(err)
+	}
+	if currentUsageMode != input.UsageMode {
+		var hasBatch bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM lottery_draw_batches WHERE campaign_id = $1)`, id).Scan(&hasBatch); err != nil {
+			return nil, err
+		}
+		if hasBatch {
+			return nil, service.ErrLotteryUsageModeLocked
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM lottery_entries WHERE campaign_id = $1`, id); err != nil {
+			return nil, err
+		}
+	}
 	res, err := tx.ExecContext(ctx, `
 UPDATE lottery_campaigns
 SET name = $2, description = $3, rules_text = $4, participation_mode = $5, draw_schedule_type = $6,
-	prize_mode = $7, entry_mode = $8, threshold_tokens = $9, entry_step_tokens = $10,
-	max_entries_per_user = $11, start_at = $12, end_at = $13, draw_at = $14, daily_draw_time = $15,
-	updated_by = $16, updated_at = NOW()
+	prize_mode = $7, entry_mode = $8, usage_mode = $9, threshold_tokens = $10, entry_step_tokens = $11,
+	threshold_cost_microusd = $12, entry_step_cost_microusd = $13, max_entries_per_user = $14,
+	start_at = $15, end_at = $16, draw_at = $17, daily_draw_time = $18, updated_by = $19, updated_at = NOW()
 WHERE id = $1`,
 		id, input.Name, input.Description, input.RulesText, input.ParticipationMode, input.DrawScheduleType,
-		input.PrizeMode, input.EntryMode, input.ThresholdTokens, input.EntryStepTokens, input.MaxEntriesPerUser,
+		input.PrizeMode, input.EntryMode, input.UsageMode, input.ThresholdTokens, input.EntryStepTokens,
+		input.ThresholdCostMicrousd, input.EntryStepCostMicrousd, input.MaxEntriesPerUser,
 		input.StartAt, input.EndAt, nullableTime(input.DrawAt), input.DailyDrawTime, nullableInt64(input.OperatorID),
 	)
 	if err != nil {
@@ -123,7 +141,7 @@ WHERE id = $1`,
 func (r *lotteryCampaignRepository) GetLotteryCampaign(ctx context.Context, id int64) (*service.LotteryCampaign, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
-	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	entry_mode, usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at,
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE id = $1`, id)
@@ -142,7 +160,7 @@ WHERE id = $1`, id)
 func (r *lotteryCampaignRepository) GetActiveLotteryCampaign(ctx context.Context, now time.Time) (*service.LotteryCampaign, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
-	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	entry_mode, usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at,
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
@@ -221,7 +239,7 @@ func (r *lotteryCampaignRepository) DeleteLotteryCampaign(ctx context.Context, i
 func (r *lotteryCampaignRepository) ListPublishedLotteryCampaigns(ctx context.Context) ([]service.LotteryCampaign, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, name, description, rules_text, status, participation_mode, draw_schedule_type, prize_mode,
-	entry_mode, threshold_tokens, entry_step_tokens, max_entries_per_user, start_at, end_at, draw_at,
+	entry_mode, usage_mode, threshold_tokens, entry_step_tokens, threshold_cost_microusd, entry_step_cost_microusd, max_entries_per_user, start_at, end_at, draw_at,
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
@@ -247,31 +265,41 @@ ORDER BY id ASC`)
 	return items, nil
 }
 
-func (r *lotteryCampaignRepository) GetLotteryUserTokens(ctx context.Context, userID int64, startAt, endAt time.Time) (int64, error) {
-	var tokens int64
+func (r *lotteryCampaignRepository) GetLotteryUserUsage(ctx context.Context, userID int64, startAt, endAt time.Time) (service.LotteryUsage, error) {
+	var usage service.LotteryUsage
 	err := r.db.QueryRowContext(ctx, `
-SELECT COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0)
+SELECT COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0),
+	FLOOR(COALESCE(SUM(actual_cost), 0) * 1000000)::BIGINT
 FROM usage_logs
-WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 AND actual_cost > 0`, userID, startAt, endAt).Scan(&tokens)
-	return tokens, err
+WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 AND actual_cost > 0`, userID, startAt, endAt).Scan(&usage.Tokens, &usage.CostMicrousd)
+	usage.UserID = userID
+	return usage, err
 }
 
-func (r *lotteryCampaignRepository) ListLotteryQualifiedUsage(ctx context.Context, startAt, endAt time.Time, minTokens int64) ([]service.LotteryQualifiedUsage, error) {
-	rows, err := r.db.QueryContext(ctx, `
-SELECT user_id, COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS tokens
+func (r *lotteryCampaignRepository) ListLotteryQualifiedUsage(ctx context.Context, campaign service.LotteryCampaign, startAt, endAt time.Time) ([]service.LotteryUsage, error) {
+	metric := "COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0)"
+	threshold := campaign.ThresholdTokens
+	if campaign.UsageMode == service.LotteryUsageUSD {
+		metric = "FLOOR(COALESCE(SUM(actual_cost), 0) * 1000000)::BIGINT"
+		threshold = campaign.ThresholdCostMicrousd
+	}
+	query := fmt.Sprintf(`
+SELECT user_id, COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0),
+	FLOOR(COALESCE(SUM(actual_cost), 0) * 1000000)::BIGINT
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2 AND actual_cost > 0
 GROUP BY user_id
-HAVING COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) >= $3
-ORDER BY user_id ASC`, startAt, endAt, minTokens)
+HAVING %s >= $3
+ORDER BY user_id ASC`, metric)
+	rows, err := r.db.QueryContext(ctx, query, startAt, endAt, threshold)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]service.LotteryQualifiedUsage, 0)
+	out := make([]service.LotteryUsage, 0)
 	for rows.Next() {
-		var item service.LotteryQualifiedUsage
-		if err := rows.Scan(&item.UserID, &item.Tokens); err != nil {
+		var item service.LotteryUsage
+		if err := rows.Scan(&item.UserID, &item.Tokens, &item.CostMicrousd); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -279,16 +307,17 @@ ORDER BY user_id ASC`, startAt, endAt, minTokens)
 	return out, rows.Err()
 }
 
-func (r *lotteryCampaignRepository) UpsertLotteryEntry(ctx context.Context, campaign service.LotteryCampaign, userID int64, entryDate time.Time, tokens int64, entryCount int, enrolled bool) (*service.LotteryEntry, error) {
+func (r *lotteryCampaignRepository) UpsertLotteryEntry(ctx context.Context, campaign service.LotteryCampaign, userID int64, entryDate time.Time, usage service.LotteryUsage, entryCount int, enrolled bool) (*service.LotteryEntry, error) {
 	status := service.LotteryEntryEligible
 	if enrolled {
 		status = service.LotteryEntryEnrolled
 	}
 	row := r.db.QueryRowContext(ctx, `
-INSERT INTO lottery_entries (campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at)
-VALUES ($1, $2, $3::date, $4, $5, $6, CASE WHEN $6 = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
+INSERT INTO lottery_entries (campaign_id, user_id, entry_date, tokens, cost_microusd, entry_count, status, enrolled_at, created_at, updated_at)
+VALUES ($1, $2, $3::date, $4, $5, $6, $7::varchar, CASE WHEN $7::varchar = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
 ON CONFLICT (campaign_id, user_id, entry_date) DO UPDATE
-SET tokens = EXCLUDED.tokens,
+	SET tokens = EXCLUDED.tokens,
+	cost_microusd = EXCLUDED.cost_microusd,
 	entry_count = EXCLUDED.entry_count,
 	status = CASE WHEN lottery_entries.status = 'enrolled' THEN 'enrolled' ELSE EXCLUDED.status END,
 	enrolled_at = CASE
@@ -297,14 +326,14 @@ SET tokens = EXCLUDED.tokens,
 		ELSE NULL
 	END,
 	updated_at = NOW()
-RETURNING id, campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at`,
-		campaign.ID, userID, entryDate, tokens, entryCount, status)
+RETURNING id, campaign_id, user_id, entry_date, tokens, cost_microusd, entry_count, status, enrolled_at, created_at, updated_at`,
+		campaign.ID, userID, entryDate, usage.Tokens, usage.CostMicrousd, entryCount, status)
 	return scanLotteryEntry(row)
 }
 
 func (r *lotteryCampaignRepository) GetLotteryEntry(ctx context.Context, campaignID, userID int64, entryDate time.Time) (*service.LotteryEntry, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at
+SELECT id, campaign_id, user_id, entry_date, tokens, cost_microusd, entry_count, status, enrolled_at, created_at, updated_at
 FROM lottery_entries
 WHERE campaign_id = $1 AND user_id = $2 AND entry_date = $3::date`, campaignID, userID, entryDate)
 	entry, err := scanLotteryEntry(row)
@@ -316,7 +345,7 @@ WHERE campaign_id = $1 AND user_id = $2 AND entry_date = $3::date`, campaignID, 
 
 func (r *lotteryCampaignRepository) ListLotteryDrawCandidates(ctx context.Context, campaignID int64, entryDate time.Time) ([]service.LotteryDrawCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT user_id, entry_date, tokens, entry_count
+SELECT user_id, entry_date, tokens, cost_microusd, entry_count
 FROM lottery_entries
 WHERE campaign_id = $1 AND entry_date = $2::date AND status = 'enrolled'
 ORDER BY user_id ASC`, campaignID, entryDate)
@@ -327,7 +356,7 @@ ORDER BY user_id ASC`, campaignID, entryDate)
 	out := make([]service.LotteryDrawCandidate, 0)
 	for rows.Next() {
 		var item service.LotteryDrawCandidate
-		if err := rows.Scan(&item.UserID, &item.EntryDate, &item.Tokens, &item.EntryCount); err != nil {
+		if err := rows.Scan(&item.UserID, &item.EntryDate, &item.Tokens, &item.CostMicrousd, &item.EntryCount); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -337,16 +366,23 @@ ORDER BY user_id ASC`, campaignID, entryDate)
 
 // CountLotteryQualifiedUsers 统计当前开奖窗口内用量已达门槛的去重用户数，
 // 直接以 usage_logs 为准，不依赖懒创建的 lottery_entries，因此开奖前也能反映真实可参与人数。
-func (r *lotteryCampaignRepository) CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error) {
+func (r *lotteryCampaignRepository) CountLotteryQualifiedUsers(ctx context.Context, campaign service.LotteryCampaign, startAt, endAt time.Time) (int64, error) {
+	metric := "COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0)"
+	threshold := campaign.ThresholdTokens
+	if campaign.UsageMode == service.LotteryUsageUSD {
+		metric = "FLOOR(COALESCE(SUM(actual_cost), 0) * 1000000)::BIGINT"
+		threshold = campaign.ThresholdCostMicrousd
+	}
 	var count int64
-	if err := r.db.QueryRowContext(ctx, `
+	query := fmt.Sprintf(`
 SELECT COUNT(*) FROM (
 	SELECT user_id
 	FROM usage_logs
 	WHERE created_at >= $1 AND created_at < $2 AND actual_cost > 0
 	GROUP BY user_id
-	HAVING COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) >= $3
-) AS qualified`, startAt, endAt, minTokens).Scan(&count); err != nil {
+	HAVING %s >= $3
+) AS qualified`, metric)
+	if err := r.db.QueryRowContext(ctx, query, startAt, endAt, threshold).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -621,11 +657,11 @@ LIMIT $2`, campaignID, limit)
 
 func (r *lotteryCampaignRepository) ListLotteryDesignationCandidates(ctx context.Context, campaignID int64, drawDate time.Time) ([]service.LotteryDesignationCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT e.user_id, COALESCE(u.email, ''), e.entry_count, e.tokens
+SELECT e.user_id, COALESCE(u.email, ''), e.entry_count, e.tokens, e.cost_microusd
 FROM lottery_entries e
 LEFT JOIN users u ON u.id = e.user_id
 WHERE e.campaign_id = $1 AND e.entry_date = $2::date AND e.status = 'enrolled'
-ORDER BY e.tokens DESC, e.user_id ASC`, campaignID, drawDate)
+ORDER BY e.entry_count DESC, e.user_id ASC`, campaignID, drawDate)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +670,7 @@ ORDER BY e.tokens DESC, e.user_id ASC`, campaignID, drawDate)
 	for rows.Next() {
 		var email string
 		var item service.LotteryDesignationCandidate
-		if err := rows.Scan(&item.UserID, &email, &item.EntryCount, &item.Tokens); err != nil {
+		if err := rows.Scan(&item.UserID, &email, &item.EntryCount, &item.Tokens, &item.CostMicrousd); err != nil {
 			return nil, err
 		}
 		item.MaskedEmail = maskEmail(email)
@@ -750,8 +786,8 @@ func scanLotteryCampaign(scanner lotteryScanner) (*service.LotteryCampaign, erro
 	var createdBy, updatedBy sql.NullInt64
 	if err := scanner.Scan(
 		&item.ID, &item.Name, &item.Description, &item.RulesText, &item.Status, &item.ParticipationMode,
-		&item.DrawScheduleType, &item.PrizeMode, &item.EntryMode, &item.ThresholdTokens, &item.EntryStepTokens,
-		&item.MaxEntriesPerUser, &item.StartAt, &item.EndAt, &drawAt, &item.DailyDrawTime,
+		&item.DrawScheduleType, &item.PrizeMode, &item.EntryMode, &item.UsageMode, &item.ThresholdTokens, &item.EntryStepTokens,
+		&item.ThresholdCostMicrousd, &item.EntryStepCostMicrousd, &item.MaxEntriesPerUser, &item.StartAt, &item.EndAt, &drawAt, &item.DailyDrawTime,
 		&createdBy, &updatedBy, &item.CreatedAt, &item.UpdatedAt, &item.IsFeatured,
 	); err != nil {
 		return nil, err
@@ -767,7 +803,7 @@ func scanLotteryCampaign(scanner lotteryScanner) (*service.LotteryCampaign, erro
 func scanLotteryEntry(scanner lotteryScanner) (*service.LotteryEntry, error) {
 	var item service.LotteryEntry
 	var enrolledAt sql.NullTime
-	if err := scanner.Scan(&item.ID, &item.CampaignID, &item.UserID, &item.EntryDate, &item.Tokens, &item.EntryCount, &item.Status, &enrolledAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := scanner.Scan(&item.ID, &item.CampaignID, &item.UserID, &item.EntryDate, &item.Tokens, &item.CostMicrousd, &item.EntryCount, &item.Status, &enrolledAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if enrolledAt.Valid {

@@ -152,6 +152,10 @@ export default {
     "switcherLabel": "活动切换"
   },
   "lotteryCampaign": {
+    "todayCost": "今日消费",
+    "cumulativeCost": "累计消费",
+    "costToThreshold": "再消费 {amount} 即可达标",
+    "needMoreCost": "当前消费尚未达到参与门槛。",
     "emptyTitle": "下一期幸运抽奖即将开启",
     "emptyDescription": "活动上线后，用量进度、抽奖资格和中奖结果将第一时间呈现在这里。",
     "defaultDescription": "每日用量达标，即可获得抽奖机会，丰厚现金奖励等你赢取！",
@@ -410,6 +414,14 @@ export default {
       "drawAt": "开奖时间",
       "dailyDrawTime": "每日开奖时间",
       "thresholdTokens": "Token 门槛",
+      "thresholdCost": "美元消费门槛",
+      "entryStepCost": "阶梯步长（美元）",
+      "invalidThresholdCost": "美元消费门槛必须大于 0，且最多 4 位小数。",
+      "invalidEntryStepCost": "美元阶梯步长必须大于 0，且最多 4 位小数。",
+      "usageModes": {
+        "token": "按 Token 用量",
+        "usd": "按美元消费"
+      },
       "entryStepTokens": "阶梯步长 Token",
       "thresholdTokenMillions": "Token 门槛",
       "entryStepTokenMillions": "阶梯步长",

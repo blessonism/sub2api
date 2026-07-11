@@ -18,6 +18,8 @@ const messages: Record<string, string> = {
   'lotteryCampaign.pendingDraw': 'Pending draw',
   'lotteryCampaign.thresholdProgressPercent': '{percent}% complete',
   'lotteryCampaign.tokensToThreshold': '{amount} remaining to qualify',
+  'lotteryCampaign.costToThreshold': '{amount} spend remaining to qualify',
+  'lotteryCampaign.todayCost': "Today's spend",
   'lotteryCampaign.entryStatuses.enrolled': 'In pool',
 }
 
@@ -69,8 +71,11 @@ const CAMPAIGN = {
   draw_schedule_type: 'daily',
   prize_mode: 'multi',
   entry_mode: 'stepped',
+  usage_mode: 'token',
   threshold_tokens: 1_000_000,
   entry_step_tokens: 500_000,
+  threshold_cost_microusd: 0,
+  entry_step_cost_microusd: 0,
   max_entries_per_user: 5,
   start_at: '2026-07-04T00:00:00.000Z',
   end_at: '2026-07-30T00:00:00.000Z',
@@ -137,6 +142,35 @@ describe('LotteryCampaignActivity', () => {
     expect(wrapper.text()).toContain('Lottery entries')
     expect(wrapper.text()).toContain('3 / 5')
     expect(wrapper.text()).toContain('Use 0.50M more to unlock the next entry')
+  })
+
+  it('renders USD progress and ladder amounts for spend-based campaigns', async () => {
+    const campaign = {
+      ...CAMPAIGN,
+      usage_mode: 'usd',
+      threshold_tokens: 0,
+      entry_step_tokens: 0,
+      threshold_cost_microusd: 1_000_000,
+      entry_step_cost_microusd: 500_000,
+    }
+    getActiveLotteryCampaign.mockResolvedValue({ campaign })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign,
+      today_tokens: 0,
+      today_cost_microusd: 2_000_000,
+      threshold_tokens: 0,
+      threshold_cost_microusd: 1_000_000,
+      entry_count: 3,
+      entry_status: 'enrolled',
+      next_draw_at: '2026-07-31T20:00:00.000Z',
+      winners: [],
+    })
+
+    const wrapper = mountActivity()
+    await flushPromises()
+    expect(wrapper.text()).toContain("Today's spend")
+    expect(wrapper.text()).toContain('$2.00')
+    expect(wrapper.text()).toContain('Use $0.50 more to unlock the next entry')
   })
 
   it('renders exactly one threshold progress bar after dedup', async () => {

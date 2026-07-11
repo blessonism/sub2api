@@ -20,8 +20,11 @@ export interface LotteryCampaign {
   draw_schedule_type: 'single' | 'daily'
   prize_mode: 'single' | 'multi'
   entry_mode: 'daily_once' | 'stepped'
+  usage_mode: 'token' | 'usd'
   threshold_tokens: number
   entry_step_tokens: number
+  threshold_cost_microusd: number
+  entry_step_cost_microusd: number
   max_entries_per_user: number
   start_at: string
   end_at: string
@@ -56,7 +59,9 @@ export interface LotteryWinner {
 export interface LotteryMyData {
   campaign: LotteryCampaign
   today_tokens: number
+  today_cost_microusd: number
   threshold_tokens: number
+  threshold_cost_microusd: number
   entry_count: number
   entry_status: string
   next_draw_at?: string | null
