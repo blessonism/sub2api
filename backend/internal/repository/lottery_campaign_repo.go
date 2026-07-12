@@ -350,7 +350,7 @@ WHERE campaign_id = $1 AND entry_date = $2::date AND status = 'enrolled'`, campa
 
 func (r *lotteryCampaignRepository) ListLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) ([]service.LotteryParticipant, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT COALESCE(u.email, '')
+SELECT COALESCE(u.email, ''), e.entry_count
 FROM lottery_entries e
 LEFT JOIN users u ON u.id = e.user_id
 WHERE e.campaign_id = $1 AND e.entry_date = $2::date AND e.status = 'enrolled'
@@ -362,10 +362,11 @@ ORDER BY e.enrolled_at ASC NULLS LAST, e.user_id ASC`, campaignID, entryDate)
 	participants := make([]service.LotteryParticipant, 0)
 	for rows.Next() {
 		var email string
-		if err := rows.Scan(&email); err != nil {
+		var entryCount int
+		if err := rows.Scan(&email, &entryCount); err != nil {
 			return nil, err
 		}
-		participants = append(participants, service.LotteryParticipant{MaskedEmail: maskLotteryParticipantEmail(email)})
+		participants = append(participants, service.LotteryParticipant{MaskedEmail: maskLotteryParticipantEmail(email), EntryCount: entryCount})
 	}
 	return participants, rows.Err()
 }
@@ -373,13 +374,17 @@ ORDER BY e.enrolled_at ASC NULLS LAST, e.user_id ASC`, campaignID, entryDate)
 func maskLotteryParticipantEmail(email string) string {
 	email = strings.TrimSpace(email)
 	at := strings.IndexByte(email, '@')
-	if at <= 1 {
+	if at <= 0 {
 		if email == "" {
 			return ""
 		}
 		return "****"
 	}
-	return email[:1] + "****" + email[at:]
+	local := []rune(email[:at])
+	if len(local) <= 4 {
+		return string(local[:1]) + "****" + email[at:]
+	}
+	return string(local[:3]) + "****" + string(local[len(local)-2:]) + email[at:]
 }
 
 func (r *lotteryCampaignRepository) GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*service.LotteryDrawBatch, error) {
