@@ -21,6 +21,19 @@ type settingHandlerRepoStub struct {
 	lastUpdates map[string]string
 }
 
+func completeSettingsReplaceBody(body map[string]any) map[string]any {
+	completed := make(map[string]any, len(body)+len(requiredSettingsReplaceFields()))
+	for key, value := range body {
+		completed[key] = value
+	}
+	for _, field := range requiredSettingsReplaceFields() {
+		if _, ok := completed[field]; !ok {
+			completed[field] = nil
+		}
+	}
+	return completed
+}
+
 func (s *settingHandlerRepoStub) Get(ctx context.Context, key string) (*service.Setting, error) {
 	panic("unexpected Get call")
 }
@@ -185,13 +198,14 @@ func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *tes
 		"promo_code_enabled":                true,
 		"auth_source_default_email_balance": 12.75,
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -229,13 +243,14 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 		"openai_advanced_scheduler_enabled":                       true,
 		"openai_advanced_scheduler_subscription_priority_enabled": true,
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -276,13 +291,14 @@ func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodS
 	body := map[string]any{
 		"promo_code_enabled": false,
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -325,13 +341,14 @@ func TestSettingHandler_UpdateSettings_PersistsExplicitFalseOIDCCompatibilityFla
 		"oidc_connect_validate_id_token":    false,
 		"oidc_connect_allowed_signing_algs": "",
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -401,13 +418,14 @@ func TestSettingHandler_UpdateSettings_DoesNotSolidifyImplicitOIDCSecurityDefaul
 		"promo_code_enabled":   true,
 		"oidc_connect_enabled": true,
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -430,13 +448,14 @@ func TestSettingHandler_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(
 		"promo_code_enabled":                   true,
 		"payment_visible_method_alipay_source": "bogus",
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -464,13 +483,14 @@ func TestSettingHandler_UpdateSettings_DoesNotPersistPartialSystemSettingsWhenAu
 		"promo_code_enabled":                true,
 		"auth_source_default_email_balance": 12.75,
 	}
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 

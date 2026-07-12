@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"后端接口与回归测试要求"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"前端 API 类型契约"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"设置写入跨层数据流"}
+{"file":".trellis/spec/guides/downstream-fork-workflow.md","reason":"下游 fork 分支与部署边界"}
