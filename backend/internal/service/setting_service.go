@@ -103,6 +103,12 @@ type AuthSourceDefaultSettings struct {
 	ForceEmailOnThirdPartySignup bool
 }
 
+// TokenLeaderboardSettings 是排行榜页面可独立修改的窄设置集合。
+type TokenLeaderboardSettings struct {
+	CommonGroupID int64  `json:"token_leaderboard_common_group_id"`
+	TierTooltip   string `json:"token_leaderboard_tier_tooltip"`
+}
+
 type authSourceDefaultKeySet struct {
 	// source 是 auth source 标识（如 "email"、"github"），仅用于 parse 时
 	// slog.Warn 诊断输出，不再参与 key 拼接（platformQuotas 字段已存完整 key）。
