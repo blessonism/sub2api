@@ -1130,6 +1130,7 @@ export interface CreateAccountRequest {
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   group_ids?: number[]
+  account_collection_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
@@ -1140,6 +1141,7 @@ export interface UpdateAccountRequest {
   notes?: string | null
   type?: AccountType
   credentials?: Record<string, unknown>
+  account_collection_ids?: number[]
   extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number

@@ -381,6 +381,20 @@ export default {
     "retry": "Retry"
   },
   "admin": {
+    "accounts": {
+      "accountCollections": {
+        "all": "All accounts",
+        "label": "Account collections",
+        "manage": "Manage account collections",
+        "namePlaceholder": "Collection name",
+        "empty": "No account collections",
+        "deleteConfirm": "Delete account collection \"{name}\"? Accounts will not be deleted.",
+        "batchTitle": "Account collections",
+        "addTo": "Add to collections",
+        "removeFrom": "Remove from collections",
+        "batchSuccess": "Account collections updated"
+      }
+    },
     "activities": {
       "title": "Activity Center",
       "description": "Unified home for invite campaign management and future promotional activities",

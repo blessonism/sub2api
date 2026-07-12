@@ -2456,6 +2456,14 @@
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
       />
+      <div v-if="accountCollections.length" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.accountCollections.label') }}</label>
+        <select v-model="form.account_collection_ids" multiple class="input min-h-28">
+          <option v-for="collection in accountCollections" :key="collection.id" :value="collection.id">
+            {{ collection.name }}
+          </option>
+        </select>
+      </div>
 
     </form>
 
@@ -2573,9 +2581,10 @@ interface Props {
   account: Account | null
   proxies: Proxy[]
   groups: AdminGroup[]
+  accountCollections?: Array<{ id: number; name: string }>
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { accountCollections: () => [] })
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -3063,6 +3072,7 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
+  account_collection_ids: [] as number[],
   expires_at: null as number | null
 })
 
@@ -3154,6 +3164,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     ? newAccount.status
     : 'active'
   form.group_ids = newAccount.group_ids || []
+  form.account_collection_ids = []
   form.expires_at = newAccount.expires_at ?? null
 
   // Load intercept warmup requests setting (applies to all account types)
@@ -3443,13 +3454,19 @@ async function loadTLSProfiles() {
 
 watch(
   [() => props.show, () => props.account],
-  ([show, newAccount], [wasShow, previousAccount]) => {
+  async ([show, newAccount], [wasShow, previousAccount]) => {
     if (!show || !newAccount) {
       return
     }
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+      try {
+        const collections = await adminAPI.accountCollections.listForAccount(newAccount.id)
+        form.account_collection_ids = collections.map(collection => collection.id)
+      } catch {
+        form.account_collection_ids = []
+      }
     }
   },
   { immediate: true }
