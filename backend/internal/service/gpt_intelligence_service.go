@@ -4,12 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +17,7 @@ import (
 
 const (
 	gptIntelligenceSourceURL      = "https://codexradar.com/"
+	gptIntelligenceDataURL        = "https://codexradar.com/current.json"
 	gptIntelligenceSourceLabel    = "Codex 雷达"
 	gptIntelligenceFetchTimeout   = 8 * time.Second
 	gptIntelligenceCacheTTL       = time.Hour
@@ -35,9 +33,6 @@ var (
 		"GPT_INTELLIGENCE_TEMPLATE_INVALID",
 		"GPT intelligence template payload is invalid",
 	)
-
-	gptIntelligenceTitleRe = regexp.MustCompile(`<title>\s*([^<]*IQ指数[^<]*)\s*</title>`)
-	gptIntelligenceRunRe   = regexp.MustCompile(`^([0-9]{1,2}\.[0-9]{1,2}(?:_(?:am|pm))?)\s+(.+?)\s+(xhigh|high|medium|low):\s*IQ指数\s*([0-9]+(?:\.[0-9]+)?),\s*([0-9]+)/([0-9]+),\s*费用\s*\$([0-9]+(?:\.[0-9]+)?),\s*耗时\s*([0-9]+)分钟`)
 )
 
 // GptIntelligenceService 从公开页面采集 GPT 智力检测数据，并归一化为前端快照结构。
@@ -124,6 +119,27 @@ type GptIntelligenceCollectionMetadata struct {
 	RunCount    int    `json:"run_count"`
 	Series      int    `json:"series"`
 	Attribution string `json:"attribution"`
+}
+
+type gptIntelligencePublicPayload struct {
+	MonitoredAt string                        `json:"monitored_at"`
+	Timezone    string                        `json:"timezone"`
+	ModelIQ     *gptIntelligencePublicModelIQ `json:"model_iq"`
+}
+
+type gptIntelligencePublicModelIQ struct {
+	Latest      *GptIntelligenceRun                        `json:"latest"`
+	RecentDays  []GptIntelligenceRun                       `json:"recent_days"`
+	Comparisons map[string]gptIntelligencePublicComparison `json:"comparisons"`
+	QuotaRadar  *GptIntelligenceQuotaRadar                 `json:"quota_radar"`
+}
+
+type gptIntelligencePublicComparison struct {
+	Label           string               `json:"label"`
+	Model           string               `json:"model"`
+	ReasoningEffort string               `json:"reasoning_effort"`
+	Latest          *GptIntelligenceRun  `json:"latest"`
+	RecentDays      []GptIntelligenceRun `json:"recent_days"`
 }
 
 type GptIntelligencePromptTemplate struct {
@@ -284,11 +300,11 @@ func (s *GptIntelligenceService) cachedSnapshot() *GptIntelligenceSnapshot {
 }
 
 func (s *GptIntelligenceService) fetchSnapshot(ctx context.Context) (*GptIntelligenceSnapshot, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gptIntelligenceSourceURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gptIntelligenceDataURL, nil)
 	if err != nil {
 		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
 	}
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "sub2api-gpt-intelligence/1.0")
 
 	res, err := s.client.Do(req)
@@ -306,7 +322,7 @@ func (s *GptIntelligenceService) fetchSnapshot(ctx context.Context) (*GptIntelli
 		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
 	}
 
-	snap, err := ParseGptIntelligenceHTML(string(body), s.now())
+	snap, err := ParseGptIntelligenceJSON(body, s.now())
 	if err != nil {
 		return nil, err
 	}
@@ -319,260 +335,114 @@ func (s *GptIntelligenceService) fetchSnapshot(ctx context.Context) (*GptIntelli
 	return cloneGptIntelligenceSnapshot(snap), nil
 }
 
-// ParseGptIntelligenceHTML 从公开首页 HTML 的 IQ 图表 title 文本中提取快照。
-func ParseGptIntelligenceHTML(rawHTML string, collectedAt time.Time) (*GptIntelligenceSnapshot, error) {
-	matches := gptIntelligenceTitleRe.FindAllStringSubmatch(rawHTML, -1)
-	if len(matches) == 0 {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("model IQ titles not found"))
+// ParseGptIntelligenceJSON 将 Codex 雷达公开摘要转换为站内稳定快照契约。
+func ParseGptIntelligenceJSON(rawJSON []byte, collectedAt time.Time) (*GptIntelligenceSnapshot, error) {
+	var payload gptIntelligencePublicPayload
+	if err := json.Unmarshal(rawJSON, &payload); err != nil {
+		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("decode public summary: %w", err))
+	}
+	if payload.ModelIQ == nil || payload.ModelIQ.Latest == nil {
+		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("model_iq latest run not found"))
 	}
 
-	seriesByKey := make(map[string][]GptIntelligenceRun)
-	seriesOrder := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		run, ok := parseGptIntelligenceTitle(match[1], collectedAt)
-		if !ok {
-			continue
-		}
-		key := gptIntelligenceSeriesKey(run.Model, run.ReasoningEffort)
-		if _, exists := seriesByKey[key]; !exists {
-			seriesOrder = append(seriesOrder, key)
-		}
-		dedupeKey := key + "|" + run.Date
-		if _, exists := seen[dedupeKey]; exists {
-			continue
-		}
-		seen[dedupeKey] = struct{}{}
-		seriesByKey[key] = append(seriesByKey[key], run)
+	latest := cloneGptIntelligenceRunPtr(payload.ModelIQ.Latest)
+	if latest.Date == "" || latest.Model == "" {
+		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("model_iq latest run is incomplete"))
 	}
-	if len(seriesByKey) == 0 {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("model IQ titles could not be parsed"))
-	}
-
-	keys := make([]string, 0, len(seriesByKey))
-	for key := range seriesByKey {
-		sortGptIntelligenceRuns(seriesByKey[key])
-	}
-	keys = stableGptIntelligenceSeriesOrder(seriesOrder, seriesByKey)
-
-	primaryKey := choosePrimaryGptIntelligenceSeries(keys, seriesByKey)
-	primaryRuns := seriesByKey[primaryKey]
-	latest := latestGptIntelligenceRun(primaryRuns)
-
-	comparisons := make([]GptIntelligenceComparison, 0, len(keys)-1)
-	for _, key := range keys {
-		if key == primaryKey {
-			continue
-		}
-		runs := seriesByKey[key]
-		if len(runs) == 0 {
-			continue
-		}
-		latestRun := latestGptIntelligenceRun(runs)
-		comparisons = append(comparisons, GptIntelligenceComparison{
-			Key:             key,
-			Label:           buildGptIntelligenceSeriesLabel(latestRun.Model, latestRun.ReasoningEffort),
-			Model:           latestRun.Model,
-			ReasoningEffort: latestRun.ReasoningEffort,
-			Latest:          cloneGptIntelligenceRunPtr(&latestRun),
-			RecentDays:      cloneGptIntelligenceRuns(runs),
-		})
-	}
+	primaryRuns := normalizeGptIntelligenceRuns(payload.ModelIQ.RecentDays, latest.Model, latest.ReasoningEffort, latest)
+	comparisons, runCount := normalizeGptIntelligenceComparisons(payload.ModelIQ.Comparisons)
+	runCount += len(primaryRuns)
 
 	now := collectedAt.UTC()
+	monitoredAt := strings.TrimSpace(payload.MonitoredAt)
+	if monitoredAt == "" {
+		monitoredAt = now.Format(time.RFC3339)
+	}
+	timezone := strings.TrimSpace(payload.Timezone)
+	if timezone == "" {
+		timezone = "Asia/Shanghai"
+	}
 	snap := &GptIntelligenceSnapshot{
-		MonitoredAt: now.Format(time.RFC3339),
-		Timezone:    "Asia/Shanghai",
-		Latest:      cloneGptIntelligenceRunPtr(&latest),
-		RecentDays:  cloneGptIntelligenceRuns(primaryRuns),
+		MonitoredAt: monitoredAt,
+		Timezone:    timezone,
+		Latest:      latest,
+		RecentDays:  primaryRuns,
 		Comparisons: comparisons,
-		QuotaRadar:  nil,
+		QuotaRadar:  payload.ModelIQ.QuotaRadar,
 		Templates:   DefaultGptIntelligencePromptTemplates(),
 		Source: GptIntelligenceSource{
 			Name: gptIntelligenceSourceLabel,
 			URL:  gptIntelligenceSourceURL,
 		},
 		Metadata: GptIntelligenceCollectionMetadata{
-			Method:      "public_html_title",
+			Method:      "public_json_current",
 			CachedAt:    now.Format(time.RFC3339),
 			CacheTTL:    int64(gptIntelligenceCacheTTL / time.Second),
-			RunCount:    len(seen),
-			Series:      len(seriesByKey),
-			Attribution: "数据来自 Codex 雷达 codexradar.com 公开页面",
+			RunCount:    runCount,
+			Series:      1 + len(comparisons),
+			Attribution: "数据来自 Codex 雷达 codexradar.com",
 		},
 	}
 	return snap, nil
 }
 
-func parseGptIntelligenceTitle(raw string, collectedAt time.Time) (GptIntelligenceRun, bool) {
-	title := strings.TrimSpace(html.UnescapeString(raw))
-	match := gptIntelligenceRunRe.FindStringSubmatch(title)
-	if len(match) != 9 {
-		return GptIntelligenceRun{}, false
+func normalizeGptIntelligenceComparisons(source map[string]gptIntelligencePublicComparison) ([]GptIntelligenceComparison, int) {
+	keys := make([]string, 0, len(source))
+	for key := range source {
+		keys = append(keys, key)
 	}
+	sort.Strings(keys)
 
-	score, err := strconv.ParseFloat(match[4], 64)
-	if err != nil {
-		return GptIntelligenceRun{}, false
-	}
-	passed, err := strconv.ParseFloat(match[5], 64)
-	if err != nil {
-		return GptIntelligenceRun{}, false
-	}
-	tasks, err := strconv.ParseFloat(match[6], 64)
-	if err != nil {
-		return GptIntelligenceRun{}, false
-	}
-	cost, err := strconv.ParseFloat(match[7], 64)
-	if err != nil {
-		return GptIntelligenceRun{}, false
-	}
-	minutes, err := strconv.ParseFloat(match[8], 64)
-	if err != nil {
-		return GptIntelligenceRun{}, false
-	}
-
-	date := normalizeGptIntelligenceDate(match[1], collectedAt)
-	model := strings.TrimSpace(match[2])
-	effort := strings.TrimSpace(match[3])
-	wallSeconds := minutes * 60
-	return GptIntelligenceRun{
-		Date:            date,
-		Score:           float64Ptr(score),
-		Status:          statusFromGptIntelligenceScore(score),
-		Passed:          float64Ptr(passed),
-		Tasks:           float64Ptr(tasks),
-		Invalid:         nil,
-		TotalTokens:     nil,
-		OutputTokens:    nil,
-		WallSeconds:     float64Ptr(wallSeconds),
-		WallTimeHuman:   fmt.Sprintf("%.0f分钟", minutes),
-		Model:           model,
-		ReasoningEffort: effort,
-		CostUSD:         float64Ptr(cost),
-	}, true
-}
-
-func normalizeGptIntelligenceDate(raw string, now time.Time) string {
-	parts := strings.Split(raw, "_")
-	md := strings.Split(parts[0], ".")
-	if len(md) != 2 {
-		return raw
-	}
-	month, errM := strconv.Atoi(md[0])
-	day, errD := strconv.Atoi(md[1])
-	if errM != nil || errD != nil {
-		return raw
-	}
-	year := now.In(time.FixedZone("CST", 8*60*60)).Year()
-	date := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
-	if len(parts) > 1 && parts[1] != "" {
-		date += "-" + parts[1]
-	}
-	return date
-}
-
-func statusFromGptIntelligenceScore(score float64) string {
-	switch {
-	case score >= 100:
-		return "green"
-	case score >= 75:
-		return "yellow"
-	default:
-		return "red"
-	}
-}
-
-func choosePrimaryGptIntelligenceSeries(keys []string, seriesByKey map[string][]GptIntelligenceRun) string {
-	for _, preferred := range []string{"gpt_55_xhigh", "gpt_5_5_xhigh"} {
-		for _, key := range keys {
-			if key == preferred {
-				return key
-			}
-		}
-	}
-	bestKey := keys[0]
-	bestRuns := len(seriesByKey[bestKey])
-	for _, key := range keys[1:] {
-		if count := len(seriesByKey[key]); count > bestRuns {
-			bestKey = key
-			bestRuns = count
-		}
-	}
-	return bestKey
-}
-
-func stableGptIntelligenceSeriesOrder(order []string, seriesByKey map[string][]GptIntelligenceRun) []string {
-	keys := make([]string, 0, len(seriesByKey))
-	seen := make(map[string]struct{}, len(seriesByKey))
-	for _, key := range order {
-		if _, ok := seriesByKey[key]; !ok {
+	comparisons := make([]GptIntelligenceComparison, 0, len(keys))
+	runCount := 0
+	for _, key := range keys {
+		item := source[key]
+		latest := cloneGptIntelligenceRunPtr(item.Latest)
+		if latest == nil && len(item.RecentDays) == 0 {
 			continue
 		}
-		keys = append(keys, key)
-		seen[key] = struct{}{}
+		if latest != nil {
+			fillGptIntelligenceRunSeries(latest, item.Model, item.ReasoningEffort)
+		}
+		runs := normalizeGptIntelligenceRuns(item.RecentDays, item.Model, item.ReasoningEffort, latest)
+		if latest == nil {
+			latest = cloneGptIntelligenceRunPtr(&runs[len(runs)-1])
+		}
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			label = strings.TrimSpace(item.Model + " " + item.ReasoningEffort)
+		}
+		comparisons = append(comparisons, GptIntelligenceComparison{
+			Key: key, Label: label, Model: item.Model, ReasoningEffort: item.ReasoningEffort,
+			Latest: latest, RecentDays: runs,
+		})
+		runCount += len(runs)
 	}
-	var missing []string
-	for key := range seriesByKey {
-		if _, ok := seen[key]; !ok {
-			missing = append(missing, key)
+	return comparisons, runCount
+}
+
+func normalizeGptIntelligenceRuns(source []GptIntelligenceRun, model, effort string, latest *GptIntelligenceRun) []GptIntelligenceRun {
+	runs := cloneGptIntelligenceRuns(source)
+	latestFound := false
+	for i := range runs {
+		fillGptIntelligenceRunSeries(&runs[i], model, effort)
+		if latest != nil && runs[i].Date == latest.Date {
+			latestFound = true
 		}
 	}
-	sort.Strings(missing)
-	return append(keys, missing...)
+	if latest != nil && !latestFound {
+		runs = append(runs, *cloneGptIntelligenceRunPtr(latest))
+	}
+	return runs
 }
 
-func gptIntelligenceSeriesKey(model, effort string) string {
-	key := strings.ToLower(model)
-	key = strings.ReplaceAll(key, ".", "")
-	key = strings.NewReplacer("-", "_", " ", "_", "/", "_").Replace(key)
-	key = strings.Trim(key, "_")
-	effort = strings.ToLower(strings.TrimSpace(effort))
-	if key == "" {
-		key = "model"
+func fillGptIntelligenceRunSeries(run *GptIntelligenceRun, model, effort string) {
+	if run.Model == "" {
+		run.Model = model
 	}
-	if effort == "" {
-		return key
+	if run.ReasoningEffort == "" {
+		run.ReasoningEffort = effort
 	}
-	return key + "_" + effort
-}
-
-func buildGptIntelligenceSeriesLabel(model, effort string) string {
-	if strings.TrimSpace(effort) == "" {
-		return strings.TrimSpace(model)
-	}
-	return strings.TrimSpace(model) + " " + strings.TrimSpace(effort)
-}
-
-func sortGptIntelligenceRuns(runs []GptIntelligenceRun) {
-	sort.SliceStable(runs, func(i, j int) bool {
-		return gptIntelligenceDateOrder(runs[i].Date) < gptIntelligenceDateOrder(runs[j].Date)
-	})
-}
-
-func gptIntelligenceDateOrder(value string) int {
-	matched := regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})(?:-(am|pm))?$`).FindStringSubmatch(value)
-	if len(matched) == 0 {
-		return int(^uint(0) >> 1)
-	}
-	year, _ := strconv.Atoi(matched[1])
-	month, _ := strconv.Atoi(matched[2])
-	day, _ := strconv.Atoi(matched[3])
-	halfOrder := 0
-	if len(matched) > 4 && matched[4] == "pm" {
-		halfOrder = 1
-	}
-	return year*100000 + month*1000 + day*10 + halfOrder
-}
-
-func latestGptIntelligenceRun(runs []GptIntelligenceRun) GptIntelligenceRun {
-	if len(runs) == 0 {
-		return GptIntelligenceRun{}
-	}
-	return runs[len(runs)-1]
 }
 
 func cloneGptIntelligenceSnapshot(snap *GptIntelligenceSnapshot) *GptIntelligenceSnapshot {

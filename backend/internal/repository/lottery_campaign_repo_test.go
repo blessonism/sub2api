@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
@@ -54,6 +55,47 @@ ORDER BY sort_order ASC, id ASC`)).
 	}
 	if campaign == nil || !campaign.IsFeatured {
 		t.Fatalf("campaign = %+v, want featured", campaign)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestUpsertLotteryEntryUsesExplicitStatusParameterType(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewLotteryCampaignRepository(db)
+	entryDate := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+INSERT INTO lottery_entries (campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at)
+VALUES ($1, $2, $3::date, $4, $5, $6::varchar, CASE WHEN $6::varchar = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
+ON CONFLICT (campaign_id, user_id, entry_date) DO UPDATE
+SET tokens = EXCLUDED.tokens,
+	entry_count = EXCLUDED.entry_count,
+	status = CASE WHEN lottery_entries.status = 'enrolled' THEN 'enrolled' ELSE EXCLUDED.status END,
+	enrolled_at = CASE
+		WHEN lottery_entries.enrolled_at IS NOT NULL THEN lottery_entries.enrolled_at
+		WHEN EXCLUDED.status = 'enrolled' THEN NOW()
+		ELSE NULL
+	END,
+	updated_at = NOW()
+RETURNING id, campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at`)).
+		WithArgs(int64(7), int64(42), entryDate, int64(2_000_000), 2, "enrolled").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "campaign_id", "user_id", "entry_date", "tokens", "entry_count", "status", "enrolled_at", "created_at", "updated_at",
+		}).AddRow(int64(9), int64(7), int64(42), entryDate, int64(2_000_000), 2, "enrolled", now, now, now))
+
+	entry, err := repo.UpsertLotteryEntry(context.Background(), service.LotteryCampaign{ID: 7}, 42, entryDate, 2_000_000, 2, true)
+	if err != nil {
+		t.Fatalf("upsert lottery entry: %v", err)
+	}
+	if entry.Status != "enrolled" || entry.EntryCount != 2 {
+		t.Fatalf("entry = %+v, want enrolled entry with two chances", entry)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
