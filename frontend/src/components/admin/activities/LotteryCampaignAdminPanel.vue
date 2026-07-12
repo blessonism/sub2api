@@ -262,6 +262,26 @@
           <p class="mt-1 text-xs">{{ t('admin.lotteryCampaigns.designateHint') }}</p>
         </div>
         <div v-else class="overflow-hidden rounded-lg border border-gray-100 dark:border-dark-700">
+          <div class="border-b border-gray-100 bg-gradient-to-br from-primary-50/70 to-white p-4 dark:border-dark-700 dark:from-primary-900/20 dark:to-dark-800">
+            <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.lotteryCampaigns.wheelTitle') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.wheelDescription') }}</p>
+                <p v-if="wheelWinner" class="mt-2 text-sm font-semibold text-primary-700 dark:text-primary-300">{{ t('admin.lotteryCampaigns.wheelWinner', { name: wheelWinner.masked_email }) }}</p>
+              </div>
+              <div class="relative h-52 w-52 shrink-0 sm:h-60 sm:w-60">
+                <div class="wheel-pointer" aria-hidden="true" />
+                <div class="lottery-wheel h-full w-full" :style="wheelStyle" :class="{ 'is-spinning': wheelSpinning }" aria-label="Lottery wheel" role="img">
+                  <span v-for="segment in wheelSegments" :key="segment.user_id" class="wheel-label" :style="segment.labelStyle">{{ segment.shortName }}</span>
+                  <span class="wheel-hub">抽奖</span>
+                </div>
+              </div>
+              <button class="btn btn-primary shrink-0" type="button" :disabled="designateLocked || wheelSpinning" @click="spinWheel">
+                <Icon name="sparkles" size="sm" />
+                {{ wheelSpinning ? t('common.processing') : t('admin.lotteryCampaigns.spinWheel') }}
+              </button>
+            </div>
+          </div>
           <div class="grid grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)] gap-3 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:bg-dark-800 dark:text-dark-400">
             <span>{{ t('admin.lotteryCampaigns.designateColumnUser') }}</span>
             <span>{{ t('admin.lotteryCampaigns.designateColumnEntries') }}</span>
@@ -349,6 +369,9 @@ const designateSaving = ref(false)
 const designateLocked = ref(false)
 const designateCandidates = ref<LotteryDesignationCandidate[]>([])
 const designateSelection = reactive<Record<number, number>>({})
+const wheelSpinning = ref(false)
+const wheelRotation = ref(0)
+const wheelWinner = ref<LotteryDesignationCandidate | null>(null)
 
 const form = reactive<LotteryCampaignFormState>({
   name: '',
@@ -412,6 +435,52 @@ const designateTierUsage = computed(() =>
     used: Object.values(designateSelection).filter(tierId => tierId === tier.id).length,
   })),
 )
+
+const wheelSegments = computed(() => {
+  const total = designateCandidates.value.reduce((sum, candidate) => sum + Math.max(1, candidate.entry_count), 0)
+  let cursor = 0
+  return designateCandidates.value.map((candidate, index) => {
+    const weight = Math.max(1, candidate.entry_count)
+    const start = cursor
+    const end = cursor + (weight / total) * 360
+    cursor = end
+    const angle = (start + end) / 2
+    return {
+      ...candidate,
+      shortName: (candidate.masked_email || `#${candidate.user_id}`).slice(0, 8),
+      labelStyle: { transform: `rotate(${angle}deg) translateY(-${Math.min(82, 38 + designateCandidates.value.length * 2)}px) rotate(${-angle}deg)` },
+      color: ['#0f766e', '#2563eb', '#d97706', '#be123c', '#7c3aed', '#0891b2'][index % 6],
+      start,
+      end,
+    }
+  })
+})
+const wheelStyle = computed(() => ({
+  background: wheelSegments.value.length
+    ? `conic-gradient(${wheelSegments.value.map(segment => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(', ')})`
+    : 'conic-gradient(#cbd5e1 0 360deg)',
+  transform: `rotate(${wheelRotation.value}deg)`,
+}))
+
+function spinWheel(): void {
+  if (wheelSpinning.value || designateCandidates.value.length === 0) return
+  const total = designateCandidates.value.reduce((sum, candidate) => sum + Math.max(1, candidate.entry_count), 0)
+  let target = Math.random() * total
+  let winnerIndex = 0
+  for (const [index, candidate] of designateCandidates.value.entries()) {
+    target -= Math.max(1, candidate.entry_count)
+    if (target <= 0) {
+      winnerIndex = index
+      break
+    }
+  }
+  const winner = wheelSegments.value[winnerIndex]
+  const targetAngle = 360 - (winner.start + winner.end) / 2
+  wheelRotation.value += 1440 + ((targetAngle - (wheelRotation.value % 360) + 360) % 360)
+  wheelWinner.value = winner
+  wheelSpinning.value = true
+  window.setTimeout(() => { wheelSpinning.value = false }, 3200)
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -559,6 +628,8 @@ async function openDesignate(): Promise<void> {
   designateLoading.value = true
   designateLocked.value = false
   designateCandidates.value = []
+  wheelWinner.value = null
+  wheelRotation.value = 0
   for (const key of Object.keys(designateSelection)) delete designateSelection[Number(key)]
   try {
     const view = await adminAPI.lotteryCampaigns.getLotteryDesignations(selected.value.id, drawDate.value)
@@ -771,3 +842,54 @@ onMounted(() => {
   void load()
 })
 </script>
+
+<style scoped>
+.lottery-wheel {
+  position: relative;
+  border: 8px solid rgba(255, 255, 255, 0.9);
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18);
+  transition: transform 3.2s cubic-bezier(0.12, 0.75, 0.15, 1);
+}
+.wheel-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4.5rem;
+  margin: -0.5rem 0 0 -2.25rem;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  transform-origin: center;
+}
+.wheel-hub {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 4px solid rgba(255, 255, 255, 0.85);
+  border-radius: 9999px;
+  background: #0f172a;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transform: translate(-50%, -50%);
+}
+.wheel-pointer {
+  position: absolute;
+  z-index: 2;
+  top: -0.35rem;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-right: 0.6rem solid transparent;
+  border-left: 0.6rem solid transparent;
+  border-top: 1.3rem solid #f59e0b;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+  transform: translateX(-50%);
+}
+</style>

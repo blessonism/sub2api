@@ -90,6 +90,47 @@
         </div>
       </div>
 
+      <section v-if="participants.length" class="card overflow-hidden" aria-labelledby="lottery-wheel-title">
+        <header class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div class="flex flex-wrap items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" :class="drawStatusClass" /><h2 id="lottery-wheel-title" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.wheelTitle') }}</h2><span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="drawStatusBadgeClass">{{ t(`lotteryCampaign.wheelStatuses.${drawStatus}`) }}</span></div>
+            <p class="mt-1 text-sm text-gray-600 dark:text-dark-300">{{ t('lotteryCampaign.wheelDescription') }}</p>
+          </div>
+          <div class="flex items-center gap-5 text-sm">
+            <div><span class="text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.participants') }}</span><strong class="ml-2 tabular-nums text-gray-900 dark:text-white">{{ participants.length }}</strong></div>
+            <div><span class="text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.totalWeight') }}</span><strong class="ml-2 tabular-nums text-gray-900 dark:text-white">{{ totalParticipantWeight }}</strong></div>
+          </div>
+        </header>
+        <div class="grid gap-0 lg:grid-cols-[minmax(360px,1.05fr)_minmax(280px,.95fr)]">
+          <div class="flex min-h-[390px] items-center justify-center bg-gray-50/70 p-6 dark:bg-dark-900/40">
+            <div class="relative aspect-square w-full max-w-[350px]">
+              <div class="user-wheel-pointer" aria-hidden="true" />
+              <div class="user-wheel" :style="userWheelStyle" role="img" :aria-label="t('lotteryCampaign.wheelAriaLabel')">
+                <span v-for="segment in wheelSegments" :key="segment.key" class="user-wheel-label" :class="{ 'is-current': segment.isCurrent }" :style="segment.labelStyle">{{ segment.shortEmail }}</span>
+                <span class="user-wheel-hub"><strong>{{ myParticipant?.entry_count ?? entryCount }}</strong><small>{{ t('lotteryCampaign.myWeight') }}</small></span>
+              </div>
+            </div>
+          </div>
+          <div class="flex min-h-[390px] flex-col p-5">
+            <div v-if="myParticipant" class="rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
+              <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-primary-800 dark:text-primary-200">{{ t('lotteryCampaign.mySector') }}</span><span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-200">{{ t('lotteryCampaign.weightTimes', { count: myParticipant.entry_count }) }}</span></div>
+              <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">{{ myParticipant.masked_email }}</p>
+              <div class="mt-3 grid grid-cols-2 gap-3 border-t border-primary-100 pt-3 text-xs dark:border-primary-800/50"><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.myProbability') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ myProbability }}%</strong></div><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.lastUpdated') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ formatRelativeTime(participantsUpdatedAt) }}</strong></div></div>
+            </div>
+            <div class="mt-4 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.weightDistribution') }}</h3><button type="button" class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300" @click="openParticipants">{{ t('lotteryCampaign.viewAll') }}</button></div>
+            <ol class="mt-2 divide-y divide-gray-100 dark:divide-dark-700">
+              <li v-for="participant in rankedParticipants.slice(0, 7)" :key="participant.key" class="flex items-center gap-3 py-2.5">
+                <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: participant.color }" />
+                <span class="min-w-0 flex-1 truncate text-sm" :class="participant.isCurrent ? 'font-semibold text-primary-700 dark:text-primary-200' : 'text-gray-700 dark:text-dark-200'">{{ participant.displayEmail }}<span v-if="participant.isCurrent"> {{ t('lotteryCampaign.me') }}</span></span>
+                <span class="text-xs tabular-nums text-gray-500 dark:text-dark-400">{{ participant.share }}%</span>
+                <span class="w-12 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white">×{{ participant.entry_count }}</span>
+              </li>
+            </ol>
+            <p class="mt-auto pt-4 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.fairnessFormula', { probability: t('lotteryCampaign.probabilityFormula') }) }}</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Prize wall -->
       <div v-if="prizeTiers.length" class="card p-5">
         <div class="flex items-center gap-2">
@@ -275,7 +316,10 @@
           <div v-if="participantsLoading" class="flex justify-center py-8"><LoadingSpinner /></div>
           <p v-else-if="participants.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.noParticipants') }}</p>
           <ul v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-            <li v-for="(participant, index) in participants" :key="`${participant.masked_email}-${index}`" class="py-3 text-sm text-gray-700 dark:text-dark-200">{{ participant.masked_email }}</li>
+            <li v-for="(participant, index) in participants" :key="`${participant.masked_email}-${index}`" class="flex items-center justify-between gap-4 py-3">
+              <span class="min-w-0 truncate text-sm text-gray-700 dark:text-dark-200">{{ participant.masked_email }}</span>
+              <span class="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold tabular-nums text-gray-700 dark:bg-dark-700 dark:text-dark-200">{{ t('lotteryCampaign.weightTimes', { count: participant.entry_count || 1 }) }}</span>
+            </li>
           </ul>
         </div>
       </section>
@@ -290,12 +334,13 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import lotteryCampaignsAPI, { type LotteryCampaign, type LotteryMyData, type LotteryPrizeTier, type LotteryPublicWinner } from '@/api/lotteryCampaigns'
-import { useAppStore } from '@/stores'
+import { useAppStore, useAuthStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatTokenMillions } from '@/utils/usagePricing'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const enrolling = ref(false)
@@ -304,7 +349,8 @@ const myData = ref<LotteryMyData | null>(null)
 const recentWinners = ref<LotteryPublicWinner[]>([])
 const participantsOpen = ref(false)
 const participantsLoading = ref(false)
-const participants = ref<{ masked_email: string }[]>([])
+const participants = ref<{ masked_email: string; entry_count: number }[]>([])
+const participantsUpdatedAt = ref(new Date())
 const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 
@@ -316,6 +362,45 @@ const campaignDescription = computed(() => {
   if (description) return description
   return isSingleDraw.value ? t('lotteryCampaign.defaultOneTimeDescription') : t('lotteryCampaign.defaultDescription')
 })
+// 与管理员预览使用同一组稳定颜色，确保两端看到的权重分布一致。
+const WHEEL_COLORS = ['#0f766e', '#2563eb', '#d97706', '#be123c', '#7c3aed', '#0891b2']
+const currentMaskedEmail = computed(() => maskParticipantEmail(authStore.user?.email ?? ''))
+const totalParticipantWeight = computed(() => participants.value.reduce((sum, item) => sum + participantWeight(item), 0))
+const wheelSegments = computed(() => {
+  let cursor = 0
+  const occurrences = new Map<string, number>()
+  const totals = new Map<string, number>()
+  for (const item of participants.value) totals.set(item.masked_email, (totals.get(item.masked_email) ?? 0) + 1)
+  return participants.value.map((item, index) => {
+    const start = cursor
+    const weight = participantWeight(item)
+    cursor += weight / totalParticipantWeight.value * 360
+    const angle = (start + cursor) / 2
+    const occurrence = (occurrences.get(item.masked_email) ?? 0) + 1
+    occurrences.set(item.masked_email, occurrence)
+    const displayEmail = (totals.get(item.masked_email) ?? 0) > 1 ? `${item.masked_email} · ${occurrence}` : item.masked_email
+    return { ...item, displayEmail, key: `${item.masked_email}-${index}`, color: WHEEL_COLORS[index % WHEEL_COLORS.length], start, end: cursor, isCurrent: item.masked_email === currentMaskedEmail.value, shortEmail: displayEmail.slice(0, 12), labelStyle: { transform: `rotate(${angle}deg) translateY(-132px) rotate(${-angle}deg)` } }
+  })
+})
+const userWheelStyle = computed(() => ({ background: `conic-gradient(${wheelSegments.value.map(segment => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(', ')})` }))
+const rankedParticipants = computed(() => wheelSegments.value.map(segment => ({ ...segment, share: Math.round(participantWeight(segment) / totalParticipantWeight.value * 1000) / 10 })).sort((a, b) => b.entry_count - a.entry_count))
+const myParticipant = computed(() => wheelSegments.value.find(segment => segment.isCurrent) ?? null)
+const myProbability = computed(() => myParticipant.value ? (participantWeight(myParticipant.value) / totalParticipantWeight.value * 100).toFixed(1) : '0.0')
+const drawStatus = computed(() => {
+  if (myData.value?.winners?.length) return 'completed'
+  const drawAt = nextDrawAt.value ? new Date(nextDrawAt.value).getTime() : 0
+  return drawAt && drawAt <= now.value.getTime() ? 'drawing' : 'open'
+})
+const drawStatusClass = computed(() => ({ open: 'bg-emerald-500', drawing: 'bg-amber-500', completed: 'bg-gray-400' })[drawStatus.value])
+const drawStatusBadgeClass = computed(() => ({ open: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300', drawing: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300', completed: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300' })[drawStatus.value])
+
+function participantWeight(item: { entry_count: number }): number { return Math.max(1, Number(item.entry_count) || 1) }
+function maskParticipantEmail(email: string): string {
+  const at = email.indexOf('@')
+  if (at <= 0) return email ? '****' : ''
+  const local = Array.from(email.slice(0, at))
+  return local.length > 4 ? `${local.slice(0, 3).join('')}****${local.slice(-2).join('')}${email.slice(at)}` : `${local[0]}****${email.slice(at)}`
+}
 
 const progressPct = computed(() => {
   const threshold = home.value?.campaign?.threshold_tokens ?? 0
@@ -451,6 +536,7 @@ async function load(): Promise<void> {
     if (home.value.campaign) {
       myData.value = await lotteryCampaignsAPI.getMyLotteryCampaignData(home.value.campaign.id)
       void loadWinners()
+      void loadParticipants()
     }
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('lotteryCampaign.loadFailed')))
@@ -470,12 +556,19 @@ async function loadWinners(): Promise<void> {
   }
 }
 
+async function loadParticipants(): Promise<void> {
+  const campaignId = home.value?.campaign?.id
+  if (!campaignId) return
+  try { const { items } = await lotteryCampaignsAPI.getLotteryParticipants(campaignId); participants.value = items; participantsUpdatedAt.value = new Date() } catch { /* supplementary */ }
+}
+
 async function enroll(): Promise<void> {
   if (!home.value?.campaign) return
   enrolling.value = true
   try {
     await lotteryCampaignsAPI.enrollLotteryCampaign(home.value.campaign.id)
     myData.value = await lotteryCampaignsAPI.getMyLotteryCampaignData(home.value.campaign.id)
+    void loadParticipants()
     void loadWinners()
     appStore.showSuccess(t('lotteryCampaign.enrolled'))
   } catch (error) {
@@ -497,7 +590,7 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function formatRelativeTime(value: string): string {
+function formatRelativeTime(value: string | Date): string {
   const target = new Date(value).getTime()
   if (!Number.isFinite(target)) return ''
   const diffSec = Math.round((target - now.value.getTime()) / 1000)
@@ -523,3 +616,16 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.user-wheel { position:relative; height:100%; width:100%; border:10px solid #fff; border-radius:9999px; box-shadow:0 4px 8px rgba(15,23,42,.16); }
+.user-wheel::after { content:''; position:absolute; inset:8px; border:1px solid rgba(255,255,255,.5); border-radius:inherit; }
+.user-wheel-label { position:absolute; z-index:1; top:50%; left:50%; width:5.5rem; margin:-.5rem 0 0 -2.75rem; overflow:hidden; color:#fff; font-size:.625rem; font-weight:700; line-height:1rem; text-align:center; text-overflow:ellipsis; text-shadow:0 1px 2px rgba(0,0,0,.65); white-space:nowrap; transform-origin:center; }
+.user-wheel-label.is-current { color:#fff; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:2px; }
+.user-wheel-hub { position:absolute; z-index:2; inset:50% auto auto 50%; display:flex; width:5.25rem; height:5.25rem; flex-direction:column; align-items:center; justify-content:center; border:5px solid #fff; border-radius:9999px; background:#111827; color:#fff; transform:translate(-50%,-50%); }
+.user-wheel-hub strong { font-size:1.25rem; line-height:1.3; }
+.user-wheel-hub small { color:#d1d5db; font-size:.625rem; }
+.user-wheel-pointer { position:absolute; z-index:3; top:-.2rem; left:50%; width:0; height:0; border-right:.7rem solid transparent; border-left:.7rem solid transparent; border-top:1.55rem solid #f59e0b; filter:drop-shadow(0 2px 1px rgba(15,23,42,.25)); transform:translateX(-50%); }
+.dark .user-wheel { border-color:#1f2937; }
+@media (max-width: 420px) { .user-wheel-label { display:none; } }
+</style>
