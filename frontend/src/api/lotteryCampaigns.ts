@@ -73,6 +73,7 @@ export interface LotteryPublicWinner {
 
 export interface LotteryParticipant {
   masked_email: string
+  entry_count: number
 }
 
 export async function getActiveLotteryCampaign(): Promise<{ campaign: LotteryCampaign | null }> {
