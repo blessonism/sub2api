@@ -580,6 +580,17 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode)
+	if collectionID := service.AccountCollectionFilterFromContext(ctx); collectionID > 0 {
+		q = q.Where(dbpredicate.Account(func(selector *entsql.Selector) {
+			selector.Where(entsql.P(func(builder *entsql.Builder) {
+				builder.WriteString("EXISTS (SELECT 1 FROM account_collection_members acm WHERE acm.account_id = ").
+					Ident(selector.C(dbaccount.FieldID)).
+					WriteString(" AND acm.account_collection_id = ").
+					Arg(collectionID).
+					WriteByte(')')
+			}))
+		}))
+	}
 	// Clone before Count so interceptor-appended predicates (SoftDeleteMixin's
 	// deleted_at IS NULL) don't accumulate on the shared builder and pollute the
 	// subsequent list query. Same pattern used in group_repo/promo_code_repo/user_repo

@@ -38,6 +38,7 @@ export async function list(
     type?: string
     status?: string
     group?: string
+    account_collection_id?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -74,6 +75,7 @@ export async function listWithEtag(
     type?: string
     status?: string
     group?: string
+    account_collection_id?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -134,7 +136,15 @@ export async function getById(id: number): Promise<Account> {
  * @returns Created account
  */
 export async function create(accountData: CreateAccountRequest): Promise<Account> {
-  const { data } = await apiClient.post<Account>('/admin/accounts', accountData)
+  const { account_collection_ids: collectionIds, ...request } = accountData
+  const { data } = await apiClient.post<Account>('/admin/accounts', request)
+  if (collectionIds?.length) {
+    await apiClient.post('/admin/account-collections/members/batch', {
+      account_ids: [data.id],
+      account_collection_ids: collectionIds,
+      operation: 'add'
+    })
+  }
   return data
 }
 
@@ -145,7 +155,28 @@ export async function create(accountData: CreateAccountRequest): Promise<Account
  * @returns Updated account
  */
 export async function update(id: number, updates: UpdateAccountRequest): Promise<Account> {
-  const { data } = await apiClient.put<Account>(`/admin/accounts/${id}`, updates)
+  const { account_collection_ids: collectionIds, ...request } = updates
+  const { data } = await apiClient.put<Account>(`/admin/accounts/${id}`, request)
+  if (collectionIds !== undefined) {
+    const current = await apiClient.get<Array<{ id: number }>>(`/admin/account-collections/accounts/${id}`)
+    const currentIds = current.data.map(item => item.id)
+    const addIds = collectionIds.filter(collectionId => !currentIds.includes(collectionId))
+    const removeIds = currentIds.filter(collectionId => !collectionIds.includes(collectionId))
+    if (addIds.length) {
+      await apiClient.post('/admin/account-collections/members/batch', {
+        account_ids: [id],
+        account_collection_ids: addIds,
+        operation: 'add'
+      })
+    }
+    if (removeIds.length) {
+      await apiClient.post('/admin/account-collections/members/batch', {
+        account_ids: [id],
+        account_collection_ids: removeIds,
+        operation: 'remove'
+      })
+    }
+  }
   return data
 }
 

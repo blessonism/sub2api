@@ -3035,6 +3035,14 @@
           :mixed-scheduling="mixedScheduling"
           data-tour="account-form-groups"
         />
+        <div v-if="accountCollections.length" class="space-y-2">
+          <label class="input-label">{{ t('admin.accounts.accountCollections.label') }}</label>
+          <select v-model="form.account_collection_ids" multiple class="input min-h-28">
+            <option v-for="collection in accountCollections" :key="collection.id" :value="collection.id">
+              {{ collection.name }}
+            </option>
+          </select>
+        </div>
       </div>
 
     </form>
@@ -3498,9 +3506,11 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  accountCollections?: Array<{ id: number; name: string }>
+  initialAccountCollectionId?: number | null
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { accountCollections: () => [], initialAccountCollectionId: null })
 const emit = defineEmits<{
   close: []
   created: []
@@ -3932,6 +3942,7 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
+  account_collection_ids: [] as number[],
   expires_at: null as number | null
 })
 
@@ -3981,6 +3992,7 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      form.account_collection_ids = props.initialAccountCollectionId ? [props.initialAccountCollectionId] : []
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
@@ -4467,6 +4479,7 @@ const resetForm = () => {
   form.priority = 1
   form.rate_multiplier = 1
   form.group_ids = []
+  form.account_collection_ids = []
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
@@ -4952,6 +4965,7 @@ const handleSubmit = async () => {
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
+    account_collection_ids: form.account_collection_ids,
     extra,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
@@ -5080,6 +5094,7 @@ const createAccountAndFinish = async (
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
+    account_collection_ids: form.account_collection_ids,
     expires_at: form.expires_at,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
@@ -5142,6 +5157,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
+          account_collection_ids: form.account_collection_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
@@ -5236,6 +5252,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         priority: form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
+        account_collection_ids: form.account_collection_ids,
         expires_at: form.expires_at,
         auto_pause_on_expired: autoPauseOnExpired.value
       })
@@ -5489,6 +5506,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             priority: form.priority,
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
+            account_collection_ids: form.account_collection_ids,
             expires_at: form.expires_at,
             auto_pause_on_expired: autoPauseOnExpired.value
           })
@@ -5588,6 +5606,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
+          account_collection_ids: form.account_collection_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
@@ -5967,6 +5986,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
+          account_collection_ids: form.account_collection_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })

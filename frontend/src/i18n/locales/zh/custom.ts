@@ -381,6 +381,20 @@ export default {
     "retry": "重试"
   },
   "admin": {
+    "accounts": {
+      "accountCollections": {
+        "all": "全部账号",
+        "label": "账号编组",
+        "manage": "管理账号编组",
+        "namePlaceholder": "输入编组名称",
+        "empty": "暂无账号编组",
+        "deleteConfirm": "确定删除账号编组“{name}”吗？账号本身不会被删除。",
+        "batchTitle": "账号编组",
+        "addTo": "加入编组",
+        "removeFrom": "移出编组",
+        "batchSuccess": "账号编组已更新"
+      }
+    },
     "activities": {
       "title": "活动中心",
       "description": "统一承载邀请活动管理与后续营销活动运营入口",

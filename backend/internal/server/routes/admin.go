@@ -34,6 +34,7 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h)
+		registerAccountCollectionRoutes(admin, h)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
@@ -121,6 +122,19 @@ func RegisterAdminRoutes(
 
 		// Token 达标抽奖活动
 		registerLotteryCampaignRoutes(admin, h)
+	}
+}
+
+func registerAccountCollectionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	collections := admin.Group("/account-collections")
+	{
+		collections.GET("", h.Admin.AccountCollection.List)
+		collections.POST("", h.Admin.AccountCollection.Create)
+		collections.PUT("/sort-order", h.Admin.AccountCollection.Sort)
+		collections.PUT("/:id", h.Admin.AccountCollection.Update)
+		collections.DELETE("/:id", h.Admin.AccountCollection.Delete)
+		collections.GET("/accounts/:account_id", h.Admin.AccountCollection.ListForAccount)
+		collections.POST("/members/batch", h.Admin.AccountCollection.BatchMembers)
 	}
 }
 

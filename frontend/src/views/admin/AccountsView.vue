@@ -16,6 +16,25 @@
             @refresh="handleManualRefresh"
             @create="showCreate = true"
           >
+            <template #afterCreate>
+              <div class="flex max-w-[min(36rem,55vw)] items-center gap-1 overflow-x-auto whitespace-nowrap py-1">
+                <button
+                  class="btn btn-sm"
+                  :class="!params.account_collection_id ? 'btn-primary' : 'btn-secondary'"
+                  @click="selectAccountCollection('')"
+                >{{ t('admin.accounts.accountCollections.all') }}</button>
+                <button
+                  v-for="collection in accountCollections"
+                  :key="collection.id"
+                  class="btn btn-sm"
+                  :class="String(params.account_collection_id) === String(collection.id) ? 'btn-primary' : 'btn-secondary'"
+                  @click="selectAccountCollection(String(collection.id))"
+                >{{ collection.name }}</button>
+                <button class="btn btn-secondary btn-sm px-2" :title="t('admin.accounts.accountCollections.manage')" @click="showCollectionManage = true">
+                  <Icon name="cog" size="sm" />
+                </button>
+              </div>
+            </template>
             <template #after>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
@@ -179,6 +198,7 @@
           @refresh-token="handleBulkRefreshToken"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
+          @edit-collections="showCollectionBatch = true"
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
@@ -391,8 +411,24 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <CreateAccountModal
+      :show="showCreate"
+      :proxies="proxies"
+      :groups="groups"
+      :account-collections="accountCollections"
+      :initial-account-collection-id="Number(params.account_collection_id) || null"
+      @close="showCreate = false"
+      @created="reload"
+    />
+    <EditAccountModal
+      :show="showEdit"
+      :account="edAcc"
+      :proxies="proxies"
+      :groups="groups"
+      :account-collections="accountCollections"
+      @close="showEdit = false"
+      @updated="handleAccountUpdated"
+    />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -410,6 +446,19 @@
       :groups="groups"
       @close="showBulkEdit = false"
       @updated="handleBulkUpdated"
+    />
+    <AccountCollectionManageModal
+      :show="showCollectionManage"
+      :collections="accountCollections"
+      @close="showCollectionManage = false"
+      @changed="loadAccountCollections"
+    />
+    <AccountCollectionBatchModal
+      :show="showCollectionBatch"
+      :account-ids="selIds"
+      :collections="accountCollections"
+      @close="showCollectionBatch = false"
+      @updated="handleAccountCollectionsUpdated"
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
@@ -445,6 +494,8 @@ import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrs
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
+import AccountCollectionManageModal from '@/components/admin/account/AccountCollectionManageModal.vue'
+import AccountCollectionBatchModal from '@/components/admin/account/AccountCollectionBatchModal.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
@@ -465,6 +516,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { AccountCollection } from '@/api/admin'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -472,6 +524,9 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const accountCollections = ref<AccountCollection[]>([])
+const showCollectionManage = ref(false)
+const showCollectionBatch = ref(false)
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -838,6 +893,7 @@ const {
     status: '',
     privacy_mode: '',
     group: '',
+    account_collection_id: '',
     search: '',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
     sort_by: sortState.sort_by,
@@ -914,6 +970,26 @@ const debouncedReload = () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   baseDebouncedReload()
+}
+
+const selectAccountCollection = (id: string) => {
+  params.account_collection_id = id
+  pagination.page = 1
+  reload()
+}
+
+const loadAccountCollections = async () => {
+  accountCollections.value = await adminAPI.accountCollections.list()
+  const activeID = Number(params.account_collection_id || 0)
+  if (activeID && !accountCollections.value.some(item => item.id === activeID)) {
+    params.account_collection_id = ''
+    await reload()
+  }
+}
+
+const handleAccountCollectionsUpdated = () => {
+  clearSelection()
+  reload()
 }
 
 const handlePageChange = (page: number) => {
@@ -1842,9 +1918,10 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(async () => {
   load()
   try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
+    const [p, g, collections] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll(), adminAPI.accountCollections.list()])
     proxies.value = p
     groups.value = g
+    accountCollections.value = collections
   } catch (error) {
     console.error('Failed to load proxies/groups:', error)
   }
