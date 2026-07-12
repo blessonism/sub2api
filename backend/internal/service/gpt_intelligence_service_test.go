@@ -3,51 +3,118 @@
 package service
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseGptIntelligenceHTML_ExtractsPublicModelIqTitles(t *testing.T) {
-	collectedAt := time.Date(2026, 6, 29, 9, 0, 0, 0, time.UTC)
-	raw := `
-<svg>
-  <title>6.29_am GPT-5.5 xhigh: IQ指数 87.5, 7/12, 费用 $42.61, 耗时 156分钟, cache命中率 93.4%</title>
-  <title>6.29_pm GPT-5.5 xhigh: IQ指数 75.0, 6/12, 费用 $42.00, 耗时 204分钟, cache命中率 95.2%</title>
-  <title>6.29_pm GPT-5.5 high: IQ指数 87.5, 7/12, 费用 $26.31, 耗时 109分钟, cache命中率 93.8%</title>
-  <title>6.29_pm GPT-5.4 xhigh: IQ指数 87.5, 7/12, 费用 $21.13, 耗时 258分钟, cache命中率 95.1%</title>
-</svg>`
+type gptIntelligenceRoundTripFunc func(*http.Request) (*http.Response, error)
 
-	snapshot, err := ParseGptIntelligenceHTML(raw, collectedAt)
+func (fn gptIntelligenceRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func TestGptIntelligenceServiceFetchSnapshot_UsesPublicJSONEndpoint(t *testing.T) {
+	var requestedURL string
+	service := &GptIntelligenceService{
+		client: &http.Client{Transport: gptIntelligenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestedURL = req.URL.String()
+			require.Equal(t, "application/json", req.Header.Get("Accept"))
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+  "monitored_at":"2026-07-11T15:29:00+08:00",
+  "timezone":"Asia/Shanghai",
+  "model_iq":{"latest":{"date":"2026-07-11-pm","model":"gpt-5.6-sol","reasoning_effort":"max","score":135}}
+}`)),
+				Header: make(http.Header),
+			}, nil
+		})},
+		now: func() time.Time { return time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC) },
+	}
+
+	snapshot, err := service.fetchSnapshot(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, gptIntelligenceDataURL, requestedURL)
+	require.Equal(t, "gpt-5.6-sol", snapshot.Latest.Model)
+}
+
+func TestParseGptIntelligenceJSON_ExtractsPublicModelIqSummary(t *testing.T) {
+	collectedAt := time.Date(2026, 6, 29, 9, 0, 0, 0, time.UTC)
+	raw := []byte(`{
+  "monitored_at": "2026-07-11T15:29:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "model_iq": {
+    "latest": {"date":"2026-07-11-pm","score":135,"status":"green","passed":9,"tasks":10,"invalid":0,"total_tokens":88099695,"output_tokens":482854,"wall_seconds":2670,"wall_time_human":"44分钟","model":"gpt-5.6-sol","reasoning_effort":"max","cost_usd":68.646241},
+    "recent_days": [
+      {"date":"2026-07-10-n","score":120,"status":"green","passed":8,"tasks":10},
+      {"date":"2026-07-11-pm","score":135,"status":"green","passed":9,"tasks":10}
+    ],
+    "comparisons": {
+      "gpt_56_sol_xhigh": {
+        "label":"GPT-5.6 Sol xhigh","model":"gpt-5.6-sol","reasoning_effort":"xhigh",
+        "latest":{"date":"2026-07-11-pm","score":120,"status":"green","model":"gpt-5.6-sol","reasoning_effort":"xhigh"},
+        "recent_days":[{"date":"2026-07-10-pm_2","score":105,"status":"green"},{"date":"2026-07-11-pm","score":120,"status":"green"}]
+      },
+      "gpt_56_sol_high": {
+        "label":"GPT-5.6 Sol high","model":"gpt-5.6-sol","reasoning_effort":"high",
+        "latest":{"date":"2026-07-11-pm","score":90,"status":"yellow"},
+        "recent_days":[]
+      }
+    },
+    "quota_radar":{"basis_window_label":"5h","cost_usd":101.725884,"rate":3.2815,"adjusted_delta":31,"updated_at":"2026-07-11T04:38:55Z"}
+  }
+}`)
+
+	snapshot, err := ParseGptIntelligenceJSON(raw, collectedAt)
 
 	require.NoError(t, err)
 	require.NotNil(t, snapshot.Latest)
-	require.Equal(t, "2026-06-29-pm", snapshot.Latest.Date)
-	require.Equal(t, "GPT-5.5", snapshot.Latest.Model)
-	require.Equal(t, "xhigh", snapshot.Latest.ReasoningEffort)
+	require.Equal(t, "2026-07-11T15:29:00+08:00", snapshot.MonitoredAt)
+	require.Equal(t, "2026-07-11-pm", snapshot.Latest.Date)
+	require.Equal(t, "gpt-5.6-sol", snapshot.Latest.Model)
+	require.Equal(t, "max", snapshot.Latest.ReasoningEffort)
 	require.NotNil(t, snapshot.Latest.Score)
-	require.Equal(t, 75.0, *snapshot.Latest.Score)
+	require.Equal(t, 135.0, *snapshot.Latest.Score)
 	require.NotNil(t, snapshot.Latest.Passed)
-	require.Equal(t, 6.0, *snapshot.Latest.Passed)
+	require.Equal(t, 9.0, *snapshot.Latest.Passed)
 	require.NotNil(t, snapshot.Latest.Tasks)
-	require.Equal(t, 12.0, *snapshot.Latest.Tasks)
+	require.Equal(t, 10.0, *snapshot.Latest.Tasks)
 	require.NotNil(t, snapshot.Latest.WallSeconds)
-	require.Equal(t, 12240.0, *snapshot.Latest.WallSeconds)
+	require.Equal(t, 2670.0, *snapshot.Latest.WallSeconds)
 	require.NotNil(t, snapshot.Latest.CostUSD)
-	require.Equal(t, 42.0, *snapshot.Latest.CostUSD)
+	require.Equal(t, 68.646241, *snapshot.Latest.CostUSD)
 	require.Len(t, snapshot.RecentDays, 2)
+	require.Equal(t, "gpt-5.6-sol", snapshot.RecentDays[0].Model)
+	require.Equal(t, "max", snapshot.RecentDays[0].ReasoningEffort)
 	require.Len(t, snapshot.Comparisons, 2)
-	require.Equal(t, "gpt_55_high", snapshot.Comparisons[0].Key)
-	require.Equal(t, "public_html_title", snapshot.Metadata.Method)
-	require.Equal(t, 4, snapshot.Metadata.RunCount)
+	require.Equal(t, "gpt_56_sol_high", snapshot.Comparisons[0].Key)
+	require.Equal(t, "gpt-5.6-sol", snapshot.Comparisons[0].Latest.Model)
+	require.Equal(t, "high", snapshot.Comparisons[0].Latest.ReasoningEffort)
+	require.Equal(t, "xhigh", snapshot.Comparisons[1].RecentDays[0].ReasoningEffort)
+	require.NotNil(t, snapshot.QuotaRadar)
+	require.Equal(t, 3.2815, *snapshot.QuotaRadar.Rate)
+	require.Equal(t, "public_json_current", snapshot.Metadata.Method)
+	require.Equal(t, 5, snapshot.Metadata.RunCount)
 	require.Equal(t, gptIntelligenceSourceURL, snapshot.Source.URL)
 	require.Len(t, snapshot.Templates, 3)
 }
 
-func TestParseGptIntelligenceHTML_ReturnsUnavailableWhenTitlesMissing(t *testing.T) {
-	_, err := ParseGptIntelligenceHTML("<html></html>", time.Now())
+func TestParseGptIntelligenceJSON_ReturnsUnavailableWhenModelIqMissing(t *testing.T) {
+	_, err := ParseGptIntelligenceJSON([]byte(`{"monitored_at":"2026-07-11T15:29:00+08:00"}`), time.Now())
+
+	require.Error(t, err)
+	require.True(t, infraErrorIsServiceUnavailable(err))
+}
+
+func TestParseGptIntelligenceJSON_ReturnsUnavailableForMalformedJSON(t *testing.T) {
+	_, err := ParseGptIntelligenceJSON([]byte(`{"model_iq":`), time.Now())
 
 	require.Error(t, err)
 	require.True(t, infraErrorIsServiceUnavailable(err))
