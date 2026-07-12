@@ -108,6 +108,41 @@
           </div>
         </div>
       </div>
+
+      <div class="card overflow-hidden xl:col-span-2">
+        <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.lotteryCampaigns.winnerRecords') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.winnerRecordsDescription') }}</p>
+        </div>
+        <div v-if="winnersLoading" class="flex min-h-32 items-center justify-center"><LoadingSpinner /></div>
+        <div v-else-if="winnersLoadFailed" class="p-5 text-sm text-red-600 dark:text-red-300">{{ t('admin.lotteryCampaigns.winnerRecordsLoadFailed') }}</div>
+        <div v-else-if="winners.length === 0" class="p-5 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.noWinnerRecords') }}</div>
+        <div v-else class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-100 text-sm dark:divide-dark-700">
+            <thead class="bg-gray-50 text-left text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              <tr>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerUser') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerPrize') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerAmount') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerStatus') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerTime') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="winner in winners" :key="winner.id">
+                <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-white">#{{ winner.user_id }}</td>
+                <td class="px-4 py-3 text-gray-700 dark:text-dark-200">{{ winner.prize_name || t('lotteryCampaign.prize') }}</td>
+                <td class="whitespace-nowrap px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-300">{{ formatCents(winner.reward_amount_cents) }}</td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex rounded-md px-2 py-1 text-xs font-medium" :class="winnerStatusClass(winner.status)">{{ winnerStatusLabel(winner.status) }}</span>
+                  <p v-if="winner.error_message" class="mt-1 max-w-xs text-xs text-red-600 dark:text-red-300">{{ winner.error_message }}</p>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3 text-gray-500 dark:text-dark-400">{{ formatDateTime(winner.processed_at || winner.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <BaseDialog :show="dialogOpen" :title="dialogTitle" width="wide" @close="dialogOpen = false">
@@ -326,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -334,7 +369,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
-import type { LotteryCampaign } from '@/api/lotteryCampaigns'
+import type { LotteryCampaign, LotteryWinner } from '@/api/lotteryCampaigns'
 import type { LotteryCampaignRequest, LotteryDesignationCandidate } from '@/api/admin/lotteryCampaigns'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -359,6 +394,10 @@ const submitting = ref(false)
 const dialogOpen = ref(false)
 const campaigns = ref<LotteryCampaign[]>([])
 const selected = ref<LotteryCampaign | null>(null)
+const winners = ref<LotteryWinner[]>([])
+const winnersLoading = ref(false)
+const winnersLoadFailed = ref(false)
+let winnersRequestID = 0
 const editingCampaign = ref<LotteryCampaign | null>(null)
 const deletingCampaign = ref<LotteryCampaign | null>(null)
 const drawDate = ref(new Date().toISOString().slice(0, 10))
@@ -395,7 +434,7 @@ const dialogTitle = computed(() => editingCampaign.value ? t('admin.lotteryCampa
 const submitText = computed(() => editingCampaign.value ? t('admin.lotteryCampaigns.saveChanges') : t('admin.lotteryCampaigns.create'))
 const canFeatureSelected = computed(() => {
   if (!selected.value || selected.value.is_featured) return false
-  return selected.value.status === 'published' && isCampaignInWindow(selected.value)
+  return selected.value.status === 'published'
 })
 const thresholdRawTokenHint = computed(() => rawTokenEquivalent(form.threshold_token_millions))
 const entryStepRawTokenHint = computed(() => rawTokenEquivalent(form.entry_step_token_millions))
@@ -522,6 +561,34 @@ function selectCampaign(campaign: LotteryCampaign): void {
   selected.value = campaign
 }
 
+async function loadWinners(campaignID: number): Promise<void> {
+  const requestID = ++winnersRequestID
+  winners.value = []
+  winnersLoading.value = true
+  winnersLoadFailed.value = false
+  try {
+    const response = await adminAPI.lotteryCampaigns.listLotteryWinners(campaignID)
+    if (requestID === winnersRequestID) winners.value = response.items
+  } catch {
+    if (requestID === winnersRequestID) winnersLoadFailed.value = true
+  } finally {
+    if (requestID === winnersRequestID) winnersLoading.value = false
+  }
+}
+
+function winnerStatusLabel(status: string): string {
+  if (status === 'success' || status === 'failed' || status === 'pending') {
+    return t(`admin.lotteryCampaigns.winnerStatuses.${status}`)
+  }
+  return status
+}
+
+function winnerStatusClass(status: string): string {
+  if (status === 'success') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (status === 'failed') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+}
+
 function campaignTags(campaign: LotteryCampaign): string[] {
   const tags = [
     t('admin.lotteryCampaigns.thresholdTag', { threshold: formatTokens(campaign.threshold_tokens) }),
@@ -616,6 +683,7 @@ async function drawSelected(): Promise<void> {
   if (!selected.value) return
   try {
     await adminAPI.lotteryCampaigns.drawLotteryCampaign(selected.value.id, drawDate.value)
+    await loadWinners(selected.value.id)
     appStore.showSuccess(t('admin.lotteryCampaigns.drawn'))
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('admin.lotteryCampaigns.actionFailed')))
@@ -799,11 +867,6 @@ function formatCents(cents: number): string {
   return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'CNY' }).format(cents / 100)
 }
 
-function isCampaignInWindow(campaign: LotteryCampaign): boolean {
-  const now = Date.now()
-  return new Date(campaign.start_at).getTime() <= now && new Date(campaign.end_at).getTime() >= now
-}
-
 function dailyDrawFallsInWindow(start: Date, end: Date, dailyTime: string): boolean {
   const [hourRaw, minuteRaw] = dailyTime.split(':')
   const hour = Number(hourRaw)
@@ -837,6 +900,17 @@ function tokenMillionsToTokensForDisplay(value: number): number {
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
+
+watch(selected, (campaign) => {
+  if (campaign) {
+    void loadWinners(campaign.id)
+  } else {
+    winnersRequestID += 1
+    winners.value = []
+    winnersLoading.value = false
+    winnersLoadFailed.value = false
+  }
+})
 
 onMounted(() => {
   void load()

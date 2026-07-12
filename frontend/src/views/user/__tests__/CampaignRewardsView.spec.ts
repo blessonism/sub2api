@@ -62,12 +62,17 @@ vi.mock('@/api/lotteryCampaigns', () => ({
     getActiveLotteryCampaign,
     getMyLotteryCampaignData,
     enrollLotteryCampaign: vi.fn(),
+    getRecentLotteryWinners: vi.fn().mockResolvedValue({ items: [] }),
+    getLotteryParticipants: vi.fn().mockResolvedValue({ items: [] }),
   },
 }))
 
 vi.mock('@/stores', () => ({
   useAppStore: () => ({
     showError,
+  }),
+  useAuthStore: () => ({
+    user: { email: 'viewer@example.com' },
   }),
 }))
 

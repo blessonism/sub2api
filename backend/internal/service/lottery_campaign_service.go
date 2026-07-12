@@ -325,7 +325,7 @@ func (s *LotteryCampaignService) Feature(ctx context.Context, id int64, operator
 	if err != nil {
 		return nil, err
 	}
-	if !lotteryCampaignVisible(*campaign, now) {
+	if campaign.Status != LotteryStatusPublished {
 		return nil, ErrLotteryFeaturedInvalid
 	}
 	return s.repo.SetFeaturedLotteryCampaign(ctx, id, operatorID)
@@ -818,12 +818,16 @@ func lotteryCampaignVisible(campaign LotteryCampaign, now time.Time) bool {
 	if campaign.Status != LotteryStatusPublished {
 		return false
 	}
+	return campaign.IsFeatured || lotteryCampaignInWindow(campaign, now)
+}
+
+func lotteryCampaignInWindow(campaign LotteryCampaign, now time.Time) bool {
 	locNow := now.In(timezone.Location())
 	return !locNow.Before(campaign.StartAt.In(timezone.Location())) && !locNow.After(campaign.EndAt.In(timezone.Location()))
 }
 
 func lotteryCampaignAcceptsEntries(campaign LotteryCampaign, now time.Time) bool {
-	if !lotteryCampaignVisible(campaign, now) {
+	if campaign.Status != LotteryStatusPublished || !lotteryCampaignInWindow(campaign, now) {
 		return false
 	}
 	_, _, windowEnd, _ := lotteryCurrentWindow(campaign, now)

@@ -32,6 +32,51 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Persistent lottery campaign visibility and winner disclosure
+
+#### 1. Scope / Trigger
+- Trigger: changing lottery campaign feature selection, public visibility, entry availability, or winner list APIs.
+
+#### 2. Signatures
+- Persistent marker: `lottery_campaigns.is_featured` (at most one row is selected by `SetFeaturedLotteryCampaign`).
+- Public selection: `GET /api/v1/lottery-campaigns/active`.
+- Public winners: `GET /api/v1/lottery-campaigns/:id/winners`.
+- Admin winners: `GET /api/v1/admin/lottery-campaigns/:id/winners`, with the existing batch-scoped route retained.
+
+#### 3. Contracts
+- A published featured campaign remains publicly readable outside its start/end window and takes priority over newer active campaigns until an admin changes the featured selection.
+- Public readability and entry availability are separate decisions. Featured status never reopens enrollment before `start_at` or after `end_at` / the draw window.
+- Public winner DTOs contain only `masked_email`, `prize_name`, `reward_amount_cents`, and `created_at`, and only successful winners.
+- Admin winner DTOs may include operational identifiers and payout status but must stay behind admin routes.
+
+#### 4. Validation & Error Matrix
+- Feature a non-published campaign -> `LOTTERY_FEATURED_INVALID`.
+- Read a draft/cancelled/archived or ended non-featured campaign through public detail/winner APIs -> `LOTTERY_CAMPAIGN_NOT_FOUND`.
+- Enroll in a featured campaign outside its entry window -> `LOTTERY_ENTRIES_CLOSED`.
+
+#### 5. Good/Base/Bad Cases
+- Good: an ended published featured campaign shows persisted masked winners while all entry writes remain closed.
+- Base: when no campaign is featured, the active endpoint returns the normal published campaign inside its time window.
+- Bad: implementing entry availability by calling a visibility helper that treats featured campaigns as timelessly visible.
+- Bad: returning the admin `LotteryWinner` DTO from a public handler.
+
+#### 6. Tests Required
+- Repository: featured campaign is selected even after `end_at` and wins priority ordering.
+- Service: ended featured winner data is readable, no entry upsert occurs, and non-published campaigns cannot be featured.
+- API/frontend: campaign-level admin winner path, persistent action availability, and masked public winner rendering.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+return lotteryCampaignVisible(campaign, now) // may be true solely because is_featured=true
+```
+
+Correct:
+```go
+return campaign.Status == LotteryStatusPublished && lotteryCampaignInWindow(campaign, now)
+```
+
 ### Scenario: User-visible usage ranking/statistics APIs
 
 #### 1. Scope / Trigger
