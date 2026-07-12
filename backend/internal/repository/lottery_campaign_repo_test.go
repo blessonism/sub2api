@@ -10,7 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
+func TestGetActiveLotteryCampaignReturnsFeaturedCampaignOutsideActiveWindow(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
@@ -25,8 +25,7 @@ SELECT id, name, description, rules_text, status, participation_mode, draw_sched
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
-  AND start_at <= $1
-  AND end_at >= $1
+  AND (is_featured = TRUE OR (start_at <= $1 AND end_at >= $1))
 ORDER BY is_featured DESC, start_at ASC, id ASC
 LIMIT 1`)).
 		WithArgs(now).
@@ -37,7 +36,7 @@ LIMIT 1`)).
 			"created_at", "updated_at", "is_featured",
 		}).AddRow(
 			int64(7), "Token 抽奖", "", "", "published", "auto", "single", "single", "daily_once",
-			int64(100), int64(0), 1, now.Add(-time.Hour), now.Add(time.Hour), now.Add(30*time.Minute),
+			int64(100), int64(0), 1, now.Add(-48*time.Hour), now.Add(-24*time.Hour), now.Add(-25*time.Hour),
 			"", nil, nil, now.Add(-2*time.Hour), now.Add(-time.Hour), true,
 		))
 	mock.ExpectQuery(regexp.QuoteMeta(`

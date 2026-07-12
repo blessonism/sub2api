@@ -147,8 +147,7 @@ SELECT id, name, description, rules_text, status, participation_mode, draw_sched
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
-  AND start_at <= $1
-  AND end_at >= $1
+  AND (is_featured = TRUE OR (start_at <= $1 AND end_at >= $1))
 ORDER BY is_featured DESC, start_at ASC, id ASC
 LIMIT 1`, now)
 	item, err := scanLotteryCampaign(row)
