@@ -929,6 +929,38 @@ export interface UpdateSettingsRequest {
   allow_user_view_error_requests?: boolean;
 }
 
+type AuthSourceSettingsUpdateKey = Extract<
+  keyof UpdateSettingsRequest,
+  `auth_source_default_${string}`
+>;
+type OpsSettingsUpdateKey = Extract<
+  keyof UpdateSettingsRequest,
+  `ops_${string}`
+>;
+type PaymentVisibleMethodSettingsUpdateKey = Extract<
+  keyof UpdateSettingsRequest,
+  `payment_visible_method_${string}`
+>;
+
+type DeferredFullSettingsUpdateKey =
+  | AuthSourceSettingsUpdateKey
+  | OpsSettingsUpdateKey
+  | PaymentVisibleMethodSettingsUpdateKey
+  | "default_platform_quotas"
+  | "openai_fast_policy_settings";
+
+export type FullSettingsUpdateRequest = Required<
+  Omit<UpdateSettingsRequest, DeferredFullSettingsUpdateKey>
+> &
+  Pick<UpdateSettingsRequest, DeferredFullSettingsUpdateKey>;
+
+export interface TokenLeaderboardSettingsUpdateRequest {
+  token_leaderboard_common_group_id: number;
+  token_leaderboard_tier_tooltip: string;
+}
+
+export type TokenLeaderboardSettings = TokenLeaderboardSettingsUpdateRequest;
+
 /**
  * Get all system settings
  * @returns System settings
@@ -944,10 +976,21 @@ export async function getSettings(): Promise<SystemSettings> {
  * @returns Updated settings
  */
 export async function updateSettings(
-  settings: UpdateSettingsRequest,
+  settings: FullSettingsUpdateRequest,
 ): Promise<SystemSettings> {
   const { data } = await apiClient.put<SystemSettings>(
     "/admin/settings",
+    settings,
+    { headers: { "X-Settings-Write-Mode": "replace" } },
+  );
+  return data;
+}
+
+export async function updateTokenLeaderboardSettings(
+  settings: TokenLeaderboardSettingsUpdateRequest,
+): Promise<TokenLeaderboardSettings> {
+  const { data } = await apiClient.put<TokenLeaderboardSettings>(
+    "/admin/settings/token-leaderboard",
     settings,
   );
   return data;
@@ -1414,6 +1457,7 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  updateTokenLeaderboardSettings,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,
