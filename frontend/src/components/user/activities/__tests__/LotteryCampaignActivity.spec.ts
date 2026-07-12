@@ -6,6 +6,7 @@ const messages: Record<string, string> = {
   'lotteryCampaign.prizePool': 'Prize pool',
   'lotteryCampaign.winnerCount': '{count} winners',
   'lotteryCampaign.entryLadder': 'Lottery entries',
+  'lotteryCampaign.weightLadder': 'Lottery entries',
   'lotteryCampaign.ladderNext': 'Use {amount} more to unlock the next entry',
   'lotteryCampaign.ladderMaxed': 'Max entries reached',
   'lotteryCampaign.ladderStart': 'Reach the threshold to earn your first entry',
@@ -21,20 +22,24 @@ const messages: Record<string, string> = {
   'lotteryCampaign.entryStatuses.enrolled': 'In pool',
 }
 
-const { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, showError, showSuccess } = vi.hoisted(() => ({
+const { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, getLotteryParticipants, showError, showSuccess } = vi.hoisted(() => ({
   getActiveLotteryCampaign: vi.fn(),
   getMyLotteryCampaignData: vi.fn(),
   enrollLotteryCampaign: vi.fn(),
   getRecentLotteryWinners: vi.fn(),
+  getLotteryParticipants: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
 
 vi.mock('@/api/lotteryCampaigns', () => ({
-  default: { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners },
+  default: { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, getLotteryParticipants },
 }))
 
-vi.mock('@/stores', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
+vi.mock('@/stores', () => ({
+  useAppStore: () => ({ showError, showSuccess }),
+  useAuthStore: () => ({ user: { email: 'current@example.com' } }),
+}))
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -92,6 +97,8 @@ describe('LotteryCampaignActivity', () => {
     enrollLotteryCampaign.mockReset()
     getRecentLotteryWinners.mockReset()
     getRecentLotteryWinners.mockResolvedValue({ items: [] })
+    getLotteryParticipants.mockReset()
+    getLotteryParticipants.mockResolvedValue({ items: [] })
     showError.mockReset()
     showSuccess.mockReset()
   })

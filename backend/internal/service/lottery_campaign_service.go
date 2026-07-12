@@ -158,6 +158,7 @@ type LotteryPublicWinner struct {
 
 type LotteryParticipant struct {
 	MaskedEmail string `json:"masked_email"`
+	EntryCount  int    `json:"entry_count"`
 }
 
 type LotteryCampaignInput struct {
