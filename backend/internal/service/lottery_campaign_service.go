@@ -156,6 +156,10 @@ type LotteryPublicWinner struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
+type LotteryParticipant struct {
+	MaskedEmail string `json:"masked_email"`
+}
+
 type LotteryCampaignInput struct {
 	Name              string
 	Description       string
@@ -213,10 +217,10 @@ type LotteryDesignationInput struct {
 
 // LotteryDesignationCandidate 是候选人视图，包含脱敏信息与当前预置状态。
 type LotteryDesignationCandidate struct {
-	UserID          int64  `json:"user_id"`
-	MaskedEmail     string `json:"masked_email"`
-	EntryCount      int    `json:"entry_count"`
-	Tokens          int64  `json:"tokens"`
+	UserID           int64  `json:"user_id"`
+	MaskedEmail      string `json:"masked_email"`
+	EntryCount       int    `json:"entry_count"`
+	Tokens           int64  `json:"tokens"`
 	DesignatedTierID *int64 `json:"designated_tier_id,omitempty"`
 }
 
@@ -253,7 +257,8 @@ type LotteryCampaignRepository interface {
 	UpsertLotteryEntry(ctx context.Context, campaign LotteryCampaign, userID int64, entryDate time.Time, tokens int64, entryCount int, enrolled bool) (*LotteryEntry, error)
 	GetLotteryEntry(ctx context.Context, campaignID, userID int64, entryDate time.Time) (*LotteryEntry, error)
 	ListLotteryDrawCandidates(ctx context.Context, campaignID int64, entryDate time.Time) ([]LotteryDrawCandidate, error)
-	CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error)
+	CountLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) (int64, error)
+	ListLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) ([]LotteryParticipant, error)
 	GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*LotteryDrawBatch, error)
 	CreateLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate, scheduledDrawAt time.Time, triggerType string, operatorID *int64) (*LotteryDrawBatch, error)
 	CreateLotteryWinners(ctx context.Context, batch LotteryDrawBatch, campaign LotteryCampaign, winners []LotteryWinner) error
@@ -364,7 +369,7 @@ func (s *LotteryCampaignService) MyData(ctx context.Context, campaignID, userID 
 	if err != nil {
 		return nil, err
 	}
-	participantCount, err := s.repo.CountLotteryQualifiedUsers(ctx, windowStart, lotteryMinTime(now, windowEnd), campaign.ThresholdTokens)
+	participantCount, err := s.repo.CountLotteryParticipants(ctx, campaign.ID, drawDate)
 	if err != nil {
 		return nil, err
 	}
@@ -401,6 +406,18 @@ func (s *LotteryCampaignService) RecentWinners(ctx context.Context, campaignID i
 		limit = lotteryPublicWinnersMaxLimit
 	}
 	return s.repo.ListRecentPublicLotteryWinners(ctx, campaignID, limit)
+}
+
+func (s *LotteryCampaignService) Participants(ctx context.Context, campaignID int64, now time.Time) ([]LotteryParticipant, error) {
+	campaign, err := s.repo.GetLotteryCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if !lotteryCampaignVisible(*campaign, now) {
+		return nil, ErrLotteryCampaignNotFound
+	}
+	drawDate, _, _, _ := lotteryCurrentWindow(*campaign, now)
+	return s.repo.ListLotteryParticipants(ctx, campaignID, drawDate)
 }
 
 func (s *LotteryCampaignService) Enroll(ctx context.Context, campaignID, userID int64, now time.Time) (*LotteryEntry, error) {

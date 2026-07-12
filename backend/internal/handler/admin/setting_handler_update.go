@@ -299,6 +299,11 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// Token leaderboard user-facing controls
+	TokenLeaderboardUserVisible   *bool   `json:"token_leaderboard_user_visible"`
+	TokenLeaderboardCommonGroupID *int64  `json:"token_leaderboard_common_group_id"`
+	TokenLeaderboardTierTooltip   *string `json:"token_leaderboard_tier_tooltip"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -1505,6 +1510,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		TokenLeaderboardUserVisible: func() bool {
+			if req.TokenLeaderboardUserVisible != nil {
+				return *req.TokenLeaderboardUserVisible
+			}
+			return previousSettings.TokenLeaderboardUserVisible
+		}(),
+		TokenLeaderboardCommonGroupID: func() int64 {
+			if req.TokenLeaderboardCommonGroupID != nil {
+				return *req.TokenLeaderboardCommonGroupID
+			}
+			return previousSettings.TokenLeaderboardCommonGroupID
+		}(),
+		TokenLeaderboardTierTooltip: func() string {
+			if req.TokenLeaderboardTierTooltip != nil {
+				return *req.TokenLeaderboardTierTooltip
+			}
+			return previousSettings.TokenLeaderboardTierTooltip
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1879,7 +1902,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
-		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		AvailableChannelsEnabled:      updatedSettings.AvailableChannelsEnabled,
+		TokenLeaderboardUserVisible:   updatedSettings.TokenLeaderboardUserVisible,
+		TokenLeaderboardCommonGroupID: updatedSettings.TokenLeaderboardCommonGroupID,
+		TokenLeaderboardTierTooltip:   updatedSettings.TokenLeaderboardTierTooltip,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
