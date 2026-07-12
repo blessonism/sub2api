@@ -31,6 +31,7 @@ export interface CampaignConfigVersion {
   effective_at: string
   recharge_threshold_cents: number
   allow_accumulated_recharge: boolean
+  historical_invite_ratio: string
   pool_injection_rate: string
   pool_injection_scope: 'invitees_only' | 'all_users'
   rank_pool_ratio: string
@@ -61,6 +62,9 @@ export interface CampaignLeaderboardRow {
   masked_email?: string
   username?: string
   valid_invite_count: number
+  activity_valid_invite_count: number
+  historical_valid_invite_count: number
+  historical_weighted_invite_count: number
   pending_invite_count: number
   invitee_recharge_amount_cents: number
   manual_valid_invite_delta: number
@@ -109,6 +113,9 @@ export interface CampaignMyData {
   invite_code: string
   invite_link: string
   valid_invite_count: number
+  activity_valid_invite_count: number
+  historical_valid_invite_count: number
+  historical_weighted_invite_count: number
   pending_invite_count: number
   invalid_invite_count: number
   current_rank?: number | null

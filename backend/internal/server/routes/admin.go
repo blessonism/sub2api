@@ -823,6 +823,7 @@ func registerCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		campaigns.GET("", h.Admin.Campaign.List)
 		campaigns.POST("", h.Admin.Campaign.Create)
 		campaigns.GET("/:id", h.Admin.Campaign.Get)
+		campaigns.GET("/:id/config", h.Admin.Campaign.GetConfig)
 		campaigns.PUT("/:id", h.Admin.Campaign.Update)
 		campaigns.DELETE("/:id", h.Admin.Campaign.Delete)
 		campaigns.POST("/:id/copy", h.Admin.Campaign.Copy)

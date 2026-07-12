@@ -387,7 +387,12 @@
                     <tr v-for="row in leaderboard" :key="row.user_id">
                       <td class="px-4 py-3 font-semibold">#{{ row.rank }}</td>
                       <td class="px-4 py-3">{{ row.username || row.masked_email || row.user_id }}</td>
-                      <td class="px-4 py-3 text-right">{{ row.valid_invite_count }}</td>
+                      <td
+                        class="px-4 py-3 text-right"
+                        :title="t('admin.campaignRewards.inviteCountBreakdown', { activity: row.activity_valid_invite_count, historical: row.historical_valid_invite_count, weighted: row.historical_weighted_invite_count })"
+                      >
+                        {{ row.valid_invite_count }}
+                      </td>
                       <td class="px-4 py-3 text-right">{{ formatCents(row.invitee_recharge_amount_cents) }}</td>
                       <td class="px-4 py-3 text-right">{{ formatCents(row.estimated_reward_cents) }}</td>
                       <td class="px-4 py-3">
@@ -490,6 +495,10 @@
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.contributionPoolRatio') }}</span>
               <input v-model.number="createForm.contribution_pool_ratio" class="input" type="number" min="0" step="0.01" />
             </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.historicalInviteRatio') }}</span>
+              <input v-model.number="createForm.historical_invite_ratio_percent" class="input" type="number" min="0" max="100" step="0.01" />
+            </label>
             <div class="space-y-2 md:col-span-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -555,6 +564,10 @@
               <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ formatCents(yuanToCents(createForm.recharge_threshold_yuan)) }}</p>
             </div>
             <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.historicalInviteRatio') }}</p>
+              <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ createForm.historical_invite_ratio_percent }}%</p>
+            </div>
+            <div>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.poolSplit') }}</p>
               <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ createForm.rank_pool_ratio }} / {{ createForm.contribution_pool_ratio }}</p>
             </div>
@@ -598,6 +611,10 @@
             <label class="space-y-1 md:col-span-2">
               <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.rulesText') }}</span>
               <textarea v-model.trim="editForm.rules_text" class="input min-h-24" />
+            </label>
+            <label class="space-y-1">
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.campaignRewards.historicalInviteRatio') }}</span>
+              <input v-model.number="editForm.historical_invite_ratio_percent" class="input" type="number" min="0" max="100" step="0.01" :disabled="!canEditHistoricalInviteRatio" />
             </label>
           </div>
         </div>
@@ -764,7 +781,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LotteryCampaignAdminPanel from '@/components/admin/activities/LotteryCampaignAdminPanel.vue'
 import { adminAPI } from '@/api/admin'
-import type { Campaign, CampaignInviteRecord, CampaignLeaderboardRow, CampaignPoolSummary } from '@/api/campaigns'
+import type { Campaign, CampaignConfigVersion, CampaignInviteRecord, CampaignLeaderboardRow, CampaignPoolSummary } from '@/api/campaigns'
 import type { CampaignCalculationSummary, CampaignUpdateRequest } from '@/api/admin/campaigns'
 import { useAppStore } from '@/stores'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
@@ -783,6 +800,7 @@ interface RankWeightRow {
 const loading = ref(false)
 const campaigns = ref<Campaign[]>([])
 const selectedCampaign = ref<Campaign | null>(null)
+const selectedConfig = ref<CampaignConfigVersion | null>(null)
 const pool = ref<CampaignPoolSummary | null>(null)
 const leaderboard = ref<CampaignLeaderboardRow[]>([])
 const calculation = ref<CampaignCalculationSummary | null>(null)
@@ -810,6 +828,7 @@ const createForm = reactive({
   start_at: '',
   end_at: '',
   recharge_threshold_yuan: 20,
+  historical_invite_ratio_percent: 0,
   pool_injection_rate: 0.1,
   pool_injection_scope: 'invitees_only' as 'invitees_only' | 'all_users',
   rank_pool_ratio: 0.8,
@@ -829,6 +848,7 @@ const editForm = reactive({
   publicity_start_at: '',
   publicity_end_at: '',
   payout_due_at: '',
+  historical_invite_ratio_percent: 0,
 })
 const leaderboardAdjustDialogOpen = ref(false)
 const inviteRecordsDialogOpen = ref(false)
@@ -888,6 +908,7 @@ const createValidationMessage = computed(() => {
   if (!isValidDateRange(createForm.start_at, createForm.end_at)) return t('admin.campaignRewards.createTimeInvalid')
   if (!isFiniteNonNegative(createForm.recharge_threshold_yuan) || !isFiniteNonNegative(createForm.min_payout_yuan)) return t('admin.campaignRewards.createAmountInvalid')
   if (!isFiniteNonNegative(createForm.pool_injection_rate)) return t('admin.campaignRewards.createRateInvalid')
+  if (!Number.isFinite(createForm.historical_invite_ratio_percent) || createForm.historical_invite_ratio_percent < 0 || createForm.historical_invite_ratio_percent > 100) return t('admin.campaignRewards.historicalInviteRatioInvalid')
   if (!isFiniteNonNegative(createForm.rank_pool_ratio) || !isFiniteNonNegative(createForm.contribution_pool_ratio)) return t('admin.campaignRewards.createPoolRatioInvalid')
   if (!isApproximatelyEqual(createForm.rank_pool_ratio + createForm.contribution_pool_ratio, 1)) return t('admin.campaignRewards.createPoolRatioInvalid')
   if (rankRewardCount.value <= 0) return t('admin.campaignRewards.createRankCountInvalid')
@@ -900,6 +921,7 @@ const editValidationMessage = computed(() => {
   if (!editForm.name.trim()) return t('admin.campaignRewards.createNameRequired')
   if (!editForm.start_at || !editForm.end_at) return t('admin.campaignRewards.createTimeRequired')
   if (!isValidDateRange(editForm.start_at, editForm.end_at)) return t('admin.campaignRewards.createTimeInvalid')
+  if (!Number.isFinite(editForm.historical_invite_ratio_percent) || editForm.historical_invite_ratio_percent < 0 || editForm.historical_invite_ratio_percent > 100) return t('admin.campaignRewards.historicalInviteRatioInvalid')
   if (hasInvalidOptionalDateTime([
     editForm.warmup_start_at,
     editForm.audit_start_at,
@@ -1029,6 +1051,7 @@ const selectedTargetText = computed(() => {
 })
 
 const selectedTimelineWarnings = computed(() => selectedCampaign.value ? getCampaignTimeWarnings(selectedCampaign.value) : [])
+const canEditHistoricalInviteRatio = computed(() => ['draft', 'warmup', 'active', 'paused'].includes(selectedCampaign.value?.status || ''))
 
 const timelineItems = computed(() => {
   const campaign = selectedCampaign.value
@@ -1205,12 +1228,14 @@ async function loadCampaigns(): Promise<void> {
 
 async function selectCampaign(id: number): Promise<void> {
   try {
-    const [campaign, poolResp, board] = await Promise.all([
+    const [campaign, config, poolResp, board] = await Promise.all([
       adminAPI.campaigns.getCampaign(id),
+      adminAPI.campaigns.getCampaignConfig(id),
       adminAPI.campaigns.getPoolSummary(id),
       adminAPI.campaigns.getLeaderboard(id),
     ])
     selectedCampaign.value = campaign
+    selectedConfig.value = config
     pool.value = poolResp
     leaderboard.value = board.items
     calculation.value = null
@@ -1312,6 +1337,7 @@ function openCreateDialog(): void {
   createForm.start_at = toDateTimeLocal(start)
   createForm.end_at = toDateTimeLocal(end)
   createForm.recharge_threshold_yuan = 20
+  createForm.historical_invite_ratio_percent = 0
   createForm.pool_injection_rate = 0.1
   createForm.pool_injection_scope = 'invitees_only'
   createForm.rank_pool_ratio = 0.8
@@ -1335,6 +1361,7 @@ function openEditDialog(): void {
   editForm.publicity_start_at = toDateTimeLocalFromRaw(campaign.publicity_start_at)
   editForm.publicity_end_at = toDateTimeLocalFromRaw(campaign.publicity_end_at)
   editForm.payout_due_at = toDateTimeLocalFromRaw(campaign.payout_due_at)
+  editForm.historical_invite_ratio_percent = Number(selectedConfig.value?.historical_invite_ratio || 0) * 100
   editDialogOpen.value = true
 }
 
@@ -1354,6 +1381,7 @@ async function submitCreateCampaign(): Promise<void> {
       initial_bonus_cents: 0,
       recharge_threshold_cents: yuanToCents(createForm.recharge_threshold_yuan),
       allow_accumulated_recharge: true,
+      historical_invite_ratio: createForm.historical_invite_ratio_percent / 100,
       pool_injection_rate: createForm.pool_injection_rate,
       pool_injection_scope: createForm.pool_injection_scope,
       rank_pool_ratio: createForm.rank_pool_ratio,
@@ -1395,7 +1423,7 @@ async function submitEditCampaign(): Promise<void> {
 }
 
 function buildCampaignUpdatePayload(): CampaignUpdateRequest {
-  return {
+  const payload: CampaignUpdateRequest = {
     name: editForm.name,
     description: editForm.description,
     rules_text: editForm.rules_text,
@@ -1408,6 +1436,12 @@ function buildCampaignUpdatePayload(): CampaignUpdateRequest {
     publicity_end_at: optionalDateTimePayload(editForm.publicity_end_at),
     payout_due_at: optionalDateTimePayload(editForm.payout_due_at),
   }
+  const initialRatio = Number(selectedConfig.value?.historical_invite_ratio || 0)
+  const nextRatio = editForm.historical_invite_ratio_percent / 100
+  if (canEditHistoricalInviteRatio.value && !isApproximatelyEqual(initialRatio, nextRatio)) {
+    payload.historical_invite_ratio = nextRatio
+  }
+  return payload
 }
 
 async function publishSelected(): Promise<void> {

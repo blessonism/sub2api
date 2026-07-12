@@ -69,9 +69,18 @@ RETURNING id, name, description, cover_url, rules_text, status, warmup_start_at,
 }
 
 func (r *campaignRepository) UpdateCampaign(ctx context.Context, campaignID int64, input service.CampaignUpdateInput) (*service.Campaign, error) {
-	current, err := r.GetCampaign(ctx, campaignID)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := scanCampaign(tx.QueryRowContext(ctx, `
+SELECT id, name, description, cover_url, rules_text, status, warmup_start_at, start_at, end_at,
+	audit_start_at, audit_end_at, publicity_start_at, publicity_end_at, payout_due_at,
+	published_config_version_id, created_by, updated_by, created_at, updated_at
+FROM campaigns WHERE id = $1 FOR UPDATE`, campaignID))
+	if err != nil {
+		return nil, campaignRepoErr(err)
 	}
 	if input.Name != nil {
 		current.Name = strings.TrimSpace(*input.Name)
@@ -109,7 +118,47 @@ func (r *campaignRepository) UpdateCampaign(ctx context.Context, campaignID int6
 	if input.PayoutDueAt != nil {
 		current.PayoutDueAt = *input.PayoutDueAt
 	}
-	_, err = r.db.ExecContext(ctx, `
+	if input.HistoricalInviteRatio != nil {
+		var configID int64
+		var ratioRaw string
+		if err := tx.QueryRowContext(ctx, `
+SELECT cv.id, cv.historical_invite_ratio::text
+FROM campaigns c
+JOIN campaign_config_versions cv ON cv.id = COALESCE(
+	c.published_config_version_id,
+	(SELECT id FROM campaign_config_versions WHERE campaign_id = c.id ORDER BY version DESC LIMIT 1)
+)
+WHERE c.id = $1`, campaignID).Scan(&configID, &ratioRaw); err != nil {
+			return nil, campaignRepoErr(err)
+		}
+		currentRatio, err := decimal.NewFromString(ratioRaw)
+		if err != nil {
+			return nil, err
+		}
+		if !currentRatio.Equal(*input.HistoricalInviteRatio) {
+			if current.Status != service.CampaignStatusDraft && current.Status != service.CampaignStatusWarmup && current.Status != service.CampaignStatusActive && current.Status != service.CampaignStatusPaused {
+				return nil, service.ErrCampaignImmutableRule
+			}
+			var locked bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+				SELECT 1 FROM campaign_reward_results WHERE campaign_id = $1 AND calculation_status = 'final'
+				UNION ALL
+				SELECT 1 FROM campaign_payout_batches WHERE campaign_id = $1
+			)`, campaignID).Scan(&locked); err != nil {
+				return nil, err
+			}
+			if locked {
+				return nil, service.ErrCampaignSettlementLocked
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE campaign_config_versions SET historical_invite_ratio = $2::numeric WHERE id = $1`, configID, input.HistoricalInviteRatio.String()); err != nil {
+				return nil, err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE campaign_historical_invite_snapshots SET ratio_snapshot = $2::numeric WHERE campaign_id = $1`, campaignID, input.HistoricalInviteRatio.String()); err != nil {
+				return nil, err
+			}
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
 UPDATE campaigns
 SET name = $2, description = $3, cover_url = $4, rules_text = $5,
 	warmup_start_at = $6, start_at = $7, end_at = $8, audit_start_at = $9, audit_end_at = $10,
@@ -120,6 +169,9 @@ WHERE id = $1`,
 		current.PublicityStartAt, current.PublicityEndAt, current.PayoutDueAt, nullableInt64(input.OperatorID),
 	)
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return r.GetCampaign(ctx, campaignID)
@@ -208,7 +260,7 @@ func (r *campaignRepository) CreateConfigVersion(ctx context.Context, campaignID
 func (r *campaignRepository) GetLatestConfigVersion(ctx context.Context, campaignID int64) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
+	allow_accumulated_recharge, historical_invite_ratio::text, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -221,7 +273,7 @@ LIMIT 1`, campaignID)
 func (r *campaignRepository) GetLatestConfigVersionAt(ctx context.Context, campaignID int64, at time.Time) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
+	allow_accumulated_recharge, historical_invite_ratio::text, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -232,7 +284,7 @@ LIMIT 1`, campaignID, at)
 	if err != nil && errors.Is(err, service.ErrCampaignNotFound) {
 		row = r.db.QueryRowContext(ctx, `
 SELECT id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
+	allow_accumulated_recharge, historical_invite_ratio::text, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at
 FROM campaign_config_versions
@@ -247,7 +299,7 @@ LIMIT 1`, campaignID)
 func (r *campaignRepository) GetPublishedConfigVersion(ctx context.Context, campaignID int64) (*service.CampaignConfigVersion, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT cv.id, cv.campaign_id, cv.version, cv.version_scope, cv.effective_at, cv.recharge_threshold_cents,
-	cv.allow_accumulated_recharge, cv.pool_injection_rate::text, cv.pool_injection_scope, cv.rank_pool_ratio::text,
+	cv.allow_accumulated_recharge, cv.historical_invite_ratio::text, cv.pool_injection_rate::text, cv.pool_injection_scope, cv.rank_pool_ratio::text,
 	cv.contribution_pool_ratio::text, cv.rank_reward_count, cv.rank_weights_json::text,
 	cv.min_payout_amount_cents, cv.payout_method, cv.payout_channel, cv.change_reason, cv.created_by, cv.created_at
 FROM campaigns c
@@ -312,6 +364,7 @@ func (r *campaignRepository) GetCampaignDeleteImpact(ctx context.Context, campai
 SELECT
 	(SELECT COUNT(*) FROM campaign_participants WHERE campaign_id = $1),
 	(SELECT COUNT(*) FROM campaign_invite_records WHERE campaign_id = $1),
+	(SELECT COUNT(*) FROM campaign_historical_invite_snapshots WHERE campaign_id = $1),
 	(SELECT COUNT(*) FROM campaign_pool_entries WHERE campaign_id = $1),
 	(SELECT COUNT(*) FROM campaign_pool_adjustments WHERE campaign_id = $1),
 	(SELECT COUNT(*) FROM campaign_leaderboard_snapshots WHERE campaign_id = $1),
@@ -322,6 +375,7 @@ SELECT
 	).Scan(
 		&impact.Participants,
 		&impact.InviteRecords,
+		&impact.HistoricalInvites,
 		&impact.PoolEntries,
 		&impact.PoolAdjustments,
 		&impact.LeaderboardSnapshots,
@@ -367,6 +421,83 @@ LIMIT 1`, strings.TrimSpace(code))
 
 func (r *campaignRepository) EnsureUserAffiliate(ctx context.Context, userID int64) (*service.AffiliateSummary, error) {
 	return ensureUserAffiliateWithClient(ctx, r.db, userID)
+}
+
+func (r *campaignRepository) EnsureHistoricalInviteSnapshot(ctx context.Context, campaign *service.Campaign, _ *service.CampaignConfigVersion) error {
+	if campaign == nil || campaign.ID <= 0 || campaign.Status != service.CampaignStatusActive {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var snapshotAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT historical_invite_snapshot_at FROM campaigns WHERE id = $1 FOR UPDATE`, campaign.ID).Scan(&snapshotAt); err != nil {
+		return campaignRepoErr(err)
+	}
+	if snapshotAt.Valid {
+		return tx.Commit()
+	}
+	_, err = tx.ExecContext(ctx, `
+WITH recharge_events AS (
+	SELECT po.user_id,
+		ROUND(po.amount * 100)::bigint AS amount_cents,
+		COALESCE(po.completed_at, po.paid_at, po.created_at) AS succeeded_at,
+		'payment:' || po.id::text AS source_key
+	FROM payment_orders po
+	WHERE po.order_type = 'balance'
+	  AND po.status = 'COMPLETED'
+	  AND COALESCE(po.completed_at, po.paid_at, po.created_at) < $2
+	  AND po.amount > 0
+	UNION ALL
+	SELECT rc.used_by AS user_id,
+		ROUND(rc.value * 100)::bigint AS amount_cents,
+		rc.used_at AS succeeded_at,
+		'redeem:' || rc.id::text AS source_key
+	FROM redeem_codes rc
+	WHERE rc.type = 'balance'
+	  AND rc.status = 'used'
+	  AND rc.used_by IS NOT NULL
+	  AND rc.used_at < $2
+	  AND rc.value > 0
+	  AND NOT EXISTS (
+		SELECT 1 FROM payment_orders po
+		WHERE po.recharge_code = rc.code AND po.order_type = 'balance'
+	  )
+), recharge_running AS (
+	SELECT user_id, succeeded_at,
+		SUM(amount_cents) OVER (PARTITION BY user_id ORDER BY succeeded_at, source_key ROWS UNBOUNDED PRECEDING)::bigint AS running_amount
+	FROM recharge_events
+)
+INSERT INTO campaign_historical_invite_snapshots (
+	campaign_id, config_version_id, inviter_user_id, invitee_user_id, invited_at,
+	snapshot_cutoff_at, threshold_snapshot_cents, historical_recharge_amount_cents,
+	ratio_snapshot, qualified_at, created_at
+)
+SELECT c.id, cv.id, ua.inviter_id, ua.user_id, ua.inviter_bound_at,
+	c.start_at, cv.recharge_threshold_cents, rt.amount_cents,
+	cv.historical_invite_ratio, rt.qualified_at, NOW()
+FROM campaigns c
+JOIN campaign_config_versions cv ON cv.id = c.published_config_version_id
+JOIN user_affiliates ua ON ua.inviter_id IS NOT NULL AND ua.inviter_id <> ua.user_id AND ua.inviter_bound_at IS NOT NULL
+JOIN LATERAL (
+	SELECT MAX(rr.running_amount)::bigint AS amount_cents,
+		MIN(rr.succeeded_at) FILTER (WHERE rr.running_amount >= cv.recharge_threshold_cents) AS qualified_at
+	FROM recharge_running rr
+	WHERE rr.user_id = ua.user_id
+) rt ON rt.amount_cents >= cv.recharge_threshold_cents
+WHERE c.id = $1
+	AND ua.inviter_bound_at < c.start_at
+ON CONFLICT (campaign_id, invitee_user_id) DO NOTHING`, campaign.ID, campaign.StartAt)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE campaigns SET historical_invite_snapshot_at = NOW(), updated_at = NOW() WHERE id = $1`, campaign.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *campaignRepository) RecordInviteRegistration(ctx context.Context, campaign *service.Campaign, cfg *service.CampaignConfigVersion, inviter *service.AffiliateSummary, input service.CampaignRegisterInviteInput) (*service.CampaignInviteRecord, error) {
@@ -1058,16 +1189,16 @@ func insertCampaignConfigVersion(ctx context.Context, execer interface {
 	row := execer.QueryRowContext(ctx, `
 INSERT INTO campaign_config_versions (
 	campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate, pool_injection_scope, rank_pool_ratio, contribution_pool_ratio,
+	allow_accumulated_recharge, historical_invite_ratio, pool_injection_rate, pool_injection_scope, rank_pool_ratio, contribution_pool_ratio,
 	rank_reward_count, rank_weights_json, min_payout_amount_cents, payout_method, payout_channel,
 	change_reason, created_by, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9::numeric, $10::numeric, $11, $12::jsonb, $13, $14, $15, $16, $17, NOW())
+) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric, $9, $10::numeric, $11::numeric, $12, $13::jsonb, $14, $15, $16, $17, $18, NOW())
 RETURNING id, campaign_id, version, version_scope, effective_at, recharge_threshold_cents,
-	allow_accumulated_recharge, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
+	allow_accumulated_recharge, historical_invite_ratio::text, pool_injection_rate::text, pool_injection_scope, rank_pool_ratio::text,
 	contribution_pool_ratio::text, rank_reward_count, rank_weights_json::text,
 	min_payout_amount_cents, payout_method, payout_channel, change_reason, created_by, created_at`,
 		cfg.CampaignID, cfg.Version, cfg.VersionScope, cfg.EffectiveAt, cfg.RechargeThresholdCents,
-		cfg.AllowAccumulatedRecharge, cfg.PoolInjectionRate.String(), cfg.PoolInjectionScope, cfg.RankPoolRatio.String(),
+		cfg.AllowAccumulatedRecharge, cfg.HistoricalInviteRatio.String(), cfg.PoolInjectionRate.String(), cfg.PoolInjectionScope, cfg.RankPoolRatio.String(),
 		cfg.ContributionPoolRatio.String(), cfg.RankRewardCount, weightsJSON(cfg.RankWeights),
 		cfg.MinPayoutAmountCents, cfg.PayoutMethod, cfg.PayoutChannel, cfg.ChangeReason, nullableInt64(cfg.CreatedBy),
 	)
@@ -1076,11 +1207,11 @@ RETURNING id, campaign_id, version, version_scope, effective_at, recharge_thresh
 
 func scanCampaignConfigVersion(scanner campaignScanner) (*service.CampaignConfigVersion, error) {
 	var item service.CampaignConfigVersion
-	var poolRate, rankRatio, contributionRatio string
+	var historicalRatio, poolRate, rankRatio, contributionRatio string
 	var weightsRaw string
 	err := scanner.Scan(
 		&item.ID, &item.CampaignID, &item.Version, &item.VersionScope, &item.EffectiveAt,
-		&item.RechargeThresholdCents, &item.AllowAccumulatedRecharge, &poolRate, &item.PoolInjectionScope, &rankRatio,
+		&item.RechargeThresholdCents, &item.AllowAccumulatedRecharge, &historicalRatio, &poolRate, &item.PoolInjectionScope, &rankRatio,
 		&contributionRatio, &item.RankRewardCount, &weightsRaw, &item.MinPayoutAmountCents,
 		&item.PayoutMethod, &item.PayoutChannel, &item.ChangeReason, &item.CreatedBy, &item.CreatedAt,
 	)
@@ -1088,6 +1219,7 @@ func scanCampaignConfigVersion(scanner campaignScanner) (*service.CampaignConfig
 		return nil, campaignRepoErr(err)
 	}
 	item.PoolInjectionRate, _ = decimal.NewFromString(poolRate)
+	item.HistoricalInviteRatio, _ = decimal.NewFromString(historicalRatio)
 	item.RankPoolRatio, _ = decimal.NewFromString(rankRatio)
 	item.ContributionPoolRatio, _ = decimal.NewFromString(contributionRatio)
 	_ = json.Unmarshal([]byte(weightsRaw), &item.RankWeights)
@@ -1129,7 +1261,7 @@ func campaignLeaderboardSQL() string {
 WITH invite_base AS (
 	SELECT
 		cir.inviter_user_id AS user_id,
-		COUNT(*) FILTER (WHERE cir.status = 'effective')::integer AS valid_invite_count,
+		COUNT(*) FILTER (WHERE cir.status = 'effective')::integer AS activity_valid_invite_count,
 		COUNT(*) FILTER (WHERE cir.status IN ('registered', 'recharge_unqualified', 'pending_audit', 'risk_review'))::integer AS pending_invite_count,
 		COALESCE(SUM(cir.effective_recharge_amount_cents) FILTER (WHERE cir.status = 'effective'), 0)::bigint AS recharge_amount,
 		COALESCE(MAX(cir.qualified_at) FILTER (WHERE cir.status = 'effective'), MIN(cir.registered_at)) AS reached_count_at,
@@ -1137,6 +1269,16 @@ WITH invite_base AS (
 	FROM campaign_invite_records cir
 	WHERE cir.campaign_id = $1
 	GROUP BY cir.inviter_user_id
+), historical_base AS (
+	SELECT
+		chis.inviter_user_id AS user_id,
+		COUNT(*)::integer AS historical_valid_invite_count,
+		SUM(chis.ratio_snapshot)::numeric AS historical_weighted_count,
+		MAX(chis.qualified_at) AS reached_count_at,
+		MIN(chis.invited_at) AS joined_at
+	FROM campaign_historical_invite_snapshots chis
+	WHERE chis.campaign_id = $1
+	GROUP BY chis.inviter_user_id
 ), manual_delta AS (
 	SELECT
 		cla.user_id,
@@ -1148,23 +1290,30 @@ WITH invite_base AS (
 	GROUP BY cla.user_id
 ), adjusted AS (
 	SELECT
-		COALESCE(ib.user_id, md.user_id) AS user_id,
-		GREATEST(COALESCE(ib.valid_invite_count, 0) + COALESCE(md.valid_invite_delta, 0), 0)::integer AS valid_invite_count,
+		COALESCE(ib.user_id, hb.user_id, md.user_id) AS user_id,
+		GREATEST(COALESCE(ib.activity_valid_invite_count, 0)::numeric + COALESCE(hb.historical_weighted_count, 0) + COALESCE(md.valid_invite_delta, 0), 0)::numeric AS valid_invite_count,
+		COALESCE(ib.activity_valid_invite_count, 0)::integer AS activity_valid_invite_count,
+		COALESCE(hb.historical_valid_invite_count, 0)::integer AS historical_valid_invite_count,
+		COALESCE(hb.historical_weighted_count, 0)::numeric AS historical_weighted_count,
 		COALESCE(ib.pending_invite_count, 0)::integer AS pending_invite_count,
 		GREATEST(COALESCE(ib.recharge_amount, 0) + COALESCE(md.recharge_delta, 0), 0)::bigint AS recharge_amount,
 		COALESCE(md.valid_invite_delta, 0)::integer AS manual_valid_invite_delta,
 		COALESCE(md.recharge_delta, 0)::bigint AS manual_recharge_delta,
 		(md.user_id IS NOT NULL) AS has_manual_adjustment,
-		COALESCE(ib.reached_count_at, md.first_adjusted_at) AS reached_count_at,
-		COALESCE(ib.joined_at, md.first_adjusted_at) AS joined_at
+		COALESCE(ib.reached_count_at, hb.reached_count_at, md.first_adjusted_at) AS reached_count_at,
+		COALESCE(ib.joined_at, hb.joined_at, md.first_adjusted_at) AS joined_at
 	FROM invite_base ib
-	FULL OUTER JOIN manual_delta md ON md.user_id = ib.user_id
+	FULL OUTER JOIN historical_base hb ON hb.user_id = ib.user_id
+	FULL OUTER JOIN manual_delta md ON md.user_id = COALESCE(ib.user_id, hb.user_id)
 ), ranked AS (
 	SELECT
 		a.user_id,
 		COALESCE(u.email, '') AS email,
 		COALESCE(u.username, '') AS username,
 		a.valid_invite_count,
+		a.activity_valid_invite_count,
+		a.historical_valid_invite_count,
+		a.historical_weighted_count,
 		a.pending_invite_count,
 		a.recharge_amount,
 		a.manual_valid_invite_delta,
@@ -1178,7 +1327,8 @@ WITH invite_base AS (
 )
 SELECT
 	ROW_NUMBER() OVER (ORDER BY valid_invite_count DESC, recharge_amount DESC, reached_count_at ASC, joined_at ASC)::integer AS rank,
-	user_id, email, username, valid_invite_count, pending_invite_count, recharge_amount, manual_valid_invite_delta, manual_recharge_delta, has_manual_adjustment, reached_count_at, joined_at,
+	user_id, email, username, valid_invite_count::double precision, activity_valid_invite_count, historical_valid_invite_count,
+	historical_weighted_count::double precision, pending_invite_count, recharge_amount, manual_valid_invite_delta, manual_recharge_delta, has_manual_adjustment, reached_count_at, joined_at,
 	0::bigint AS estimated_reward_cents, 0::bigint AS final_reward_cents
 FROM ranked
 ORDER BY rank`
@@ -1191,6 +1341,7 @@ func scanCampaignLeaderboardRows(rows *sql.Rows) ([]service.CampaignLeaderboardR
 		var email string
 		if err := rows.Scan(
 			&item.Rank, &item.UserID, &email, &item.Username, &item.ValidInviteCount,
+			&item.ActivityValidInviteCount, &item.HistoricalValidInviteCount, &item.HistoricalWeightedCount,
 			&item.PendingInviteCount, &item.InviteeRechargeAmountCents, &item.ManualValidInviteDelta, &item.ManualRechargeAmountCents,
 			&item.HasManualAdjustment, &item.ReachedCountAt, &item.JoinedAt,
 			&item.EstimatedRewardCents, &item.FinalRewardCents,

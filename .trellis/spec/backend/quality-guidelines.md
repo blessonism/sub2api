@@ -32,6 +32,55 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Campaign historical invite weighting
+
+#### 1. Scope / Trigger
+- Trigger: changing invite-campaign qualification, historical recharge attribution, leaderboard invite counts, or reward settlement inputs.
+- This flow crosses affiliate relationships, payment/redeem records, campaign snapshots, public/admin DTOs, and settlement; source duplication or integer coercion directly changes rewards.
+
+#### 2. Signatures
+- Config DB field: `campaign_config_versions.historical_invite_ratio NUMERIC(12,8)`, internal range `0..1`.
+- Snapshot DB table: `campaign_historical_invite_snapshots`, unique on `(campaign_id, invitee_user_id)`.
+- Public leaderboard fields: `activity_valid_invite_count`, `historical_valid_invite_count`, `historical_weighted_invite_count`, and fractional `valid_invite_count`.
+
+#### 3. Contracts
+- Current-campaign invites count as `1` only after registration and qualifying recharge within `[start_at, end_at)`.
+- Historical invites require an affiliate relationship and qualifying cumulative balance recharge strictly before `start_at`.
+- Completed balance payment orders and used balance redeem codes are eligible sources. A redeem code referenced by `payment_orders.recharge_code` must not also be counted as a standalone redeem source.
+- Historical snapshot membership, qualification amounts, and cutoff are immutable after activation and never inject the current campaign reward pool. The ratio snapshot may change only before freeze/final settlement, in the same transaction as the campaign edit.
+- Leaderboard, distance calculations, frozen snapshots, and settlement must preserve fractional counts.
+
+#### 4. Validation & Error Matrix
+- Ratio `< 0` or `> 1` -> `CAMPAIGN_INVALID_CONFIG`.
+- Missing or unpublished config -> do not create a historical snapshot.
+- Snapshot transaction failure -> return the error and do not write the completion marker.
+- Existing final settlement or payout batch -> reject ratio changes with `CAMPAIGN_SETTLEMENT_LOCKED`.
+- Duplicate snapshot execution -> succeed without adding rows.
+
+#### 5. Good/Base/Bad Cases
+- Good: `3` campaign invites plus `5` historical invites at `0.30` produces `4.5` effective invites.
+- Base: ratio `0` keeps existing campaign ranking and settlement behavior.
+- Bad: summing a completed payment order and the redeem code generated for that same order.
+- Bad: casting weighted invite counts to integer before ranking or settlement.
+
+#### 6. Tests Required
+- Repository: source de-duplication SQL, strict start-time cutoff, qualification threshold, unique invitee, transaction completion marker, and repeat-call idempotency.
+- Service: ratio validation, fractional ordering, contribution weight, distance, freeze, and final settlement.
+- Frontend: percentage normalization (`30% -> 0.30`), payload contract, fractional display, and historical breakdown.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+SELECT value FROM redeem_codes;
+```
+
+Correct:
+```sql
+SELECT value FROM redeem_codes rc
+WHERE NOT EXISTS (SELECT 1 FROM payment_orders po WHERE po.recharge_code = rc.code);
+```
+
 ### Scenario: User-visible usage ranking/statistics APIs
 
 #### 1. Scope / Trigger
