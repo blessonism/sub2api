@@ -41,11 +41,11 @@
                 <span class="tabular-nums">{{ totalWinnerSlots }}</span>
                 <span class="text-white/70">{{ t('lotteryCampaign.totalWinners') }}</span>
               </div>
-              <div class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium backdrop-blur">
+              <button type="button" class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium backdrop-blur transition hover:bg-white/25" @click="openParticipants">
                 <Icon name="users" size="sm" class="text-emerald-100" />
                 <span class="tabular-nums">{{ participantCount }}</span>
                 <span class="text-white/70">{{ t('lotteryCampaign.participants') }}</span>
-              </div>
+              </button>
             </div>
           </div>
           <div class="rounded-2xl bg-white/15 p-4 backdrop-blur motion-safe:animate-glow sm:min-w-[260px]">
@@ -83,7 +83,7 @@
         </div>
         <div class="card p-5">
           <div class="flex items-center justify-between gap-3">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.entryCount') }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ entryMetricLabel }}</p>
             <Icon name="sparkles" size="sm" class="text-primary-500" />
           </div>
           <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ entryCount }}</p>
@@ -181,10 +181,10 @@
         <!-- Stepped ladder -->
         <div v-if="showLadder" class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
           <div class="flex items-center justify-between">
-            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('lotteryCampaign.entryLadder') }}</p>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ entryLadderLabel }}</p>
             <p class="text-sm font-semibold text-primary-600 dark:text-primary-300 tabular-nums">{{ entryCount }} / {{ maxEntries }}</p>
           </div>
-          <div class="mt-3 flex flex-wrap gap-1.5" :aria-label="t('lotteryCampaign.entryLadder')">
+          <div class="mt-3 flex flex-wrap gap-1.5" :aria-label="entryLadderLabel">
             <span
               v-for="slot in maxEntries"
               :key="slot"
@@ -265,6 +265,21 @@
         </div>
       </div>
     </template>
+    <div v-if="participantsOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="participantsOpen = false">
+      <section class="card max-h-[min(32rem,calc(100vh-2rem))] w-full max-w-md overflow-hidden bg-white shadow-xl dark:bg-dark-800" role="dialog" aria-modal="true" :aria-label="t('lotteryCampaign.participantsTitle')">
+        <div class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-dark-700">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.participantsTitle') }}</h2>
+          <button type="button" class="btn btn-ghost btn-sm" :aria-label="t('common.close')" @click="participantsOpen = false">&times;</button>
+        </div>
+        <div class="max-h-[26rem] overflow-y-auto p-4">
+          <div v-if="participantsLoading" class="flex justify-center py-8"><LoadingSpinner /></div>
+          <p v-else-if="participants.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.noParticipants') }}</p>
+          <ul v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+            <li v-for="(participant, index) in participants" :key="`${participant.masked_email}-${index}`" class="py-3 text-sm text-gray-700 dark:text-dark-200">{{ participant.masked_email }}</li>
+          </ul>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -287,6 +302,9 @@ const enrolling = ref(false)
 const home = ref<{ campaign: LotteryCampaign | null } | null>(null)
 const myData = ref<LotteryMyData | null>(null)
 const recentWinners = ref<LotteryPublicWinner[]>([])
+const participantsOpen = ref(false)
+const participantsLoading = ref(false)
+const participants = ref<{ masked_email: string }[]>([])
 const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 
@@ -352,9 +370,26 @@ const totalPoolCents = computed(() => prizeTiers.value.reduce((acc, tier) => acc
 const rulesText = computed(() => home.value?.campaign?.rules_text ?? '')
 
 const participantCount = computed(() => myData.value?.participant_count ?? 0)
+
+async function openParticipants() {
+  if (participantsLoading.value || !home.value?.campaign) return
+  participantsOpen.value = true
+  participantsLoading.value = true
+  try {
+    const result = await lotteryCampaignsAPI.getLotteryParticipants(home.value.campaign.id)
+    participants.value = result.items
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('lotteryCampaign.participantsLoadFailed')))
+  } finally {
+    participantsLoading.value = false
+  }
+}
 const entryCount = computed(() => myData.value?.entry_count ?? 0)
 const maxEntries = computed(() => home.value?.campaign?.max_entries_per_user ?? 1)
 const showLadder = computed(() => home.value?.campaign?.entry_mode === 'stepped' && maxEntries.value > 1 && maxEntries.value <= 12)
+const isWeightedLottery = computed(() => showLadder.value)
+const entryMetricLabel = computed(() => t(isWeightedLottery.value ? 'lotteryCampaign.weightCount' : 'lotteryCampaign.entryCount'))
+const entryLadderLabel = computed(() => t(isWeightedLottery.value ? 'lotteryCampaign.weightLadder' : 'lotteryCampaign.entryLadder'))
 const ladderHintText = computed(() => {
   const campaign = home.value?.campaign
   if (!campaign) return ''

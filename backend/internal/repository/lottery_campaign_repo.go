@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -335,21 +336,50 @@ ORDER BY user_id ASC`, campaignID, entryDate)
 	return out, rows.Err()
 }
 
-// CountLotteryQualifiedUsers 统计当前开奖窗口内用量已达门槛的去重用户数，
-// 直接以 usage_logs 为准，不依赖懒创建的 lottery_entries，因此开奖前也能反映真实可参与人数。
-func (r *lotteryCampaignRepository) CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error) {
+// CountLotteryParticipants 统计当前开奖轮次已实际报名的去重用户数。
+func (r *lotteryCampaignRepository) CountLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) (int64, error) {
 	var count int64
 	if err := r.db.QueryRowContext(ctx, `
-SELECT COUNT(*) FROM (
-	SELECT user_id
-	FROM usage_logs
-	WHERE created_at >= $1 AND created_at < $2 AND actual_cost > 0
-	GROUP BY user_id
-	HAVING COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) >= $3
-) AS qualified`, startAt, endAt, minTokens).Scan(&count); err != nil {
+SELECT COUNT(DISTINCT user_id)
+FROM lottery_entries
+WHERE campaign_id = $1 AND entry_date = $2::date AND status = 'enrolled'`, campaignID, entryDate).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (r *lotteryCampaignRepository) ListLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) ([]service.LotteryParticipant, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT COALESCE(u.email, '')
+FROM lottery_entries e
+LEFT JOIN users u ON u.id = e.user_id
+WHERE e.campaign_id = $1 AND e.entry_date = $2::date AND e.status = 'enrolled'
+ORDER BY e.enrolled_at ASC NULLS LAST, e.user_id ASC`, campaignID, entryDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	participants := make([]service.LotteryParticipant, 0)
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		participants = append(participants, service.LotteryParticipant{MaskedEmail: maskLotteryParticipantEmail(email)})
+	}
+	return participants, rows.Err()
+}
+
+func maskLotteryParticipantEmail(email string) string {
+	email = strings.TrimSpace(email)
+	at := strings.IndexByte(email, '@')
+	if at <= 1 {
+		if email == "" {
+			return ""
+		}
+		return "****"
+	}
+	return email[:1] + "****" + email[at:]
 }
 
 func (r *lotteryCampaignRepository) GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*service.LotteryDrawBatch, error) {
