@@ -286,7 +286,7 @@ func (r *lotteryCampaignRepository) UpsertLotteryEntry(ctx context.Context, camp
 	}
 	row := r.db.QueryRowContext(ctx, `
 INSERT INTO lottery_entries (campaign_id, user_id, entry_date, tokens, entry_count, status, enrolled_at, created_at, updated_at)
-VALUES ($1, $2, $3::date, $4, $5, $6, CASE WHEN $6 = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
+VALUES ($1, $2, $3::date, $4, $5, $6::varchar, CASE WHEN $6::varchar = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
 ON CONFLICT (campaign_id, user_id, entry_date) DO UPDATE
 SET tokens = EXCLUDED.tokens,
 	entry_count = EXCLUDED.entry_count,
