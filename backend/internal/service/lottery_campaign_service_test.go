@@ -420,8 +420,8 @@ func TestLotteryMyDataSingleDrawUsesCampaignWindow(t *testing.T) {
 	if data.TodayTokens != 200 || data.EntryCount != 1 {
 		t.Fatalf("my data tokens/entries = %d/%d, want 200/1", data.TodayTokens, data.EntryCount)
 	}
-	if data.ParticipantCount != 12 || !repo.participantStartArg.Equal(start) || !repo.participantEndArg.Equal(now) {
-		t.Fatalf("participant count/window = %d/%s-%s, want 12/%s-%s", data.ParticipantCount, repo.participantStartArg, repo.participantEndArg, start, now)
+	if data.ParticipantCount != 12 || repo.participantCampaignIDArg != 7 || !repo.participantEntryDateArg.Equal(dateOnly(drawAt)) {
+		t.Fatalf("participant count/campaign/date = %d/%d/%s, want 12/7/%s", data.ParticipantCount, repo.participantCampaignIDArg, repo.participantEntryDateArg, dateOnly(drawAt))
 	}
 }
 
@@ -564,28 +564,28 @@ func TestLotteryRecentWinnersDefaultsAndCapsLimit(t *testing.T) {
 }
 
 type lotteryServiceRepoStub struct {
-	campaign           LotteryCampaign
-	batch              *LotteryDrawBatch
-	winners            []LotteryWinner
-	qualified          []LotteryQualifiedUsage
-	candidates         []LotteryDrawCandidate
-	tokens             int64
-	createBatchCalls   int
-	createWinnersCalls int
-	grantCalls         int
-	upsertCalls        int
-	featureCalls       int
-	deleteCalls        int
-	userTokensStartAt  time.Time
-	userTokensEndAt    time.Time
-	qualifiedStartAt   time.Time
-	qualifiedEndAt     time.Time
-	upsertEntryDate    time.Time
-	publicWinners      []LotteryPublicWinner
-	recentLimitArg     int
-	participantCount    int64
-	participantStartArg time.Time
-	participantEndArg   time.Time
+	campaign                 LotteryCampaign
+	batch                    *LotteryDrawBatch
+	winners                  []LotteryWinner
+	qualified                []LotteryQualifiedUsage
+	candidates               []LotteryDrawCandidate
+	tokens                   int64
+	createBatchCalls         int
+	createWinnersCalls       int
+	grantCalls               int
+	upsertCalls              int
+	featureCalls             int
+	deleteCalls              int
+	userTokensStartAt        time.Time
+	userTokensEndAt          time.Time
+	qualifiedStartAt         time.Time
+	qualifiedEndAt           time.Time
+	upsertEntryDate          time.Time
+	publicWinners            []LotteryPublicWinner
+	recentLimitArg           int
+	participantCount         int64
+	participantCampaignIDArg int64
+	participantEntryDateArg  time.Time
 
 	designationCandidates []LotteryDesignationCandidate
 	designations          []LotteryWinnerDesignation
@@ -644,10 +644,13 @@ func (r *lotteryServiceRepoStub) GetLotteryEntry(context.Context, int64, int64, 
 func (r *lotteryServiceRepoStub) ListLotteryDrawCandidates(context.Context, int64, time.Time) ([]LotteryDrawCandidate, error) {
 	return r.candidates, nil
 }
-func (r *lotteryServiceRepoStub) CountLotteryQualifiedUsers(_ context.Context, startAt, endAt time.Time, _ int64) (int64, error) {
-	r.participantStartArg = startAt
-	r.participantEndArg = endAt
+func (r *lotteryServiceRepoStub) CountLotteryParticipants(_ context.Context, campaignID int64, entryDate time.Time) (int64, error) {
+	r.participantCampaignIDArg = campaignID
+	r.participantEntryDateArg = entryDate
 	return r.participantCount, nil
+}
+func (r *lotteryServiceRepoStub) ListLotteryParticipants(context.Context, int64, time.Time) ([]LotteryParticipant, error) {
+	return nil, nil
 }
 func (r *lotteryServiceRepoStub) GetLotteryDrawBatch(context.Context, int64, time.Time) (*LotteryDrawBatch, error) {
 	if r.batch == nil {

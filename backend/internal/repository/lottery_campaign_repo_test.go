@@ -102,6 +102,34 @@ RETURNING id, campaign_id, user_id, entry_date, tokens, entry_count, status, enr
 	}
 }
 
+func TestCountLotteryParticipantsCountsOnlyEnrolledUsersInCurrentDraw(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewLotteryCampaignRepository(db)
+	entryDate := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT COUNT(DISTINCT user_id)
+FROM lottery_entries
+WHERE campaign_id = $1 AND entry_date = $2::date AND status = 'enrolled'`)).
+		WithArgs(int64(7), entryDate).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+
+	count, err := repo.CountLotteryParticipants(context.Background(), 7, entryDate)
+	if err != nil {
+		t.Fatalf("count lottery participants: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("participant count = %d, want 3", count)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestGrantLotteryWinnerBalanceCommitsUserBalanceAndWinnerAtomically(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
