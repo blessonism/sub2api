@@ -326,6 +326,29 @@ func TestSettingService_UpdateSettings_TokenLeaderboardTierTooltipRejectsTooLong
 	require.Nil(t, repo.updates)
 }
 
+func TestSettingService_UpdateTokenLeaderboardSettings_OnlyWritesOwnedKeys(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &defaultSubGroupReaderStub{
+		byID: map[int64]*Group{
+			21: {ID: 21, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: false},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetDefaultSubscriptionGroupReader(groupReader)
+
+	updated, err := svc.UpdateTokenLeaderboardSettings(context.Background(), TokenLeaderboardSettings{
+		CommonGroupID: 21,
+		TierTooltip:   "  排行榜说明  ",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, &TokenLeaderboardSettings{CommonGroupID: 21, TierTooltip: "排行榜说明"}, updated)
+	require.Equal(t, map[string]string{
+		SettingKeyTokenLeaderboardCommonGroupID: "21",
+		SettingKeyTokenLeaderboardTierTooltip:   "排行榜说明",
+	}, repo.updates)
+}
+
 func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normalized(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

@@ -23,12 +23,13 @@ func updateSettingsCodexStatus(t *testing.T, body map[string]any) int {
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
 	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(raw))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 	handler.UpdateSettings(c)
 	return rec.Code
 }

@@ -7459,7 +7459,7 @@ import type {
   AuthSourceDefaultsState,
   AuthSourceType,
   SystemSettings,
-  UpdateSettingsRequest,
+  FullSettingsUpdateRequest,
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
@@ -9510,7 +9510,7 @@ async function saveSettings() {
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
 
-    const payload: UpdateSettingsRequest = {
+    const payload: FullSettingsUpdateRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist:
@@ -9556,23 +9556,23 @@ async function saveSettings() {
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
-      smtp_password: form.smtp_password || undefined,
+      smtp_password: form.smtp_password || "",
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
-      turnstile_secret_key: form.turnstile_secret_key || undefined,
+      turnstile_secret_key: form.turnstile_secret_key || "",
       api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
-        form.linuxdo_connect_client_secret || undefined,
+        form.linuxdo_connect_client_secret || "",
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
       dingtalk_connect_enabled: form.dingtalk_connect_enabled,
       dingtalk_connect_client_id: form.dingtalk_connect_client_id,
       dingtalk_connect_client_secret:
-        form.dingtalk_connect_client_secret || undefined,
+        form.dingtalk_connect_client_secret || "",
       dingtalk_connect_redirect_url: form.dingtalk_connect_redirect_url,
       dingtalk_connect_corp_restriction_policy:
         form.dingtalk_connect_corp_restriction_policy,
@@ -9593,16 +9593,16 @@ async function saveSettings() {
         form.wechat_connect_mp_app_id ||
         form.wechat_connect_mobile_app_id ||
         form.wechat_connect_app_id,
-      wechat_connect_app_secret: form.wechat_connect_app_secret || undefined,
-      wechat_connect_open_app_id: form.wechat_connect_open_app_id,
+      wechat_connect_app_secret: form.wechat_connect_app_secret || "",
+      wechat_connect_open_app_id: form.wechat_connect_open_app_id || "",
       wechat_connect_open_app_secret:
-        form.wechat_connect_open_app_secret || undefined,
-      wechat_connect_mp_app_id: form.wechat_connect_mp_app_id,
+        form.wechat_connect_open_app_secret || "",
+      wechat_connect_mp_app_id: form.wechat_connect_mp_app_id || "",
       wechat_connect_mp_app_secret:
-        form.wechat_connect_mp_app_secret || undefined,
-      wechat_connect_mobile_app_id: form.wechat_connect_mobile_app_id,
+        form.wechat_connect_mp_app_secret || "",
+      wechat_connect_mobile_app_id: form.wechat_connect_mobile_app_id || "",
       wechat_connect_mobile_app_secret:
-        form.wechat_connect_mobile_app_secret || undefined,
+        form.wechat_connect_mobile_app_secret || "",
       wechat_connect_open_enabled: form.wechat_connect_open_enabled,
       wechat_connect_mp_enabled: form.wechat_connect_mp_enabled,
       wechat_connect_mobile_enabled: form.wechat_connect_mobile_enabled,
@@ -9615,7 +9615,7 @@ async function saveSettings() {
       oidc_connect_enabled: form.oidc_connect_enabled,
       oidc_connect_provider_name: form.oidc_connect_provider_name,
       oidc_connect_client_id: form.oidc_connect_client_id,
-      oidc_connect_client_secret: form.oidc_connect_client_secret || undefined,
+      oidc_connect_client_secret: form.oidc_connect_client_secret || "",
       oidc_connect_issuer_url: form.oidc_connect_issuer_url,
       oidc_connect_discovery_url: form.oidc_connect_discovery_url,
       oidc_connect_authorize_url: form.oidc_connect_authorize_url,
@@ -9640,14 +9640,14 @@ async function saveSettings() {
       github_oauth_enabled: form.github_oauth_enabled,
       github_oauth_client_id: form.github_oauth_client_id,
       github_oauth_client_secret:
-        form.github_oauth_client_secret || undefined,
+        form.github_oauth_client_secret || "",
       github_oauth_redirect_url: form.github_oauth_redirect_url,
       github_oauth_frontend_redirect_url:
         form.github_oauth_frontend_redirect_url,
       google_oauth_enabled: form.google_oauth_enabled,
       google_oauth_client_id: form.google_oauth_client_id,
       google_oauth_client_secret:
-        form.google_oauth_client_secret || undefined,
+        form.google_oauth_client_secret || "",
       google_oauth_redirect_url: form.google_oauth_redirect_url,
       google_oauth_frontend_redirect_url:
         form.google_oauth_frontend_redirect_url,
@@ -9724,7 +9724,7 @@ async function saveSettings() {
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
-      payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
+      payment_alipay_force_qrcode: Boolean(form.payment_alipay_force_qrcode),
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
