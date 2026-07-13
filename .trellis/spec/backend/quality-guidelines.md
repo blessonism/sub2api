@@ -46,7 +46,9 @@ Questions to answer:
 #### 3. Contracts
 - A published featured campaign remains publicly readable outside its start/end window and takes priority over newer active campaigns until an admin changes the featured selection.
 - Public readability and entry availability are separate decisions. Featured status never reopens enrollment before `start_at` or after `end_at` / the draw window.
-- Public winner DTOs contain only `masked_email`, `prize_name`, `reward_amount_cents`, and `created_at`, and only successful winners.
+- Public winner DTOs contain only `masked_email`, `prize_name`, `reward_amount_cents`, `entry_date`, `is_current_round`, and `created_at`, and only successful winners.
+- `LotteryMyData.round_completed` comes from the current/final draw batch terminal status, so rounds with zero winners can still present an unambiguous completed state.
+- Daily winner history must not complete or highlight the next round. The service marks `is_current_round` against the server-timezone result date; frontend round UI filters on that field.
 - Admin winner DTOs may include operational identifiers and payout status but must stay behind admin routes.
 
 #### 4. Validation & Error Matrix
@@ -63,6 +65,7 @@ Questions to answer:
 #### 6. Tests Required
 - Repository: featured campaign is selected even after `end_at` and wins priority ordering.
 - Service: ended featured winner data is readable, no entry upsert occurs, and non-published campaigns cannot be featured.
+- Service: daily historical winners are not marked current, and a successful zero-winner batch reports `round_completed=true`.
 - API/frontend: campaign-level admin winner path, persistent action availability, and masked public winner rendering.
 
 #### 7. Wrong vs Correct
