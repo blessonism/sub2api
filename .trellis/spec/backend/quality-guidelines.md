@@ -32,6 +32,20 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Versioned authentication cache snapshots
+
+#### 1. Scope / Trigger
+- Trigger: adding, removing, or changing fields serialized in `APIKeyAuthSnapshot` or its nested user/group snapshots.
+
+#### 2. Contracts
+- Every serialized schema change must increment `apiKeyAuthSnapshotVersion`, so an older L1/L2 entry cannot be accepted with silently missing authorization or billing fields.
+- When merging branches that independently used the same next version for different fields, the combined schema must advance to a new version rather than keeping either branch's number.
+- Snapshot construction and restoration must carry the same field set in both directions.
+
+#### 3. Tests Required
+- Snapshot round-trip tests cover new fields.
+- Cache lookup tests reject entries whose version predates the combined schema.
+
 ### Scenario: Persistent lottery campaign visibility and winner disclosure
 
 #### 1. Scope / Trigger
