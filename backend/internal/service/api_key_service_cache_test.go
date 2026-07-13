@@ -174,6 +174,17 @@ func (s *authCacheStub) SubscribeAuthCacheInvalidation(ctx context.Context, hand
 	return nil
 }
 
+func TestAPIKeyService_ApplyAuthCacheEntryRejectsOlderSnapshot(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	entry := &APIKeyAuthCacheEntry{Snapshot: &APIKeyAuthSnapshot{Version: apiKeyAuthSnapshotVersion - 1}}
+
+	apiKey, hit, err := svc.applyAuthCacheEntry("key", entry)
+
+	require.NoError(t, err)
+	require.False(t, hit)
+	require.Nil(t, apiKey)
+}
+
 func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	cache := &authCacheStub{}
 	repo := &authRepoStub{
