@@ -629,7 +629,7 @@ WHERE w.campaign_id = $1`
 
 func (r *lotteryCampaignRepository) ListRecentPublicLotteryWinners(ctx context.Context, campaignID int64, limit int) ([]service.LotteryPublicWinner, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT COALESCE(u.email, ''), COALESCE(p.tier_name, ''), w.reward_amount_cents, w.created_at
+SELECT COALESCE(u.email, ''), COALESCE(p.tier_name, ''), w.reward_amount_cents, w.entry_date, w.created_at
 FROM lottery_winners w
 LEFT JOIN lottery_prize_tiers p ON p.id = w.prize_tier_id
 LEFT JOIN users u ON u.id = w.user_id
@@ -644,10 +644,10 @@ LIMIT $2`, campaignID, limit)
 	for rows.Next() {
 		var email string
 		var item service.LotteryPublicWinner
-		if err := rows.Scan(&email, &item.PrizeName, &item.RewardAmountCents, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&email, &item.PrizeName, &item.RewardAmountCents, &item.EntryDate, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		item.MaskedEmail = maskEmail(email)
+		item.MaskedEmail = maskLotteryParticipantEmail(email)
 		out = append(out, item)
 	}
 	return out, rows.Err()

@@ -60,6 +60,25 @@ ORDER BY sort_order ASC, id ASC`)).
 	}
 }
 
+func TestMaskLotteryParticipantEmailKeepsPublicIdentityRecognizable(t *testing.T) {
+	tests := []struct {
+		email string
+		want  string
+	}{
+		{email: "current@example.com", want: "cur****nt@example.com"},
+		{email: "alpha@example.com", want: "alp****ha@example.com"},
+		{email: "ab@example.com", want: "a****@example.com"},
+		{email: "用户测试@example.com", want: "用****@example.com"},
+		{email: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := maskLotteryParticipantEmail(tt.email); got != tt.want {
+			t.Errorf("maskLotteryParticipantEmail(%q) = %q, want %q", tt.email, got, tt.want)
+		}
+	}
+}
+
 func TestUpsertLotteryEntryUsesExplicitStatusParameterType(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
