@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与官方标签同步规则"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "审阅上游跨层字段与计费数据流"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端字段、迁移和测试边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端类型与 locale overlay"}
