@@ -154,6 +154,8 @@ type UpdateUserInput struct {
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates        map[int64]*float64
 	VisibleGroupRates map[int64]*float64
+	// GroupAccountBindings 为 nil 时不修改；非 nil 时整体替换该用户的公开分组账号绑定。
+	GroupAccountBindings *map[int64]UserGroupAccountBinding
 	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
 	ActorAdminID int64
 }
@@ -257,17 +259,14 @@ type CreateGroupInput struct {
 	BatchImageHoldMultiplier     *float64
 	VideoRateIndependent         bool
 	VideoRateMultiplier          *float64
-	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
-	PeakRateEnabled    bool
-	PeakStart          string
-	PeakEnd            string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
+	TimeRatePriority             string
+	TimeRatePeriods              []GroupTimeRatePeriod
+	ImagePrice1K                 *float64
+	ImagePrice2K                 *float64
+	ImagePrice4K                 *float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；nil/负数按默认价 0.01 处理
 	WebSearchPricePerCall *float64
 	ClaudeCodeOnly        bool   // 仅允许 Claude Code 客户端
@@ -304,8 +303,11 @@ type UpdateGroupInput struct {
 	Status                   string
 	SubscriptionType         string   // standard/subscription
 	DailyLimitUSD            *float64 // 日限额 (USD)
+	DailyLimitUSDSet         bool
 	WeeklyLimitUSD           *float64 // 周限额 (USD)
+	WeeklyLimitUSDSet        bool
 	MonthlyLimitUSD          *float64 // 月限额 (USD)
+	MonthlyLimitUSDSet       bool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool
@@ -315,17 +317,14 @@ type UpdateGroupInput struct {
 	BatchImageHoldMultiplier     *float64
 	VideoRateIndependent         *bool
 	VideoRateMultiplier          *float64
-	// 高峰时段倍率配置（nil 表示不修改）
-	PeakRateEnabled    *bool
-	PeakStart          *string
-	PeakEnd            *string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
+	TimeRatePriority             *string
+	TimeRatePeriods              *[]GroupTimeRatePeriod
+	ImagePrice1K                 *float64
+	ImagePrice2K                 *float64
+	ImagePrice4K                 *float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示不修改，负数表示清除回默认价 0.01
 	WebSearchPricePerCall *float64
 	ClaudeCodeOnly        *bool  // 仅允许 Claude Code 客户端
@@ -624,24 +623,25 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	userRPMCache         UserRPMCache
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
-	runtimeBlocker       AccountRuntimeBlocker
+	userRepo                        UserRepository
+	groupRepo                       GroupRepository
+	accountRepo                     AccountRepository
+	proxyRepo                       ProxyRepository
+	apiKeyRepo                      APIKeyRepository
+	redeemCodeRepo                  RedeemCodeRepository
+	userGroupRateRepo               UserGroupRateRepository
+	userGroupAccountBindingResolver *UserGroupAccountBindingResolver
+	userRPMCache                    UserRPMCache
+	billingCacheService             *BillingCacheService
+	proxyProber                     ProxyExitInfoProber
+	proxyLatencyCache               ProxyLatencyCache
+	authCacheInvalidator            APIKeyAuthCacheInvalidator
+	entClient                       *dbent.Client // 用于开启数据库事务
+	settingService                  *SettingService
+	defaultSubAssigner              DefaultSubscriptionAssigner
+	userSubRepo                     UserSubscriptionRepository
+	privacyClientFactory            PrivacyClientFactory
+	runtimeBlocker                  AccountRuntimeBlocker
 }
 
 type userGroupRateBatchReader interface {
@@ -661,6 +661,7 @@ func NewAdminService(
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
+	userGroupAccountBindingResolver *UserGroupAccountBindingResolver,
 	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -674,23 +675,24 @@ func NewAdminService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		userRPMCache:         userRPMCache,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
-		runtimeBlocker:       runtimeBlocker,
+		userRepo:                        userRepo,
+		groupRepo:                       groupRepo,
+		accountRepo:                     accountRepo,
+		proxyRepo:                       proxyRepo,
+		apiKeyRepo:                      apiKeyRepo,
+		redeemCodeRepo:                  redeemCodeRepo,
+		userGroupRateRepo:               userGroupRateRepo,
+		userGroupAccountBindingResolver: userGroupAccountBindingResolver,
+		userRPMCache:                    userRPMCache,
+		billingCacheService:             billingCacheService,
+		proxyProber:                     proxyProber,
+		proxyLatencyCache:               proxyLatencyCache,
+		authCacheInvalidator:            authCacheInvalidator,
+		entClient:                       entClient,
+		settingService:                  settingService,
+		defaultSubAssigner:              defaultSubAssigner,
+		userSubRepo:                     userSubRepo,
+		privacyClientFactory:            privacyClientFactory,
+		runtimeBlocker:                  runtimeBlocker,
 	}
 }

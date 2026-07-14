@@ -2085,6 +2085,29 @@ export default {
       "visibleRate": "用户可见倍率"
     },
     "groups": {
+      "timeRate": {
+        "action": "分时倍率",
+        "title": "分组分时倍率策略",
+        "baseActual": "基础真实倍率",
+        "baseVisible": "基础可见倍率",
+        "priority": "专属倍率处理",
+        "scheduleFirst": "分时优先",
+        "userFirst": "专属优先",
+        "proportional": "按比例",
+        "addPeriod": "添加时间段",
+        "start": "开始时间",
+        "end": "结束时间",
+        "actual": "真实目标倍率",
+        "visible": "可见目标倍率",
+        "enabled": "启用",
+        "empty": "暂无时间段",
+        "invalidTime": "时间必须使用 HH:MM 格式，结束时间可为 24:00，且必须晚于开始时间。",
+        "invalidRate": "真实倍率和可见倍率必须是大于或等于 0 的数字。",
+        "overlap": "启用的时间段不能重叠。",
+        "saved": "分时倍率策略已保存",
+        "saveFailed": "保存分时倍率策略失败",
+        "discardConfirm": "存在未保存的修改，确定关闭吗？"
+      },
       "form": {
         "visibleRateMultiplier": "用户可见倍率"
       },

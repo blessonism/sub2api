@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -82,12 +83,20 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	bindings := make(map[int64]UserGroupAccountBinding, len(u.GroupAccountBindings))
+	for groupID, binding := range u.GroupAccountBindings {
+		bindings[groupID] = UserGroupAccountBinding{
+			AccountIDs:      append([]int64(nil), binding.AccountIDs...),
+			FallbackToGroup: binding.FallbackToGroup,
+		}
+	}
 	return &AdminUser{
-		User:              *base,
-		Notes:             u.Notes,
-		LastUsedAt:        u.LastUsedAt,
-		GroupRates:        u.GroupRates,
-		VisibleGroupRates: u.VisibleGroupRates,
+		User:                 *base,
+		Notes:                u.Notes,
+		LastUsedAt:           u.LastUsedAt,
+		GroupRates:           u.GroupRates,
+		VisibleGroupRates:    u.VisibleGroupRates,
+		GroupAccountBindings: bindings,
 	}
 }
 
@@ -170,7 +179,7 @@ func GroupFromServiceUserVisible(g *service.Group) *Group {
 		return nil
 	}
 	out := groupFromServiceBase(g)
-	out.RateMultiplier = g.VisibleEffectiveRateMultiplier()
+	out.RateMultiplier = g.CurrentVisibleRate(timezone.Now())
 	out.VisibleRateMultiplier = nil
 	return &out
 }
@@ -183,6 +192,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
+		TimeRatePriority:            g.TimeRatePriority,
+		TimeRatePeriods:             g.TimeRatePeriods,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
@@ -227,10 +238,6 @@ func groupFromServiceBase(g *service.Group) Group {
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
 		VideoRateIndependent:            g.VideoRateIndependent,
 		VideoRateMultiplier:             g.VideoRateMultiplier,
-		PeakRateEnabled:                 g.PeakRateEnabled,
-		PeakStart:                       g.PeakStart,
-		PeakEnd:                         g.PeakEnd,
-		PeakRateMultiplier:              g.PeakRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,

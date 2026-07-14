@@ -873,6 +873,49 @@ UpdateSnapshotTodayUsage(ctx, connectorID, partialUsage, checkedAt, false)
 
 ---
 
+### Scenario: Admin announcement read-status sorting
+
+#### 1. Scope / Trigger
+- Trigger: changing the admin announcement read-status list ordering or pagination.
+
+#### 2. Signatures
+- Route: `GET /api/v1/admin/announcements/:id/read-status`.
+- Default query: `sort_by=read_at&sort_order=desc`.
+- Repository entrypoint: `UserRepository.ListWithFilters`, with `UserListFilters.ReadStatusAnnouncementID` set to the route announcement ID.
+
+#### 3. Contracts
+- Read users sort by `announcement_reads.read_at` in the requested direction; unread users always follow read users.
+- Ordering is applied before `OFFSET/LIMIT` and ties use `users.id ASC`.
+- The join matches both `announcement_id` and `user_id`; the response schema remains unchanged.
+
+#### 4. Validation & Error Matrix
+- Missing or non-positive announcement ID -> existing handler validation error.
+- `sort_by=read_at` without `ReadStatusAnnouncementID` -> normal user-list fallback ordering, without an unscoped read join.
+
+#### 5. Good/Base/Bad Cases
+- Good: page 1 contains the most recently read users and unread users begin only after all read users.
+- Base: when nobody has read the announcement, users remain stable by ID.
+- Bad: fetch a page by email and sort only that page by `read_at` in the service or frontend.
+
+#### 6. Tests Required
+- Handler test asserts the `read_at desc` defaults and announcement ID propagation.
+- Repository query test asserts the scoped left join, nulls-last expression, stable tie-break, and ordering before pagination.
+- Frontend test asserts the initial API request uses `read_at desc`.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+sort.Slice(pageUsers, byReadAt)
+```
+
+Correct:
+```sql
+ORDER BY ar.read_at IS NULL, ar.read_at DESC, users.id ASC LIMIT $1 OFFSET $2
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

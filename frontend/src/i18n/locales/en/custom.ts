@@ -2069,6 +2069,29 @@ export default {
       "visibleRate": "Visible Rate"
     },
     "groups": {
+      "timeRate": {
+        "action": "Time rates",
+        "title": "Group time-rate strategy",
+        "baseActual": "Base actual rate",
+        "baseVisible": "Base visible rate",
+        "priority": "Custom rate handling",
+        "scheduleFirst": "Schedule first",
+        "userFirst": "Custom first",
+        "proportional": "Proportional",
+        "addPeriod": "Add period",
+        "start": "Start",
+        "end": "End",
+        "actual": "Actual target rate",
+        "visible": "Visible target rate",
+        "enabled": "Enabled",
+        "empty": "No time periods",
+        "invalidTime": "Use HH:MM times; the end may be 24:00 and must be later than the start.",
+        "invalidRate": "Actual and visible rates must be numbers greater than or equal to 0.",
+        "overlap": "Enabled time periods must not overlap.",
+        "saved": "Time-rate strategy saved",
+        "saveFailed": "Failed to save time-rate strategy",
+        "discardConfirm": "Discard unsaved changes and close?"
+      },
       "form": {
         "visibleRateMultiplier": "Visible Rate Multiplier"
       },

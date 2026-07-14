@@ -175,6 +175,52 @@
                   </label>
                 </div>
               </div>
+
+              <div class="mt-4 border-t border-green-200 pt-4 dark:border-green-800/50">
+                <label class="flex cursor-pointer items-center justify-between gap-4">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.users.limitAccounts') }}</span>
+                  <input
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    :checked="config.bindingEnabled"
+                    @change="toggleAccountBinding(config)"
+                  />
+                </label>
+
+                <div v-if="config.bindingEnabled" class="mt-4 space-y-4">
+                  <div class="flex flex-wrap gap-x-6 gap-y-2">
+                    <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <input v-model="config.fallbackToGroup" type="radio" :value="false" class="text-primary-600 focus:ring-primary-500" />
+                      {{ t('admin.users.accountBindingStrict') }}
+                    </label>
+                    <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <input v-model="config.fallbackToGroup" type="radio" :value="true" class="text-primary-600 focus:ring-primary-500" />
+                      {{ t('admin.users.accountBindingFallback') }}
+                    </label>
+                  </div>
+
+                  <div v-if="config.accountsLoading" class="flex justify-center py-4">
+                    <div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+                  </div>
+                  <div v-else-if="config.accounts.length > 0" class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                    <label
+                      v-for="account in config.accounts"
+                      :key="account.id"
+                      class="flex cursor-pointer items-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm dark:border-dark-600 dark:bg-dark-800"
+                    >
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        :checked="config.bindingAccountIds.includes(account.id)"
+                        @change="toggleBindingAccount(config, account.id)"
+                      />
+                      <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">{{ account.name }}</span>
+                      <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ account.status }}</span>
+                    </label>
+                  </div>
+                  <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.users.noGroupAccounts') }}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -211,7 +257,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, Group, GroupPlatform } from '@/types'
+import type { Account, AdminUser, Group, GroupPlatform, UserGroupAccountBinding } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 
@@ -225,6 +271,12 @@ interface GroupRateConfig {
   customRate: number | null
   visibleRate: number | null
   isSelected: boolean
+  bindingEnabled: boolean
+  bindingAccountIds: number[]
+  fallbackToGroup: boolean
+  accounts: Account[]
+  accountsLoading: boolean
+  accountsLoaded: boolean
 }
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
@@ -258,36 +310,94 @@ watch(
 const load = async () => {
   loading.value = true
   try {
-    const res = await adminAPI.groups.list(1, 1000)
+    const [res, userDetail] = await Promise.all([
+      adminAPI.groups.list(1, 1000),
+      adminAPI.users.getById(props.user!.id),
+    ])
     // 只显示标准类型且活跃的分组
     groups.value = res.items.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
 
     // 初始化配置
-    const userAllowedGroups = props.user?.allowed_groups || []
-    const userGroupRates = props.user?.group_rates || {}
-    const userVisibleGroupRates = props.user?.visible_group_rates || {}
+    const userAllowedGroups = userDetail.allowed_groups || []
+    const userGroupRates = userDetail.group_rates || {}
+    const userVisibleGroupRates = userDetail.visible_group_rates || {}
+    const userGroupAccountBindings = userDetail.group_account_bindings || {}
 
     // 保存原始专属倍率，用于检测删除操作
     originalGroupRates.value = { ...userGroupRates }
     originalVisibleGroupRates.value = { ...userVisibleGroupRates }
 
-    groupConfigs.value = groups.value.map((g) => ({
-      groupId: g.id,
-      groupName: g.name,
-      platform: g.platform,
-      isExclusive: g.is_exclusive,
-      defaultRate: g.rate_multiplier,
-      defaultVisibleRate: g.visible_rate_multiplier ?? g.rate_multiplier,
-      customRate: userGroupRates[g.id] ?? null,
-      visibleRate: userVisibleGroupRates[g.id] ?? null,
-      // 专属分组：检查是否在 allowed_groups 中
-      // 公开分组：始终选中
-      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
-    }))
+    groupConfigs.value = groups.value.map((g) => {
+      const binding = userGroupAccountBindings[g.id]
+      return {
+        groupId: g.id,
+        groupName: g.name,
+        platform: g.platform,
+        isExclusive: g.is_exclusive,
+        defaultRate: g.rate_multiplier,
+        defaultVisibleRate: g.visible_rate_multiplier ?? g.rate_multiplier,
+        customRate: userGroupRates[g.id] ?? null,
+        visibleRate: userVisibleGroupRates[g.id] ?? null,
+        // 专属分组：检查是否在 allowed_groups 中；公开分组始终选中。
+        isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
+        bindingEnabled: !g.is_exclusive && binding !== undefined,
+        bindingAccountIds: binding?.account_ids ? [...binding.account_ids] : [],
+        fallbackToGroup: binding?.fallback_to_group ?? false,
+        accounts: [],
+        accountsLoading: false,
+        accountsLoaded: false,
+      }
+    })
+
+    await Promise.all(publicGroupConfigs.value.filter((config) => config.bindingEnabled).map(loadGroupAccounts))
   } catch (error) {
     console.error('Failed to load groups:', error)
   } finally {
     loading.value = false
+  }
+}
+
+const loadGroupAccounts = async (config: GroupRateConfig) => {
+  if (config.accountsLoaded || config.accountsLoading) return
+  config.accountsLoading = true
+  try {
+    const accounts: Account[] = []
+    let page = 1
+    let pages = 1
+    do {
+      const res = await adminAPI.accounts.list(page, 200, { group: String(config.groupId), lite: 'true' })
+      accounts.push(...res.items)
+      pages = res.pages
+      page += 1
+    } while (page <= pages)
+    config.accounts = accounts
+    const availableAccountIds = new Set(accounts.map((account) => account.id))
+    config.bindingAccountIds = config.bindingAccountIds.filter((accountId) => availableAccountIds.has(accountId))
+    config.accountsLoaded = true
+  } finally {
+    config.accountsLoading = false
+  }
+}
+
+const toggleAccountBinding = async (config: GroupRateConfig) => {
+  config.bindingEnabled = !config.bindingEnabled
+  if (config.bindingEnabled) {
+    try {
+      await loadGroupAccounts(config)
+    } catch (error) {
+      config.bindingEnabled = false
+      appStore.showError(t('admin.users.failedToLoadGroupAccounts'))
+      console.error('Failed to load group accounts:', error)
+    }
+  }
+}
+
+const toggleBindingAccount = (config: GroupRateConfig, accountId: number) => {
+  const index = config.bindingAccountIds.indexOf(accountId)
+  if (index >= 0) {
+    config.bindingAccountIds.splice(index, 1)
+  } else {
+    config.bindingAccountIds.push(accountId)
   }
 }
 
@@ -322,6 +432,12 @@ const updateVisibleRate = (groupId: number, value: string) => {
 
 const handleSave = async () => {
   if (!props.user) return
+
+  const invalidBinding = publicGroupConfigs.value.find((config) => config.bindingEnabled && config.bindingAccountIds.length === 0)
+  if (invalidBinding) {
+    appStore.showError(t('admin.users.accountBindingRequired', { group: invalidBinding.groupName }))
+    return
+  }
   submitting.value = true
 
   try {
@@ -333,6 +449,7 @@ const handleSave = async () => {
     // - 原本有专属倍率但现在被清空: 设置为 null（表示删除）
     const groupRates: Record<number, number | null> = {}
     const visibleGroupRates: Record<number, number | null> = {}
+    const groupAccountBindings: Record<number, UserGroupAccountBinding> = {}
     for (const c of groupConfigs.value) {
       const hadOriginalRate = originalGroupRates.value[c.groupId] !== undefined
       const hadOriginalVisibleRate = originalVisibleGroupRates.value[c.groupId] !== undefined
@@ -352,10 +469,20 @@ const handleSave = async () => {
       }
     }
 
+    for (const config of publicGroupConfigs.value) {
+      if (config.bindingEnabled) {
+        groupAccountBindings[config.groupId] = {
+          account_ids: [...config.bindingAccountIds],
+          fallback_to_group: config.fallbackToGroup,
+        }
+      }
+    }
+
     await adminAPI.users.update(props.user.id, {
       allowed_groups: allowedGroups,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
       visible_group_rates: Object.keys(visibleGroupRates).length > 0 ? visibleGroupRates : undefined,
+      group_account_bindings: groupAccountBindings,
     })
 
     appStore.showSuccess(t('admin.users.groupConfigUpdated'))
