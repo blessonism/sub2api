@@ -552,6 +552,10 @@ func (s *adminServiceImpl) deleteUserWithAPIKeys(ctx context.Context, userID int
 	return nil
 }
 
+type userConcurrencyFloorUpdater interface {
+	BatchRaiseConcurrencyFloor(ctx context.Context, userIDs []int64, value int) (int, error)
+}
+
 func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
 	cleaned := make([]int64, 0, len(userIDs))
 	for _, uid := range userIDs {
@@ -570,8 +574,17 @@ func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs [
 		affected, err = s.userRepo.BatchSetConcurrency(ctx, cleaned, value)
 	case "add":
 		affected, err = s.userRepo.BatchAddConcurrency(ctx, cleaned, value)
+	case "floor":
+		if value < 1 {
+			return 0, errors.New("concurrency must be at least 1 in floor mode")
+		}
+		updater, ok := s.userRepo.(userConcurrencyFloorUpdater)
+		if !ok {
+			return 0, errors.New("user repository does not support concurrency floor updates")
+		}
+		affected, err = updater.BatchRaiseConcurrencyFloor(ctx, cleaned, value)
 	default:
-		return 0, errors.New("invalid mode: must be 'set' or 'add'")
+		return 0, errors.New("invalid mode: must be 'set', 'add', or 'floor'")
 	}
 	if err != nil {
 		return 0, err

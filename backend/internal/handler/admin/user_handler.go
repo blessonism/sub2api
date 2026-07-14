@@ -559,7 +559,7 @@ type BatchUpdateConcurrencyRequest struct {
 	UserIDs     []int64 `json:"user_ids"`
 	All         bool    `json:"all"`
 	Concurrency int     `json:"concurrency"`
-	Mode        string  `json:"mode" binding:"required,oneof=set add"`
+	Mode        string  `json:"mode" binding:"required,oneof=set add floor"`
 }
 
 func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
@@ -574,6 +574,10 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 	}
 	if len(req.UserIDs) > 500 {
 		response.BadRequest(c, "user_ids cannot exceed 500")
+		return
+	}
+	if req.Mode == "floor" && req.Concurrency < 1 {
+		response.BadRequest(c, "concurrency must be at least 1 in floor mode")
 		return
 	}
 
