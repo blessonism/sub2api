@@ -118,6 +118,8 @@ backend/.installed
 tests
 !tools/tests/
 !tools/tests/**
+!deploy/tests/
+!deploy/tests/**
 __pycache__/
 CLAUDE.md
 .claude
