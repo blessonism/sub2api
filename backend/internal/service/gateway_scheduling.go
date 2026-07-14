@@ -32,6 +32,22 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+
+	account, err := s.selectAccountForModelWithExclusions(withUserGroupAccountBinding(ctx, binding.AccountIDs), groupID, sessionHash, requestedModel, excludedIDs)
+	if !binding.FallbackToGroup || !isNoAvailableAccountSelectionError(err) {
+		return account, err
+	}
+	return s.selectAccountForModelWithExclusions(withoutUserGroupAccountBinding(ctx), groupID, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs))
+}
+
+func (s *GatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
@@ -82,6 +98,25 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+	}
+
+	result, err := s.selectAccountWithLoadAwareness(withUserGroupAccountBinding(ctx, binding.AccountIDs), groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+	if !binding.FallbackToGroup || (err == nil && result != nil && result.Acquired) || (err != nil && !isNoAvailableAccountSelectionError(err)) {
+		return result, err
+	}
+	if result != nil && result.ReleaseFunc != nil {
+		result.ReleaseFunc()
+	}
+	return s.selectAccountWithLoadAwareness(withoutUserGroupAccountBinding(ctx), groupID, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs), metadataUserID, sub2apiUserID)
+}
+
+func (s *GatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -218,13 +253,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	for i := range accounts {
 		accountByID[accounts[i].ID] = &accounts[i]
 	}
-	isExcluded := func(accountID int64) bool {
-		if excludedIDs == nil {
-			return false
-		}
-		_, excluded := excludedIDs[accountID]
-		return excluded
-	}
+	isExcluded := func(accountID int64) bool { return isAccountExcludedForRequest(ctx, excludedIDs, accountID) }
 
 	// 获取模型路由配置（仅 anthropic 平台）
 	var routingAccountIDs []int64
@@ -1739,7 +1768,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if sessionHash != "" && s.cache != nil {
 			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
-				if _, excluded := excludedIDs[accountID]; !excluded {
+				if !isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 					account, err := s.getSchedulableAccount(ctx, accountID)
 					// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
 					if err == nil {
@@ -1787,7 +1816,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if _, ok := routingSet[acc.ID]; !ok {
 				continue
 			}
-			if _, excluded := excludedIDs[acc.ID]; excluded {
+			if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 				continue
 			}
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
@@ -1858,7 +1887,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
-			if _, excluded := excludedIDs[accountID]; !excluded {
+			if !isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
 				if err == nil {
@@ -1898,7 +1927,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
-		if _, excluded := excludedIDs[acc.ID]; excluded {
+		if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
@@ -1997,7 +2026,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if sessionHash != "" && s.cache != nil {
 			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
-				if _, excluded := excludedIDs[accountID]; !excluded {
+				if !isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 					account, err := s.getSchedulableAccount(ctx, accountID)
 					// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
 					if err == nil {
@@ -2043,7 +2072,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if _, ok := routingSet[acc.ID]; !ok {
 				continue
 			}
-			if _, excluded := excludedIDs[acc.ID]; excluded {
+			if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 				continue
 			}
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
@@ -2118,7 +2147,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
-			if _, excluded := excludedIDs[accountID]; !excluded {
+			if !isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
 				if err == nil {
@@ -2155,7 +2184,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
-		if _, excluded := excludedIDs[acc.ID]; excluded {
+		if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
@@ -2332,7 +2361,7 @@ func (s *GatewayService) diagnoseSelectionFailure(
 	if acc == nil {
 		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "account_nil"}
 	}
-	if _, excluded := excludedIDs[acc.ID]; excluded {
+	if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 		return selectionFailureDiagnosis{Category: "excluded"}
 	}
 	if !s.isAccountSchedulableForSelection(acc) {

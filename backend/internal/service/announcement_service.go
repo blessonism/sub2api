@@ -337,7 +337,8 @@ func (s *AnnouncementService) ListUserReadStatus(
 	}
 
 	filters := UserListFilters{
-		Search: strings.TrimSpace(search),
+		Search:                   strings.TrimSpace(search),
+		ReadStatusAnnouncementID: announcementID,
 	}
 
 	users, page, err := s.userRepo.ListWithFilters(ctx, params, filters)
