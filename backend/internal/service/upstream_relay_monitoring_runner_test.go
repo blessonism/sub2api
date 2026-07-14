@@ -505,7 +505,13 @@ func TestUpstreamRelayMonitoringRunnerDailyFinalizePartialFailureRetries(t *test
 			AutoSyncEnabled:             true,
 			FailureRetryIntervalMinutes: 5,
 		},
-		finalizeResult: &UpstreamRelayBulkOperationResult{Total: 2, Success: 1, Failed: 1},
+		finalizeResult: &UpstreamRelayBulkOperationResult{
+			Total: 2, Success: 1, Failed: 1,
+			Items: []UpstreamRelayBulkOperationItem{
+				{ConnectorID: 7, ConnectorName: "relay-ok", Success: true},
+				{ConnectorID: 8, ConnectorName: "relay-failed", ErrorReason: "upstream timeout"},
+			},
+		},
 	}
 	runner := newUpstreamRelayMonitoringRunner(svc, time.Hour)
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
@@ -517,7 +523,14 @@ func TestUpstreamRelayMonitoringRunnerDailyFinalizePartialFailureRetries(t *test
 	require.Equal(t, 1, svc.finalizeCalls)
 	require.True(t, state.lastRunKey == "", "partial finalize failure must not mark the daily run key complete")
 	require.False(t, state.lastSucceeded)
-	require.Contains(t, state.lastError, "partial failures")
+	require.Contains(t, state.lastError, "relay-failed (#8): upstream timeout")
+	require.Contains(t, state.lastError, "2026-06-28")
+	require.Len(t, state.lastFailures, 1)
+	require.Equal(t, int64(8), state.lastFailures[0].ConnectorID)
+	require.Equal(t, "2026-06-28", state.lastFailures[0].Date)
+	require.Equal(t, "upstream timeout", state.lastFailures[0].Reason)
+	status := runner.Status(svc.policy)
+	require.Equal(t, state.lastFailures, status.Finalize.LastFailures)
 	require.WithinDuration(t, state.lastFinishedAt.Add(5*time.Minute), runnerJobNextRunAt(runner, "finalize"), time.Second)
 }
 

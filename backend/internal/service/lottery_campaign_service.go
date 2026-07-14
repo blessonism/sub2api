@@ -153,7 +153,14 @@ type LotteryPublicWinner struct {
 	MaskedEmail       string    `json:"masked_email"`
 	PrizeName         string    `json:"prize_name"`
 	RewardAmountCents int64     `json:"reward_amount_cents"`
+	EntryDate         time.Time `json:"entry_date"`
+	IsCurrentRound    bool      `json:"is_current_round"`
 	CreatedAt         time.Time `json:"created_at"`
+}
+
+type LotteryParticipant struct {
+	MaskedEmail string `json:"masked_email"`
+	EntryCount  int    `json:"entry_count"`
 }
 
 type LotteryCampaignInput struct {
@@ -213,10 +220,10 @@ type LotteryDesignationInput struct {
 
 // LotteryDesignationCandidate 是候选人视图，包含脱敏信息与当前预置状态。
 type LotteryDesignationCandidate struct {
-	UserID          int64  `json:"user_id"`
-	MaskedEmail     string `json:"masked_email"`
-	EntryCount      int    `json:"entry_count"`
-	Tokens          int64  `json:"tokens"`
+	UserID           int64  `json:"user_id"`
+	MaskedEmail      string `json:"masked_email"`
+	EntryCount       int    `json:"entry_count"`
+	Tokens           int64  `json:"tokens"`
 	DesignatedTierID *int64 `json:"designated_tier_id,omitempty"`
 }
 
@@ -235,6 +242,7 @@ type LotteryMyData struct {
 	EntryStatus      string           `json:"entry_status"`
 	NextDrawAt       *time.Time       `json:"next_draw_at,omitempty"`
 	ParticipantCount int64            `json:"participant_count"`
+	RoundCompleted   bool             `json:"round_completed"`
 	Winners          []LotteryWinner  `json:"winners"`
 }
 
@@ -253,7 +261,8 @@ type LotteryCampaignRepository interface {
 	UpsertLotteryEntry(ctx context.Context, campaign LotteryCampaign, userID int64, entryDate time.Time, tokens int64, entryCount int, enrolled bool) (*LotteryEntry, error)
 	GetLotteryEntry(ctx context.Context, campaignID, userID int64, entryDate time.Time) (*LotteryEntry, error)
 	ListLotteryDrawCandidates(ctx context.Context, campaignID int64, entryDate time.Time) ([]LotteryDrawCandidate, error)
-	CountLotteryQualifiedUsers(ctx context.Context, startAt, endAt time.Time, minTokens int64) (int64, error)
+	CountLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) (int64, error)
+	ListLotteryParticipants(ctx context.Context, campaignID int64, entryDate time.Time) ([]LotteryParticipant, error)
 	GetLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate time.Time) (*LotteryDrawBatch, error)
 	CreateLotteryDrawBatch(ctx context.Context, campaignID int64, drawDate, scheduledDrawAt time.Time, triggerType string, operatorID *int64) (*LotteryDrawBatch, error)
 	CreateLotteryWinners(ctx context.Context, batch LotteryDrawBatch, campaign LotteryCampaign, winners []LotteryWinner) error
@@ -319,7 +328,7 @@ func (s *LotteryCampaignService) Feature(ctx context.Context, id int64, operator
 	if err != nil {
 		return nil, err
 	}
-	if !lotteryCampaignVisible(*campaign, now) {
+	if campaign.Status != LotteryStatusPublished {
 		return nil, ErrLotteryFeaturedInvalid
 	}
 	return s.repo.SetFeaturedLotteryCampaign(ctx, id, operatorID)
@@ -364,9 +373,16 @@ func (s *LotteryCampaignService) MyData(ctx context.Context, campaignID, userID 
 	if err != nil {
 		return nil, err
 	}
-	participantCount, err := s.repo.CountLotteryQualifiedUsers(ctx, windowStart, lotteryMinTime(now, windowEnd), campaign.ThresholdTokens)
+	participantCount, err := s.repo.CountLotteryParticipants(ctx, campaign.ID, drawDate)
 	if err != nil {
 		return nil, err
+	}
+	roundCompleted := false
+	batch, batchErr := s.repo.GetLotteryDrawBatch(ctx, campaign.ID, lotteryResultDate(*campaign, now))
+	if batchErr == nil {
+		roundCompleted = lotteryDesignationsLocked(*batch)
+	} else if !errors.Is(batchErr, ErrLotteryCampaignNotFound) {
+		return nil, batchErr
 	}
 	return &LotteryMyData{
 		Campaign:         campaign,
@@ -377,6 +393,7 @@ func (s *LotteryCampaignService) MyData(ctx context.Context, campaignID, userID 
 		NextDrawAt:       nextDrawAt,
 		Winners:          winners,
 		ParticipantCount: participantCount,
+		RoundCompleted:   roundCompleted,
 	}, nil
 }
 
@@ -400,7 +417,27 @@ func (s *LotteryCampaignService) RecentWinners(ctx context.Context, campaignID i
 	if limit > lotteryPublicWinnersMaxLimit {
 		limit = lotteryPublicWinnersMaxLimit
 	}
-	return s.repo.ListRecentPublicLotteryWinners(ctx, campaignID, limit)
+	winners, err := s.repo.ListRecentPublicLotteryWinners(ctx, campaignID, limit)
+	if err != nil {
+		return nil, err
+	}
+	resultDate := lotteryResultDate(*campaign, now)
+	for i := range winners {
+		winners[i].IsCurrentRound = dateOnly(winners[i].EntryDate).Equal(resultDate)
+	}
+	return winners, nil
+}
+
+func (s *LotteryCampaignService) Participants(ctx context.Context, campaignID int64, now time.Time) ([]LotteryParticipant, error) {
+	campaign, err := s.repo.GetLotteryCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if !lotteryCampaignVisible(*campaign, now) {
+		return nil, ErrLotteryCampaignNotFound
+	}
+	drawDate, _, _, _ := lotteryCurrentWindow(*campaign, now)
+	return s.repo.ListLotteryParticipants(ctx, campaignID, drawDate)
 }
 
 func (s *LotteryCampaignService) Enroll(ctx context.Context, campaignID, userID int64, now time.Time) (*LotteryEntry, error) {
@@ -783,6 +820,24 @@ func lotteryCurrentWindow(campaign LotteryCampaign, now time.Time) (time.Time, t
 	return drawDate, start, end, &next
 }
 
+func lotteryResultDate(campaign LotteryCampaign, now time.Time) time.Time {
+	if campaign.DrawScheduleType == LotteryDrawSingle && campaign.DrawAt != nil {
+		return dateOnly(campaign.DrawAt.In(timezone.Location()))
+	}
+	locNow := now.In(timezone.Location())
+	if locNow.Before(campaign.StartAt.In(timezone.Location())) {
+		return dateOnly(campaign.StartAt.In(timezone.Location()))
+	}
+	if !locNow.After(campaign.EndAt.In(timezone.Location())) {
+		return dateOnly(locNow)
+	}
+	resultDate := dateOnly(campaign.EndAt.In(timezone.Location()))
+	if scheduled := lotteryScheduledAt(campaign, resultDate); !scheduled.IsZero() && scheduled.After(campaign.EndAt.In(timezone.Location())) {
+		resultDate = resultDate.AddDate(0, 0, -1)
+	}
+	return resultDate
+}
+
 func lotterySyncWindow(campaign LotteryCampaign, drawDate time.Time, now time.Time) (time.Time, time.Time, time.Time) {
 	drawDate = lotteryDrawDate(campaign, drawDate)
 	scheduledAt := lotteryScheduledAt(campaign, drawDate)
@@ -800,12 +855,16 @@ func lotteryCampaignVisible(campaign LotteryCampaign, now time.Time) bool {
 	if campaign.Status != LotteryStatusPublished {
 		return false
 	}
+	return campaign.IsFeatured || lotteryCampaignInWindow(campaign, now)
+}
+
+func lotteryCampaignInWindow(campaign LotteryCampaign, now time.Time) bool {
 	locNow := now.In(timezone.Location())
 	return !locNow.Before(campaign.StartAt.In(timezone.Location())) && !locNow.After(campaign.EndAt.In(timezone.Location()))
 }
 
 func lotteryCampaignAcceptsEntries(campaign LotteryCampaign, now time.Time) bool {
-	if !lotteryCampaignVisible(campaign, now) {
+	if campaign.Status != LotteryStatusPublished || !lotteryCampaignInWindow(campaign, now) {
 		return false
 	}
 	_, _, windowEnd, _ := lotteryCurrentWindow(campaign, now)

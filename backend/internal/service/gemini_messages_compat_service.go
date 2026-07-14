@@ -44,16 +44,17 @@ const (
 const geminiDummyThoughtSignature = "skip_thought_signature_validator"
 
 type GeminiMessagesCompatService struct {
-	accountRepo               AccountRepository
-	groupRepo                 GroupRepository
-	cache                     GatewayCache
-	schedulerSnapshot         *SchedulerSnapshotService
-	tokenProvider             *GeminiTokenProvider
-	rateLimitService          *RateLimitService
-	httpUpstream              HTTPUpstream
-	antigravityGatewayService *AntigravityGatewayService
-	cfg                       *config.Config
-	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
+	accountRepo                     AccountRepository
+	groupRepo                       GroupRepository
+	userGroupAccountBindingResolver *UserGroupAccountBindingResolver
+	cache                           GatewayCache
+	schedulerSnapshot               *SchedulerSnapshotService
+	tokenProvider                   *GeminiTokenProvider
+	rateLimitService                *RateLimitService
+	httpUpstream                    HTTPUpstream
+	antigravityGatewayService       *AntigravityGatewayService
+	cfg                             *config.Config
+	responseHeaderFilter            *responseheaders.CompiledHeaderFilter
 }
 
 func (s *GeminiMessagesCompatService) readUpstreamErrorBody(resp *http.Response) []byte {
@@ -71,6 +72,7 @@ func (s *GeminiMessagesCompatService) readUpstreamErrorBody(resp *http.Response)
 func NewGeminiMessagesCompatService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	userGroupAccountBindingResolver *UserGroupAccountBindingResolver,
 	cache GatewayCache,
 	schedulerSnapshot *SchedulerSnapshotService,
 	tokenProvider *GeminiTokenProvider,
@@ -80,16 +82,17 @@ func NewGeminiMessagesCompatService(
 	cfg *config.Config,
 ) *GeminiMessagesCompatService {
 	return &GeminiMessagesCompatService{
-		accountRepo:               accountRepo,
-		groupRepo:                 groupRepo,
-		cache:                     cache,
-		schedulerSnapshot:         schedulerSnapshot,
-		tokenProvider:             tokenProvider,
-		rateLimitService:          rateLimitService,
-		httpUpstream:              httpUpstream,
-		antigravityGatewayService: antigravityGatewayService,
-		cfg:                       cfg,
-		responseHeaderFilter:      compileResponseHeaderFilter(cfg),
+		accountRepo:                     accountRepo,
+		groupRepo:                       groupRepo,
+		userGroupAccountBindingResolver: userGroupAccountBindingResolver,
+		cache:                           cache,
+		schedulerSnapshot:               schedulerSnapshot,
+		tokenProvider:                   tokenProvider,
+		rateLimitService:                rateLimitService,
+		httpUpstream:                    httpUpstream,
+		antigravityGatewayService:       antigravityGatewayService,
+		cfg:                             cfg,
+		responseHeaderFilter:            compileResponseHeaderFilter(cfg),
 	}
 }
 
@@ -103,6 +106,22 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+
+	account, err := s.selectAccountForModelWithExclusions(withUserGroupAccountBinding(ctx, binding.AccountIDs), groupID, sessionHash, requestedModel, excludedIDs)
+	if !binding.FallbackToGroup || !isNoAvailableAccountSelectionError(err) {
+		return account, err
+	}
+	return s.selectAccountForModelWithExclusions(withoutUserGroupAccountBinding(ctx), groupID, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs))
+}
+
+func (s *GeminiMessagesCompatService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 1. 确定目标平台和调度模式
 	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
@@ -205,7 +224,7 @@ func (s *GeminiMessagesCompatService) tryStickySessionHit(
 		return nil
 	}
 
-	if _, excluded := excludedIDs[accountID]; excluded {
+	if isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 		return nil
 	}
 
@@ -334,7 +353,7 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 		acc := &accounts[i]
 
 		// 跳过被排除的账号
-		if _, excluded := excludedIDs[acc.ID]; excluded {
+		if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 			continue
 		}
 
@@ -500,6 +519,21 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 // 3) OAuth accounts explicitly marked as ai_studio
 // 4) Any remaining Gemini accounts (fallback)
 func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64) (*Account, error) {
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountForAIStudioEndpoints(ctx, groupID, nil)
+	}
+	account, err := s.selectAccountForAIStudioEndpoints(withUserGroupAccountBinding(ctx, binding.AccountIDs), groupID, nil)
+	if !binding.FallbackToGroup || !isNoAvailableAccountSelectionError(err) {
+		return account, err
+	}
+	return s.selectAccountForAIStudioEndpoints(withoutUserGroupAccountBinding(ctx), groupID, excludeUserGroupBoundAccounts(nil, binding.AccountIDs))
+}
+
+func (s *GeminiMessagesCompatService) selectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64, excludedIDs map[int64]struct{}) (*Account, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -539,6 +573,9 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
+		if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
+			continue
+		}
 		if selected == nil {
 			selected = acc
 			continue

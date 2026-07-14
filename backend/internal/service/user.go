@@ -41,6 +41,8 @@ type User struct {
 	// VisibleGroupRates 用户专属可见分组倍率配置
 	// map[groupID]visibleRateMultiplier
 	VisibleGroupRates map[int64]float64
+	// GroupAccountBindings 用户在标准公开分组中的账号调度限制。
+	GroupAccountBindings map[int64]UserGroupAccountBinding
 
 	// TOTP 双因素认证字段
 	TotpSecretEncrypted *string    // AES-256-GCM 加密的 TOTP 密钥

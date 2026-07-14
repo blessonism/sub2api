@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
@@ -32,6 +33,8 @@ type userRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
 }
+
+var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -498,7 +501,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	usersQuery := q.
 		Offset(params.Offset()).
 		Limit(params.Limit())
-	for _, order := range userListOrder(params) {
+	for _, order := range userListOrder(params, filters) {
 		usersQuery = usersQuery.Order(order)
 	}
 
@@ -586,10 +589,13 @@ func (r *userRepository) ListBalanceSummaryUsers(ctx context.Context) ([]service
 	return result, nil
 }
 
-func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+func userListOrder(params pagination.PaginationParams, filters service.UserListFilters) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	if sortBy == "read_at" && filters.ReadStatusAnnouncementID > 0 {
+		return []func(*entsql.Selector){userAnnouncementReadOrder(filters.ReadStatusAnnouncementID, sortOrder)}
+	}
 	if sortBy == "last_used_at" {
 		return userLastUsedAtOrder(sortOrder)
 	}
@@ -652,6 +658,25 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 		}
 	}
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)}
+}
+
+func userAnnouncementReadOrder(announcementID int64, sortOrder string) func(*entsql.Selector) {
+	return func(s *entsql.Selector) {
+		reads := entsql.Table(announcementread.Table)
+		s.LeftJoin(reads).OnP(entsql.And(
+			entsql.ColumnsEQ(s.C(dbuser.FieldID), reads.C(announcementread.FieldUserID)),
+			entsql.EQ(reads.C(announcementread.FieldAnnouncementID), announcementID),
+		))
+		s.OrderExprFunc(func(b *entsql.Builder) {
+			b.Ident(reads.C(announcementread.FieldReadAt)).WriteString(" IS NULL")
+		})
+		if sortOrder == pagination.SortOrderAsc {
+			s.OrderBy(entsql.Asc(reads.C(announcementread.FieldReadAt)))
+		} else {
+			s.OrderBy(entsql.Desc(reads.C(announcementread.FieldReadAt)))
+		}
+		s.OrderBy(entsql.Asc(s.C(dbuser.FieldID)))
+	}
 }
 
 func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
@@ -881,6 +906,27 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
+func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
+	const updateSQL = `
+		UPDATE users
+		SET balance = GREATEST(balance + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 // DeductBalance 扣除用户余额
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求
@@ -917,6 +963,27 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error {
+	const updateSQL = `
+		UPDATE users
+		SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return service.ErrUserNotFound
 	}
 	return nil

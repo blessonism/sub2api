@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查同步分支、未推送和生产边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查用户规则端到端字段和验证闭环"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端测试、迁移和已有二开逻辑保留"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查 TypeScript、i18n 和设置页面契约"}

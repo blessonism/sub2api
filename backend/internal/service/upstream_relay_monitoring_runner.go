@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +39,7 @@ type upstreamRelayMonitoringJobState struct {
 	hasLastResult     bool
 	lastSucceeded     bool
 	lastError         string
+	lastFailures      []UpstreamRelayMonitoringJobFailureDetail
 	scheduledInterval time.Duration
 	lastRunKey        string
 }
@@ -224,6 +227,7 @@ func (r *UpstreamRelayMonitoringRunner) shouldRun(now time.Time, state *upstream
 			state.hasLastResult = false
 			state.lastSucceeded = false
 			state.lastError = ""
+			state.lastFailures = nil
 			state.scheduledInterval = 0
 		}
 		if state.inFlight {
@@ -265,6 +269,7 @@ func (r *UpstreamRelayMonitoringRunner) shouldRunDaily(now time.Time, state *ups
 			state.hasLastResult = false
 			state.lastSucceeded = false
 			state.lastError = ""
+			state.lastFailures = nil
 			state.scheduledInterval = 0
 		}
 		return false
@@ -340,16 +345,17 @@ func (r *UpstreamRelayMonitoringRunner) runDailyJob(parentCtx context.Context, n
 		cancel()
 		if err != nil {
 			slog.Warn("upstream_relay_monitoring_runner: run failed", "job", name, "date", runKey, "error", err)
-			r.finishDailyJob(state, false, err.Error(), runKey, failureRetryMinutes, time.Now())
+			r.finishDailyJob(state, false, err.Error(), runKey, nil, failureRetryMinutes, time.Now())
 			return
 		}
 		if result != nil && result.Failed > 0 {
-			errText := "finalize usage completed with partial failures"
+			failures := buildUpstreamRelayFinalizeFailures(runKey, result.Items)
+			errText := formatUpstreamRelayFinalizeFailureError(runKey, failures)
 			slog.Warn("upstream_relay_monitoring_runner: run partially failed", "job", name, "date", runKey, "total", result.Total, "success", result.Success, "failed", result.Failed)
-			r.finishDailyJob(state, false, errText, runKey, failureRetryMinutes, time.Now())
+			r.finishDailyJob(state, false, errText, runKey, failures, failureRetryMinutes, time.Now())
 			return
 		}
-		r.finishDailyJob(state, true, "", runKey, failureRetryMinutes, time.Now())
+		r.finishDailyJob(state, true, "", runKey, nil, failureRetryMinutes, time.Now())
 		if result != nil {
 			slog.Info("upstream_relay_monitoring_runner: run completed", "job", name, "date", runKey, "total", result.Total, "success", result.Success, "failed", result.Failed)
 		} else {
@@ -436,11 +442,12 @@ func (r *UpstreamRelayMonitoringRunner) finishJob(state *upstreamRelayMonitoring
 	state.hasLastResult = true
 	state.lastSucceeded = ok
 	state.lastError = errText
+	state.lastFailures = nil
 	state.scheduledInterval = interval
 	state.nextRunAt = nextRunAt
 }
 
-func (r *UpstreamRelayMonitoringRunner) finishDailyJob(state *upstreamRelayMonitoringJobState, ok bool, errText string, runKey string, failureRetryMinutes int, now time.Time) {
+func (r *UpstreamRelayMonitoringRunner) finishDailyJob(state *upstreamRelayMonitoringJobState, ok bool, errText string, runKey string, failures []UpstreamRelayMonitoringJobFailureDetail, failureRetryMinutes int, now time.Time) {
 	interval := upstreamRelayMonitoringScheduleInterval(false, 0, failureRetryMinutes)
 	nextRunAt := now.Add(interval)
 
@@ -451,6 +458,7 @@ func (r *UpstreamRelayMonitoringRunner) finishDailyJob(state *upstreamRelayMonit
 	state.hasLastResult = true
 	state.lastSucceeded = ok
 	state.lastError = errText
+	state.lastFailures = append([]UpstreamRelayMonitoringJobFailureDetail(nil), failures...)
 	state.scheduledInterval = interval
 	if ok {
 		state.lastRunKey = runKey
@@ -470,15 +478,24 @@ func upstreamRelayMonitoringScheduleInterval(ok bool, successIntervalMinutes int
 
 // UpstreamRelayMonitoringJobStatus 描述单个自动任务的运行状态，供前端展示。
 type UpstreamRelayMonitoringJobStatus struct {
-	Name                string     `json:"name"`
-	Enabled             bool       `json:"enabled"`
-	InFlight            bool       `json:"in_flight"`
-	LastFinishedAt      *time.Time `json:"last_finished_at,omitempty"`
-	LastSucceeded       *bool      `json:"last_succeeded,omitempty"`
-	LastError           string     `json:"last_error,omitempty"`
-	NextRunAt           *time.Time `json:"next_run_at,omitempty"`
-	IntervalMinutes     int        `json:"interval_minutes"`
-	FailureRetryMinutes int        `json:"failure_retry_minutes"`
+	Name                string                                    `json:"name"`
+	Enabled             bool                                      `json:"enabled"`
+	InFlight            bool                                      `json:"in_flight"`
+	LastFinishedAt      *time.Time                                `json:"last_finished_at,omitempty"`
+	LastSucceeded       *bool                                     `json:"last_succeeded,omitempty"`
+	LastError           string                                    `json:"last_error,omitempty"`
+	LastFailures        []UpstreamRelayMonitoringJobFailureDetail `json:"last_failures,omitempty"`
+	NextRunAt           *time.Time                                `json:"next_run_at,omitempty"`
+	IntervalMinutes     int                                       `json:"interval_minutes"`
+	FailureRetryMinutes int                                       `json:"failure_retry_minutes"`
+}
+
+// UpstreamRelayMonitoringJobFailureDetail 提供后台任务失败的可定位对象与日期。
+type UpstreamRelayMonitoringJobFailureDetail struct {
+	ConnectorID   int64  `json:"connector_id"`
+	ConnectorName string `json:"connector_name,omitempty"`
+	Date          string `json:"date"`
+	Reason        string `json:"reason"`
 }
 
 // UpstreamRelayMonitoringRunnerStatus 汇总 Runner 中所有作业的状态。
@@ -542,9 +559,38 @@ func buildUpstreamRelayMonitoringJobStatus(name string, state upstreamRelayMonit
 		status.LastSucceeded = &ok
 	}
 	status.LastError = state.lastError
+	status.LastFailures = append([]UpstreamRelayMonitoringJobFailureDetail(nil), state.lastFailures...)
 	if enabled && !state.nextRunAt.IsZero() {
 		t := state.nextRunAt
 		status.NextRunAt = &t
 	}
 	return status
+}
+
+func buildUpstreamRelayFinalizeFailures(date string, items []UpstreamRelayBulkOperationItem) []UpstreamRelayMonitoringJobFailureDetail {
+	failures := make([]UpstreamRelayMonitoringJobFailureDetail, 0)
+	for _, item := range items {
+		if item.Success {
+			continue
+		}
+		failures = append(failures, UpstreamRelayMonitoringJobFailureDetail{
+			ConnectorID:   item.ConnectorID,
+			ConnectorName: item.ConnectorName,
+			Date:          date,
+			Reason:        firstNonEmpty(item.ErrorReason, "unknown finalize failure"),
+		})
+	}
+	return failures
+}
+
+func formatUpstreamRelayFinalizeFailureError(date string, failures []UpstreamRelayMonitoringJobFailureDetail) string {
+	if len(failures) == 0 {
+		return "finalize usage failed for " + date
+	}
+	parts := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		name := firstNonEmpty(failure.ConnectorName, fmt.Sprintf("connector #%d", failure.ConnectorID))
+		parts = append(parts, fmt.Sprintf("%s (#%d): %s", name, failure.ConnectorID, failure.Reason))
+	}
+	return fmt.Sprintf("finalize usage failed for %s: %s", date, strings.Join(parts, "; "))
 }

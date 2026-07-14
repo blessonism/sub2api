@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查同步分支、合并目标和远程边界"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查后端到前端的跨层契约一致性"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端安全和回归覆盖"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查前端类型与下游翻译覆盖"}

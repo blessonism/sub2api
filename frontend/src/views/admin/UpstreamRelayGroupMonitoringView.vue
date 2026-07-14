@@ -59,12 +59,29 @@
         </div>
       </div>
 
-      <div v-if="error" data-testid="page-error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-        {{ error }}
+      <div v-if="error" data-testid="page-error" class="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+        <span class="rounded-md bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-black/20">{{ pageFeedbackSource }}</span>
+        <div class="min-w-0 flex-1 break-words">
+          <div>{{ pageErrorMessage }}</div>
+          <details v-if="pageErrorTechnicalDetail" class="mt-2 text-xs text-red-600/80 dark:text-red-300/80">
+            <summary class="cursor-pointer select-none">{{ tM('metricsRefresh.technicalDetails') }}</summary>
+            <div class="mt-1 font-mono">{{ pageErrorTechnicalDetail }}</div>
+          </details>
+        </div>
+        <button type="button" class="rounded p-1 hover:bg-white/70 dark:hover:bg-black/20" :aria-label="tM('operationResult.dismiss')" @click="error = ''"><Icon name="x" size="sm" /></button>
       </div>
-      <div v-if="successMessage" data-testid="page-success" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-        {{ successMessage }}
+      <div v-if="successMessage" data-testid="page-success" class="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <span class="rounded-md bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-black/20">{{ pageFeedbackSource }}</span>
+        <span class="min-w-0 flex-1 break-words">{{ successMessage }}</span>
+        <button type="button" class="rounded p-1 hover:bg-white/70 dark:hover:bg-black/20" :aria-label="tM('operationResult.dismiss')" @click="successMessage = ''"><Icon name="x" size="sm" /></button>
       </div>
+      <OperationResultPanel
+        v-if="monitoringOperationFeedback"
+        v-bind="monitoringOperationFeedback"
+        data-testid="monitoring-operation-result"
+        @action="showMonitoringConnectorDetails"
+        @dismiss="metricsRefreshResult = null; monitoringRefreshRequestError = ''"
+      />
 
       <div
         data-testid="runner-status-bar"
@@ -75,7 +92,7 @@
             <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ tM('runnerStatus.title') }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ tM('runnerStatus.subtitle') }}</div>
           </div>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[640px]">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:min-w-[820px] xl:grid-cols-4">
             <div
               v-for="card in runnerStatusCards"
               :key="card.key"
@@ -98,11 +115,15 @@
                 </span>
               </div>
               <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{{ card.hintText }}</div>
+              <details v-if="card.technicalDetails.length > 0" class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <summary class="cursor-pointer select-none">{{ tM('metricsRefresh.technicalDetails') }}</summary>
+                <div v-for="detail in card.technicalDetails" :key="detail" class="mt-1 break-words font-mono">{{ detail }}</div>
+              </details>
               <div v-if="card.enabled" class="mt-0.5 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
                 {{ tM('runnerStatus.hints.lastFinished', { time: card.lastFinishedAt ? formatDate(card.lastFinishedAt) : '-' }) }}
                 <span v-if="card.intervalMinutes > 0"> · {{ tM('runnerStatus.hints.interval', { minutes: card.intervalMinutes }) }}</span>
               </div>
-              <div class="mt-1.5 flex items-center justify-between border-t border-dashed border-gray-200 pt-1.5 dark:border-dark-700">
+              <div v-if="card.toggleKey" class="mt-1.5 flex items-center justify-between border-t border-dashed border-gray-200 pt-1.5 dark:border-dark-700">
                 <span class="text-[11px] text-gray-500 dark:text-gray-400">
                   {{ tM('runnerStatus.toggle.label') }} · {{ card.autoEnabled ? tM('runnerStatus.toggle.enabled') : tM('runnerStatus.toggle.disabled') }}
                 </span>
@@ -115,7 +136,7 @@
                   :data-testid="`runner-toggle-${card.key}`"
                   class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60"
                   :class="card.autoEnabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
-                  @click="toggleRunnerAutoJob(card.key)"
+                  @click="toggleRunnerAutoJob(card.toggleKey)"
                 >
                   <span
                     class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition"
@@ -200,7 +221,20 @@
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ tM('candidates.title') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.description') }}</p>
           </div>
-          <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.count', { total: candidates.length, enabled: enabledCandidateCount }) }}</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.count', { total: candidates.length, enabled: enabledCandidateCount }) }}</span>
+            <button
+              v-if="incompleteCandidateCount > 0"
+              type="button"
+              class="btn btn-secondary inline-flex items-center gap-1.5 px-2.5 py-1 text-xs"
+              :class="candidateConfigurationOnlyIncomplete ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200' : ''"
+              data-testid="candidate-incomplete-filter"
+              @click="candidateConfigurationOnlyIncomplete = !candidateConfigurationOnlyIncomplete"
+            >
+              <Icon name="filter" size="xs" />
+              {{ candidateConfigurationOnlyIncomplete ? tM('candidates.showAll') : tM('candidates.filterIncomplete', { count: incompleteCandidateCount }) }}
+            </button>
+          </div>
         </div>
         <div
           v-if="candidateProbeFeedback"
@@ -220,6 +254,10 @@
               <div class="mt-1 text-xs leading-5">{{ candidateProbeFeedbackDetail }}</div>
               <div v-if="candidateProbeFeedbackError" class="mt-2 break-words rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
                 {{ candidateProbeFeedbackError }}
+                <details v-if="candidateProbeFeedbackRawError" class="mt-2 text-gray-500 dark:text-gray-400">
+                  <summary class="cursor-pointer select-none">{{ tM('metricsRefresh.technicalDetails') }}</summary>
+                  <div class="mt-1 font-mono">{{ candidateProbeFeedbackRawError }}</div>
+                </details>
               </div>
             </div>
             <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="candidateProbeFeedback = null">
@@ -227,44 +265,8 @@
             </button>
           </div>
         </div>
-        <div
-          v-if="candidateBulkProbeFeedback"
-          data-testid="candidate-bulk-probe-feedback"
-          class="border-b px-4 py-3 text-sm"
-          :class="candidateBulkProbeFeedbackPanelClass"
-        >
-          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <Icon :name="candidateBulkProbeFeedbackIcon" size="sm" :class="candidateBulkProbeFeedbackIconClass" />
-                <span class="font-semibold">{{ candidateBulkProbeFeedbackTitle }}</span>
-                <span class="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium dark:bg-black/20">{{ candidateBulkProbeFeedbackStatusLabel }}</span>
-              </div>
-              <div class="mt-1 text-xs leading-5">{{ candidateBulkProbeFeedbackDetail }}</div>
-              <ul v-if="candidateBulkProbeSuccessItems.length > 0" class="mt-2 space-y-1 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
-                <li class="font-medium text-emerald-700 dark:text-emerald-200">{{ tM('candidates.bulkProbeSuccessItemsTitle', { count: candidateBulkProbeSuccessTotal }) }}</li>
-                <li v-for="item in candidateBulkProbeSuccessItems" :key="bulkOperationItemKey(item)" class="break-words">
-                  <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
-                  <span class="text-gray-600 dark:text-gray-300"> · {{ bulkOperationItemSuccessDetail(item) }}</span>
-                </li>
-                <li v-if="candidateBulkProbeSuccessHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenSuccess', { count: candidateBulkProbeSuccessHiddenCount }) }}</li>
-              </ul>
-              <ul v-if="candidateBulkProbeFailedItems.length > 0" class="mt-2 space-y-1 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
-                <li class="font-medium text-red-700 dark:text-red-200">{{ tM('candidates.bulkProbeFailedItemsTitle', { count: candidateBulkProbeFailedTotal }) }}</li>
-                <li v-for="item in candidateBulkProbeFailedItems" :key="bulkOperationItemKey(item)" class="break-words">
-                  <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
-                  <span class="text-red-700 dark:text-red-200"> · {{ bulkOperationItemFailureDetail(item, tM('candidates.bulkProbeFailedUnknown')) }}</span>
-                </li>
-                <li v-if="candidateBulkProbeFailedHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenFailed', { count: candidateBulkProbeFailedHiddenCount }) }}</li>
-              </ul>
-              <div v-else-if="candidateBulkProbeFeedbackError" class="mt-2 break-words rounded-md bg-white/70 px-3 py-2 text-xs leading-5 dark:bg-black/20">
-                {{ candidateBulkProbeFeedbackError }}
-              </div>
-            </div>
-            <button class="btn btn-secondary whitespace-nowrap px-3 py-1.5 text-xs" type="button" @click="candidateBulkProbeFeedback = null">
-              {{ tM('candidates.dismissProbeFeedback') }}
-            </button>
-          </div>
+        <div v-if="candidateBulkOperationFeedback" class="border-b px-4 py-3" data-testid="candidate-bulk-probe-feedback">
+          <OperationResultPanel v-bind="candidateBulkOperationFeedback" @dismiss="candidateBulkProbeFeedback = null" />
         </div>
         <div v-if="loading" class="flex min-h-56 items-center justify-center">
           <LoadingSpinner />
@@ -283,12 +285,15 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="candidate in candidates" :key="candidate.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
+              <tr v-for="candidate in filteredCandidates" :key="candidate.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/70">
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <span class="font-medium text-gray-900 dark:text-white">#{{ candidate.account_id }} {{ candidate.account_name || '-' }}</span>
+                    <span class="font-medium text-gray-900 dark:text-white">{{ tM('candidates.identity', { candidate: candidate.id, account: candidate.account_id }) }} · {{ candidate.account_name || '-' }}</span>
                     <span :class="candidate.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'" class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium">
                       {{ candidate.enabled ? tM('candidates.enabled') : tM('candidates.disabled') }}
+                    </span>
+                    <span v-if="candidateConfigurationIncomplete(candidate)" class="inline-flex rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                      {{ tM('candidates.configurationIncomplete') }}
                     </span>
                   </div>
                   <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ candidate.account_platform || '-' }} · {{ candidate.probe_model }} · {{ candidate.probe_protocol }}</div>
@@ -337,6 +342,9 @@
                     <button class="btn btn-danger px-2 py-1 text-xs" type="button" @click="removeCandidate(candidate)">{{ tM('candidates.delete') }}</button>
                   </div>
                 </td>
+              </tr>
+              <tr v-if="filteredCandidates.length === 0">
+                <td colspan="7" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ tM('candidates.noFilteredCandidates') }}</td>
               </tr>
               <tr v-if="candidates.length === 0">
                 <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">{{ tM('candidates.empty') }}</td>
@@ -393,10 +401,35 @@
                   {{ metricsRefreshStatusLabel(item.status) }}
                 </span>
               </div>
-              <div v-if="monitoringRefreshItemError(item)" class="mt-2 text-xs text-red-600 dark:text-red-300">
-                {{ monitoringRefreshItemError(item) }}
+              <div
+                v-if="monitoringRefreshItemGuidance(item)"
+                data-testid="metrics-refresh-guidance"
+                class="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div class="font-semibold">{{ monitoringRefreshItemGuidance(item)?.summary }}</div>
+                    <div class="mt-1">{{ monitoringRefreshItemGuidance(item)?.guidance }}</div>
+                  </div>
+                  <button
+                    v-if="monitoringRefreshItemGuidance(item)?.action"
+                    class="btn btn-secondary w-fit px-2 py-1 text-xs"
+                    type="button"
+                    @click="handleMonitoringIssueAction(item)"
+                  >
+                    {{ monitoringRefreshItemGuidance(item)?.actionLabel }}
+                  </button>
+                </div>
+                <details v-if="monitoringRefreshItemGuidance(item)?.rawDetail" class="mt-2 text-gray-500 dark:text-gray-400">
+                  <summary class="cursor-pointer select-none">{{ tM('metricsRefresh.technicalDetails') }}</summary>
+                  <div class="mt-1 break-words font-mono">{{ monitoringRefreshItemGuidance(item)?.rawDetail }}</div>
+                </details>
               </div>
-              <div v-if="monitoringMissingGroups(item).length > 0" class="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <div v-else-if="monitoringRefreshItemStandaloneError(item)" class="mt-2 text-xs text-red-600 dark:text-red-300">
+                {{ monitoringRefreshItemStandaloneError(item) }}
+              </div>
+              <div v-if="monitoringMissingGroups(item).length > 0" class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                <span class="text-gray-500 dark:text-gray-400">{{ tM('metricsRefresh.affectedGroups') }}</span>
                 <span
                   v-for="group in monitoringMissingGroups(item).slice(0, 6)"
                   :key="`${item.connector_id}-${group.upstream_group_id}`"
@@ -464,7 +497,7 @@
                   <span :class="statusClass(connector.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
                     {{ connectorStatusLabel(connector.status) }}
                   </span>
-                  <div v-if="connector.last_error" class="mt-1 max-w-[280px] truncate text-xs text-red-500">{{ connector.last_error }}</div>
+                  <div v-if="connector.last_error" class="mt-1 max-w-[280px] truncate text-xs text-red-500">{{ friendlyUpstreamRelayError(connector.last_error) }}</div>
                 </td>
                 <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                   <div>{{ tM('connectors.authModeLabel') }}: {{ authModeLabel(connector.auth_mode) }}</div>
@@ -770,6 +803,9 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ tM('snapshotChanges.description') }}</p>
           </div>
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ tM('snapshotChanges.count', { n: snapshotChangeTotal }) }}</span>
+        </div>
+        <div v-if="bulkOperationFeedback && bulkOperationSection === 'snapshotChanges'" class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+          <OperationResultPanel v-bind="bulkOperationFeedback" @dismiss="clearBulkOperationFeedback" />
         </div>
         <div class="grid gap-3 border-b border-gray-100 px-4 py-3 dark:border-dark-700 lg:grid-cols-[minmax(180px,220px)_minmax(160px,200px)_1fr_auto]">
           <select v-model.number="snapshotChangeConnectorId" class="input w-full">
@@ -1089,32 +1125,8 @@
               {{ bulkProbing ? tM('monitoring.probeAllRunning') : tM('monitoring.probeAll') }}
             </button>
           </div>
-          <div v-if="bulkOperationResult" class="border-t border-gray-100 px-4 py-3 text-sm dark:border-dark-700">
-            <div class="font-medium text-gray-900 dark:text-white">
-              {{ tM(`monitoring.${bulkOperationResult.kind}ResultTitle`) }}
-              <span class="ml-2 text-gray-500 dark:text-gray-400">{{ formatDate(bulkOperationResult.updatedAt) }}</span>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-3 text-gray-600 dark:text-gray-300">
-              <span>{{ tM('monitoring.resultTotal', { n: bulkOperationResult.result.total }) }}</span>
-              <span class="text-emerald-600 dark:text-emerald-300">{{ tM('monitoring.resultSuccess', { n: bulkOperationResult.result.success }) }}</span>
-              <span :class="bulkOperationResult.result.failed > 0 ? 'text-red-600 dark:text-red-300' : ''">{{ tM('monitoring.resultFailed', { n: bulkOperationResult.result.failed }) }}</span>
-            </div>
-            <ul v-if="bulkFailedItems.length > 0" class="mt-3 space-y-1 text-xs text-red-600 dark:text-red-300">
-              <li class="font-medium">{{ tM('candidates.bulkProbeFailedItemsTitle', { count: bulkFailedTotal }) }}</li>
-              <li v-for="item in bulkFailedItems" :key="bulkOperationItemKey(item)">
-                <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
-                <span> · {{ bulkOperationItemFailureDetail(item, tM('monitoring.unknownFailure')) }}</span>
-              </li>
-              <li v-if="bulkFailedHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenFailed', { count: bulkFailedHiddenCount }) }}</li>
-            </ul>
-            <ul v-if="bulkOperationResult.kind === 'probe' && bulkSuccessItems.length > 0" class="mt-3 space-y-1 text-xs text-emerald-600 dark:text-emerald-300">
-              <li class="font-medium">{{ tM('candidates.bulkProbeSuccessItemsTitle', { count: bulkSuccessTotal }) }}</li>
-              <li v-for="item in bulkSuccessItems" :key="bulkOperationItemKey(item)">
-                <span class="font-medium">{{ bulkOperationItemLabel(item) }}</span>
-                <span> · {{ bulkOperationItemSuccessDetail(item) }}</span>
-              </li>
-              <li v-if="bulkSuccessHiddenCount > 0" class="text-gray-500 dark:text-gray-400">{{ tM('candidates.bulkProbeHiddenSuccess', { count: bulkSuccessHiddenCount }) }}</li>
-            </ul>
+          <div v-if="bulkOperationFeedback && bulkOperationSection === 'monitoring'" class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
+            <OperationResultPanel v-bind="bulkOperationFeedback" @dismiss="clearBulkOperationFeedback" />
           </div>
         </div>
       </section>
@@ -1430,22 +1442,25 @@
       </div>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelConnector') }}</span>
-        <select v-model.number="candidateForm.connector_id" class="input w-full">
+        <select v-model.number="candidateForm.connector_id" class="input w-full" :class="candidateFormErrors.connector ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''" :aria-invalid="Boolean(candidateFormErrors.connector)">
           <option :value="0">{{ tM('candidateForm.placeholderSelect') }}</option>
           <option v-for="connector in connectors" :key="connector.id" :value="connector.id">{{ connector.name }}</option>
         </select>
+        <p v-if="candidateFormErrors.connector" class="text-xs text-red-600 dark:text-red-300">{{ candidateFormErrors.connector }}</p>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelAccount') }}</span>
-        <select v-model.number="candidateForm.account_id" class="input w-full">
+        <select v-model.number="candidateForm.account_id" class="input w-full" :class="candidateFormErrors.account ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''" :aria-invalid="Boolean(candidateFormErrors.account)">
           <option :value="0">{{ tM('candidateForm.placeholderSelect') }}</option>
           <option v-for="account in accounts" :key="account.id" :value="account.id">{{ accountOptionLabel(account) }}</option>
         </select>
+        <p v-if="candidateFormErrors.account" class="text-xs text-red-600 dark:text-red-300">{{ candidateFormErrors.account }}</p>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamGroupId') }}</span>
         <select
           class="input w-full"
+          :class="candidateFormErrors.upstreamGroup ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''"
           data-testid="candidate-upstream-group-select"
           :value="candidateGroupSelectValue"
           :disabled="!candidateForm.connector_id"
@@ -1459,19 +1474,22 @@
           v-if="candidateGroupManualInputVisible"
           v-model.trim="candidateForm.upstream_group_id"
           class="input w-full"
+          :class="candidateFormErrors.upstreamGroup ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''"
           data-testid="candidate-upstream-group-manual-input"
           type="text"
           :placeholder="tM('candidateForm.placeholderManualGroupId')"
           @input="syncCandidateGroupManualInput"
         />
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ candidateGroupSelectHint }}</p>
+        <p v-if="candidateFormErrors.upstreamGroup" class="text-xs text-red-600 dark:text-red-300">{{ candidateFormErrors.upstreamGroup }}</p>
       </label>
       <label class="block space-y-1">
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelUpstreamApiKey') }}</span>
-        <select v-model.number="candidateForm.upstream_api_key_id" class="input w-full" :disabled="!candidateForm.connector_id || loadingConnectorAPIKeys" @change="syncSelectedCandidateAPIKey">
+        <select v-model.number="candidateForm.upstream_api_key_id" class="input w-full" :class="candidateFormErrors.upstreamApiKey ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''" :aria-invalid="Boolean(candidateFormErrors.upstreamApiKey)" :disabled="!candidateForm.connector_id || loadingConnectorAPIKeys" @change="syncSelectedCandidateAPIKey">
           <option :value="null">{{ loadingConnectorAPIKeys ? tM('candidateForm.loadingApiKeys') : tM('candidateForm.placeholderApiKey') }}</option>
           <option v-for="apiKey in connectorAPIKeys" :key="apiKey.id" :value="apiKey.id">{{ apiKeyOptionLabel(apiKey) }}</option>
         </select>
+        <p v-if="candidateFormErrors.upstreamApiKey" class="text-xs text-red-600 dark:text-red-300">{{ candidateFormErrors.upstreamApiKey }}</p>
       </label>
       <div v-if="duplicateCandidate" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
         {{ tM('candidateForm.duplicateAccountBinding', { id: duplicateCandidate.id }) }}
@@ -1479,7 +1497,8 @@
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelProbeModel') }}</span>
-          <input v-model.trim="candidateForm.probe_model" class="input w-full" type="text" />
+          <input v-model.trim="candidateForm.probe_model" class="input w-full" :class="candidateFormErrors.probeModel ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : ''" :aria-invalid="Boolean(candidateFormErrors.probeModel)" type="text" />
+          <p v-if="candidateFormErrors.probeModel" class="text-xs text-red-600 dark:text-red-300">{{ candidateFormErrors.probeModel }}</p>
         </label>
         <label class="block space-y-1">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ tM('candidateForm.labelProtocol') }}</span>
@@ -1494,6 +1513,15 @@
         <input v-model="candidateForm.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
         {{ tM('candidateForm.enableCandidate') }}
       </label>
+      <div v-if="candidateFormServerError" data-testid="candidate-form-server-error" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+        <div class="font-medium">{{ tM('candidateForm.saveFailedTitle') }}</div>
+        <div class="mt-1 text-xs">{{ tM('candidateForm.saveFailedImpact') }}</div>
+        <div class="mt-1 text-xs">{{ tM('candidateForm.saveFailedAdvice') }}</div>
+        <details class="mt-2 text-xs">
+          <summary class="cursor-pointer select-none">{{ tM('metricsRefresh.technicalDetails') }}</summary>
+          <div class="mt-1 break-words font-mono">{{ candidateFormServerError }}</div>
+        </details>
+      </div>
     </form>
     <template #footer>
       <div class="flex justify-end gap-2">
@@ -1567,17 +1595,13 @@
         {{ applyDialogNotice }}
         <span v-if="applyRun?.applied_at" class="ml-1">{{ tM('applyDialog.appliedAt', { date: formatDate(applyRun.applied_at) }) }}</span>
       </div>
-      <div v-if="lastAppliedRun && applyRun?.id === lastAppliedRun.id" data-testid="apply-success-summary" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-        <div class="font-semibold">{{ tM('applyDialog.successTitle') }}</div>
-        <div class="mt-1">
-          {{ tM('applyDialog.successDetail', { id: lastAppliedRun.id, count: lastAppliedRun.suggestion_count, date: formatDate(lastAppliedRun.applied_at || lastAppliedRun.created_at) }) }}
-        </div>
-      </div>
-      <div v-if="lastApplyError && applyRun" data-testid="apply-error-summary" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-        <div class="font-semibold">{{ tM('applyDialog.failureTitle') }}</div>
-        <div class="mt-1">{{ tM('applyDialog.failureDetail', { id: applyRun.id }) }}</div>
-        <div class="mt-2 break-words text-xs text-red-700 dark:text-red-200">{{ lastApplyError }}</div>
-      </div>
+      <OperationResultPanel
+        v-if="applyOperationFeedback"
+        v-bind="applyOperationFeedback"
+        :dismissible="!applying"
+        data-testid="apply-operation-result"
+        @dismiss="lastApplyError = ''; lastAppliedRun = null"
+      />
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div v-for="item in applyRiskCards" :key="item.label" class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</div>
@@ -1677,6 +1701,7 @@ import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import HealthRateBar from '@/components/admin/upstreamRelay/HealthRateBar.vue'
 import RateSourceTag from '@/components/admin/upstreamRelay/RateSourceTag.vue'
 import CandidateHealthDialog from '@/components/admin/upstreamRelay/CandidateHealthDialog.vue'
+import OperationResultPanel from '@/components/admin/upstreamRelay/OperationResultPanel.vue'
 import accountsAPI from '@/api/admin/accounts'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { formatRelativeTime } from '@/utils/format'
@@ -1691,6 +1716,7 @@ import upstreamRelayAPI, {
   type UpstreamRelayGroupRateSnapshot,
   type UpstreamRelayGroupRateSnapshotChange,
   type UpstreamRelayGroupUsageHistory,
+  type UpstreamRelayMetricsIssueDetail,
   type UpstreamRelayMetricsMissingGroupDetail,
   type UpstreamRelayMetricsUsageDetail,
   type UpstreamRelayMetricsRefreshStatus,
@@ -1741,6 +1767,27 @@ type MetricsRefreshResultState = {
   updatedAt: string
   expanded: boolean
 }
+type MonitoringIssueAction = 'edit_candidate' | 'create_candidate' | 'sync_connector' | 'edit_connector' | 'retry_metrics'
+type MonitoringIssuePresentation = {
+  summary: string
+  guidance: string
+  action?: MonitoringIssueAction
+  actionLabel?: string
+  candidateId?: number
+  accountId?: number
+  rawDetail?: string
+}
+type OperationFeedback = {
+  status: 'running' | 'success' | 'partial' | 'failed'
+  source: string
+  title: string
+  action: string
+  result: string
+  impact: string
+  nextStep: string
+  technicalDetails: string[]
+  actionLabel?: string
+}
 type CandidateProbeFeedback = {
   status: 'running' | 'done'
   candidateId: number
@@ -1762,7 +1809,6 @@ type CandidateBulkProbeFeedback = {
   errorMessage?: string
 }
 
-const METRICS_REFRESH_LOCAL_BINDING_ERROR = 'connector has no local account bindings'
 const USAGE_HISTORY_STALE_MS = 24 * 60 * 60 * 1000
 const OVERVIEW_TODAY_USAGE_PAGE_SIZE = 200
 const MANUAL_CANDIDATE_GROUP_OPTION = '__manual__'
@@ -1770,6 +1816,13 @@ const BULK_OPERATION_DETAIL_LIMIT = 5
 const UPSTREAM_RELAY_USAGE_TIME_ZONE = 'Asia/Shanghai'
 const DEFAULT_PAUSE_RATE_GAP_THRESHOLD = 0.04
 const DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD = 3
+const METRICS_MISSING_REASON_KEYS = new Set([
+  'no_snapshot',
+  'missing_upstream_api_key_binding',
+  'upstream_usage_request_failed',
+  'usage_refresh_aborted',
+  'usage_refresh_failed'
+])
 
 const loading = ref(false)
 const error = ref('')
@@ -1802,6 +1855,10 @@ const usageHistoryLoading = ref(false)
 const recommendationRunsLoading = ref(false)
 const savingConnector = ref(false)
 const savingCandidate = ref(false)
+const candidateFormSubmitted = ref(false)
+const candidateFormServerError = ref('')
+const candidateRepairRefreshConnectorId = ref<number | null>(null)
+const candidateConfigurationOnlyIncomplete = ref(false)
 const loadingConnectorAPIKeys = ref(false)
 const savingMonitoringPolicy = ref(false)
 const savingPolicy = ref(false)
@@ -1820,7 +1877,11 @@ const savingRunnerToggleKey = ref<RunnerJobKey | ''>('')
 const runnerToggleOverrides = ref<Partial<Record<RunnerJobKey, boolean>>>({})
 const freshnessClock = ref(Date.now())
 const bulkOperationResult = ref<{ kind: BulkOperationKind; result: UpstreamRelayBulkOperationResult; updatedAt: string } | null>(null)
+const bulkOperationRequestError = ref('')
+const bulkOperationSection = ref<SectionKey | null>(null)
+const preserveFeedbackOnNextSectionChange = ref(false)
 const metricsRefreshResult = ref<MetricsRefreshResultState | null>(null)
+const monitoringRefreshRequestError = ref('')
 const candidateProbeFeedback = ref<CandidateProbeFeedback | null>(null)
 const candidateBulkProbeFeedback = ref<CandidateBulkProbeFeedback | null>(null)
 const activeSection = ref<SectionKey>('candidates')
@@ -1995,6 +2056,24 @@ const duplicateCandidate = computed(() => {
       && item.upstream_group_id.trim() === upstreamGroupId
   }) || null
 })
+const candidateFormErrors = computed(() => {
+  if (!candidateFormSubmitted.value) {
+    return { connector: '', account: '', upstreamGroup: '', upstreamApiKey: '', probeModel: '' }
+  }
+  return {
+    connector: candidateForm.connector_id > 0 ? '' : tM('candidateForm.requiredConnector'),
+    account: candidateForm.account_id > 0 ? '' : tM('candidateForm.requiredAccount'),
+    upstreamGroup: candidateForm.upstream_group_id.trim() ? '' : tM('candidateForm.requiredUpstreamGroup'),
+    upstreamApiKey: Number(candidateForm.upstream_api_key_id || 0) > 0 ? '' : tM('candidateForm.requiredUpstreamApiKey'),
+    probeModel: candidateForm.probe_model.trim() ? '' : tM('candidateForm.requiredProbeModel')
+  }
+})
+const candidateFormValid = computed(() => Object.values(candidateFormErrors.value).every((message) => !message))
+const incompleteCandidateCount = computed(() => candidates.value.filter(candidateConfigurationIncomplete).length)
+const filteredCandidates = computed(() => candidateConfigurationOnlyIncomplete.value
+  ? candidates.value.filter(candidateConfigurationIncomplete)
+  : candidates.value
+)
 const selectedCandidateAPIKey = computed(() => {
   const id = Number(candidateForm.upstream_api_key_id || 0)
   if (!id) return null
@@ -2090,81 +2169,13 @@ const candidateProbeFeedbackError = computed(() => {
   const feedback = candidateProbeFeedback.value
   if (!feedback || feedback.status === 'running' || feedback.success) return ''
   const reason = feedback.errorMessage || feedback.errorClass || tM('candidates.probeFailedUnknown')
-  return feedback.errorClass ? `${errorClassLabel(feedback.errorClass)}: ${reason}` : reason
+  const friendlyReason = friendlyUpstreamRelayError(reason)
+  return feedback.errorClass ? `${errorClassLabel(feedback.errorClass)}: ${friendlyReason}` : friendlyReason
 })
-const candidateBulkProbeFeedbackPanelClass = computed(() => {
-  if (candidateBulkProbeFeedback.value?.status === 'running') {
-    return 'border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100'
-  }
-  if (candidateBulkProbeFeedback.value?.errorMessage || (candidateBulkProbeFeedback.value?.result?.failed || 0) > 0) {
-    return (candidateBulkProbeFeedback.value?.result?.success || 0) > 0
-      ? 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100'
-      : 'border-red-100 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
-  }
-  return 'border-emerald-100 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+const candidateProbeFeedbackRawError = computed(() => {
+  const raw = candidateProbeFeedback.value?.errorMessage?.trim() || ''
+  return raw && raw !== candidateProbeFeedbackError.value ? raw : ''
 })
-const candidateBulkProbeFeedbackIcon = computed(() => {
-  if (candidateBulkProbeFeedback.value?.status === 'running') return 'refresh'
-  if (candidateBulkProbeFeedback.value?.errorMessage || (candidateBulkProbeFeedback.value?.result?.failed || 0) > 0) return 'x'
-  return 'check'
-})
-const candidateBulkProbeFeedbackIconClass = computed(() => (
-  candidateBulkProbeFeedback.value?.status === 'running'
-    ? 'animate-spin text-blue-500 dark:text-blue-200'
-    : ''
-))
-const candidateBulkProbeFeedbackStatusLabel = computed(() => {
-  const feedback = candidateBulkProbeFeedback.value
-  if (!feedback || feedback.status === 'running') return tM('candidates.bulkProbeStatusRunning')
-  if (feedback.errorMessage) return tM('candidates.bulkProbeStatusFailed')
-  if ((feedback.result?.failed || 0) > 0) return tM('candidates.bulkProbeStatusPartial')
-  return tM('candidates.bulkProbeStatusSuccess')
-})
-const candidateBulkProbeFeedbackTitle = computed(() => {
-  const feedback = candidateBulkProbeFeedback.value
-  if (!feedback || feedback.status === 'running') return tM('candidates.bulkProbeRunningTitle')
-  if (feedback.errorMessage) return tM('candidates.bulkProbeFailedTitle')
-  if ((feedback.result?.failed || 0) > 0) return tM('candidates.bulkProbePartialTitle')
-  return tM('candidates.bulkProbeSuccessTitle')
-})
-const candidateBulkProbeFeedbackDetail = computed(() => {
-  const feedback = candidateBulkProbeFeedback.value
-  if (!feedback) return ''
-  if (feedback.status === 'running') {
-    return tM('candidates.bulkProbeRunningDetail', {
-      total: enabledCandidateCount.value,
-      time: formatDate(feedback.startedAt)
-    })
-  }
-  const result = feedback.result
-  if (!result) {
-    return tM('candidates.bulkProbeRequestFailedDetail', {
-      time: formatDate(feedback.completedAt || feedback.startedAt)
-    })
-  }
-  return tM('candidates.bulkProbeCompletedDetail', {
-    total: result.total,
-    success: result.success,
-    failed: result.failed,
-    time: formatDate(feedback.completedAt || feedback.startedAt)
-  })
-})
-const candidateBulkProbeFailedItems = computed(() => {
-  return (candidateBulkProbeFeedback.value?.result?.items || [])
-    .filter((item) => !item.success)
-    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
-})
-const candidateBulkProbeSuccessItems = computed(() => {
-  return (candidateBulkProbeFeedback.value?.result?.items || [])
-    .filter((item) => item.success)
-    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
-})
-const candidateBulkProbeFailedTotal = computed(() => (candidateBulkProbeFeedback.value?.result?.items || []).filter((item) => !item.success).length)
-const candidateBulkProbeSuccessTotal = computed(() => (candidateBulkProbeFeedback.value?.result?.items || []).filter((item) => item.success).length)
-const candidateBulkProbeFailedHiddenCount = computed(() => Math.max(0, candidateBulkProbeFailedTotal.value - candidateBulkProbeFailedItems.value.length))
-const candidateBulkProbeSuccessHiddenCount = computed(() => Math.max(0, candidateBulkProbeSuccessTotal.value - candidateBulkProbeSuccessItems.value.length))
-const candidateBulkProbeFeedbackError = computed(() => candidateBulkProbeFeedback.value?.errorMessage || '')
-
 const sections = computed((): Array<{ key: SectionKey; label: string; badge?: number }> => [
   { key: 'candidates', label: tM('tabs.candidates') },
   { key: 'connectors', label: tM('tabs.connectors') },
@@ -2174,6 +2185,9 @@ const sections = computed((): Array<{ key: SectionKey; label: string; badge?: nu
   { key: 'recommendations', label: tM('tabs.recommendations'), badge: pendingSuggestionCount.value },
   { key: 'policy', label: tM('tabs.policy') }
 ])
+const pageFeedbackSource = computed(() => tM(`operationResult.sources.${activeSection.value}`))
+const pageErrorMessage = computed(() => friendlyUpstreamRelayError(error.value))
+const pageErrorTechnicalDetail = computed(() => error.value && error.value !== pageErrorMessage.value ? error.value : '')
 
 watch(() => candidateForm.connector_id, async (connectorId, previousConnectorId) => {
   if (!candidateDialogOpen.value) return
@@ -2222,20 +2236,120 @@ const autoMonitoringStatusChips = computed(() => {
   ]
 })
 
-const bulkFailedItems = computed(() => {
-  return (bulkOperationResult.value?.result.items || [])
-    .filter((item) => !item.success)
-    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
+const monitoringOperationFeedback = computed<OperationFeedback | null>(() => {
+  if (monitoringRefreshRequestError.value) {
+    return {
+      status: 'failed',
+      source: tM('operationResult.sources.globalRefresh'),
+      title: tM('operationResult.titles.refresh'),
+      action: tM('operationResult.actions.refresh'),
+      result: tM('operationResult.results.requestFailed'),
+      impact: tM('operationResult.impacts.requestFailed'),
+      nextStep: tM('operationResult.nextSteps.retryAfterCheck'),
+      technicalDetails: [monitoringRefreshRequestError.value]
+    }
+  }
+  if (!metricsRefreshResult.value) return null
+  const summary = metricsRefreshSummary.value
+  const status: OperationFeedback['status'] = summary.failed > 0
+    ? (summary.success > 0 || summary.partial > 0 ? 'partial' : 'failed')
+    : summary.partial > 0 ? 'partial' : 'success'
+  const skipped = summary.missingGroups
+  return {
+    status,
+    source: tM('operationResult.sources.globalRefresh'),
+    title: tM('operationResult.titles.refresh'),
+    action: tM('operationResult.actions.refresh'),
+    result: tM('operationResult.results.monitoring', {
+      success: summary.success,
+      partial: summary.partial,
+      failed: summary.failed,
+      successItems: monitoringOperationItemNames('success'),
+      failedItems: monitoringOperationItemNames('problem')
+    }),
+    impact: skipped > 0
+      ? tM('operationResult.impacts.refreshPartial', { skipped })
+      : tM('operationResult.impacts.refreshSuccess'),
+    nextStep: status === 'success'
+      ? tM('operationResult.nextSteps.none')
+      : tM('operationResult.nextSteps.inspectConnectors'),
+    technicalDetails: monitoringOperationTechnicalDetails(),
+    actionLabel: status === 'success' ? undefined : tM('operationResult.actions.viewConnectorDetails')
+  }
 })
-const bulkSuccessItems = computed(() => {
-  return (bulkOperationResult.value?.result.items || [])
-    .filter((item) => item.success)
-    .slice(0, BULK_OPERATION_DETAIL_LIMIT)
+
+const bulkOperationFeedback = computed<OperationFeedback | null>(() => {
+  const source = tM(`operationResult.sources.${bulkOperationSection.value || activeSection.value}`)
+  if (bulkOperationRequestError.value) {
+    return {
+      status: 'failed', source,
+      title: tM(`operationResult.titles.${bulkOperationResult.value?.kind || 'sync'}`),
+      action: tM(`operationResult.actions.${bulkOperationResult.value?.kind || 'sync'}`),
+      result: tM('operationResult.results.requestFailed'),
+      impact: tM('operationResult.impacts.requestFailed'),
+      nextStep: tM('operationResult.nextSteps.retryAfterCheck'),
+      technicalDetails: [bulkOperationRequestError.value]
+    }
+  }
+  const operation = bulkOperationResult.value
+  if (!operation) return null
+  return buildBulkOperationFeedback(operation.kind, operation.result, source)
 })
-const bulkFailedTotal = computed(() => (bulkOperationResult.value?.result.items || []).filter((item) => !item.success).length)
-const bulkSuccessTotal = computed(() => (bulkOperationResult.value?.result.items || []).filter((item) => item.success).length)
-const bulkFailedHiddenCount = computed(() => Math.max(0, bulkFailedTotal.value - bulkFailedItems.value.length))
-const bulkSuccessHiddenCount = computed(() => Math.max(0, bulkSuccessTotal.value - bulkSuccessItems.value.length))
+
+const candidateBulkOperationFeedback = computed<OperationFeedback | null>(() => {
+  const feedback = candidateBulkProbeFeedback.value
+  if (!feedback) return null
+  const source = tM('operationResult.sources.candidates')
+  if (feedback.status === 'running') {
+    return {
+      status: 'running', source,
+      title: tM('operationResult.titles.probe'),
+      action: tM('operationResult.actions.probe'),
+      result: tM('operationResult.results.running'),
+      impact: tM('operationResult.impacts.probeRunning'),
+      nextStep: tM('operationResult.nextSteps.wait'),
+      technicalDetails: []
+    }
+  }
+  if (feedback.errorMessage) {
+    return {
+      status: 'failed', source,
+      title: tM('operationResult.titles.probe'),
+      action: tM('operationResult.actions.probe'),
+      result: tM('operationResult.results.requestFailed'),
+      impact: tM('operationResult.impacts.requestFailed'),
+      nextStep: tM('operationResult.nextSteps.retryAfterCheck'),
+      technicalDetails: [feedback.errorMessage]
+    }
+  }
+  return feedback.result ? buildBulkOperationFeedback('probe', feedback.result, source) : null
+})
+
+const applyOperationFeedback = computed<OperationFeedback | null>(() => {
+  if (applying.value) {
+    return {
+      status: 'running', source: tM('operationResult.sources.priorityApply'), title: tM('operationResult.titles.apply'),
+      action: tM('operationResult.actions.apply'), result: tM('operationResult.results.running'),
+      impact: tM('operationResult.impacts.applyRunning'), nextStep: tM('operationResult.nextSteps.wait'), technicalDetails: []
+    }
+  }
+  if (lastApplyError.value && applyRun.value) {
+    return {
+      status: 'failed', source: tM('operationResult.sources.priorityApply'), title: tM('operationResult.titles.apply'),
+      action: tM('operationResult.actions.apply'), result: tM('operationResult.results.applyFailed', { id: applyRun.value.id }),
+      impact: tM('operationResult.impacts.applyFailed'), nextStep: tM('operationResult.nextSteps.retryApply'),
+      technicalDetails: [lastApplyError.value]
+    }
+  }
+  if (lastAppliedRun.value && applyRun.value?.id === lastAppliedRun.value.id) {
+    return {
+      status: 'success', source: tM('operationResult.sources.priorityApply'), title: tM('operationResult.titles.apply'),
+      action: tM('operationResult.actions.apply'), result: tM('operationResult.results.applySuccess', { id: lastAppliedRun.value.id, success: lastAppliedRun.value.suggestion_count }),
+      impact: tM('operationResult.impacts.applySuccess'), nextStep: tM('operationResult.nextSteps.none'), technicalDetails: []
+    }
+  }
+  return null
+})
 
 const metricsRefreshResultByConnectorId = computed(() => {
   const out = new Map<number, UpstreamRelayMonitoringRefreshItem>()
@@ -2499,7 +2613,8 @@ const overviewCards = computed(() => [
   }
 ])
 
-type RunnerJobKey = 'sync' | 'probe' | 'recommendation'
+type RunnerJobKey = 'sync' | 'probe' | 'recommendation' | 'finalize'
+type RunnerToggleJobKey = Exclude<RunnerJobKey, 'finalize'>
 
 interface RunnerStatusCard {
   key: RunnerJobKey
@@ -2514,17 +2629,19 @@ interface RunnerStatusCard {
   stateLabel: string
   stateTone: 'idle' | 'running' | 'disabled' | 'success' | 'failed'
   hintText: string
+  technicalDetails: string[]
+  toggleKey?: RunnerToggleJobKey
   toggleDisabled: boolean
 }
 
-const RUNNER_JOB_TOGGLE_KEYS: Record<RunnerJobKey, 'auto_sync_enabled' | 'auto_probe_enabled' | 'auto_recommendation_enabled'> = {
+const RUNNER_JOB_TOGGLE_KEYS: Record<RunnerToggleJobKey, 'auto_sync_enabled' | 'auto_probe_enabled' | 'auto_recommendation_enabled'> = {
   sync: 'auto_sync_enabled',
   probe: 'auto_probe_enabled',
   recommendation: 'auto_recommendation_enabled'
 }
-type RunnerJobToggleField = (typeof RUNNER_JOB_TOGGLE_KEYS)[RunnerJobKey]
+type RunnerJobToggleField = (typeof RUNNER_JOB_TOGGLE_KEYS)[RunnerToggleJobKey]
 
-const RUNNER_JOB_INTERVAL_KEYS: Record<RunnerJobKey, 'sync_interval_minutes' | 'probe_interval_minutes' | 'recommendation_interval_minutes'> = {
+const RUNNER_JOB_INTERVAL_KEYS: Record<RunnerToggleJobKey, 'sync_interval_minutes' | 'probe_interval_minutes' | 'recommendation_interval_minutes'> = {
   sync: 'sync_interval_minutes',
   probe: 'probe_interval_minutes',
   recommendation: 'recommendation_interval_minutes'
@@ -2534,7 +2651,7 @@ function savedRunnerAutoEnabled(key: RunnerJobKey, source?: UpstreamRelayMonitor
   const override = runnerToggleOverrides.value[key]
   if (override !== undefined) return override
   const policy = savedMonitoringPolicy.value
-  if (policy) return Boolean(policy[RUNNER_JOB_TOGGLE_KEYS[key]])
+  if (policy) return key === 'finalize' ? Boolean(policy.auto_sync_enabled) : Boolean(policy[RUNNER_JOB_TOGGLE_KEYS[key]])
   return Boolean(source?.enabled)
 }
 
@@ -2543,7 +2660,8 @@ const runnerStatusCards = computed<RunnerStatusCard[]>(() => {
   const jobs: { key: RunnerJobKey; source: UpstreamRelayMonitoringJobStatus | undefined }[] = [
     { key: 'sync', source: status?.sync },
     { key: 'probe', source: status?.probe },
-    { key: 'recommendation', source: status?.recommendation }
+    { key: 'recommendation', source: status?.recommendation },
+    { key: 'finalize', source: status?.finalize }
   ]
   return jobs.map(({ key, source }) => {
     const autoEnabled = savedRunnerAutoEnabled(key, source)
@@ -2553,7 +2671,8 @@ const runnerStatusCards = computed<RunnerStatusCard[]>(() => {
     const lastSucceeded = source?.last_succeeded ?? null
     const lastError = source?.last_error || ''
     const nextRunAt = source?.next_run_at ?? null
-    const intervalMinutes = source?.interval_minutes ?? positiveInteger(savedMonitoringPolicy.value?.[RUNNER_JOB_INTERVAL_KEYS[key]], 0)
+    const intervalMinutes = source?.interval_minutes ?? (key === 'finalize' ? 0 : positiveInteger(savedMonitoringPolicy.value?.[RUNNER_JOB_INTERVAL_KEYS[key]], 0))
+    const failures = source?.last_failures || []
 
     let stateTone: RunnerStatusCard['stateTone'] = 'idle'
     let stateLabel = tM('runnerStatus.states.idle')
@@ -2576,8 +2695,14 @@ const runnerStatusCards = computed<RunnerStatusCard[]>(() => {
       hintText = tM('runnerStatus.hints.running')
     } else if (!enabled) {
       hintText = tM('runnerStatus.hints.disabled')
+    } else if (lastSucceeded === false && failures.length > 0) {
+      hintText = tM('runnerStatus.hints.finalizeFailures', {
+        date: failures[0]?.date || '-',
+        count: failures.length,
+        connectors: failures.map((failure) => failure.connector_name || `#${failure.connector_id}`).join('、')
+      })
     } else if (lastSucceeded === false && lastError) {
-      hintText = tM('runnerStatus.hints.lastError', { error: lastError })
+      hintText = tM('runnerStatus.hints.lastError', { error: friendlyUpstreamRelayError(lastError) })
     } else if (nextRunAt) {
       hintText = tM('runnerStatus.hints.nextRun', { time: formatDate(nextRunAt) })
     } else {
@@ -2597,12 +2722,16 @@ const runnerStatusCards = computed<RunnerStatusCard[]>(() => {
       stateLabel,
       stateTone,
       hintText,
+      technicalDetails: failures.length > 0
+        ? failures.map((failure) => `${failure.date} · ${failure.connector_name || `#${failure.connector_id}`}: ${failure.reason}`)
+        : lastError ? [lastError] : [],
+      toggleKey: key === 'finalize' ? undefined : key,
       toggleDisabled: loading.value || savingMonitoringPolicy.value || !savedMonitoringPolicy.value || savingRunnerToggleKey.value !== ''
     }
   })
 })
 
-async function toggleRunnerAutoJob(key: RunnerJobKey) {
+async function toggleRunnerAutoJob(key: RunnerToggleJobKey) {
   if (loading.value || savingRunnerToggleKey.value || !savedMonitoringPolicy.value) return
   const field = RUNNER_JOB_TOGGLE_KEYS[key]
   const previous = savedRunnerAutoEnabled(key)
@@ -2712,7 +2841,23 @@ watch(autoRefreshInterval, () => {
   if (autoRefreshEnabled.value) startAutoRefresh()
 })
 
-watch(activeSection, (section) => {
+watch(activeSection, (section, previousSection) => {
+  if (section !== previousSection) {
+    error.value = ''
+    successMessage.value = ''
+    if (preserveFeedbackOnNextSectionChange.value) {
+      preserveFeedbackOnNextSectionChange.value = false
+    } else {
+      metricsRefreshResult.value = null
+      monitoringRefreshRequestError.value = ''
+      clearBulkOperationFeedback()
+    }
+    if (section !== 'candidates') {
+      candidateProbeFeedback.value = null
+      candidateBulkProbeFeedback.value = null
+      candidateConfigurationOnlyIncomplete.value = false
+    }
+  }
   if (section === 'snapshotChanges' && snapshotChanges.value.length === 0 && !snapshotChangesLoading.value) {
     void loadSnapshotChanges()
   }
@@ -2851,7 +2996,7 @@ async function loadConnectorAPIKeys(connectorId: number) {
     syncSelectedCandidateAPIKey()
   } catch (err) {
     connectorAPIKeys.value = mergeCurrentCandidateAPIKeyOption([])
-    error.value = extractApiErrorMessage(err, tM('errors.loadApiKeysFailed'))
+    error.value = friendlyUpstreamRelayError(extractApiErrorMessage(err, tM('errors.loadApiKeysFailed')))
   } finally {
     loadingConnectorAPIKeys.value = false
   }
@@ -3182,7 +3327,7 @@ async function sync(connector: UpstreamRelayConnector) {
       await loadSnapshotChanges()
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.syncFailed')
+    error.value = friendlyUpstreamRelayError(err instanceof Error ? err.message : tM('errors.syncFailed'))
   } finally {
     manualSnapshotRefreshingId.value = null
   }
@@ -3191,6 +3336,9 @@ async function sync(connector: UpstreamRelayConnector) {
 async function syncAllConnectors() {
   if (connectors.value.length === 0) return
   bulkSyncing.value = true
+  bulkOperationSection.value = activeSection.value
+  bulkOperationRequestError.value = ''
+  bulkOperationResult.value = null
   error.value = ''
   successMessage.value = ''
   try {
@@ -3200,13 +3348,8 @@ async function syncAllConnectors() {
     if (activeSection.value === 'snapshotChanges') {
       await loadSnapshotChanges()
     }
-    if (result.failed > 0) {
-      error.value = tM('errors.syncAllPartialFailed', { count: result.failed })
-    } else {
-      successMessage.value = tM('snapshotDialog.fetchAllSuccess', { success: result.success, total: result.total })
-    }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.syncAllFailed')
+    bulkOperationRequestError.value = extractApiErrorMessage(err, tM('errors.syncAllFailed'))
   } finally {
     bulkSyncing.value = false
   }
@@ -3263,6 +3406,7 @@ async function refreshMonitoringData(options: { silent?: boolean } = {}) {
   if (connectors.value.length === 0) return
   refreshingMetrics.value = true
   refreshingMetricsConnectorId.value = null
+  monitoringRefreshRequestError.value = ''
   if (!options.silent) {
     error.value = ''
     successMessage.value = ''
@@ -3271,17 +3415,9 @@ async function refreshMonitoringData(options: { silent?: boolean } = {}) {
     const result = await upstreamRelayAPI.refreshMonitoringData()
     applyMonitoringRefreshResult(result, !options.silent)
     await refreshPostMonitoringData()
-    if (!options.silent) {
-      if (result.failed > 0 || result.partial > 0) {
-        const warning = monitoringRefreshResultWarning(result)
-        if (warning) error.value = warning
-      } else {
-        successMessage.value = tM('metricsRefresh.monitoringSuccess', { success: result.success, total: result.total })
-      }
-    }
   } catch (err) {
     if (!options.silent) {
-      error.value = err instanceof Error ? err.message : tM('errors.refreshMonitoringFailed')
+      monitoringRefreshRequestError.value = extractApiErrorMessage(err, tM('errors.refreshMonitoringFailed'))
     }
   } finally {
     refreshingMetrics.value = false
@@ -3336,10 +3472,8 @@ async function refreshMetricsForSingleConnector(connector: UpstreamRelayConnecto
       }
     }
     mergeMetricsRefreshResultItem(result)
-    const warning = metricsRefreshWarning(result)
-    if (warning) error.value = warning
   } catch (err) {
-    error.value = err instanceof Error ? err.message : tM('errors.refreshMetricsFailed')
+    error.value = friendlyUpstreamRelayError(err instanceof Error ? err.message : tM('errors.refreshMetricsFailed'))
   } finally {
     refreshingMetrics.value = false
     refreshingMetricsConnectorId.value = null
@@ -3388,6 +3522,9 @@ function resetCandidateForm() {
   })
   connectorAPIKeys.value = []
   candidateSourceSnapshot.value = null
+  candidateFormSubmitted.value = false
+  candidateFormServerError.value = ''
+  candidateRepairRefreshConnectorId.value = null
 }
 
 async function openCreateCandidate() {
@@ -3470,8 +3607,13 @@ function candidateDefaultsForConnector(connectorId: number): { probe_model: stri
 }
 
 async function submitCandidate(options: { continueAdding?: boolean } = {}) {
+  candidateFormSubmitted.value = true
+  candidateFormServerError.value = ''
+  if (!candidateFormValid.value) return
   savingCandidate.value = true
   error.value = ''
+  const repairConnectorId = candidateRepairRefreshConnectorId.value
+  let candidateSaved = false
   try {
     syncSelectedCandidateAPIKey()
     const payload = {
@@ -3491,6 +3633,7 @@ async function submitCandidate(options: { continueAdding?: boolean } = {}) {
     } else {
       await upstreamRelayAPI.createCandidate(payload)
     }
+    candidateSaved = true
     if (options.continueAdding && !candidateForm.id) {
       Object.assign(candidateForm, {
         upstream_group_id: '',
@@ -3500,16 +3643,40 @@ async function submitCandidate(options: { continueAdding?: boolean } = {}) {
         notes: ''
       })
       candidateSourceSnapshot.value = null
+      candidateFormSubmitted.value = false
     } else {
       candidateDialogOpen.value = false
       resetCandidateForm()
     }
     await loadAll()
+    if (repairConnectorId) {
+      const connector = connectors.value.find((item) => item.id === repairConnectorId)
+      if (connector) {
+        try {
+          const refreshResult = await refreshMetricsForConnector(connector)
+          await refreshCandidatesSilent()
+          await refreshTodayUsageOverviewSilent()
+          mergeMetricsRefreshResultItem(refreshResult)
+        } catch (refreshError) {
+          mergeMetricsRefreshResultItem(buildMetricsRefreshFailureResult(connector, refreshError))
+          error.value = tM('candidateForm.refreshAfterSaveFailed')
+        }
+      }
+    }
   } catch (err) {
-    error.value = extractApiErrorMessage(err, tM('errors.saveCandidateFailed'))
+    const message = extractApiErrorMessage(err, tM('errors.saveCandidateFailed'))
+    if (candidateSaved) {
+      error.value = tM('candidateForm.refreshAfterSaveFailed')
+    } else {
+      candidateFormServerError.value = message
+    }
   } finally {
     savingCandidate.value = false
   }
+}
+
+function candidateConfigurationIncomplete(candidate: UpstreamRelayCandidate) {
+  return !candidate.upstream_api_key_id
 }
 
 function syncSelectedCandidateAPIKey() {
@@ -3595,6 +3762,9 @@ async function probe(candidate: UpstreamRelayCandidate) {
 async function probeAllCandidates() {
   if (enabledCandidateCount.value === 0) return
   bulkProbing.value = true
+  bulkOperationSection.value = activeSection.value
+  bulkOperationRequestError.value = ''
+  bulkOperationResult.value = null
   error.value = ''
   candidateBulkProbeFeedback.value = {
     status: 'running',
@@ -3613,6 +3783,7 @@ async function probeAllCandidates() {
     await refreshCandidatesSilent()
   } catch (err) {
     const message = extractApiErrorMessage(err, tM('errors.probeAllFailed'))
+    bulkOperationRequestError.value = message
     candidateBulkProbeFeedback.value = {
       status: 'done',
       startedAt: candidateBulkProbeFeedback.value?.startedAt || new Date().toISOString(),
@@ -3623,6 +3794,12 @@ async function probeAllCandidates() {
     probingId.value = null
     bulkProbing.value = false
   }
+}
+
+function clearBulkOperationFeedback() {
+  bulkOperationResult.value = null
+  bulkOperationRequestError.value = ''
+  bulkOperationSection.value = null
 }
 
 async function toggleCandidateEnabled(candidate: UpstreamRelayCandidate) {
@@ -3882,23 +4059,15 @@ async function openApplyDialog(run: UpstreamRelayRecommendationRun) {
 async function applySelectedRun() {
   if (!applyRun.value) return
   applying.value = true
-  error.value = ''
-  successMessage.value = ''
   lastApplyError.value = ''
   try {
     const appliedRun = await upstreamRelayAPI.applyRecommendationRun(applyRun.value.id)
     applyRun.value = appliedRun
     lastAppliedRun.value = appliedRun
-    successMessage.value = tM('applyDialog.successMessage', {
-      id: appliedRun.id,
-      count: appliedRun.suggestion_count,
-      date: formatDate(appliedRun.applied_at || appliedRun.created_at)
-    })
     replaceRecommendationRunPreservingOrder(appliedRun)
     await loadAll()
   } catch (err) {
-    lastApplyError.value = err instanceof Error ? err.message : tM('errors.applyFailed')
-    error.value = lastApplyError.value
+    lastApplyError.value = extractApiErrorMessage(err, tM('errors.applyFailed'))
   } finally {
     applying.value = false
   }
@@ -4067,8 +4236,71 @@ function formatNullableRate(value?: number | null) {
   return value === null || value === undefined ? '-' : formatRate(value)
 }
 
-function bulkOperationItemKey(item: UpstreamRelayBulkOperationItem) {
-  return `${item.id}-${item.connector_id ?? 'connector'}-${item.candidate_id ?? 'candidate'}`
+function operationItemNames(items: UpstreamRelayBulkOperationItem[], success: boolean) {
+  const labels = items.filter((item) => item.success === success).map(bulkOperationItemLabel)
+  if (labels.length === 0) return tM('operationResult.none')
+  const visible = labels.slice(0, BULK_OPERATION_DETAIL_LIMIT)
+  return labels.length > visible.length
+    ? tM('operationResult.itemListWithMore', { items: visible.join('、'), count: labels.length - visible.length })
+    : visible.join('、')
+}
+
+function buildBulkOperationFeedback(kind: BulkOperationKind, result: UpstreamRelayBulkOperationResult, source: string): OperationFeedback {
+  const status: OperationFeedback['status'] = result.failed > 0 ? (result.success > 0 ? 'partial' : 'failed') : 'success'
+  return {
+    status,
+    source,
+    title: tM(`operationResult.titles.${kind}`),
+    action: tM(`operationResult.actions.${kind}`),
+    result: tM('operationResult.results.bulk', {
+      success: result.success,
+      failed: result.failed,
+      successItems: operationItemNames(result.items || [], true),
+      failedItems: operationItemNames(result.items || [], false)
+    }),
+    impact: result.failed > 0
+      ? tM(`operationResult.impacts.${kind}Partial`, { failed: result.failed })
+      : tM(`operationResult.impacts.${kind}Success`),
+    nextStep: result.failed > 0 ? tM('operationResult.nextSteps.fixAndRetry') : tM('operationResult.nextSteps.none'),
+    technicalDetails: (result.items || []).flatMap((item) => {
+      if (!item.success && item.error_reason) {
+        const meta = bulkOperationItemProbeMeta(item)
+        return [`${bulkOperationItemLabel(item)}: ${item.error_reason}${meta ? ` · ${meta}` : ''}`]
+      }
+      if (kind === 'probe' && item.success) return [`${bulkOperationItemLabel(item)}: ${bulkOperationItemSuccessDetail(item)}`]
+      return []
+    })
+  }
+}
+
+function monitoringOperationItemNames(kind: 'success' | 'problem') {
+  const items = metricsRefreshResult.value?.items || []
+  const labels = items
+    .filter((item) => kind === 'success' ? item.status === 'success' : item.status !== 'success')
+    .map(monitoringRefreshItemConnectorLabel)
+  if (labels.length === 0) return tM('operationResult.none')
+  return labels.join('、')
+}
+
+function monitoringOperationTechnicalDetails() {
+  const details = (metricsRefreshResult.value?.items || []).flatMap((item) => {
+    const prefix = monitoringRefreshItemConnectorLabel(item)
+    const messages = [
+      item.snapshot_error,
+      item.error_reason,
+      item.metrics?.balance_error,
+      item.metrics?.usage_error,
+      ...(item.metrics?.usage_detail.issues || []).map((issue) => issue.message)
+    ].filter((message): message is string => Boolean(message))
+    return messages.map((message) => `${prefix}: ${message}`)
+  })
+  return Array.from(new Set(details))
+}
+
+function showMonitoringConnectorDetails() {
+  preserveFeedbackOnNextSectionChange.value = true
+  activeSection.value = 'connectors'
+  if (metricsRefreshResult.value) metricsRefreshResult.value.expanded = true
 }
 
 function bulkOperationItemLabel(item: UpstreamRelayBulkOperationItem) {
@@ -4095,14 +4327,6 @@ function bulkOperationItemProbeMeta(item: UpstreamRelayBulkOperationItem) {
 
 function bulkOperationItemSuccessDetail(item: UpstreamRelayBulkOperationItem) {
   return bulkOperationItemProbeMeta(item) || tM('candidates.bulkProbeSuccessNoDetail')
-}
-
-function bulkOperationItemFailureDetail(item: UpstreamRelayBulkOperationItem, fallback: string) {
-  const reason = item.error_reason || fallback
-  const errorClass = item.error_class ? errorClassLabel(item.error_class) : ''
-  const meta = bulkOperationItemProbeMeta(item)
-  const reasonText = errorClass ? `${errorClass}: ${reason}` : reason
-  return meta ? `${reasonText} · ${meta}` : reasonText
 }
 
 function snapshotChangeTypeLabel(change: UpstreamRelayGroupRateSnapshotChange) {
@@ -4319,29 +4543,129 @@ function buildMetricsRefreshFailureResult(connector: UpstreamRelayConnector, err
   }
 }
 
-function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResult) {
-  const failureReasons = metricsRefreshFailureReasons(result)
-  const failureReason = failureReasons.find((reason) => reason !== METRICS_REFRESH_LOCAL_BINDING_ERROR) || null
-  if (result.status === 'failed') {
-    if (failureReason) return failureReason
-    return failureReasons.length === 0 ? tM('errors.refreshMetricsFailed') : null
+function inferMetricsIssue(rawMessage: string): UpstreamRelayMetricsIssueDetail | null {
+  const raw = rawMessage.trim()
+  if (!raw) return null
+  const missingBinding = raw.match(/candidate\s+(\d+)\s+for bound account\s+(\d+)\s+has no upstream api key binding/i)
+  if (missingBinding) {
+    return {
+      code: 'missing_upstream_api_key_binding',
+      message: raw,
+      candidate_id: Number(missingBinding[1]),
+      account_id: Number(missingBinding[2])
+    }
   }
-  if (!result.balance_available && !result.usage_available && failureReason) return failureReason
-  if (metricsMissingGroups(result.usage_detail).some((group) => group.reason === 'no_snapshot')) return tM('errors.metricsRefreshNeedsFullSync')
+  if (/connector has no local account bindings/i.test(raw)) {
+    return { code: 'no_candidate_bindings', message: raw }
+  }
   return null
 }
 
-function monitoringRefreshResultWarning(result: UpstreamRelayMonitoringRefreshResult) {
-  const warnings = (result.items || [])
-    .map((item) => {
-      if (item.snapshot_error) return item.snapshot_error
-      if (item.metrics) return metricsRefreshWarning(item.metrics)
-      return item.error_reason && item.error_reason !== METRICS_REFRESH_LOCAL_BINDING_ERROR ? item.error_reason : null
-    })
-    .filter((warning): warning is string => Boolean(warning))
-  if (warnings.length > 0) return warnings[0]
-  if (result.failed > 0) return tM('errors.refreshMonitoringPartialFailed', { failed: result.failed, partial: result.partial })
-  return ''
+function isUpstreamRelayAuthError(rawMessage: string) {
+  const raw = rawMessage.toLowerCase()
+  return /(?:http|status)\s*(?:401|403)\b/.test(raw)
+    || raw.includes('unauthorized')
+    || raw.includes('forbidden')
+    || raw.includes('needs reauth')
+    || raw.includes('token is empty')
+    || raw.includes('token expired')
+    || raw.includes('refresh token is empty')
+}
+
+function friendlyUpstreamRelayError(rawMessage: string) {
+  const raw = rawMessage.trim()
+  if (!raw) return ''
+  const issue = inferMetricsIssue(raw)
+  if (issue?.code === 'missing_upstream_api_key_binding') {
+    return tM('metricsRefresh.issues.missingApiKeyBinding', { account: `#${issue.account_id}` })
+  }
+  if (issue?.code === 'no_candidate_bindings') return tM('metricsRefresh.issues.noCandidateBindings')
+  if (isUpstreamRelayAuthError(raw)) return tM('errors.connectorAuthExpired')
+  const lower = raw.toLowerCase()
+  if (/\b429\b/.test(lower) || lower.includes('rate limit') || lower.includes('too many requests')) return tM('errors.upstreamRateLimited')
+  if (lower.includes('timeout') || lower.includes('deadline exceeded')) return tM('errors.upstreamTimeout')
+  if (lower.includes('connection refused') || lower.includes('no such host') || lower.includes('network error')) return tM('errors.upstreamNetworkFailed')
+  if (lower.includes('browser challenge') || lower.includes('cloudflare challenge')) return tM('errors.upstreamBrowserChallenge')
+  if (/[\u3400-\u9fff]/.test(raw)) return raw
+  return tM('errors.unknownUpstreamError')
+}
+
+function metricsUsageIssuePresentation(result: UpstreamRelayConnectorMetricsRefreshResult): MonitoringIssuePresentation | null {
+  const detail = result.usage_detail
+  const raw = detail.issue?.message || detail.error || result.usage_error || ''
+  const issue = detail.issue || inferMetricsIssue(raw)
+  if (issue?.code === 'missing_upstream_api_key_binding') {
+    const account = issue.account_id ? `#${issue.account_id}` : tM('metricsRefresh.issues.unknownAccount')
+    const summary = tM('metricsRefresh.issues.missingApiKeyBinding', { account })
+    return {
+      summary,
+      guidance: tM('metricsRefresh.guidance.bindApiKey'),
+      action: 'edit_candidate',
+      actionLabel: tM('metricsRefresh.actions.bindApiKey'),
+      candidateId: issue.candidate_id,
+      accountId: issue.account_id,
+      rawDetail: raw && raw !== summary ? raw : undefined
+    }
+  }
+  if (issue?.code === 'no_candidate_bindings') {
+    const summary = tM('metricsRefresh.issues.noCandidateBindings')
+    return {
+      summary,
+      guidance: tM('metricsRefresh.guidance.createCandidate'),
+      action: 'create_candidate',
+      actionLabel: tM('metricsRefresh.actions.createCandidate'),
+      rawDetail: raw && raw !== summary ? raw : undefined
+    }
+  }
+  if (metricsMissingGroups(detail).some((group) => group.reason === 'no_snapshot')) {
+    return {
+      summary: tM('metricsRefresh.issues.noSnapshot'),
+      guidance: tM('metricsRefresh.guidance.syncConnector'),
+      action: 'sync_connector',
+      actionLabel: tM('metricsRefresh.actions.syncConnector')
+    }
+  }
+  if (issue?.code === 'upstream_usage_request_failed') {
+    const account = issue.account_id ? `#${issue.account_id}` : tM('metricsRefresh.issues.unknownAccount')
+    const summary = tM('metricsRefresh.issues.upstreamUsageRequestFailed', { account })
+    return {
+      summary,
+      guidance: isUpstreamRelayAuthError(raw) ? tM('metricsRefresh.guidance.editConnectorAuth') : tM('metricsRefresh.guidance.retryUsage'),
+      action: isUpstreamRelayAuthError(raw) ? 'edit_connector' : 'retry_metrics',
+      actionLabel: isUpstreamRelayAuthError(raw) ? tM('metricsRefresh.actions.editConnector') : tM('metricsRefresh.actions.retry'),
+      accountId: issue.account_id,
+      rawDetail: raw && raw !== summary ? raw : undefined
+    }
+  }
+  if (!raw || detail.status === 'success') return null
+  const summary = friendlyUpstreamRelayError(raw)
+  const authError = isUpstreamRelayAuthError(raw)
+  return {
+    summary,
+    guidance: authError ? tM('metricsRefresh.guidance.editConnectorAuth') : tM('metricsRefresh.guidance.retryUsage'),
+    action: authError ? 'edit_connector' : 'retry_metrics',
+    actionLabel: authError ? tM('metricsRefresh.actions.editConnector') : tM('metricsRefresh.actions.retry'),
+    rawDetail: raw !== summary ? raw : undefined
+  }
+}
+
+function isActionableMetricsIssue(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  const raw = result.usage_detail.issue?.message || result.usage_detail.error || result.usage_error || ''
+  const issue = result.usage_detail.issue || inferMetricsIssue(raw)
+  return issue?.code === 'missing_upstream_api_key_binding' || issue?.code === 'no_candidate_bindings'
+}
+
+function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResult) {
+  const failureReasons = metricsRefreshFailureReasons(result)
+  const failureReason = failureReasons[0] || null
+  if (isActionableMetricsIssue(result)) return null
+  if (metricsMissingGroups(result.usage_detail).some((group) => group.reason === 'no_snapshot')) return tM('errors.metricsRefreshNeedsFullSync')
+  if (result.status === 'failed') {
+    if (failureReason) return friendlyUpstreamRelayError(failureReason)
+    return failureReasons.length === 0 ? tM('errors.refreshMetricsFailed') : null
+  }
+  if (!result.balance_available && !result.usage_available && failureReason) return friendlyUpstreamRelayError(failureReason)
+  return null
 }
 
 function metricsRefreshFailureReasons(result: Pick<UpstreamRelayConnectorMetricsRefreshResult, 'balance_error' | 'usage_error'>) {
@@ -4357,7 +4681,7 @@ function metricsRefreshStatusLabel(status: UpstreamRelayMetricsRefreshStatus) {
 }
 
 function metricsMissingGroupReasonLabel(reason: string) {
-  return tM(`metricsRefresh.missingReasons.${reason}`)
+  return tM(`metricsRefresh.missingReasons.${METRICS_MISSING_REASON_KEYS.has(reason) ? reason : 'usage_refresh_failed'}`)
 }
 
 function metricsRefreshStatusClass(status: UpstreamRelayMetricsRefreshStatus) {
@@ -4382,7 +4706,7 @@ function metricsBalanceDetailLabel(result: UpstreamRelayConnectorMetricsRefreshR
   if (result.balance_detail.status === 'success') {
     return tM('metricsRefresh.balanceSuccess', { balance: formatAccountBalance(result.balance_detail.value) })
   }
-  return tM('metricsRefresh.balanceFailed', { reason: result.balance_detail.error || '-' })
+  return tM('metricsRefresh.balanceFailed', { reason: friendlyUpstreamRelayError(result.balance_detail.error || '-') })
 }
 
 function metricsUsageDetailLabel(result: UpstreamRelayConnectorMetricsRefreshResult) {
@@ -4395,9 +4719,13 @@ function metricsUsageDetailLabel(result: UpstreamRelayConnectorMetricsRefreshRes
     return tM('metricsRefresh.usagePartial', { updated: detail.updated_groups, total: detail.total_groups, missing: missingGroups.length })
   }
   if (detail.status === 'skipped') {
-    return tM('metricsRefresh.usageSkipped', { missing: missingGroups.length })
+    const presentation = metricsUsageIssuePresentation(result)
+    return presentation
+      ? tM('metricsRefresh.usageNeedsAction', { reason: presentation.summary })
+      : tM('metricsRefresh.usageSkipped', { missing: missingGroups.length })
   }
-  return tM('metricsRefresh.usageFailed', { reason: detail.error || '-' })
+  const presentation = metricsUsageIssuePresentation(result)
+  return tM('metricsRefresh.usageNeedsAction', { reason: presentation?.summary || friendlyUpstreamRelayError(detail.error || '-') })
 }
 
 function monitoringRefreshItemConnectorLabel(item: UpstreamRelayMonitoringRefreshItem) {
@@ -4409,7 +4737,7 @@ function monitoringSnapshotDetailLabel(item: UpstreamRelayMonitoringRefreshItem)
     return tM('metricsRefresh.snapshotSuccess', { count: item.snapshot_count || item.snapshots.length })
   }
   if (item.snapshot_status === 'skipped') return tM('metricsRefresh.snapshotSkipped')
-  return tM('metricsRefresh.snapshotFailed', { reason: item.snapshot_error || '-' })
+  return tM('metricsRefresh.snapshotFailed', { reason: friendlyUpstreamRelayError(item.snapshot_error || '-') })
 }
 
 function monitoringBalanceDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
@@ -4422,8 +4750,52 @@ function monitoringUsageDetailLabel(item: UpstreamRelayMonitoringRefreshItem) {
   return metricsUsageDetailLabel(item.metrics)
 }
 
-function monitoringRefreshItemError(item: UpstreamRelayMonitoringRefreshItem) {
-  return item.error_reason || item.snapshot_error || item.metrics?.usage_error || item.metrics?.balance_error || ''
+function monitoringRefreshItemGuidance(item: UpstreamRelayMonitoringRefreshItem) {
+  return item.metrics ? metricsUsageIssuePresentation(item.metrics) : null
+}
+
+function monitoringRefreshItemStandaloneError(item: UpstreamRelayMonitoringRefreshItem) {
+  if (item.metrics || item.snapshot_error) return ''
+  return friendlyUpstreamRelayError(item.error_reason || '')
+}
+
+async function handleMonitoringIssueAction(item: UpstreamRelayMonitoringRefreshItem) {
+  const presentation = monitoringRefreshItemGuidance(item)
+  if (!presentation?.action) return
+  const connector = item.connector || connectors.value.find((candidate) => candidate.id === item.connector_id)
+  if (presentation.action === 'edit_candidate') {
+    const candidate = candidates.value.find((entry) => entry.id === presentation.candidateId)
+      || candidates.value.find((entry) => entry.connector_id === item.connector_id && entry.account_id === presentation.accountId)
+    if (!candidate) {
+      activeSection.value = 'candidates'
+      error.value = tM('metricsRefresh.errors.candidateNotFound', { account: presentation.accountId ? `#${presentation.accountId}` : '-' })
+      return
+    }
+    activeSection.value = 'candidates'
+    await editCandidate(candidate)
+    candidateRepairRefreshConnectorId.value = item.connector_id
+    return
+  }
+  if (presentation.action === 'create_candidate') {
+    activeSection.value = 'candidates'
+    resetCandidateForm()
+    candidateForm.connector_id = item.connector_id
+    candidateRepairRefreshConnectorId.value = item.connector_id
+    candidateDialogOpen.value = true
+    await loadConnectorAPIKeys(item.connector_id)
+    return
+  }
+  if (!connector) return
+  if (presentation.action === 'sync_connector') {
+    await sync(connector)
+    return
+  }
+  if (presentation.action === 'edit_connector') {
+    activeSection.value = 'connectors'
+    editConnector(connector)
+    return
+  }
+  await refreshMetricsForSingleConnector(connector)
 }
 
 function monitoringMissingGroups(item: UpstreamRelayMonitoringRefreshItem): UpstreamRelayMetricsMissingGroupDetail[] {
@@ -4467,7 +4839,7 @@ function candidateHealthLabel(candidate: UpstreamRelayCandidate) {
 function candidateLatestProbeErrorSummary(candidate: UpstreamRelayCandidate) {
   const probe = candidate.latest_probe
   if (!probe || probe.success) return ''
-  const reason = probe.error_message || probe.error_class || ''
+  const reason = friendlyUpstreamRelayError(probe.error_message || probe.error_class || '')
   const errorClass = probe.error_class ? errorClassLabel(probe.error_class) : ''
   if (errorClass && reason && reason !== probe.error_class) return `${errorClass}: ${reason}`
   return errorClass || reason
@@ -4578,7 +4950,7 @@ function connectorGroupRowRateLabel(row: ConnectorGroupRow) {
 
 function connectorGroupRowPriorityLabel(row: ConnectorGroupRow) {
   return row.kind === 'candidate'
-    ? `Priority ${row.candidate.current_priority ?? '-'}`
+    ? `${tM('candidates.colPriority')} ${row.candidate.current_priority ?? '-'}`
     : tM('connectors.notBoundCandidate')
 }
 
@@ -4657,7 +5029,7 @@ function exclusionReasonLabel(reasonCode: string) {
 }
 
 function accountOptionLabel(account: Account) {
-  return `#${account.id} ${account.name} · ${account.platform} · Priority ${account.priority}`
+  return `#${account.id} ${account.name} · ${account.platform} · ${tM('candidates.colPriority')} ${account.priority}`
 }
 
 function apiKeyOptionLabel(apiKey: UpstreamRelayAPIKeyOption) {

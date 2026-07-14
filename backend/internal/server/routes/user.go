@@ -69,6 +69,7 @@ func RegisterUserRoutes(
 		{
 			lotteries.GET("/active", h.User.GetActiveLotteryCampaign)
 			lotteries.GET("/:id/me", h.User.GetLotteryCampaignMe)
+			lotteries.GET("/:id/participants", h.User.GetLotteryCampaignParticipants)
 			lotteries.GET("/:id/winners", h.User.GetLotteryCampaignWinners)
 			lotteries.POST("/:id/enroll", h.User.EnrollLotteryCampaign)
 		}

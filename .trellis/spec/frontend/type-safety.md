@@ -71,6 +71,9 @@ When updating `frontend/src/api/admin/upstreamRelayGroupMonitors.ts`:
 - Add lightweight connector metrics refresh through `refreshConnectorMetrics(id)`, targeting `/connectors/:id/metrics/refresh`; do not reuse the full connector `sync` action for a balance/usage-only refresh.
 - After metrics refresh succeeds, refresh connector and candidate state in the view so connector balance and candidate today usage update together.
 - Treat metrics refresh detail collections from backend Go slices, such as `usage_detail.missing_groups`, as nullable or optional at the API boundary; normalize them to arrays before calling `.length`, `.slice`, `.some`, or rendering loops.
+- Treat `usage_detail.issues` as the complete machine-readable problem list and `usage_detail.issue` as its first-item compatibility field. Branch on stable `code`, use `candidate_id` / `account_id` / `upstream_group_id` only to locate the affected mapping, and render localized business guidance. Keep sanitized backend `message` values behind an expandable technical-detail affordance instead of exposing them as the primary prompt. Raw-message parsing is compatibility fallback only.
+- A missing or failing candidate API key must not abort other valid candidate bindings. Render root groups with their stable issue code (`missing_upstream_api_key_binding`, `upstream_usage_request_failed`), report successfully updated groups separately, and reserve `usage_refresh_aborted` for groups that genuinely could not be attributed to a more specific issue.
+- For partial refreshes, treat groups absent from the returned known-usage set as unchanged/unknown; never replace their existing snapshot values with zero. A `partial` result may therefore include both `updated_groups > 0` and non-empty `missing_groups`.
 - Keep recommendation preview and persisted generation as separate methods: `previewRecommendations()` must call `/recommendations/preview`; `generateRecommendations()` must call `/recommendations`.
 - Normalize recommendation policy `sort_fields` before submit so duplicate fields are removed and missing default sort fields are appended.
 - When showing "auto monitoring running" state, read from the last loaded/saved monitoring policy snapshot, not the editable form, so unsaved checkbox changes are not presented as active backend runner state.
@@ -106,13 +109,17 @@ When updating `frontend/src/api/lotteryCampaigns.ts` or `frontend/src/api/admin/
 
 - Keep `LotteryCampaign` fields aligned with backend JSON names, including `is_featured`, `prize_tiers`, `draw_schedule_type`, `daily_draw_time`, and all timestamp fields.
 - Add admin API methods for each backend management action instead of calling raw `apiClient` from Vue components. Current action paths include `/admin/lottery-campaigns/:id/feature` and `DELETE /admin/lottery-campaigns/:id`.
+- Use `/admin/lottery-campaigns/:id/winners` for an activity-level admin winner list; keep `/draw-batches/:batch_id/winners` for batch-scoped tools. Never reuse the admin `LotteryWinner` response in user-facing winner views.
+- Treat `is_featured` as persistent user-page selection, not as an active-time-window signal. The admin feature action is available for any `published` campaign, while enrollment controls still depend on backend entry-window state.
+- For user lottery round state, use backend `round_completed` and `LotteryPublicWinner.is_current_round`; never infer completion from a non-empty campaign-wide winner history.
 - Reuse the full `LotteryCampaignRequest` payload for create and edit so published campaign edits stay contract-compatible with backend validation.
 - Keep destructive copy in i18n, not hardcoded component strings, and include zh/en keys for edit, hard delete, cascade warning, feature selection, and validation messages.
 - Validate obvious time errors in the admin UI before submit, but keep backend validation authoritative.
 
 Required checks:
 
-- API test verifies create, update, publish, cancel, feature, hard delete, sync, and draw endpoint paths.
+- API test verifies create, update, publish, cancel, feature, hard delete, sync, draw, and activity-level winner endpoint paths.
+- Admin component test covers an ended published campaign being selectable for persistent display and rendering its winner records.
 - `pnpm typecheck` passes after adding fields to `LotteryCampaign`.
 - Targeted i18n scan or component review confirms every `admin.lotteryCampaigns.*` key used by the panel exists in both locale files.
 

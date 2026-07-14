@@ -108,6 +108,41 @@
           </div>
         </div>
       </div>
+
+      <div class="card overflow-hidden xl:col-span-2">
+        <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.lotteryCampaigns.winnerRecords') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.winnerRecordsDescription') }}</p>
+        </div>
+        <div v-if="winnersLoading" class="flex min-h-32 items-center justify-center"><LoadingSpinner /></div>
+        <div v-else-if="winnersLoadFailed" class="p-5 text-sm text-red-600 dark:text-red-300">{{ t('admin.lotteryCampaigns.winnerRecordsLoadFailed') }}</div>
+        <div v-else-if="winners.length === 0" class="p-5 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.noWinnerRecords') }}</div>
+        <div v-else class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-100 text-sm dark:divide-dark-700">
+            <thead class="bg-gray-50 text-left text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              <tr>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerUser') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerPrize') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerAmount') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerStatus') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('admin.lotteryCampaigns.winnerTime') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="winner in winners" :key="winner.id">
+                <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-white">#{{ winner.user_id }}</td>
+                <td class="px-4 py-3 text-gray-700 dark:text-dark-200">{{ winner.prize_name || t('lotteryCampaign.prize') }}</td>
+                <td class="whitespace-nowrap px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-300">{{ formatCents(winner.reward_amount_cents) }}</td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex rounded-md px-2 py-1 text-xs font-medium" :class="winnerStatusClass(winner.status)">{{ winnerStatusLabel(winner.status) }}</span>
+                  <p v-if="winner.error_message" class="mt-1 max-w-xs text-xs text-red-600 dark:text-red-300">{{ winner.error_message }}</p>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3 text-gray-500 dark:text-dark-400">{{ formatDateTime(winner.processed_at || winner.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <BaseDialog :show="dialogOpen" :title="dialogTitle" width="wide" @close="dialogOpen = false">
@@ -262,6 +297,26 @@
           <p class="mt-1 text-xs">{{ t('admin.lotteryCampaigns.designateHint') }}</p>
         </div>
         <div v-else class="overflow-hidden rounded-lg border border-gray-100 dark:border-dark-700">
+          <div class="border-b border-gray-100 bg-gradient-to-br from-primary-50/70 to-white p-4 dark:border-dark-700 dark:from-primary-900/20 dark:to-dark-800">
+            <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.lotteryCampaigns.wheelTitle') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.lotteryCampaigns.wheelDescription') }}</p>
+                <p v-if="wheelWinner" class="mt-2 text-sm font-semibold text-primary-700 dark:text-primary-300">{{ t('admin.lotteryCampaigns.wheelWinner', { name: wheelWinner.masked_email }) }}</p>
+              </div>
+              <div class="relative h-52 w-52 shrink-0 sm:h-60 sm:w-60">
+                <div class="wheel-pointer" aria-hidden="true" />
+                <div class="lottery-wheel h-full w-full" :style="wheelStyle" :class="{ 'is-spinning': wheelSpinning }" aria-label="Lottery wheel" role="img">
+                  <span v-for="segment in wheelSegments" :key="segment.user_id" class="wheel-label" :style="segment.labelStyle">{{ segment.shortName }}</span>
+                  <span class="wheel-hub">抽奖</span>
+                </div>
+              </div>
+              <button class="btn btn-primary shrink-0" type="button" :disabled="designateLocked || wheelSpinning" @click="spinWheel">
+                <Icon name="sparkles" size="sm" />
+                {{ wheelSpinning ? t('common.processing') : t('admin.lotteryCampaigns.spinWheel') }}
+              </button>
+            </div>
+          </div>
           <div class="grid grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)] gap-3 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:bg-dark-800 dark:text-dark-400">
             <span>{{ t('admin.lotteryCampaigns.designateColumnUser') }}</span>
             <span>{{ t('admin.lotteryCampaigns.designateColumnEntries') }}</span>
@@ -306,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -314,7 +369,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
-import type { LotteryCampaign } from '@/api/lotteryCampaigns'
+import type { LotteryCampaign, LotteryWinner } from '@/api/lotteryCampaigns'
 import type { LotteryCampaignRequest, LotteryDesignationCandidate } from '@/api/admin/lotteryCampaigns'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -339,6 +394,10 @@ const submitting = ref(false)
 const dialogOpen = ref(false)
 const campaigns = ref<LotteryCampaign[]>([])
 const selected = ref<LotteryCampaign | null>(null)
+const winners = ref<LotteryWinner[]>([])
+const winnersLoading = ref(false)
+const winnersLoadFailed = ref(false)
+let winnersRequestID = 0
 const editingCampaign = ref<LotteryCampaign | null>(null)
 const deletingCampaign = ref<LotteryCampaign | null>(null)
 const drawDate = ref(new Date().toISOString().slice(0, 10))
@@ -349,6 +408,9 @@ const designateSaving = ref(false)
 const designateLocked = ref(false)
 const designateCandidates = ref<LotteryDesignationCandidate[]>([])
 const designateSelection = reactive<Record<number, number>>({})
+const wheelSpinning = ref(false)
+const wheelRotation = ref(0)
+const wheelWinner = ref<LotteryDesignationCandidate | null>(null)
 
 const form = reactive<LotteryCampaignFormState>({
   name: '',
@@ -372,7 +434,7 @@ const dialogTitle = computed(() => editingCampaign.value ? t('admin.lotteryCampa
 const submitText = computed(() => editingCampaign.value ? t('admin.lotteryCampaigns.saveChanges') : t('admin.lotteryCampaigns.create'))
 const canFeatureSelected = computed(() => {
   if (!selected.value || selected.value.is_featured) return false
-  return selected.value.status === 'published' && isCampaignInWindow(selected.value)
+  return selected.value.status === 'published'
 })
 const thresholdRawTokenHint = computed(() => rawTokenEquivalent(form.threshold_token_millions))
 const entryStepRawTokenHint = computed(() => rawTokenEquivalent(form.entry_step_token_millions))
@@ -413,6 +475,52 @@ const designateTierUsage = computed(() =>
   })),
 )
 
+const wheelSegments = computed(() => {
+  const total = designateCandidates.value.reduce((sum, candidate) => sum + Math.max(1, candidate.entry_count), 0)
+  let cursor = 0
+  return designateCandidates.value.map((candidate, index) => {
+    const weight = Math.max(1, candidate.entry_count)
+    const start = cursor
+    const end = cursor + (weight / total) * 360
+    cursor = end
+    const angle = (start + end) / 2
+    return {
+      ...candidate,
+      shortName: (candidate.masked_email || `#${candidate.user_id}`).slice(0, 8),
+      labelStyle: { transform: `rotate(${angle}deg) translateY(-${Math.min(82, 38 + designateCandidates.value.length * 2)}px) rotate(${-angle}deg)` },
+      color: ['#0f766e', '#2563eb', '#d97706', '#be123c', '#7c3aed', '#0891b2'][index % 6],
+      start,
+      end,
+    }
+  })
+})
+const wheelStyle = computed(() => ({
+  background: wheelSegments.value.length
+    ? `conic-gradient(${wheelSegments.value.map(segment => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(', ')})`
+    : 'conic-gradient(#cbd5e1 0 360deg)',
+  transform: `rotate(${wheelRotation.value}deg)`,
+}))
+
+function spinWheel(): void {
+  if (wheelSpinning.value || designateCandidates.value.length === 0) return
+  const total = designateCandidates.value.reduce((sum, candidate) => sum + Math.max(1, candidate.entry_count), 0)
+  let target = Math.random() * total
+  let winnerIndex = 0
+  for (const [index, candidate] of designateCandidates.value.entries()) {
+    target -= Math.max(1, candidate.entry_count)
+    if (target <= 0) {
+      winnerIndex = index
+      break
+    }
+  }
+  const winner = wheelSegments.value[winnerIndex]
+  const targetAngle = 360 - (winner.start + winner.end) / 2
+  wheelRotation.value += 1440 + ((targetAngle - (wheelRotation.value % 360) + 360) % 360)
+  wheelWinner.value = winner
+  wheelSpinning.value = true
+  window.setTimeout(() => { wheelSpinning.value = false }, 3200)
+}
+
 async function load(): Promise<void> {
   loading.value = true
   try {
@@ -451,6 +559,34 @@ function openDelete(campaign: LotteryCampaign): void {
 
 function selectCampaign(campaign: LotteryCampaign): void {
   selected.value = campaign
+}
+
+async function loadWinners(campaignID: number): Promise<void> {
+  const requestID = ++winnersRequestID
+  winners.value = []
+  winnersLoading.value = true
+  winnersLoadFailed.value = false
+  try {
+    const response = await adminAPI.lotteryCampaigns.listLotteryWinners(campaignID)
+    if (requestID === winnersRequestID) winners.value = response.items
+  } catch {
+    if (requestID === winnersRequestID) winnersLoadFailed.value = true
+  } finally {
+    if (requestID === winnersRequestID) winnersLoading.value = false
+  }
+}
+
+function winnerStatusLabel(status: string): string {
+  if (status === 'success' || status === 'failed' || status === 'pending') {
+    return t(`admin.lotteryCampaigns.winnerStatuses.${status}`)
+  }
+  return status
+}
+
+function winnerStatusClass(status: string): string {
+  if (status === 'success') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (status === 'failed') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
 }
 
 function campaignTags(campaign: LotteryCampaign): string[] {
@@ -547,6 +683,7 @@ async function drawSelected(): Promise<void> {
   if (!selected.value) return
   try {
     await adminAPI.lotteryCampaigns.drawLotteryCampaign(selected.value.id, drawDate.value)
+    await loadWinners(selected.value.id)
     appStore.showSuccess(t('admin.lotteryCampaigns.drawn'))
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('admin.lotteryCampaigns.actionFailed')))
@@ -559,6 +696,8 @@ async function openDesignate(): Promise<void> {
   designateLoading.value = true
   designateLocked.value = false
   designateCandidates.value = []
+  wheelWinner.value = null
+  wheelRotation.value = 0
   for (const key of Object.keys(designateSelection)) delete designateSelection[Number(key)]
   try {
     const view = await adminAPI.lotteryCampaigns.getLotteryDesignations(selected.value.id, drawDate.value)
@@ -728,11 +867,6 @@ function formatCents(cents: number): string {
   return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'CNY' }).format(cents / 100)
 }
 
-function isCampaignInWindow(campaign: LotteryCampaign): boolean {
-  const now = Date.now()
-  return new Date(campaign.start_at).getTime() <= now && new Date(campaign.end_at).getTime() >= now
-}
-
 function dailyDrawFallsInWindow(start: Date, end: Date, dailyTime: string): boolean {
   const [hourRaw, minuteRaw] = dailyTime.split(':')
   const hour = Number(hourRaw)
@@ -767,7 +901,69 @@ function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
+watch(selected, (campaign) => {
+  if (campaign) {
+    void loadWinners(campaign.id)
+  } else {
+    winnersRequestID += 1
+    winners.value = []
+    winnersLoading.value = false
+    winnersLoadFailed.value = false
+  }
+})
+
 onMounted(() => {
   void load()
 })
 </script>
+
+<style scoped>
+.lottery-wheel {
+  position: relative;
+  border: 8px solid rgba(255, 255, 255, 0.9);
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18);
+  transition: transform 3.2s cubic-bezier(0.12, 0.75, 0.15, 1);
+}
+.wheel-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4.5rem;
+  margin: -0.5rem 0 0 -2.25rem;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  transform-origin: center;
+}
+.wheel-hub {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 4px solid rgba(255, 255, 255, 0.85);
+  border-radius: 9999px;
+  background: #0f172a;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transform: translate(-50%, -50%);
+}
+.wheel-pointer {
+  position: absolute;
+  z-index: 2;
+  top: -0.35rem;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-right: 0.6rem solid transparent;
+  border-left: 0.6rem solid transparent;
+  border-top: 1.3rem solid #f59e0b;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+  transform: translateX(-50%);
+}
+</style>

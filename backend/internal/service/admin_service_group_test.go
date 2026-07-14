@@ -653,17 +653,17 @@ func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testin
 	require.Equal(t, []int64{1}, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
 }
 
-func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {
+func TestAdminService_UpdateGroup_PreservesTimeRateWhenChangingToStandard(t *testing.T) {
 	existingGroup := &Group{
-		ID:                 1,
-		Name:               "existing-group",
-		Platform:           PlatformOpenAI,
-		Status:             StatusActive,
-		SubscriptionType:   SubscriptionTypeSubscription,
-		PeakRateEnabled:    true,
-		PeakStart:          "14:00",
-		PeakEnd:            "18:00",
-		PeakRateMultiplier: 3,
+		ID:               1,
+		Name:             "existing-group",
+		Platform:         PlatformOpenAI,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeSubscription,
+		TimeRatePriority: TimeRatePriorityScheduleFirst,
+		TimeRatePeriods: []GroupTimeRatePeriod{{
+			StartTime: "14:00", EndTime: "18:00", RateMultiplier: 3, VisibleRateMultiplier: 3, Enabled: true,
+		}},
 	}
 	repo := &groupRepoStubForAdmin{getByID: existingGroup}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -675,10 +675,7 @@ func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testin
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.Equal(t, SubscriptionTypeStandard, repo.updated.SubscriptionType)
-	require.False(t, repo.updated.PeakRateEnabled)
-	require.Equal(t, "", repo.updated.PeakStart)
-	require.Equal(t, "", repo.updated.PeakEnd)
-	require.Equal(t, 1.0, repo.updated.PeakRateMultiplier)
+	require.Len(t, repo.updated.TimeRatePeriods, 1)
 }
 
 func TestAdminService_CreateGroup_NormalizesMessagesDispatchModelConfig(t *testing.T) {

@@ -34,6 +34,7 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h)
+		registerAccountCollectionRoutes(admin, h)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
@@ -121,6 +122,19 @@ func RegisterAdminRoutes(
 
 		// Token 达标抽奖活动
 		registerLotteryCampaignRoutes(admin, h)
+	}
+}
+
+func registerAccountCollectionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	collections := admin.Group("/account-collections")
+	{
+		collections.GET("", h.Admin.AccountCollection.List)
+		collections.POST("", h.Admin.AccountCollection.Create)
+		collections.PUT("/sort-order", h.Admin.AccountCollection.Sort)
+		collections.PUT("/:id", h.Admin.AccountCollection.Update)
+		collections.DELETE("/:id", h.Admin.AccountCollection.Delete)
+		collections.GET("/accounts/:account_id", h.Admin.AccountCollection.ListForAccount)
+		collections.POST("/members/batch", h.Admin.AccountCollection.BatchMembers)
 	}
 }
 
@@ -459,6 +473,10 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		announcements.PUT("/:id", h.Admin.Announcement.Update)
 		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
 		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
+		announcements.GET("/:id/email-broadcast", h.Admin.Announcement.GetEmailBroadcast)
+		announcements.POST("/:id/email-broadcast", h.Admin.Announcement.CreateEmailBroadcast)
+		announcements.GET("/:id/email-broadcast/deliveries", h.Admin.Announcement.ListEmailDeliveries)
+		announcements.POST("/:id/email-broadcast/retry-failed", h.Admin.Announcement.RetryFailedEmailDeliveries)
 	}
 }
 
@@ -563,6 +581,7 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		adminSettings.PUT("/token-leaderboard", h.Admin.Setting.UpdateTokenLeaderboardSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
@@ -843,6 +862,7 @@ func registerLotteryCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		lotteries.POST("/:id/sync-entries", h.Admin.LotteryCampaign.SyncEntries)
 		lotteries.POST("/:id/draw", h.Admin.LotteryCampaign.Draw)
 		lotteries.GET("/:id/draw-batches", h.Admin.LotteryCampaign.ListBatches)
+		lotteries.GET("/:id/winners", h.Admin.LotteryCampaign.ListWinners)
 		lotteries.GET("/:id/draw-batches/:batch_id/winners", h.Admin.LotteryCampaign.ListWinners)
 		lotteries.GET("/:id/designations", h.Admin.LotteryCampaign.GetDesignations)
 		lotteries.PUT("/:id/designations", h.Admin.LotteryCampaign.ReplaceDesignations)
