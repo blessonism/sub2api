@@ -262,15 +262,9 @@ func populateOpenAIUsageFromResponseJSON(body []byte, usage *OpenAIUsage) {
 	if usage == nil || len(body) == 0 {
 		return
 	}
-	values := gjson.GetManyBytes(
-		body,
-		"usage.input_tokens",
-		"usage.output_tokens",
-		"usage.input_tokens_details.cached_tokens",
-	)
-	usage.InputTokens = int(values[0].Int())
-	usage.OutputTokens = int(values[1].Int())
-	usage.CacheReadInputTokens = int(values[2].Int())
+	if parsed, ok := extractOpenAIUsageFromJSONBytes(body); ok {
+		*usage = parsed
+	}
 }
 
 func getOpenAIGroupIDFromContext(c *gin.Context) int64 {
@@ -386,10 +380,8 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if err != nil || accountID <= 0 {
 		return 0, nil, "", nil
 	}
-	if excludedIDs != nil {
-		if _, excluded := excludedIDs[accountID]; excluded {
-			return 0, nil, "", nil
-		}
+	if isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
+		return 0, nil, "", nil
 	}
 
 	account, err := s.getSchedulableAccount(ctx, accountID)

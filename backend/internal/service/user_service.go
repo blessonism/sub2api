@@ -69,6 +69,8 @@ type UserListFilters struct {
 	Role      string // User role filter
 	Search    string // Search in email, username
 	GroupName string // Filter by allowed group name (fuzzy match)
+	// ReadStatusAnnouncementID 指定按单个公告的已读时间排序。
+	ReadStatusAnnouncementID int64
 	// APIKeyGroupID filters users who own at least one non-soft-deleted API key
 	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
 	// group types since it matches the key's group directly, not allowed_groups.
@@ -120,6 +122,14 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+}
+
+// RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
+// used by negative-value redeem codes. It is intentionally narrower than
+// UserRepository because normal usage billing is allowed to overdraw.
+type RedeemUserAdjustmentRepository interface {
+	ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error
+	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
 }
 
 type UserAuthIdentityRecord struct {

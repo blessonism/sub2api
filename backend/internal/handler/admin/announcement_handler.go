@@ -17,12 +17,39 @@ import (
 // AnnouncementHandler handles admin announcement management
 type AnnouncementHandler struct {
 	announcementService *service.AnnouncementService
+	emailService        *service.AnnouncementEmailService
 }
 
 // NewAnnouncementHandler creates a new admin announcement handler
-func NewAnnouncementHandler(announcementService *service.AnnouncementService) *AnnouncementHandler {
+func NewAnnouncementHandler(announcementService *service.AnnouncementService, emailService *service.AnnouncementEmailService) *AnnouncementHandler {
 	return &AnnouncementHandler{
 		announcementService: announcementService,
+		emailService:        emailService,
+	}
+}
+
+type announcementEmailBroadcastResponse struct {
+	ID             int64      `json:"id"`
+	AnnouncementID int64      `json:"announcement_id"`
+	Status         string     `json:"status"`
+	TotalCount     int        `json:"total_count"`
+	PendingCount   int        `json:"pending_count"`
+	SentCount      int        `json:"sent_count"`
+	FailedCount    int        `json:"failed_count"`
+	CreatedBy      *int64     `json:"created_by,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
+func announcementEmailBroadcastToResponse(b *service.AnnouncementEmailBroadcast) *announcementEmailBroadcastResponse {
+	if b == nil {
+		return nil
+	}
+	return &announcementEmailBroadcastResponse{
+		ID: b.ID, AnnouncementID: b.AnnouncementID, Status: b.Status,
+		TotalCount: b.TotalCount, PendingCount: b.PendingCount(), SentCount: b.SentCount, FailedCount: b.FailedCount,
+		CreatedBy: b.CreatedBy, CreatedAt: b.CreatedAt, StartedAt: b.StartedAt, CompletedAt: b.CompletedAt,
 	}
 }
 
@@ -212,12 +239,93 @@ func (h *AnnouncementHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	if err := h.emailService.EnsureCanDelete(c.Request.Context(), announcementID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	if err := h.announcementService.Delete(c.Request.Context(), announcementID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	response.Success(c, gin.H{"message": "Announcement deleted successfully"})
+}
+
+// GetEmailBroadcast returns an existing broadcast or a send preview.
+// GET /api/v1/admin/announcements/:id/email-broadcast
+func (h *AnnouncementHandler) GetEmailBroadcast(c *gin.Context) {
+	announcementID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || announcementID <= 0 {
+		response.BadRequest(c, "Invalid announcement ID")
+		return
+	}
+	overview, err := h.emailService.GetOverview(c.Request.Context(), announcementID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"broadcast":      announcementEmailBroadcastToResponse(overview.Broadcast),
+		"eligible_count": overview.EligibleCount,
+		"can_send":       overview.CanSend,
+	})
+}
+
+// CreateEmailBroadcast snapshots recipients and starts asynchronous delivery.
+// POST /api/v1/admin/announcements/:id/email-broadcast
+func (h *AnnouncementHandler) CreateEmailBroadcast(c *gin.Context) {
+	announcementID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || announcementID <= 0 {
+		response.BadRequest(c, "Invalid announcement ID")
+		return
+	}
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	broadcast, err := h.emailService.CreateBroadcast(c.Request.Context(), announcementID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, announcementEmailBroadcastToResponse(broadcast))
+}
+
+// ListEmailDeliveries returns paginated per-recipient delivery results.
+// GET /api/v1/admin/announcements/:id/email-broadcast/deliveries
+func (h *AnnouncementHandler) ListEmailDeliveries(c *gin.Context) {
+	announcementID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || announcementID <= 0 {
+		response.BadRequest(c, "Invalid announcement ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, result, err := h.emailService.ListDeliveries(c.Request.Context(), announcementID, pagination.PaginationParams{
+		Page: page, PageSize: pageSize, SortBy: "id", SortOrder: "asc",
+	}, c.Query("status"), c.Query("search"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, result.Total, page, pageSize)
+}
+
+// RetryFailedEmailDeliveries retries only failed recipients.
+// POST /api/v1/admin/announcements/:id/email-broadcast/retry-failed
+func (h *AnnouncementHandler) RetryFailedEmailDeliveries(c *gin.Context) {
+	announcementID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || announcementID <= 0 {
+		response.BadRequest(c, "Invalid announcement ID")
+		return
+	}
+	broadcast, err := h.emailService.RetryFailed(c.Request.Context(), announcementID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, announcementEmailBroadcastToResponse(broadcast))
 }
 
 // ListReadStatus handles listing users read status for an announcement
@@ -233,8 +341,8 @@ func (h *AnnouncementHandler) ListReadStatus(c *gin.Context) {
 	params := pagination.PaginationParams{
 		Page:      page,
 		PageSize:  pageSize,
-		SortBy:    c.DefaultQuery("sort_by", "email"),
-		SortOrder: c.DefaultQuery("sort_order", "asc"),
+		SortBy:    c.DefaultQuery("sort_by", "read_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 	search := strings.TrimSpace(c.Query("search"))
 	if len(search) > 200 {

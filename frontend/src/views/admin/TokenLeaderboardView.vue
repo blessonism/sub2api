@@ -797,7 +797,7 @@ async function saveSettings(): Promise<void> {
   settingsSaving.value = true
   try {
     const groupId = commonGroupId.value ?? 0
-    const settings = await adminAPI.settings.updateSettings({
+    const settings = await adminAPI.settings.updateTokenLeaderboardSettings({
       token_leaderboard_common_group_id: groupId,
       token_leaderboard_tier_tooltip: normalizedTierTooltip.value
     })

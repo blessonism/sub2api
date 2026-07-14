@@ -30,14 +30,10 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldVisibleRateMultiplier holds the string denoting the visible_rate_multiplier field in the database.
 	FieldVisibleRateMultiplier = "visible_rate_multiplier"
-	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
-	FieldPeakRateEnabled = "peak_rate_enabled"
-	// FieldPeakStart holds the string denoting the peak_start field in the database.
-	FieldPeakStart = "peak_start"
-	// FieldPeakEnd holds the string denoting the peak_end field in the database.
-	FieldPeakEnd = "peak_end"
-	// FieldPeakRateMultiplier holds the string denoting the peak_rate_multiplier field in the database.
-	FieldPeakRateMultiplier = "peak_rate_multiplier"
+	// FieldTimeRatePriority holds the string denoting the time_rate_priority field in the database.
+	FieldTimeRatePriority = "time_rate_priority"
+	// FieldTimeRatePeriods holds the string denoting the time_rate_periods field in the database.
+	FieldTimeRatePeriods = "time_rate_periods"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
 	FieldIsExclusive = "is_exclusive"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -82,6 +78,8 @@ const (
 	FieldVideoPrice720p = "video_price_720p"
 	// FieldVideoPrice1080p holds the string denoting the video_price_1080p field in the database.
 	FieldVideoPrice1080p = "video_price_1080p"
+	// FieldWebSearchPricePerCall holds the string denoting the web_search_price_per_call field in the database.
+	FieldWebSearchPricePerCall = "web_search_price_per_call"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -194,10 +192,8 @@ var Columns = []string{
 	FieldDescription,
 	FieldRateMultiplier,
 	FieldVisibleRateMultiplier,
-	FieldPeakRateEnabled,
-	FieldPeakStart,
-	FieldPeakEnd,
-	FieldPeakRateMultiplier,
+	FieldTimeRatePriority,
+	FieldTimeRatePeriods,
 	FieldIsExclusive,
 	FieldStatus,
 	FieldPlatform,
@@ -220,6 +216,7 @@ var Columns = []string{
 	FieldVideoPrice480p,
 	FieldVideoPrice720p,
 	FieldVideoPrice1080p,
+	FieldWebSearchPricePerCall,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -274,18 +271,12 @@ var (
 	NameValidator func(string) error
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
-	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
-	DefaultPeakRateEnabled bool
-	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
-	DefaultPeakStart string
-	// PeakStartValidator is a validator for the "peak_start" field. It is called by the builders before save.
-	PeakStartValidator func(string) error
-	// DefaultPeakEnd holds the default value on creation for the "peak_end" field.
-	DefaultPeakEnd string
-	// PeakEndValidator is a validator for the "peak_end" field. It is called by the builders before save.
-	PeakEndValidator func(string) error
-	// DefaultPeakRateMultiplier holds the default value on creation for the "peak_rate_multiplier" field.
-	DefaultPeakRateMultiplier float64
+	// DefaultTimeRatePriority holds the default value on creation for the "time_rate_priority" field.
+	DefaultTimeRatePriority string
+	// TimeRatePriorityValidator is a validator for the "time_rate_priority" field. It is called by the builders before save.
+	TimeRatePriorityValidator func(string) error
+	// DefaultTimeRatePeriods holds the default value on creation for the "time_rate_periods" field.
+	DefaultTimeRatePeriods []domain.GroupTimeRatePeriod
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
 	DefaultIsExclusive bool
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -389,24 +380,9 @@ func ByVisibleRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVisibleRateMultiplier, opts...).ToFunc()
 }
 
-// ByPeakRateEnabled orders the results by the peak_rate_enabled field.
-func ByPeakRateEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPeakRateEnabled, opts...).ToFunc()
-}
-
-// ByPeakStart orders the results by the peak_start field.
-func ByPeakStart(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPeakStart, opts...).ToFunc()
-}
-
-// ByPeakEnd orders the results by the peak_end field.
-func ByPeakEnd(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPeakEnd, opts...).ToFunc()
-}
-
-// ByPeakRateMultiplier orders the results by the peak_rate_multiplier field.
-func ByPeakRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPeakRateMultiplier, opts...).ToFunc()
+// ByTimeRatePriority orders the results by the time_rate_priority field.
+func ByTimeRatePriority(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTimeRatePriority, opts...).ToFunc()
 }
 
 // ByIsExclusive orders the results by the is_exclusive field.
@@ -517,6 +493,11 @@ func ByVideoPrice720p(opts ...sql.OrderTermOption) OrderOption {
 // ByVideoPrice1080p orders the results by the video_price_1080p field.
 func ByVideoPrice1080p(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVideoPrice1080p, opts...).ToFunc()
+}
+
+// ByWebSearchPricePerCall orders the results by the web_search_price_per_call field.
+func ByWebSearchPricePerCall(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWebSearchPricePerCall, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

@@ -226,7 +226,7 @@ func (r *upstreamRelayMetricsRefreshRepo) MarkConnectorSync(_ context.Context, c
 	return nil
 }
 
-func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time) error {
+func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Context, connectorID int64, usageByGroup map[string]UpstreamRelayGroupTodayUsage, checkedAt *time.Time, complete bool) error {
 	r.usageByGroup = usageByGroup
 	r.usageCheckedAt = checkedAt
 	update := func(snapshots []UpstreamRelayGroupRateSnapshot) []UpstreamRelayGroupRateSnapshot {
@@ -241,7 +241,10 @@ func (r *upstreamRelayMetricsRefreshRepo) UpdateSnapshotTodayUsage(_ context.Con
 				out[i].TodayUsageCheckedAt = nil
 				continue
 			}
-			usage := usageByGroup[out[i].UpstreamGroupID]
+			usage, known := usageByGroup[out[i].UpstreamGroupID]
+			if !known && !complete {
+				continue
+			}
 			actualCost := usage.ActualCost
 			totalTokens := usage.TotalTokens
 			out[i].TodayActualCost = &actualCost
@@ -1085,6 +1088,10 @@ func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBindin
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
 	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "855", r.URL.Query().Get("api_key_id"))
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":1.25,"total_tokens":88}}`))
+	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -1096,9 +1103,11 @@ func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBindin
 		},
 		snapshots: []UpstreamRelayGroupRateSnapshot{
 			{ID: 1, ConnectorID: 7, UpstreamGroupID: "g1", Name: "Group 1", FinalRateMultiplier: 1},
+			{ID: 2, ConnectorID: 7, UpstreamGroupID: "g2", Name: "Group 2", FinalRateMultiplier: 1},
 		},
 		bindings: []UpstreamRelayCandidateUsageBinding{
 			{CandidateID: 1, ConnectorID: 7, AccountID: 6, UpstreamGroupID: "g1"},
+			{CandidateID: 2, ConnectorID: 7, AccountID: 7, UpstreamGroupID: "g2", UpstreamAPIKeyID: 855},
 		},
 	}
 	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
@@ -1111,13 +1120,49 @@ func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBindin
 	require.True(t, result.BalanceAvailable)
 	require.False(t, result.UsageAvailable)
 	require.Contains(t, result.UsageError, "candidate 1 for bound account 6 has no upstream api key binding")
-	require.Equal(t, upstreamRelayMetricsRefreshStatusFailed, result.UsageDetail.Status)
-	require.Equal(t, 1, result.UsageDetail.TotalGroups)
-	require.Equal(t, 0, result.UsageDetail.UpdatedGroups)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.UsageDetail.Status)
+	require.Equal(t, 2, result.UsageDetail.TotalGroups)
+	require.Equal(t, 1, result.UsageDetail.UpdatedGroups)
+	require.NotNil(t, result.UsageDetail.Issue)
+	require.Equal(t, upstreamRelayMetricsIssueMissingAPIKeyBinding, result.UsageDetail.Issue.Code)
+	require.Equal(t, int64(1), result.UsageDetail.Issue.CandidateID)
+	require.Equal(t, int64(6), result.UsageDetail.Issue.AccountID)
+	require.Equal(t, "g1", result.UsageDetail.Issue.UpstreamGroupID)
 	require.Len(t, result.UsageDetail.MissingGroups, 1)
 	require.Equal(t, "g1", result.UsageDetail.MissingGroups[0].UpstreamGroupID)
-	require.Equal(t, "usage_refresh_failed", result.UsageDetail.MissingGroups[0].Reason)
-	require.Nil(t, repo.usageByGroup)
+	require.Equal(t, upstreamRelayMetricsIssueMissingAPIKeyBinding, result.UsageDetail.MissingGroups[0].Reason)
+	require.Equal(t, 1.25, repo.usageByGroup["g2"].ActualCost)
+	require.Equal(t, int64(88), repo.usageByGroup["g2"].TotalTokens)
+}
+
+func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateBindingsAsStructuredIssue(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{
+			ID:                   7,
+			BaseURL:              server.URL,
+			BearerTokenEncrypted: "session-token",
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	result, err := svc.RefreshConnectorMetrics(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusPartial, result.Status)
+	require.True(t, result.BalanceAvailable)
+	require.False(t, result.UsageAvailable)
+	require.Equal(t, upstreamRelayMetricsRefreshStatusSkipped, result.UsageDetail.Status)
+	require.NotNil(t, result.UsageDetail.Issue)
+	require.Equal(t, upstreamRelayMetricsIssueNoCandidateBindings, result.UsageDetail.Issue.Code)
+	require.Empty(t, result.UsageDetail.MissingGroups)
 }
 
 func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFailure(t *testing.T) {
@@ -1161,9 +1206,9 @@ func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFa
 	require.Equal(t, 1, result.UsageDetail.TotalGroups)
 	require.Equal(t, 0, result.UsageDetail.UpdatedGroups)
 	require.Len(t, result.UsageDetail.MissingGroups, 1)
-	require.Equal(t, "usage_refresh_failed", result.UsageDetail.MissingGroups[0].Reason)
-	require.Nil(t, repo.usageByGroup)
-	require.Nil(t, repo.usageCheckedAt)
+	require.Equal(t, upstreamRelayMetricsIssueUpstreamUsageRequest, result.UsageDetail.MissingGroups[0].Reason)
+	require.Empty(t, repo.usageByGroup)
+	require.NotNil(t, repo.usageCheckedAt)
 	require.Empty(t, repo.usageHistoryRows)
 	require.Len(t, result.Snapshots, 1)
 	require.NotNil(t, result.Snapshots[0].TodayActualCost)

@@ -152,13 +152,14 @@ func TestSettingHandler_AuthSourcePlatformQuotas_PutGetRoundTrip(t *testing.T) {
 			},
 		},
 	}
-	rawBody, err := json.Marshal(putBody)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(putBody))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 	handler.UpdateSettings(c)
 	require.Equal(t, http.StatusOK, rec.Code)
 

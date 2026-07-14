@@ -41,10 +41,12 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
-                    : 'https://api.anthropic.com'
+                    : account.platform === 'grok'
+                      ? 'https://api.x.ai/v1'
+                      : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ baseUrlHint }}</p>
+          <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
@@ -63,7 +65,9 @@
                   ? 'AIza...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
-                    : 'sk-ant-...'
+                    : account.platform === 'grok'
+                      ? 'xai-...'
+                      : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -2456,6 +2460,14 @@
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
       />
+      <div v-if="accountCollections.length" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.accountCollections.label') }}</label>
+        <select v-model="form.account_collection_ids" multiple class="input min-h-28">
+          <option v-for="collection in accountCollections" :key="collection.id" :value="collection.id">
+            {{ collection.name }}
+          </option>
+        </select>
+      </div>
 
     </form>
 
@@ -2573,9 +2585,10 @@ interface Props {
   account: Account | null
   proxies: Proxy[]
   groups: AdminGroup[]
+  accountCollections?: Array<{ id: number; name: string }>
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { accountCollections: () => [] })
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -2594,6 +2607,7 @@ const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (props.account.platform === 'grok') return ''
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3043,6 +3057,7 @@ const tempUnschedPresets = computed(() => [
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
   return 'https://api.anthropic.com'
 })
 
@@ -3063,6 +3078,7 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
+  account_collection_ids: [] as number[],
   expires_at: null as number | null
 })
 
@@ -3154,6 +3170,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     ? newAccount.status
     : 'active'
   form.group_ids = newAccount.group_ids || []
+  form.account_collection_ids = []
   form.expires_at = newAccount.expires_at ?? null
 
   // Load intercept warmup requests setting (applies to all account types)
@@ -3335,7 +3352,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newAccount.platform === 'grok'
+            ? 'https://api.x.ai/v1'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -3411,7 +3430,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newAccount.platform === 'grok'
+            ? 'https://api.x.ai/v1'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Grok OAuth accounts
@@ -3443,13 +3464,19 @@ async function loadTLSProfiles() {
 
 watch(
   [() => props.show, () => props.account],
-  ([show, newAccount], [wasShow, previousAccount]) => {
+  async ([show, newAccount], [wasShow, previousAccount]) => {
     if (!show || !newAccount) {
       return
     }
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+      try {
+        const collections = await adminAPI.accountCollections.listForAccount(newAccount.id)
+        form.account_collection_ids = collections.map(collection => collection.id)
+      } catch {
+        form.account_collection_ids = []
+      }
     }
   },
   { immediate: true }

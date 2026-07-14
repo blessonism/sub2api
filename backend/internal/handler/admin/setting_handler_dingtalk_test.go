@@ -44,13 +44,14 @@ func TestSettingsPUT_DingTalk_V3_InternalOnlyAllowsEmptyCorpID(t *testing.T) {
 	body["dingtalk_connect_corp_restriction_policy"] = "internal_only"
 	body["dingtalk_connect_internal_corp_id"] = "" // 空值现在合法
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -65,13 +66,14 @@ func TestSettingsPUT_DingTalk_HappyPath_None(t *testing.T) {
 	body := baseValidDingTalkBody()
 	body["dingtalk_connect_corp_restriction_policy"] = "none"
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -92,13 +94,14 @@ func TestSettingsPUT_DingTalk_HappyPath_InternalOnly_WithCorpID(t *testing.T) {
 	body["dingtalk_connect_corp_restriction_policy"] = "internal_only"
 	body["dingtalk_connect_internal_corp_id"] = "ding-corp-123"
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -115,13 +118,14 @@ func TestSettingsPUT_DingTalk_BypassRegistration_RoundTrip(t *testing.T) {
 	body["dingtalk_connect_corp_restriction_policy"] = "internal_only"
 	body["dingtalk_connect_bypass_registration"] = true
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -146,13 +150,14 @@ func TestSettingsPUT_DingTalk_Disabled_SkipsValidation(t *testing.T) {
 		"dingtalk_connect_corp_restriction_policy": "internal_only",
 	}
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -170,13 +175,14 @@ func TestSettingsPUT_DingTalk_SyncFlags_InternalOnly_RoundTrip(t *testing.T) {
 	body["dingtalk_connect_sync_display_name"] = true
 	body["dingtalk_connect_sync_dept"] = true
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -201,13 +207,14 @@ func TestSettingsPUT_DingTalk_SyncFlags_PolicyNone_CoercedToFalse(t *testing.T) 
 	body["dingtalk_connect_sync_display_name"] = true
 	body["dingtalk_connect_sync_dept"] = true
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -231,13 +238,14 @@ func TestSettingsPUT_DingTalk_StaleWhitelist_CoercedToNone(t *testing.T) {
 	body := baseValidDingTalkBody()
 	body["dingtalk_connect_corp_restriction_policy"] = "whitelist"
 
-	rawBody, err := json.Marshal(body)
+	rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 	handler.UpdateSettings(c)
 
@@ -262,13 +270,14 @@ func TestSettingsPUT_DingTalk_SyncAttrKey_RoundTrip(t *testing.T) {
 		body["dingtalk_connect_sync_display_name_attr_key"] = "my_name_attr"
 		body["dingtalk_connect_sync_dept_attr_key"] = "my_dept_attr"
 
-		rawBody, err := json.Marshal(body)
+		rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 		c.Request.Header.Set("Content-Type", "application/json")
+		c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 		handler.UpdateSettings(c)
 
@@ -299,13 +308,14 @@ func TestSettingsPUT_DingTalk_SyncAttrKey_RoundTrip(t *testing.T) {
 		body["dingtalk_connect_sync_display_name_attr_key"] = ""
 		body["dingtalk_connect_sync_dept_attr_key"] = ""
 
-		rawBody, err := json.Marshal(body)
+		rawBody, err := json.Marshal(completeSettingsReplaceBody(body))
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
 		c.Request.Header.Set("Content-Type", "application/json")
+		c.Request.Header.Set("X-Settings-Write-Mode", "replace")
 
 		handler.UpdateSettings(c)
 

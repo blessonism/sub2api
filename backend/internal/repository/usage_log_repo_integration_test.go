@@ -932,8 +932,10 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u1@test.com"})
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u2@test.com"})
+	userZeroCost := mustCreateUser(s.T(), s.client, &service.User{Email: "range-zero-cost@test.com"})
 	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-range-1", Name: "k1"})
 	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-range-2", Name: "k2"})
+	apiKeyZeroCost := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userZeroCost.ID, Key: "sk-range-zero", Name: "k-zero"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-range"})
 
 	d1, d2, d3 := 100, 200, 300
@@ -985,9 +987,22 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	_, err = s.repo.Create(s.ctx, logToday)
 	s.Require().NoError(err)
 
+	logZeroCost := &service.UsageLog{
+		UserID:     userZeroCost.ID,
+		APIKeyID:   apiKeyZeroCost.ID,
+		AccountID:  account.ID,
+		Model:      "claude-3",
+		TotalCost:  0,
+		ActualCost: 0,
+		DurationMs: &d3,
+		CreatedAt:  now,
+	}
+	_, err = s.repo.Create(s.ctx, logZeroCost)
+	s.Require().NoError(err)
+
 	stats, err := s.repo.GetDashboardStatsWithRange(s.ctx, rangeStart, rangeEnd)
 	s.Require().NoError(err)
-	s.Require().Equal(int64(2), stats.TotalRequests)
+	s.Require().Equal(int64(3), stats.TotalRequests)
 	s.Require().Equal(int64(15), stats.TotalInputTokens)
 	s.Require().Equal(int64(26), stats.TotalOutputTokens)
 	s.Require().Equal(int64(1), stats.TotalCacheCreationTokens)
@@ -997,7 +1012,9 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	s.Require().Equal(1.4, stats.TotalActualCost)
 	// account_cost = COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) = total_cost
 	s.Require().Equal(1.5, stats.TotalAccountCost)
-	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
+	s.Require().InEpsilon(200.0, stats.AverageDurationMs, 0.0001)
+	s.Require().Equal(int64(1), stats.ActiveUsers)
+	s.Require().Equal(stats.ActiveUsers, stats.TodayActiveUsers)
 }
 
 // --- GetUserDashboardStats ---

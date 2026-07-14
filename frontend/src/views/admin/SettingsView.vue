@@ -1189,6 +1189,22 @@
                   </div>
                 </div>
 
+                <!-- User Scope -->
+                <div class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.userIds") }}
+                  </label>
+                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.openaiFastPolicy.userIdsHint") }}
+                  </p>
+                  <OpenAIFastPolicyUserSelector
+                    :model-value="rule.user_ids || []"
+                    @update:model-value="rule.user_ids = $event"
+                  />
+                </div>
+
                 <!-- Error Message (only when action=block) -->
                 <div v-if="rule.action === 'block'" class="mt-3">
                   <label
@@ -7393,7 +7409,7 @@ import type {
   AuthSourceDefaultsState,
   AuthSourceType,
   SystemSettings,
-  UpdateSettingsRequest,
+  FullSettingsUpdateRequest,
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
@@ -7422,6 +7438,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -9207,6 +9224,7 @@ async function loadSettings() {
       openaiFastPolicyForm.rules =
         settings.openai_fast_policy_settings.rules.map((rule) => ({
           ...rule,
+          user_ids: rule.user_ids ? [...rule.user_ids] : [],
           model_whitelist: rule.model_whitelist
             ? [...rule.model_whitelist]
             : [],
@@ -9443,7 +9461,7 @@ async function saveSettings() {
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
 
-    const payload: UpdateSettingsRequest = {
+    const payload: FullSettingsUpdateRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist:
@@ -9489,23 +9507,23 @@ async function saveSettings() {
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
-      smtp_password: form.smtp_password || undefined,
+      smtp_password: form.smtp_password || "",
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
-      turnstile_secret_key: form.turnstile_secret_key || undefined,
+      turnstile_secret_key: form.turnstile_secret_key || "",
       api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
-        form.linuxdo_connect_client_secret || undefined,
+        form.linuxdo_connect_client_secret || "",
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
       dingtalk_connect_enabled: form.dingtalk_connect_enabled,
       dingtalk_connect_client_id: form.dingtalk_connect_client_id,
       dingtalk_connect_client_secret:
-        form.dingtalk_connect_client_secret || undefined,
+        form.dingtalk_connect_client_secret || "",
       dingtalk_connect_redirect_url: form.dingtalk_connect_redirect_url,
       dingtalk_connect_corp_restriction_policy:
         form.dingtalk_connect_corp_restriction_policy,
@@ -9526,16 +9544,16 @@ async function saveSettings() {
         form.wechat_connect_mp_app_id ||
         form.wechat_connect_mobile_app_id ||
         form.wechat_connect_app_id,
-      wechat_connect_app_secret: form.wechat_connect_app_secret || undefined,
-      wechat_connect_open_app_id: form.wechat_connect_open_app_id,
+      wechat_connect_app_secret: form.wechat_connect_app_secret || "",
+      wechat_connect_open_app_id: form.wechat_connect_open_app_id || "",
       wechat_connect_open_app_secret:
-        form.wechat_connect_open_app_secret || undefined,
-      wechat_connect_mp_app_id: form.wechat_connect_mp_app_id,
+        form.wechat_connect_open_app_secret || "",
+      wechat_connect_mp_app_id: form.wechat_connect_mp_app_id || "",
       wechat_connect_mp_app_secret:
-        form.wechat_connect_mp_app_secret || undefined,
-      wechat_connect_mobile_app_id: form.wechat_connect_mobile_app_id,
+        form.wechat_connect_mp_app_secret || "",
+      wechat_connect_mobile_app_id: form.wechat_connect_mobile_app_id || "",
       wechat_connect_mobile_app_secret:
-        form.wechat_connect_mobile_app_secret || undefined,
+        form.wechat_connect_mobile_app_secret || "",
       wechat_connect_open_enabled: form.wechat_connect_open_enabled,
       wechat_connect_mp_enabled: form.wechat_connect_mp_enabled,
       wechat_connect_mobile_enabled: form.wechat_connect_mobile_enabled,
@@ -9548,7 +9566,7 @@ async function saveSettings() {
       oidc_connect_enabled: form.oidc_connect_enabled,
       oidc_connect_provider_name: form.oidc_connect_provider_name,
       oidc_connect_client_id: form.oidc_connect_client_id,
-      oidc_connect_client_secret: form.oidc_connect_client_secret || undefined,
+      oidc_connect_client_secret: form.oidc_connect_client_secret || "",
       oidc_connect_issuer_url: form.oidc_connect_issuer_url,
       oidc_connect_discovery_url: form.oidc_connect_discovery_url,
       oidc_connect_authorize_url: form.oidc_connect_authorize_url,
@@ -9573,14 +9591,14 @@ async function saveSettings() {
       github_oauth_enabled: form.github_oauth_enabled,
       github_oauth_client_id: form.github_oauth_client_id,
       github_oauth_client_secret:
-        form.github_oauth_client_secret || undefined,
+        form.github_oauth_client_secret || "",
       github_oauth_redirect_url: form.github_oauth_redirect_url,
       github_oauth_frontend_redirect_url:
         form.github_oauth_frontend_redirect_url,
       google_oauth_enabled: form.google_oauth_enabled,
       google_oauth_client_id: form.google_oauth_client_id,
       google_oauth_client_secret:
-        form.google_oauth_client_secret || undefined,
+        form.google_oauth_client_secret || "",
       google_oauth_redirect_url: form.google_oauth_redirect_url,
       google_oauth_frontend_redirect_url:
         form.google_oauth_frontend_redirect_url,
@@ -9657,7 +9675,7 @@ async function saveSettings() {
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
-      payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
+      payment_alipay_force_qrcode: Boolean(form.payment_alipay_force_qrcode),
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
@@ -9725,6 +9743,10 @@ async function saveSettings() {
             service_tier: rule.service_tier,
             action: rule.action,
             scope: rule.scope,
+            user_ids:
+              rule.user_ids && rule.user_ids.length > 0
+                ? [...rule.user_ids]
+                : undefined,
             error_message:
               rule.action === "block" ? rule.error_message : undefined,
             model_whitelist: hasWhitelist ? whitelist : undefined,
@@ -9801,6 +9823,7 @@ async function saveSettings() {
       openaiFastPolicyForm.rules =
         updated.openai_fast_policy_settings.rules.map((rule) => ({
           ...rule,
+          user_ids: rule.user_ids ? [...rule.user_ids] : [],
           model_whitelist: rule.model_whitelist
             ? [...rule.model_whitelist]
             : [],
@@ -10216,6 +10239,7 @@ function addOpenAIFastPolicyRule() {
     service_tier: "priority",
     action: "filter",
     scope: "all",
+    user_ids: [],
     error_message: "",
     model_whitelist: [],
     fallback_action: "pass",

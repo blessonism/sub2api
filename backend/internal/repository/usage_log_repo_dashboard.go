@@ -86,6 +86,9 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 	}
+	if err := r.fillDashboardOperationalStats(ctx, stats, todayStart, now); err != nil {
+		return nil, err
+	}
 	if err := r.fillDashboardUsageStatsAggregated(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 	}
@@ -114,6 +117,9 @@ func (r *usageLogRepository) GetDashboardStatsWithRange(ctx context.Context, sta
 	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 	}
+	if err := r.fillDashboardOperationalStats(ctx, stats, todayStart, now); err != nil {
+		return nil, err
+	}
 	if err := r.fillDashboardUsageStatsFromUsageLogs(ctx, stats, startUTC, endUTC, todayStart, now); err != nil {
 		return nil, err
 	}
@@ -132,7 +138,8 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	userStatsQuery := `
 		SELECT
 			COUNT(*) as total_users,
-			COUNT(CASE WHEN created_at >= $1 THEN 1 END) as today_new_users
+			COUNT(CASE WHEN created_at >= $1 THEN 1 END) as today_new_users,
+			COALESCE(SUM(balance), 0) as total_user_balance
 		FROM users
 		WHERE deleted_at IS NULL
 	`
@@ -143,6 +150,7 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		[]any{todayUTC},
 		&stats.TotalUsers,
 		&stats.TodayNewUsers,
+		&stats.TotalUserBalance,
 	); err != nil {
 		return err
 	}
@@ -186,6 +194,96 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		&stats.RateLimitAccounts,
 		&stats.OverloadAccounts,
 	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *usageLogRepository) fillDashboardOperationalStats(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {
+	yesterdayUTC := todayUTC.AddDate(0, 0, -1)
+	yesterdayActiveQuery := `
+		SELECT active_users
+		FROM usage_dashboard_daily
+		WHERE bucket_date = $1::date
+	`
+	if err := scanSingleRow(ctx, r.sql, yesterdayActiveQuery, []any{yesterdayUTC}, &stats.YesterdayActiveUsers); err != nil {
+		if err != sql.ErrNoRows {
+			return err
+		}
+	}
+
+	// 订阅剩余价值优先采用当前订阅对应的最近订单；没有订单时回退到同分组、有效期最接近的在售套餐。
+	subscriptionValueQuery := `
+		WITH active_subscriptions AS (
+			SELECT
+				us.id,
+				us.user_id,
+				us.group_id,
+				us.starts_at,
+				us.expires_at,
+				EXTRACT(EPOCH FROM (us.expires_at - $1::timestamptz)) AS remaining_seconds,
+				GREATEST(EXTRACT(EPOCH FROM (us.expires_at - us.starts_at)), 1) AS subscription_seconds
+			FROM user_subscriptions us
+			JOIN users u ON u.id = us.user_id AND u.deleted_at IS NULL
+			WHERE us.deleted_at IS NULL
+				AND us.status = $2
+				AND us.expires_at > $1::timestamptz
+		)
+		SELECT COALESCE(SUM(
+			COALESCE(order_source.purchase_amount, plan_source.purchase_amount, 0)
+			* active_subscriptions.remaining_seconds
+			/ GREATEST(COALESCE(order_source.validity_seconds, plan_source.validity_seconds, active_subscriptions.subscription_seconds), 1)
+		), 0) AS subscription_remaining_value
+		FROM active_subscriptions
+		LEFT JOIN LATERAL (
+			SELECT
+				CASE
+					WHEN po.amount > 0 THEN po.amount
+					WHEN po.pay_amount > 0 THEN po.pay_amount
+				END AS purchase_amount,
+				po.subscription_days * 86400.0 AS validity_seconds
+			FROM payment_orders po
+			WHERE po.order_type = 'subscription'
+				AND po.status IN ('COMPLETED', 'PAID', 'RECHARGING')
+				AND po.user_id = active_subscriptions.user_id
+				AND po.subscription_group_id = active_subscriptions.group_id
+				AND po.subscription_days > 0
+				AND (po.amount > 0 OR po.pay_amount > 0)
+			ORDER BY
+				ABS(EXTRACT(EPOCH FROM (active_subscriptions.expires_at - COALESCE(po.completed_at, po.paid_at, po.created_at)))) ASC,
+				COALESCE(po.completed_at, po.paid_at, po.created_at) DESC,
+				po.id DESC
+			LIMIT 1
+		) order_source ON true
+		LEFT JOIN LATERAL (
+			SELECT
+				sp.price AS purchase_amount,
+				CASE sp.validity_unit
+					WHEN 'week' THEN sp.validity_days * 7 * 86400.0
+					WHEN 'month' THEN sp.validity_days * 30 * 86400.0
+					ELSE sp.validity_days * 86400.0
+				END AS validity_seconds
+			FROM subscription_plans sp
+			WHERE sp.group_id = active_subscriptions.group_id
+				AND sp.for_sale = true
+				AND sp.price > 0
+				AND sp.validity_days > 0
+			ORDER BY
+				ABS((
+					CASE sp.validity_unit
+						WHEN 'week' THEN sp.validity_days * 7 * 86400.0
+						WHEN 'month' THEN sp.validity_days * 30 * 86400.0
+						ELSE sp.validity_days * 86400.0
+					END
+				) - active_subscriptions.subscription_seconds) ASC,
+				sp.sort_order ASC,
+				sp.price ASC,
+				sp.id ASC
+			LIMIT 1
+		) plan_source ON order_source.purchase_amount IS NULL
+	`
+	if err := scanSingleRow(ctx, r.sql, subscriptionValueQuery, []any{now, service.SubscriptionStatusActive}, &stats.SubscriptionRemainingValue); err != nil {
 		return err
 	}
 
@@ -262,6 +360,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 			return err
 		}
 	}
+	stats.TodayActiveUsers = stats.ActiveUsers
 	stats.TodayTokens = stats.TodayInputTokens + stats.TodayOutputTokens + stats.TodayCacheCreationTokens + stats.TodayCacheReadTokens
 
 	hourlyActiveQuery := `
@@ -358,6 +457,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsFromUsageLogs(ctx context.Co
 			FROM usage_logs
 			WHERE created_at >= LEAST($1::timestamptz, $3::timestamptz)
 				AND created_at < GREATEST($2::timestamptz, $4::timestamptz)
+				AND actual_cost > 0
 		)
 		SELECT
 			COUNT(DISTINCT CASE WHEN created_at >= $1::timestamptz AND created_at < $2::timestamptz THEN user_id END) AS active_users,
@@ -367,6 +467,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsFromUsageLogs(ctx context.Co
 	if err := scanSingleRow(ctx, r.sql, activeUsersQuery, []any{todayUTC, todayEnd, hourStart, hourEnd}, &stats.ActiveUsers, &stats.HourlyActiveUsers); err != nil {
 		return err
 	}
+	stats.TodayActiveUsers = stats.ActiveUsers
 
 	return nil
 }

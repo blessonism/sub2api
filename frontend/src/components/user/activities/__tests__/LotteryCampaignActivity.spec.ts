@@ -6,12 +6,22 @@ const messages: Record<string, string> = {
   'lotteryCampaign.prizePool': 'Prize pool',
   'lotteryCampaign.winnerCount': '{count} winners',
   'lotteryCampaign.entryLadder': 'Lottery entries',
+  'lotteryCampaign.weightLadder': 'Lottery entries',
   'lotteryCampaign.ladderNext': 'Use {amount} more to unlock the next entry',
   'lotteryCampaign.ladderMaxed': 'Max entries reached',
   'lotteryCampaign.ladderStart': 'Reach the threshold to earn your first entry',
   'lotteryCampaign.rulesTitle': 'Rules',
   'lotteryCampaign.recentWinners': 'Recent winners',
   'lotteryCampaign.noRecentWinners': 'No winners yet, be the first',
+  'lotteryCampaign.drawCompletedTitle': 'This draw is complete',
+  'lotteryCampaign.drawCompletedDescription': '{count} winner records are published',
+  'lotteryCampaign.wheelCompletedDescription': 'Winners are highlighted on the wheel',
+  'lotteryCampaign.wheelWinnerCount': 'winners',
+  'lotteryCampaign.wheelWinners': 'Draw winners',
+  'lotteryCampaign.wheelStatuses.completed': 'Round complete',
+  'lotteryCampaign.roundResults': 'Round results',
+  'lotteryCampaign.roundResultsDescription': 'Winners and rewards for this round',
+  'lotteryCampaign.roundNoWinners': 'This round did not produce any winners',
   'lotteryCampaign.participants': 'joining',
   'lotteryCampaign.nextDraw': 'Next draw',
   'lotteryCampaign.drawTime': 'Draw time',
@@ -21,20 +31,24 @@ const messages: Record<string, string> = {
   'lotteryCampaign.entryStatuses.enrolled': 'In pool',
 }
 
-const { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, showError, showSuccess } = vi.hoisted(() => ({
+const { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, getLotteryParticipants, showError, showSuccess } = vi.hoisted(() => ({
   getActiveLotteryCampaign: vi.fn(),
   getMyLotteryCampaignData: vi.fn(),
   enrollLotteryCampaign: vi.fn(),
   getRecentLotteryWinners: vi.fn(),
+  getLotteryParticipants: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
 
 vi.mock('@/api/lotteryCampaigns', () => ({
-  default: { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners },
+  default: { getActiveLotteryCampaign, getMyLotteryCampaignData, enrollLotteryCampaign, getRecentLotteryWinners, getLotteryParticipants },
 }))
 
-vi.mock('@/stores', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
+vi.mock('@/stores', () => ({
+  useAppStore: () => ({ showError, showSuccess }),
+  useAuthStore: () => ({ user: { email: 'current@example.com' } }),
+}))
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -92,6 +106,8 @@ describe('LotteryCampaignActivity', () => {
     enrollLotteryCampaign.mockReset()
     getRecentLotteryWinners.mockReset()
     getRecentLotteryWinners.mockResolvedValue({ items: [] })
+    getLotteryParticipants.mockReset()
+    getLotteryParticipants.mockResolvedValue({ items: [] })
     showError.mockReset()
     showSuccess.mockReset()
   })
@@ -170,16 +186,67 @@ describe('LotteryCampaignActivity', () => {
     })
     getRecentLotteryWinners.mockResolvedValue({
       items: [
-        { masked_email: 'a***@qq.com', prize_name: 'Gold', reward_amount_cents: 10_000, created_at: '2026-07-07T20:00:00.000Z' },
+        { masked_email: 'cur****nt@example.com', prize_name: 'Gold', reward_amount_cents: 10_000, entry_date: '2026-07-07T00:00:00.000Z', is_current_round: true, created_at: '2026-07-07T20:00:00.000Z' },
       ],
+    })
+    getLotteryParticipants.mockResolvedValue({ items: [{ masked_email: 'cur****nt@example.com', entry_count: 3 }] })
+
+    const wrapper = mountActivity()
+    await flushPromises()
+
+    expect(getRecentLotteryWinners).toHaveBeenCalledWith(9, 50)
+    expect(wrapper.text()).toContain('Recent winners')
+    expect(wrapper.text()).toContain('cur****nt@example.com')
+    expect(wrapper.get('[data-testid="lottery-draw-completed"]').text()).toContain('This draw is complete')
+    expect(wrapper.get('[data-testid="lottery-wheel-winners"]').text()).toContain('cur****nt@example.com · Gold')
+    expect(wrapper.find('.user-wheel-label.is-winner').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Round complete')
+    expect(wrapper.text()).toContain('Round results')
+    expect(wrapper.text()).not.toContain('lotteryCampaign.myProbability')
+  })
+
+  it('does not mark a new daily round complete from historical winners', async () => {
+    getActiveLotteryCampaign.mockResolvedValue({ campaign: CAMPAIGN })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign: CAMPAIGN,
+      today_tokens: 2_000_000,
+      threshold_tokens: 1_000_000,
+      entry_count: 3,
+      entry_status: 'enrolled',
+      next_draw_at: '2026-07-31T20:00:00.000Z',
+      winners: [],
+    })
+    getRecentLotteryWinners.mockResolvedValue({
+      items: [{ masked_email: 'old****er@example.com', prize_name: 'Gold', reward_amount_cents: 10_000, entry_date: '2026-07-30T00:00:00.000Z', is_current_round: false, created_at: '2026-07-30T20:00:00.000Z' }],
+    })
+    getLotteryParticipants.mockResolvedValue({ items: [{ masked_email: 'cur****nt@example.com', entry_count: 3 }] })
+
+    const wrapper = mountActivity()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="lottery-draw-completed"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="lottery-wheel-winners"]').exists()).toBe(false)
+    expect(wrapper.find('.user-wheel-label.is-winner').exists()).toBe(false)
+  })
+
+  it('shows a completed round even when the draw produced no winners', async () => {
+    getActiveLotteryCampaign.mockResolvedValue({ campaign: CAMPAIGN })
+    getMyLotteryCampaignData.mockResolvedValue({
+      campaign: CAMPAIGN,
+      today_tokens: 0,
+      threshold_tokens: 1_000_000,
+      entry_count: 0,
+      entry_status: 'not_eligible',
+      next_draw_at: '2026-07-31T20:00:00.000Z',
+      round_completed: true,
+      winners: [],
     })
 
     const wrapper = mountActivity()
     await flushPromises()
 
-    expect(getRecentLotteryWinners).toHaveBeenCalledWith(9)
-    expect(wrapper.text()).toContain('Recent winners')
-    expect(wrapper.text()).toContain('a***@qq.com')
+    expect(wrapper.get('[data-testid="lottery-draw-completed"]').text()).toContain('This draw is complete')
+    expect(wrapper.text()).toContain('Round complete')
   })
 
   it('shows the empty state when there are no recent winners', async () => {

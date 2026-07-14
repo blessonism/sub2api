@@ -18,6 +18,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/ent/announcementemailbroadcast"
+	"github.com/Wei-Shaw/sub2api/ent/announcementemaildelivery"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -73,6 +75,10 @@ type Client struct {
 	AccountGroup *AccountGroupClient
 	// Announcement is the client for interacting with the Announcement builders.
 	Announcement *AnnouncementClient
+	// AnnouncementEmailBroadcast is the client for interacting with the AnnouncementEmailBroadcast builders.
+	AnnouncementEmailBroadcast *AnnouncementEmailBroadcastClient
+	// AnnouncementEmailDelivery is the client for interacting with the AnnouncementEmailDelivery builders.
+	AnnouncementEmailDelivery *AnnouncementEmailDeliveryClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
@@ -162,6 +168,8 @@ func (c *Client) init() {
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
+	c.AnnouncementEmailBroadcast = NewAnnouncementEmailBroadcastClient(c.config)
+	c.AnnouncementEmailDelivery = NewAnnouncementEmailDeliveryClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
@@ -295,6 +303,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementEmailBroadcast:    NewAnnouncementEmailBroadcastClient(cfg),
+		AnnouncementEmailDelivery:     NewAnnouncementEmailDeliveryClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
@@ -355,6 +365,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementEmailBroadcast:    NewAnnouncementEmailBroadcastClient(cfg),
+		AnnouncementEmailDelivery:     NewAnnouncementEmailDeliveryClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
@@ -421,7 +433,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
+		c.APIKey, c.Account, c.AccountGroup, c.Announcement,
+		c.AnnouncementEmailBroadcast, c.AnnouncementEmailDelivery, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
@@ -442,7 +455,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
+		c.APIKey, c.Account, c.AccountGroup, c.Announcement,
+		c.AnnouncementEmailBroadcast, c.AnnouncementEmailDelivery, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
@@ -470,6 +484,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AccountGroup.mutate(ctx, m)
 	case *AnnouncementMutation:
 		return c.Announcement.mutate(ctx, m)
+	case *AnnouncementEmailBroadcastMutation:
+		return c.AnnouncementEmailBroadcast.mutate(ctx, m)
+	case *AnnouncementEmailDeliveryMutation:
+		return c.AnnouncementEmailDelivery.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
 	case *AuthIdentityMutation:
@@ -1225,6 +1243,272 @@ func (c *AnnouncementClient) mutate(ctx context.Context, m *AnnouncementMutation
 		return (&AnnouncementDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Announcement mutation op: %q", m.Op())
+	}
+}
+
+// AnnouncementEmailBroadcastClient is a client for the AnnouncementEmailBroadcast schema.
+type AnnouncementEmailBroadcastClient struct {
+	config
+}
+
+// NewAnnouncementEmailBroadcastClient returns a client for the AnnouncementEmailBroadcast from the given config.
+func NewAnnouncementEmailBroadcastClient(c config) *AnnouncementEmailBroadcastClient {
+	return &AnnouncementEmailBroadcastClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `announcementemailbroadcast.Hooks(f(g(h())))`.
+func (c *AnnouncementEmailBroadcastClient) Use(hooks ...Hook) {
+	c.hooks.AnnouncementEmailBroadcast = append(c.hooks.AnnouncementEmailBroadcast, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `announcementemailbroadcast.Intercept(f(g(h())))`.
+func (c *AnnouncementEmailBroadcastClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AnnouncementEmailBroadcast = append(c.inters.AnnouncementEmailBroadcast, interceptors...)
+}
+
+// Create returns a builder for creating a AnnouncementEmailBroadcast entity.
+func (c *AnnouncementEmailBroadcastClient) Create() *AnnouncementEmailBroadcastCreate {
+	mutation := newAnnouncementEmailBroadcastMutation(c.config, OpCreate)
+	return &AnnouncementEmailBroadcastCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AnnouncementEmailBroadcast entities.
+func (c *AnnouncementEmailBroadcastClient) CreateBulk(builders ...*AnnouncementEmailBroadcastCreate) *AnnouncementEmailBroadcastCreateBulk {
+	return &AnnouncementEmailBroadcastCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AnnouncementEmailBroadcastClient) MapCreateBulk(slice any, setFunc func(*AnnouncementEmailBroadcastCreate, int)) *AnnouncementEmailBroadcastCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AnnouncementEmailBroadcastCreateBulk{err: fmt.Errorf("calling to AnnouncementEmailBroadcastClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AnnouncementEmailBroadcastCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AnnouncementEmailBroadcastCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AnnouncementEmailBroadcast.
+func (c *AnnouncementEmailBroadcastClient) Update() *AnnouncementEmailBroadcastUpdate {
+	mutation := newAnnouncementEmailBroadcastMutation(c.config, OpUpdate)
+	return &AnnouncementEmailBroadcastUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AnnouncementEmailBroadcastClient) UpdateOne(_m *AnnouncementEmailBroadcast) *AnnouncementEmailBroadcastUpdateOne {
+	mutation := newAnnouncementEmailBroadcastMutation(c.config, OpUpdateOne, withAnnouncementEmailBroadcast(_m))
+	return &AnnouncementEmailBroadcastUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AnnouncementEmailBroadcastClient) UpdateOneID(id int64) *AnnouncementEmailBroadcastUpdateOne {
+	mutation := newAnnouncementEmailBroadcastMutation(c.config, OpUpdateOne, withAnnouncementEmailBroadcastID(id))
+	return &AnnouncementEmailBroadcastUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AnnouncementEmailBroadcast.
+func (c *AnnouncementEmailBroadcastClient) Delete() *AnnouncementEmailBroadcastDelete {
+	mutation := newAnnouncementEmailBroadcastMutation(c.config, OpDelete)
+	return &AnnouncementEmailBroadcastDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AnnouncementEmailBroadcastClient) DeleteOne(_m *AnnouncementEmailBroadcast) *AnnouncementEmailBroadcastDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AnnouncementEmailBroadcastClient) DeleteOneID(id int64) *AnnouncementEmailBroadcastDeleteOne {
+	builder := c.Delete().Where(announcementemailbroadcast.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AnnouncementEmailBroadcastDeleteOne{builder}
+}
+
+// Query returns a query builder for AnnouncementEmailBroadcast.
+func (c *AnnouncementEmailBroadcastClient) Query() *AnnouncementEmailBroadcastQuery {
+	return &AnnouncementEmailBroadcastQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAnnouncementEmailBroadcast},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AnnouncementEmailBroadcast entity by its id.
+func (c *AnnouncementEmailBroadcastClient) Get(ctx context.Context, id int64) (*AnnouncementEmailBroadcast, error) {
+	return c.Query().Where(announcementemailbroadcast.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AnnouncementEmailBroadcastClient) GetX(ctx context.Context, id int64) *AnnouncementEmailBroadcast {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AnnouncementEmailBroadcastClient) Hooks() []Hook {
+	return c.hooks.AnnouncementEmailBroadcast
+}
+
+// Interceptors returns the client interceptors.
+func (c *AnnouncementEmailBroadcastClient) Interceptors() []Interceptor {
+	return c.inters.AnnouncementEmailBroadcast
+}
+
+func (c *AnnouncementEmailBroadcastClient) mutate(ctx context.Context, m *AnnouncementEmailBroadcastMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AnnouncementEmailBroadcastCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AnnouncementEmailBroadcastUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AnnouncementEmailBroadcastUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AnnouncementEmailBroadcastDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AnnouncementEmailBroadcast mutation op: %q", m.Op())
+	}
+}
+
+// AnnouncementEmailDeliveryClient is a client for the AnnouncementEmailDelivery schema.
+type AnnouncementEmailDeliveryClient struct {
+	config
+}
+
+// NewAnnouncementEmailDeliveryClient returns a client for the AnnouncementEmailDelivery from the given config.
+func NewAnnouncementEmailDeliveryClient(c config) *AnnouncementEmailDeliveryClient {
+	return &AnnouncementEmailDeliveryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `announcementemaildelivery.Hooks(f(g(h())))`.
+func (c *AnnouncementEmailDeliveryClient) Use(hooks ...Hook) {
+	c.hooks.AnnouncementEmailDelivery = append(c.hooks.AnnouncementEmailDelivery, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `announcementemaildelivery.Intercept(f(g(h())))`.
+func (c *AnnouncementEmailDeliveryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AnnouncementEmailDelivery = append(c.inters.AnnouncementEmailDelivery, interceptors...)
+}
+
+// Create returns a builder for creating a AnnouncementEmailDelivery entity.
+func (c *AnnouncementEmailDeliveryClient) Create() *AnnouncementEmailDeliveryCreate {
+	mutation := newAnnouncementEmailDeliveryMutation(c.config, OpCreate)
+	return &AnnouncementEmailDeliveryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AnnouncementEmailDelivery entities.
+func (c *AnnouncementEmailDeliveryClient) CreateBulk(builders ...*AnnouncementEmailDeliveryCreate) *AnnouncementEmailDeliveryCreateBulk {
+	return &AnnouncementEmailDeliveryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AnnouncementEmailDeliveryClient) MapCreateBulk(slice any, setFunc func(*AnnouncementEmailDeliveryCreate, int)) *AnnouncementEmailDeliveryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AnnouncementEmailDeliveryCreateBulk{err: fmt.Errorf("calling to AnnouncementEmailDeliveryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AnnouncementEmailDeliveryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AnnouncementEmailDeliveryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AnnouncementEmailDelivery.
+func (c *AnnouncementEmailDeliveryClient) Update() *AnnouncementEmailDeliveryUpdate {
+	mutation := newAnnouncementEmailDeliveryMutation(c.config, OpUpdate)
+	return &AnnouncementEmailDeliveryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AnnouncementEmailDeliveryClient) UpdateOne(_m *AnnouncementEmailDelivery) *AnnouncementEmailDeliveryUpdateOne {
+	mutation := newAnnouncementEmailDeliveryMutation(c.config, OpUpdateOne, withAnnouncementEmailDelivery(_m))
+	return &AnnouncementEmailDeliveryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AnnouncementEmailDeliveryClient) UpdateOneID(id int64) *AnnouncementEmailDeliveryUpdateOne {
+	mutation := newAnnouncementEmailDeliveryMutation(c.config, OpUpdateOne, withAnnouncementEmailDeliveryID(id))
+	return &AnnouncementEmailDeliveryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AnnouncementEmailDelivery.
+func (c *AnnouncementEmailDeliveryClient) Delete() *AnnouncementEmailDeliveryDelete {
+	mutation := newAnnouncementEmailDeliveryMutation(c.config, OpDelete)
+	return &AnnouncementEmailDeliveryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AnnouncementEmailDeliveryClient) DeleteOne(_m *AnnouncementEmailDelivery) *AnnouncementEmailDeliveryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AnnouncementEmailDeliveryClient) DeleteOneID(id int64) *AnnouncementEmailDeliveryDeleteOne {
+	builder := c.Delete().Where(announcementemaildelivery.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AnnouncementEmailDeliveryDeleteOne{builder}
+}
+
+// Query returns a query builder for AnnouncementEmailDelivery.
+func (c *AnnouncementEmailDeliveryClient) Query() *AnnouncementEmailDeliveryQuery {
+	return &AnnouncementEmailDeliveryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAnnouncementEmailDelivery},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AnnouncementEmailDelivery entity by its id.
+func (c *AnnouncementEmailDeliveryClient) Get(ctx context.Context, id int64) (*AnnouncementEmailDelivery, error) {
+	return c.Query().Where(announcementemaildelivery.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AnnouncementEmailDeliveryClient) GetX(ctx context.Context, id int64) *AnnouncementEmailDelivery {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AnnouncementEmailDeliveryClient) Hooks() []Hook {
+	return c.hooks.AnnouncementEmailDelivery
+}
+
+// Interceptors returns the client interceptors.
+func (c *AnnouncementEmailDeliveryClient) Interceptors() []Interceptor {
+	return c.inters.AnnouncementEmailDelivery
+}
+
+func (c *AnnouncementEmailDeliveryClient) mutate(ctx context.Context, m *AnnouncementEmailDeliveryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AnnouncementEmailDeliveryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AnnouncementEmailDeliveryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AnnouncementEmailDeliveryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AnnouncementEmailDeliveryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AnnouncementEmailDelivery mutation op: %q", m.Op())
 	}
 }
 
@@ -7091,9 +7375,10 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		APIKey, Account, AccountGroup, Announcement, AnnouncementEmailBroadcast,
+		AnnouncementEmailDelivery, AnnouncementRead, AuthIdentity, AuthIdentityChannel,
+		BatchImageEvent, BatchImageItem, BatchImageJob, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ConversationExportJob, ConversationSession,
 		ConversationTurn, ErrorPassthroughRule, Group, IdempotencyRecord,
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
@@ -7103,9 +7388,10 @@ type (
 		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		APIKey, Account, AccountGroup, Announcement, AnnouncementEmailBroadcast,
+		AnnouncementEmailDelivery, AnnouncementRead, AuthIdentity, AuthIdentityChannel,
+		BatchImageEvent, BatchImageItem, BatchImageJob, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ConversationExportJob, ConversationSession,
 		ConversationTurn, ErrorPassthroughRule, Group, IdempotencyRecord,
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
