@@ -149,6 +149,15 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// user_group_account_bindings: public-group user scheduling policy
+	requireColumn(t, tx, "user_group_account_bindings", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "account_ids", "ARRAY", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "fallback_to_group", "boolean", 0, false)
+	requireForeignKeyOnDelete(t, tx, "user_group_account_bindings", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "user_group_account_bindings", "group_id", "groups", "CASCADE")
+	requireIndex(t, tx, "user_group_account_bindings", "idx_user_group_account_bindings_group_id")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

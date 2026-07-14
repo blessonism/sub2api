@@ -380,10 +380,8 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if err != nil || accountID <= 0 {
 		return 0, nil, "", nil
 	}
-	if excludedIDs != nil {
-		if _, excluded := excludedIDs[accountID]; excluded {
-			return 0, nil, "", nil
-		}
+	if isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
+		return 0, nil, "", nil
 	}
 
 	account, err := s.getSchedulableAccount(ctx, accountID)

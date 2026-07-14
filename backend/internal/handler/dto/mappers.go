@@ -82,12 +82,20 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	bindings := make(map[int64]UserGroupAccountBinding, len(u.GroupAccountBindings))
+	for groupID, binding := range u.GroupAccountBindings {
+		bindings[groupID] = UserGroupAccountBinding{
+			AccountIDs:      append([]int64(nil), binding.AccountIDs...),
+			FallbackToGroup: binding.FallbackToGroup,
+		}
+	}
 	return &AdminUser{
-		User:              *base,
-		Notes:             u.Notes,
-		LastUsedAt:        u.LastUsedAt,
-		GroupRates:        u.GroupRates,
-		VisibleGroupRates: u.VisibleGroupRates,
+		User:                 *base,
+		Notes:                u.Notes,
+		LastUsedAt:           u.LastUsedAt,
+		GroupRates:           u.GroupRates,
+		VisibleGroupRates:    u.VisibleGroupRates,
+		GroupAccountBindings: bindings,
 	}
 }
 
