@@ -240,6 +240,16 @@
                 <Icon name="cog" size="sm" class="md:mr-1.5" />
                 <span class="hidden md:inline">{{ t('admin.users.attributes.configButton') }}</span>
               </button>
+              <button
+                data-test="raise-concurrency-floor"
+                @click="openConcurrencyFloorDialog"
+                :disabled="raisingConcurrencyFloor"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.concurrencyFloorAction')"
+              >
+                <Icon name="bolt" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.users.concurrencyFloorAction') }}</span>
+              </button>
             </div>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
@@ -735,6 +745,25 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog
+      :show="showConcurrencyFloorDialog"
+      :title="t('admin.users.concurrencyFloorTitle')"
+      :message="t('admin.users.concurrencyFloorDescription')"
+      :confirm-text="t('admin.users.concurrencyFloorConfirm')"
+      @confirm="confirmConcurrencyFloor"
+      @cancel="showConcurrencyFloorDialog = false"
+    >
+      <label class="input-label" for="concurrency-floor-input">{{ t('admin.users.concurrencyFloorLabel') }}</label>
+      <input
+        id="concurrency-floor-input"
+        v-model.number="concurrencyFloor"
+        data-test="concurrency-floor-input"
+        type="number"
+        min="1"
+        step="1"
+        class="input"
+      />
+    </ConfirmDialog>
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <UserPlatformQuotaModal
@@ -1285,6 +1314,9 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const showConcurrencyFloorDialog = ref(false)
+const concurrencyFloor = ref<number | null>(null)
+const raisingConcurrencyFloor = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
@@ -1301,6 +1333,31 @@ const handlePlatformQuota = (user: AdminUser) => {
 const closePlatformQuotaModal = () => {
   showPlatformQuotaModal.value = false
   platformQuotaUser.value = null
+}
+
+const openConcurrencyFloorDialog = () => {
+  concurrencyFloor.value = null
+  showConcurrencyFloorDialog.value = true
+}
+
+const confirmConcurrencyFloor = async () => {
+  const value = Number(concurrencyFloor.value)
+  if (!Number.isInteger(value) || value < 1) {
+    appStore.showError(t('admin.users.concurrencyFloorInvalid'))
+    return
+  }
+
+  showConcurrencyFloorDialog.value = false
+  raisingConcurrencyFloor.value = true
+  try {
+    const result = await adminAPI.users.raiseConcurrencyFloor(value)
+    appStore.showSuccess(t('admin.users.concurrencyFloorSuccess', { count: result.affected }))
+    await loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.concurrencyFloorFailed'))
+  } finally {
+    raisingConcurrencyFloor.value = false
+  }
 }
 let abortController: AbortController | null = null
 let secondaryDataSeq = 0

@@ -9,13 +9,19 @@ const {
   getAllGroups,
   getBatchUsersUsage,
   listEnabledDefinitions,
-  getBatchUserAttributes
+  getBatchUserAttributes,
+  raiseConcurrencyFloor,
+  showError,
+  showSuccess
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
   getAllGroups: vi.fn(),
   getBatchUsersUsage: vi.fn(),
   listEnabledDefinitions: vi.fn(),
-  getBatchUserAttributes: vi.fn()
+  getBatchUserAttributes: vi.fn(),
+  raiseConcurrencyFloor: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -23,7 +29,8 @@ vi.mock('@/api/admin', () => ({
     users: {
       list: listUsers,
       toggleStatus: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      raiseConcurrencyFloor
     },
     groups: {
       getAll: getAllGroups
@@ -40,8 +47,8 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn()
+    showError,
+    showSuccess
   })
 }))
 
@@ -104,6 +111,9 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockReset()
     listEnabledDefinitions.mockReset()
     getBatchUserAttributes.mockReset()
+    raiseConcurrencyFloor.mockReset()
+    showError.mockReset()
+    showSuccess.mockReset()
 
     listUsers.mockResolvedValue({
       items: [createAdminUser()],
@@ -116,6 +126,7 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockResolvedValue({ stats: {} })
     listEnabledDefinitions.mockResolvedValue([])
     getBatchUserAttributes.mockResolvedValue({ values: {} })
+    raiseConcurrencyFloor.mockResolvedValue({ affected: 2 })
   })
 
   afterEach(() => {
@@ -338,5 +349,56 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('validates and raises the concurrency floor for all users', async () => {
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: {
+            props: ['show'],
+            emits: ['confirm', 'cancel'],
+            template: '<div v-if="show"><slot /><button data-test="confirm-concurrency-floor" @click="$emit(\'confirm\')">confirm</button></div>'
+          },
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+    await flushPromises()
+    const initialCalls = listUsers.mock.calls.length
+
+    await wrapper.get('[data-test="raise-concurrency-floor"]').trigger('click')
+    await wrapper.get('[data-test="concurrency-floor-input"]').setValue('0')
+    await wrapper.get('[data-test="confirm-concurrency-floor"]').trigger('click')
+
+    expect(raiseConcurrencyFloor).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.users.concurrencyFloorInvalid')
+
+    await wrapper.get('[data-test="concurrency-floor-input"]').setValue('5')
+    await wrapper.get('[data-test="confirm-concurrency-floor"]').trigger('click')
+    await flushPromises()
+
+    expect(raiseConcurrencyFloor).toHaveBeenCalledWith(5)
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.concurrencyFloorSuccess')
+    expect(listUsers.mock.calls.length).toBeGreaterThan(initialCalls)
   })
 })

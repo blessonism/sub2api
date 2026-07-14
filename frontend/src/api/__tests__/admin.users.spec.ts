@@ -12,6 +12,7 @@ vi.mock('@/api/client', () => ({
 
 import {
   bindUserAuthIdentity,
+  raiseConcurrencyFloor,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
 } from '@/api/admin/users'
@@ -113,5 +114,16 @@ describe('admin users api auth identity binding', () => {
   it('keeps bind auth identity request and response types aligned with the backend contract', () => {
     expect(requestContractExact).toBe(true)
     expect(responseContractExact).toBe(true)
+  })
+
+  it('raises the concurrency floor for all users', async () => {
+    post.mockResolvedValue({ data: { affected: 2 } })
+
+    await expect(raiseConcurrencyFloor(5)).resolves.toEqual({ affected: 2 })
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-concurrency', {
+      all: true,
+      concurrency: 5,
+      mode: 'floor',
+    })
   })
 })

@@ -2082,7 +2082,15 @@ export default {
       "columns": {
         "usageGrok": "Usage (Grok)"
       },
-      "visibleRate": "Visible Rate"
+      "visibleRate": "Visible Rate",
+      "concurrencyFloorAction": "Set concurrency floor",
+      "concurrencyFloorTitle": "Set concurrency floor for all users",
+      "concurrencyFloorDescription": "Raise concurrency for every non-deleted account, including disabled users and admins. Existing higher values stay unchanged.",
+      "concurrencyFloorLabel": "Concurrency floor",
+      "concurrencyFloorConfirm": "Raise concurrency",
+      "concurrencyFloorInvalid": "Concurrency floor must be an integer of at least 1",
+      "concurrencyFloorSuccess": "Raised concurrency for {count} users",
+      "concurrencyFloorFailed": "Failed to set concurrency floor"
     },
     "groups": {
       "timeRate": {
