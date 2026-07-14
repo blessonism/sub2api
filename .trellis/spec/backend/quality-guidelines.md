@@ -32,6 +32,49 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Usage log schema columns across downstream merges
+
+#### 1. Scope / Trigger
+- Trigger: adding, removing, reordering, or merging fields persisted in `usage_logs`.
+
+#### 2. Signatures
+- Source schema: `backend/ent/schema/usage_log.go`.
+- Insert contract: `usageLogInsertArgTypes`, insert column lists, placeholders, and `prepareUsageLogInsert` in `usage_log_repo_insert.go`.
+- Read contract: `usageLogSelectColumns` and `scanUsageLog` in `usage_log_repo_query.go`.
+
+#### 3. Contracts
+- Insert columns, argument types, prepared arguments, and static placeholders must have the same count and order.
+- Select columns, scan destinations, and `service.UsageLog` assignments must have the same count and order.
+- After merging schema fields, regenerate Ent with `go generate ./ent`; do not hand-edit generated files.
+
+#### 4. Validation & Error Matrix
+- Insert count/order mismatch -> fail repository tests before commit; never rely on PostgreSQL to expose it in production.
+- Select/scan mismatch -> fail scan fixture tests with the exact destination count.
+- Ent output differs after regeneration -> schema merge is incomplete.
+
+#### 5. Good/Base/Bad Cases
+- Good: parallel fields such as `visible_rate_multiplier` and `long_context_billing_applied` survive as an ordered union through schema, insert, query, service, DTO, and frontend types.
+- Base: nullable historical fields scan to `nil`; boolean fields use their schema default.
+- Bad: appending a column and argument while leaving a static query ending at the previous placeholder number.
+
+#### 6. Tests Required
+- Assert `len(prepareUsageLogInsert(log).args) == len(usageLogInsertArgTypes)`.
+- Cover single and best-effort inserts plus a scan fixture containing every persisted field.
+- Run `go generate ./ent` twice and require the second run to leave no diff.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+// 55 columns and args, but the query still ends at $54.
+VALUES ($1, /* ... */ $54)
+```
+
+Correct:
+```go
+VALUES ($1, /* ... */ $54, $55)
+```
+
 ### Scenario: Admin global user concurrency floor
 
 #### 1. Scope / Trigger
