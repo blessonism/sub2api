@@ -46,8 +46,14 @@ type AdminUser struct {
 	LastUsedAt *time.Time `json:"last_used_at"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
-	GroupRates        map[int64]float64 `json:"group_rates,omitempty"`
-	VisibleGroupRates map[int64]float64 `json:"visible_group_rates,omitempty"`
+	GroupRates           map[int64]float64                 `json:"group_rates,omitempty"`
+	VisibleGroupRates    map[int64]float64                 `json:"visible_group_rates,omitempty"`
+	GroupAccountBindings map[int64]UserGroupAccountBinding `json:"group_account_bindings,omitempty"`
+}
+
+type UserGroupAccountBinding struct {
+	AccountIDs      []int64 `json:"account_ids"`
+	FallbackToGroup bool    `json:"fallback_to_group"`
 }
 
 type APIKey struct {

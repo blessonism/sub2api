@@ -109,8 +109,14 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 用户专属可见分组倍率配置 (group_id -> visible_rate_multiplier)
   visible_group_rates?: Record<number, number>
+  group_account_bindings?: Record<number, UserGroupAccountBinding>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
+}
+
+export interface UserGroupAccountBinding {
+  account_ids: number[]
+  fallback_to_group: boolean
 }
 
 export interface LoginRequest {
@@ -1681,6 +1687,8 @@ export interface UpdateUserRequest {
   // 用户专属可见分组倍率配置 (group_id -> visible_rate_multiplier | null)
   // null 表示删除该分组的专属可见倍率
   visible_group_rates?: Record<number, number | null>
+  // 用户在标准公开分组中的账号调度限制；空对象表示清空全部绑定。
+  group_account_bindings?: Record<number, UserGroupAccountBinding>
 }
 
 export interface ChangePasswordRequest {
