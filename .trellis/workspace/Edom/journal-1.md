@@ -4,3 +4,36 @@
 > Started: 2026-06-18
 
 ---
+
+
+## Session 1: 公告已读情况按阅读时间排序
+
+**Date**: 2026-07-14
+**Task**: 公告已读情况按阅读时间排序
+**Branch**: `feature/user-public-group-account-binding`
+
+### Summary
+
+管理员公告已读情况改为数据库分页前按阅读时间倒序排列，未读用户置后，并同步前端默认排序与回归测试。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c6fea247b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

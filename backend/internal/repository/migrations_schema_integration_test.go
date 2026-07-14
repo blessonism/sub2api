@@ -155,6 +155,34 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// announcement email broadcast: durable job and recipient audit tables
+	requireColumn(t, tx, "announcement_email_broadcasts", "subject", "text", 0, false)
+	requireColumn(t, tx, "announcement_email_broadcasts", "body_html", "text", 0, false)
+	requireColumn(t, tx, "announcement_email_broadcasts", "failed_count", "integer", 0, false)
+	requireColumn(t, tx, "announcement_email_deliveries", "lease_expires_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "announcement_email_deliveries", "error_message", "character varying", 500, true)
+	requireIndex(t, tx, "announcement_email_deliveries", "announcement_email_deliveries_claim_idx")
+	requireForeignKeyOnDelete(t, tx, "announcement_email_broadcasts", "announcement_id", "announcements", "RESTRICT")
+	requireForeignKeyOnDelete(t, tx, "announcement_email_deliveries", "user_id", "users", "SET NULL")
+
+	// campaign historical invites: immutable qualification snapshot and fractional leaderboard counts
+	requireColumn(t, tx, "campaign_config_versions", "historical_invite_ratio", "numeric", 0, false)
+	requireColumn(t, tx, "campaigns", "historical_invite_snapshot_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "campaign_historical_invite_snapshots", "ratio_snapshot", "numeric", 0, false)
+	requireColumn(t, tx, "campaign_leaderboard_snapshots", "valid_invite_count", "numeric", 0, false)
+	requireColumn(t, tx, "user_affiliates", "inviter_bound_at", "timestamp with time zone", 0, true)
+	requireIndex(t, tx, "campaign_historical_invite_snapshots", "campaign_historical_invites_inviter_idx")
+	requireIndex(t, tx, "user_affiliates", "idx_user_affiliates_inviter_bound_at")
+
+	// user_group_account_bindings: public-group user scheduling policy
+	requireColumn(t, tx, "user_group_account_bindings", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "account_ids", "ARRAY", 0, false)
+	requireColumn(t, tx, "user_group_account_bindings", "fallback_to_group", "boolean", 0, false)
+	requireForeignKeyOnDelete(t, tx, "user_group_account_bindings", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "user_group_account_bindings", "group_id", "groups", "CASCADE")
+	requireIndex(t, tx, "user_group_account_bindings", "idx_user_group_account_bindings_group_id")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

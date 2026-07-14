@@ -580,6 +580,12 @@ export default {
       useDefaultRate: 'Use Default',
       customRatePlaceholder: 'Leave empty for default',
       groupConfigUpdated: 'Group configuration updated successfully',
+      limitAccounts: 'Limit scheduled accounts',
+      accountBindingStrict: 'Strict',
+      accountBindingFallback: 'Fall back to group accounts when unavailable',
+      accountBindingRequired: 'Select at least one account for "{group}"',
+      noGroupAccounts: 'No accounts in this group',
+      failedToLoadGroupAccounts: 'Failed to load group accounts',
       replaceGroup: 'Replace Group',
       clickToReplace: 'Click to replace',
       replaceGroupTitle: 'Replace Exclusive Group',
@@ -938,6 +944,13 @@ export default {
           'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
         finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
+      },
+      webSearchPricing: {
+        title: 'Codex Web Search Pricing',
+        pricePerCall: 'Price per search call (USD)',
+        pricePerCallHint:
+          'Leave empty to use the default $0.01 per call (official pricing: $10 per 1,000 calls); 0 means free. The group rate multiplier is applied on top.',
+        finalPricePreview: 'Per-call price after current multiplier: {price}'
       },
       peakRate: {
         enable: 'Enable peak rate multiplier',

@@ -28,6 +28,30 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	return err
 }
 
+// UpdateTokenLeaderboardSettings 只更新排行榜页面拥有的两个设置键。
+func (s *SettingService) UpdateTokenLeaderboardSettings(ctx context.Context, settings TokenLeaderboardSettings) (*TokenLeaderboardSettings, error) {
+	if err := s.validateTokenLeaderboardCommonGroup(ctx, settings.CommonGroupID); err != nil {
+		return nil, err
+	}
+
+	settings.TierTooltip = strings.TrimSpace(settings.TierTooltip)
+	if len([]rune(settings.TierTooltip)) > TokenLeaderboardTierTooltipMaxLength {
+		return nil, infraerrors.BadRequest("INVALID_TOKEN_LEADERBOARD_TIER_TOOLTIP", "token leaderboard tier tooltip is too long")
+	}
+
+	updates := map[string]string{
+		SettingKeyTokenLeaderboardCommonGroupID: strconv.FormatInt(settings.CommonGroupID, 10),
+		SettingKeyTokenLeaderboardTierTooltip:   settings.TierTooltip,
+	}
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return nil, err
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return &settings, nil
+}
+
 // UpdateSettingsWithAuthSourceDefaults persists system settings and auth-source defaults in a single write.
 func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Context, settings *SystemSettings, authDefaults *AuthSourceDefaultSettings) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)

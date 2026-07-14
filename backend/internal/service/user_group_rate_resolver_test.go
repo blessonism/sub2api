@@ -214,6 +214,20 @@ func TestUserGroupRateResolverResolveVisible_PrecedenceAndFallbacks(t *testing.T
 	require.Equal(t, userVisible, cached)
 }
 
+func TestUserGroupRateResolverResolveWithSourcePreservesEqualOverride(t *testing.T) {
+	rate := 1.2
+	repo := &userGroupRateResolverRepoStub{rate: &rate}
+	resolver := newUserGroupRateResolver(repo, gocache.New(time.Minute, time.Minute), time.Minute, nil, "service.test")
+
+	got, overridden := resolver.ResolveWithSource(context.Background(), 101, 202, 1.2)
+	require.Equal(t, 1.2, got)
+	require.True(t, overridden)
+
+	got, overridden = resolver.ResolveWithSource(context.Background(), 101, 202, 1.2)
+	require.Equal(t, 1.2, got)
+	require.True(t, overridden)
+}
+
 func TestUserGroupRateResolverResolveVisible_FallsBackToUserRateBeforeGroupVisible(t *testing.T) {
 	groupVisible := 1.25
 	userRate := 0.72

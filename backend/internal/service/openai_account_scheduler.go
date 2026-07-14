@@ -398,10 +398,8 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if accountID <= 0 {
 		return nil, false, nil
 	}
-	if req.ExcludedIDs != nil {
-		if _, excluded := req.ExcludedIDs[accountID]; excluded {
-			return nil, false, nil
-		}
+	if isAccountExcludedForRequest(ctx, req.ExcludedIDs, accountID) {
+		return nil, false, nil
 	}
 
 	account, err := s.service.getSchedulableAccount(ctx, accountID)
@@ -1021,10 +1019,8 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if accountID <= 0 {
 			continue
 		}
-		if req.ExcludedIDs != nil {
-			if _, excluded := req.ExcludedIDs[accountID]; excluded {
-				continue
-			}
+		if isAccountExcludedForRequest(ctx, req.ExcludedIDs, accountID) {
+			continue
 		}
 		account, err := s.service.getSchedulableAccount(ctx, accountID)
 		if err != nil || account == nil {
@@ -1100,10 +1096,8 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
-		if req.ExcludedIDs != nil {
-			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
-				continue
-			}
+		if isAccountExcludedForRequest(ctx, req.ExcludedIDs, account.ID) {
+			continue
 		}
 		if !account.IsSchedulable() || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 			continue
@@ -1690,6 +1684,38 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 }
 
 func (s *OpenAIGatewayService) selectAccountWithScheduler(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, OpenAIAccountScheduleDecision{}, err
+	}
+	if !applies {
+		return s.selectAccountWithSchedulerCore(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove)
+	}
+
+	selection, decision, err := s.selectAccountWithSchedulerCore(withUserGroupAccountBinding(ctx, binding.AccountIDs), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove)
+	if !binding.FallbackToGroup || (err == nil && selection != nil && selection.Acquired) || (err != nil && !isNoAvailableAccountSelectionError(err)) {
+		return selection, decision, err
+	}
+	if selection != nil && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	return s.selectAccountWithSchedulerCore(withoutUserGroupAccountBinding(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs), requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove)
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerCore(
 	ctx context.Context,
 	groupID *int64,
 	previousResponseID string,

@@ -99,8 +99,11 @@ export async function listLotteryDrawBatches(id: number): Promise<PaginatedRespo
   return data
 }
 
-export async function listLotteryWinners(id: number, batchId: number): Promise<{ items: LotteryWinner[] }> {
-  const { data } = await apiClient.get<{ items: LotteryWinner[] }>(`/admin/lottery-campaigns/${id}/draw-batches/${batchId}/winners`)
+export async function listLotteryWinners(id: number, batchId?: number): Promise<{ items: LotteryWinner[] }> {
+  const path = batchId == null
+    ? `/admin/lottery-campaigns/${id}/winners`
+    : `/admin/lottery-campaigns/${id}/draw-batches/${batchId}/winners`
+  const { data } = await apiClient.get<{ items: LotteryWinner[] }>(path)
   return data
 }
 

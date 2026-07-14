@@ -1,0 +1,844 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {
+      "id": "dashboard-operational-metrics",
+      "description": "Dashboard 余额池、活跃用户和订阅剩余价值等运营指标",
+      "tracked_commits": [
+        "6a53f203a670df1dd6fdb95146dff93d4733f838"
+      ],
+      "paths": [
+        "backend/internal/repository/usage_log_repo*.go",
+        "backend/internal/repository/dashboard_aggregation_repo.go",
+        "backend/internal/repository/usage_log_repo_integration_test.go",
+        "backend/internal/service/dashboard_service.go",
+        "backend/internal/service/dashboard_service_test.go",
+        "backend/internal/handler/admin/dashboard_handler*.go",
+        "backend/internal/pkg/usagestats/usage_log_types.go",
+        "frontend/src/api/admin/dashboard.ts",
+        "frontend/src/api/__tests__/admin.dashboard*.spec.ts",
+        "frontend/src/types/index.ts",
+        "frontend/src/views/admin/DashboardView.vue",
+        "frontend/src/views/admin/__tests__/DashboardView.spec.ts"
+      ],
+      "structural_successors": [
+        {
+          "source": "backend/internal/repository/usage_log_repo.go",
+          "successors": [
+            "backend/internal/repository/usage_log_repo_*.go"
+          ]
+        }
+      ],
+      "checks": [
+        "dashboard-handler",
+        "dashboard-repository-integration",
+        "dashboard-view"
+      ]
+    },
+    {
+      "id": "usage-latency-column",
+      "description": "用户使用记录延迟列、健康分档和时长格式",
+      "tracked_commits": [
+        "1a3cc2a787dc79231012e57ff9e8ad8606afcc7a"
+      ],
+      "paths": [
+        "frontend/src/components/admin/usage/**",
+        "frontend/src/utils/latencyHealth.ts",
+        "frontend/src/utils/__tests__/latencyHealth.spec.ts",
+        "frontend/src/views/admin/UsageView.vue",
+        "frontend/src/views/admin/__tests__/UsageView.spec.ts",
+        "frontend/src/views/admin/ops/components/OpsErrorLogTable.vue",
+        "frontend/src/views/user/UsageView.vue",
+        "frontend/src/views/user/__tests__/UsageView.spec.ts"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "latency-health",
+        "user-usage-view"
+      ]
+    },
+    {
+      "id": "i18n-overlay",
+      "description": "上游模块化 locale 与下游 custom overlay 的等价合并",
+      "tracked_commits": [],
+      "paths": [
+        "frontend/src/i18n/locales/**"
+      ],
+      "structural_successors": [
+        {
+          "source": "frontend/src/i18n/locales/en.ts",
+          "successors": [
+            "frontend/src/i18n/locales/en/**"
+          ]
+        },
+        {
+          "source": "frontend/src/i18n/locales/zh.ts",
+          "successors": [
+            "frontend/src/i18n/locales/zh/**"
+          ]
+        }
+      ],
+      "checks": [
+        "i18n-overlay",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "activity-center",
+      "description": "活动中心、邀请活动与抽奖活动的前后端契约",
+      "tracked_commits": [],
+      "paths": [
+        "backend/internal/handler/admin/campaign_handler*.go",
+        "backend/internal/handler/admin/lottery_campaign_handler*.go",
+        "backend/internal/handler/user_handler*.go",
+        "backend/internal/repository/campaign_repo*.go",
+        "backend/internal/repository/lottery_campaign_repo*.go",
+        "backend/internal/service/campaign_service*.go",
+        "backend/internal/service/lottery_campaign*.go",
+        "frontend/src/api/admin/campaigns.ts",
+        "frontend/src/api/admin/lotteryCampaigns.ts",
+        "frontend/src/api/campaigns.ts",
+        "frontend/src/api/lotteryCampaigns.ts",
+        "frontend/src/components/admin/activities/**",
+        "frontend/src/components/user/activities/**",
+        "frontend/src/router/__tests__/invite-routes.spec.ts",
+        "frontend/src/utils/campaignLifecycle*.ts",
+        "frontend/src/views/admin/CampaignRewardsView.vue",
+        "frontend/src/views/admin/__tests__/CampaignRewardsView.spec.ts",
+        "frontend/src/views/user/CampaignRewardsView.vue",
+        "frontend/src/views/user/__tests__/CampaignRewardsView.spec.ts"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "activity-center-backend",
+        "activity-center-frontend",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "token-leaderboards",
+      "description": "用户与管理员 Token 排行榜的聚合、脱敏和页面契约",
+      "tracked_commits": [],
+      "paths": [
+        "backend/internal/handler/usage_handler*.go",
+        "backend/internal/handler/admin/dashboard_handler*.go",
+        "backend/internal/pkg/usagestats/usage_log_types.go",
+        "backend/internal/repository/usage_log_repo_leaderboard.go",
+        "backend/internal/repository/usage_log_repo_request_type_test.go",
+        "backend/internal/service/usage_service*.go",
+        "backend/internal/service/dashboard_service*.go",
+        "frontend/src/api/usage.ts",
+        "frontend/src/api/admin/dashboard.ts",
+        "frontend/src/api/__tests__/usage.leaderboard.spec.ts",
+        "frontend/src/api/__tests__/admin.dashboard.token-leaderboard.spec.ts",
+        "frontend/src/views/admin/TokenLeaderboardView.vue",
+        "frontend/src/views/admin/__tests__/TokenLeaderboardView.spec.ts",
+        "frontend/src/views/user/LeaderboardView.vue",
+        "frontend/src/views/user/__tests__/LeaderboardView.spec.ts"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "leaderboard-backend",
+        "leaderboard-frontend",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "upstream-relay-monitoring",
+      "description": "上游中继监控、建议执行与凭据脱敏",
+      "tracked_commits": [],
+      "paths": [
+        "backend/internal/handler/admin/upstream_relay_group_monitoring_handler*.go",
+        "backend/internal/repository/upstream_relay_group_monitoring_repo*.go",
+        "backend/internal/repository/upstream_relay_recommendation*.go",
+        "backend/internal/service/upstream_relay_group_monitoring*.go",
+        "backend/internal/service/upstream_relay_monitoring_runner*.go",
+        "backend/internal/server/routes/upstream_relay_group_monitoring_routes_test.go",
+        "frontend/src/api/admin/upstreamRelayGroupMonitors.ts",
+        "frontend/src/api/__tests__/admin.upstreamRelayGroupMonitors.spec.ts",
+        "frontend/src/i18n/__tests__/upstreamRelayMonitoringLocales.spec.ts",
+        "frontend/src/views/admin/UpstreamRelayGroupMonitoringView.vue",
+        "frontend/src/views/admin/__tests__/UpstreamRelayGroupMonitoringView.spec.ts"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "upstream-monitoring-backend",
+        "upstream-monitoring-frontend",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "announcement-email-broadcast",
+      "description": "公告邮件群发持久化、投递恢复与管理端交互",
+      "tracked_commits": [
+        "d0535b367b17bb068615369d2d73ecb54ca69186"
+      ],
+      "paths": [
+        "backend/ent/schema/announcement_email_*.go",
+        "backend/internal/handler/admin/announcement_handler*.go",
+        "backend/internal/repository/announcement_email_broadcast_repo*.go",
+        "backend/internal/repository/announcement_repo.go",
+        "backend/internal/repository/migrations_schema_integration_test.go",
+        "backend/internal/service/announcement_email*.go",
+        "backend/migrations/*announcement_email_broadcast*.sql",
+        "frontend/src/api/admin/announcements.ts",
+        "frontend/src/api/__tests__/admin.announcements.email-broadcast.spec.ts",
+        "frontend/src/components/admin/announcements/AnnouncementEmailBroadcastDialog.vue",
+        "frontend/src/components/admin/announcements/__tests__/AnnouncementEmailBroadcastDialog.spec.ts",
+        "frontend/src/views/admin/AnnouncementsView.vue"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "announcement-email-backend",
+        "announcement-email-integration",
+        "announcement-email-frontend",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "group-time-rate-strategy",
+      "description": "分组每日多时段倍率、计费快照与管理端策略",
+      "tracked_commits": [
+        "1ea3ce931cac719be18ea3f6da472af6ae177acb"
+      ],
+      "paths": [
+        "backend/ent/schema/group.go",
+        "backend/ent/group*.go",
+        "backend/ent/group/**",
+        "backend/internal/domain/group_time_rate.go",
+        "backend/internal/handler/admin/group_handler*.go",
+        "backend/internal/repository/group_repo.go",
+        "backend/internal/service/group_time_rate*.go",
+        "backend/internal/service/effective_visible_rate*.go",
+        "backend/internal/service/user_group_rate_resolver*.go",
+        "backend/internal/service/gateway_usage_billing.go",
+        "backend/internal/service/openai_gateway_usage.go",
+        "backend/migrations/*group_time_rate_strategy*.sql",
+        "backend/migrations/group_time_rate_strategy_test.go",
+        "frontend/src/components/admin/group/GroupTimeRateStrategyModal.vue",
+        "frontend/src/components/admin/group/__tests__/GroupTimeRateStrategyModal.spec.ts",
+        "frontend/src/views/admin/GroupsView.vue"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "group-time-rate-backend",
+        "group-time-rate-frontend",
+        "frontend-typecheck"
+      ]
+    },
+    {
+      "id": "user-public-group-account-binding",
+      "description": "公开分组用户级账号绑定、调度限制与回退策略",
+      "tracked_commits": [
+        "4f7e9d4157023f0b4ee8b53c4959352419ac9d1b"
+      ],
+      "paths": [
+        "backend/internal/handler/admin/user_handler.go",
+        "backend/internal/repository/user_group_account_binding_repo*.go",
+        "backend/internal/service/user_group_account_binding*.go",
+        "backend/internal/service/gateway_scheduling.go",
+        "backend/internal/service/openai_account_scheduler.go",
+        "backend/internal/service/openai_gateway_scheduling.go",
+        "backend/internal/service/gemini_messages_compat_service.go",
+        "backend/migrations/*user_group_account_bindings*.sql",
+        "frontend/src/components/admin/user/UserAllowedGroupsModal.vue",
+        "frontend/src/components/admin/user/__tests__/UserAllowedGroupsModal.spec.ts"
+      ],
+      "structural_successors": [],
+      "checks": [
+        "user-group-account-binding-backend",
+        "user-group-account-binding-frontend",
+        "frontend-typecheck"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "frontend-typecheck",
+      "description": "前端 TypeScript 与 Vue 模板类型检查",
+      "lane": "frontend",
+      "paths": [
+        "frontend/**/*.ts",
+        "frontend/**/*.vue",
+        "frontend/package.json",
+        "frontend/pnpm-lock.yaml",
+        "frontend/tsconfig*.json"
+      ],
+      "argv": [
+        "pnpm",
+        "typecheck"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "user-usage-view",
+      "description": "用户使用记录表格渲染回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/views/user/UsageView.vue",
+        "frontend/src/views/user/__tests__/UsageView.spec.ts",
+        "frontend/src/components/admin/usage/**"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/views/user/__tests__/UsageView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "latency-health",
+      "description": "延迟颜色分档与长时长格式回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/utils/latencyHealth.ts",
+        "frontend/src/utils/__tests__/latencyHealth.spec.ts",
+        "frontend/src/views/user/UsageView.vue"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/utils/__tests__/latencyHealth.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "dashboard-view",
+      "description": "管理员 Dashboard 卡片契约回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/views/admin/DashboardView.vue",
+        "frontend/src/views/admin/__tests__/DashboardView.spec.ts",
+        "frontend/src/types/index.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/views/admin/__tests__/DashboardView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "i18n-overlay",
+      "description": "locale 模块冲突与下游覆盖回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/i18n/locales/**",
+        "frontend/src/i18n/__tests__/localesNoKeyCollision.spec.ts",
+        "frontend/src/i18n/__tests__/opsLocaleKeys.spec.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/i18n/__tests__/localesNoKeyCollision.spec.ts",
+        "src/i18n/__tests__/opsLocaleKeys.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "dashboard-handler",
+      "description": "Dashboard handler 运营指标序列化回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/handler/admin/dashboard_handler*.go",
+        "backend/internal/pkg/usagestats/usage_log_types.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/admin",
+        "-run",
+        "^TestDashboardHandler_GetStats_IncludesOperationalMetrics$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "dashboard-repository-integration",
+      "description": "Dashboard 真实 SQL 聚合与 fallback 运营指标回归",
+      "lane": "integration",
+      "paths": [
+        "backend/internal/repository/usage_log_repo*.go",
+        "backend/internal/repository/dashboard_aggregation_repo.go",
+        "backend/internal/repository/usage_log_repo_integration_test.go",
+        "backend/internal/service/dashboard_service.go",
+        "backend/internal/service/dashboard_service_test.go",
+        "frontend/src/api/admin/dashboard.ts",
+        "frontend/src/api/__tests__/admin.dashboard*.spec.ts",
+        "backend/internal/pkg/usagestats/usage_log_types.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "^TestUsageLogRepoSuite/(TestDashboardStats_TodayTotalsAndPerformance|TestDashboardStats_OperationalMetrics|TestDashboardStatsWithRange_Fallback|TestDashboardAggregationConsistency)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "activity-center-backend",
+      "description": "活动中心邀请与抽奖的仓储、服务和 handler 回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/handler/admin/campaign_handler*.go",
+        "backend/internal/handler/admin/lottery_campaign_handler*.go",
+        "backend/internal/handler/user_handler*.go",
+        "backend/internal/repository/campaign_repo*.go",
+        "backend/internal/repository/lottery_campaign_repo*.go",
+        "backend/internal/service/campaign_service*.go",
+        "backend/internal/service/lottery_campaign*.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/admin",
+        "./internal/handler",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "(Campaign|Lottery)",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "activity-center-frontend",
+      "description": "活动中心路由、页面与邀请/抽奖组件回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/api/admin/campaigns.ts",
+        "frontend/src/api/admin/lotteryCampaigns.ts",
+        "frontend/src/api/campaigns.ts",
+        "frontend/src/api/lotteryCampaigns.ts",
+        "frontend/src/components/admin/activities/**",
+        "frontend/src/components/user/activities/**",
+        "frontend/src/router/__tests__/invite-routes.spec.ts",
+        "frontend/src/utils/campaignLifecycle*.ts",
+        "frontend/src/views/admin/CampaignRewardsView.vue",
+        "frontend/src/views/admin/__tests__/CampaignRewardsView.spec.ts",
+        "frontend/src/views/user/CampaignRewardsView.vue",
+        "frontend/src/views/user/__tests__/CampaignRewardsView.spec.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/router/__tests__/invite-routes.spec.ts",
+        "src/utils/__tests__/campaignLifecycle.spec.ts",
+        "src/views/admin/__tests__/CampaignRewardsView.spec.ts",
+        "src/views/user/__tests__/CampaignRewardsView.spec.ts",
+        "src/components/user/activities/__tests__/LotteryCampaignActivity.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "leaderboard-backend",
+      "description": "Token 排行榜查询、脱敏和管理员操作回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/handler/usage_handler*.go",
+        "backend/internal/handler/admin/dashboard_handler*.go",
+        "backend/internal/pkg/usagestats/usage_log_types.go",
+        "backend/internal/repository/usage_log_repo_leaderboard.go",
+        "backend/internal/repository/usage_log_repo_request_type_test.go",
+        "backend/internal/service/usage_service*.go",
+        "backend/internal/service/dashboard_service*.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler",
+        "./internal/handler/admin",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "Leaderboard",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "leaderboard-frontend",
+      "description": "用户与管理员 Token 排行榜 API 和页面回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/api/usage.ts",
+        "frontend/src/api/admin/dashboard.ts",
+        "frontend/src/api/__tests__/usage.leaderboard.spec.ts",
+        "frontend/src/api/__tests__/admin.dashboard.token-leaderboard.spec.ts",
+        "frontend/src/views/admin/TokenLeaderboardView.vue",
+        "frontend/src/views/admin/__tests__/TokenLeaderboardView.spec.ts",
+        "frontend/src/views/user/LeaderboardView.vue",
+        "frontend/src/views/user/__tests__/LeaderboardView.spec.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/api/__tests__/usage.leaderboard.spec.ts",
+        "src/api/__tests__/admin.dashboard.token-leaderboard.spec.ts",
+        "src/views/admin/__tests__/TokenLeaderboardView.spec.ts",
+        "src/views/user/__tests__/LeaderboardView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "upstream-monitoring-backend",
+      "description": "上游中继监控仓储、服务、handler 和路由回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/handler/admin/upstream_relay_group_monitoring_handler*.go",
+        "backend/internal/repository/upstream_relay_group_monitoring_repo*.go",
+        "backend/internal/repository/upstream_relay_recommendation*.go",
+        "backend/internal/service/upstream_relay_group_monitoring*.go",
+        "backend/internal/service/upstream_relay_monitoring_runner*.go",
+        "backend/internal/server/routes/upstream_relay_group_monitoring_routes_test.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/admin",
+        "./internal/repository",
+        "./internal/service",
+        "./internal/server/routes",
+        "-run",
+        "UpstreamRelay",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "upstream-monitoring-frontend",
+      "description": "上游中继监控 API、页面与 locale 回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/api/admin/upstreamRelayGroupMonitors.ts",
+        "frontend/src/api/__tests__/admin.upstreamRelayGroupMonitors.spec.ts",
+        "frontend/src/i18n/__tests__/upstreamRelayMonitoringLocales.spec.ts",
+        "frontend/src/views/admin/UpstreamRelayGroupMonitoringView.vue",
+        "frontend/src/views/admin/__tests__/UpstreamRelayGroupMonitoringView.spec.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/api/__tests__/admin.upstreamRelayGroupMonitors.spec.ts",
+        "src/i18n/__tests__/upstreamRelayMonitoringLocales.spec.ts",
+        "src/views/admin/__tests__/UpstreamRelayGroupMonitoringView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "announcement-email-backend",
+      "description": "公告邮件渲染、收件人过滤与 Worker 投递回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/service/announcement_email*.go",
+        "backend/internal/handler/admin/announcement_handler*.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/service",
+        "-run",
+        "AnnouncementEmail|DeliverableAnnouncementEmail",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "announcement-email-integration",
+      "description": "公告邮件仓储生命周期与迁移结构回归",
+      "lane": "integration",
+      "paths": [
+        "backend/internal/repository/announcement_email_broadcast_repo*.go",
+        "backend/internal/repository/announcement_repo.go",
+        "backend/internal/repository/migrations_schema_integration_test.go",
+        "backend/migrations/*announcement_email_broadcast*.sql"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "Test(AnnouncementEmailBroadcastRepositoryDeliveryLifecycle|MigrationsRunner_IsIdempotent_AndSchemaIsUpToDate)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "announcement-email-frontend",
+      "description": "公告邮件管理 API 与群发弹窗回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/api/admin/announcements.ts",
+        "frontend/src/api/__tests__/admin.announcements.email-broadcast.spec.ts",
+        "frontend/src/components/admin/announcements/AnnouncementEmailBroadcastDialog.vue",
+        "frontend/src/components/admin/announcements/__tests__/AnnouncementEmailBroadcastDialog.spec.ts",
+        "frontend/src/views/admin/AnnouncementsView.vue"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/api/__tests__/admin.announcements.email-broadcast.spec.ts",
+        "src/components/admin/announcements/__tests__/AnnouncementEmailBroadcastDialog.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "group-time-rate-backend",
+      "description": "分时倍率边界、计费优先级、迁移与管理员输入回归",
+      "lane": "backend",
+      "paths": [
+        "backend/ent/schema/group.go",
+        "backend/internal/domain/group_time_rate.go",
+        "backend/internal/handler/admin/group_handler*.go",
+        "backend/internal/repository/group_repo.go",
+        "backend/internal/service/group_time_rate*.go",
+        "backend/internal/service/effective_visible_rate*.go",
+        "backend/internal/service/user_group_rate_resolver*.go",
+        "backend/migrations/*group_time_rate_strategy*"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/handler/admin",
+        "./internal/service",
+        "./migrations",
+        "-run",
+        "TimeRate|MigratedPeakRate",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "group-time-rate-frontend",
+      "description": "分时倍率策略弹窗交互回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/components/admin/group/GroupTimeRateStrategyModal.vue",
+        "frontend/src/components/admin/group/__tests__/GroupTimeRateStrategyModal.spec.ts",
+        "frontend/src/views/admin/GroupsView.vue"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/components/admin/group/__tests__/GroupTimeRateStrategyModal.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "user-group-account-binding-backend",
+      "description": "用户公开分组账号绑定仓储、校验与多平台调度回归",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/repository/user_group_account_binding_repo*.go",
+        "backend/internal/service/user_group_account_binding*.go",
+        "backend/internal/service/gateway_scheduling.go",
+        "backend/internal/service/openai_account_scheduler.go",
+        "backend/internal/service/openai_gateway_scheduling.go",
+        "backend/internal/service/gemini_messages_compat_service.go"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "UserGroupAccountBinding|AccountBinding",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "user-group-account-binding-frontend",
+      "description": "管理员用户公开分组账号绑定交互回归",
+      "lane": "frontend",
+      "paths": [
+        "frontend/src/components/admin/user/UserAllowedGroupsModal.vue",
+        "frontend/src/components/admin/user/__tests__/UserAllowedGroupsModal.spec.ts"
+      ],
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/components/admin/user/__tests__/UserAllowedGroupsModal.spec.ts"
+      ],
+      "cwd": "frontend",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "backend-handler-compile",
+      "description": "未映射 handler 交叉变更的通用编译门禁",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/handler/*.go",
+        "backend/internal/handler/**/*.go",
+        "backend/go.mod",
+        "backend/go.sum"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "backend-service-compile",
+      "description": "未映射 service 交叉变更的通用编译门禁",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/service/*.go",
+        "backend/internal/service/**/*.go",
+        "backend/go.mod",
+        "backend/go.sum"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/service",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "backend-repository-compile",
+      "description": "未映射 repository 交叉变更的通用编译门禁",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/repository/*.go",
+        "backend/internal/repository/**/*.go",
+        "backend/go.mod",
+        "backend/go.sum"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/repository",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "backend-server-compile",
+      "description": "未映射 server 交叉变更的通用编译门禁",
+      "lane": "backend",
+      "paths": [
+        "backend/internal/server/*.go",
+        "backend/internal/server/**/*.go",
+        "backend/go.mod",
+        "backend/go.sum"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./internal/server/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "backend-ent-compile",
+      "description": "未映射 Ent 生成代码交叉变更的通用编译门禁",
+      "lane": "backend",
+      "paths": [
+        "backend/ent/*.go",
+        "backend/ent/**/*.go",
+        "backend/go.mod",
+        "backend/go.sum"
+      ],
+      "argv": [
+        "go",
+        "test",
+        "./ent/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "timeout_seconds": 60,
+      "fallback": true
+    },
+    {
+      "id": "upstream-sync-tool-tests",
+      "description": "上游同步 CLI、矩阵和集成入口回归",
+      "lane": "backend",
+      "paths": [
+        "tools/upstream_sync.py",
+        "tools/upstream_sync_checks.json",
+        "tools/tests/test_upstream_sync.py",
+        "Makefile",
+        ".github/workflows/downstream-sync.yml",
+        ".github/workflows/backend-ci.yml",
+        ".trellis/spec/guides/downstream-fork-workflow.md"
+      ],
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/tests",
+        "-p",
+        "test_upstream_sync.py"
+      ],
+      "cwd": ".",
+      "timeout_seconds": 60
+    }
+  ]
+}

@@ -57,6 +57,30 @@ func (f AnnouncementFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementMutation", m)
 }
 
+// The AnnouncementEmailBroadcastFunc type is an adapter to allow the use of ordinary
+// function as AnnouncementEmailBroadcast mutator.
+type AnnouncementEmailBroadcastFunc func(context.Context, *ent.AnnouncementEmailBroadcastMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AnnouncementEmailBroadcastFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AnnouncementEmailBroadcastMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementEmailBroadcastMutation", m)
+}
+
+// The AnnouncementEmailDeliveryFunc type is an adapter to allow the use of ordinary
+// function as AnnouncementEmailDelivery mutator.
+type AnnouncementEmailDeliveryFunc func(context.Context, *ent.AnnouncementEmailDeliveryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AnnouncementEmailDeliveryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AnnouncementEmailDeliveryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementEmailDeliveryMutation", m)
+}
+
 // The AnnouncementReadFunc type is an adapter to allow the use of ordinary
 // function as AnnouncementRead mutator.
 type AnnouncementReadFunc func(context.Context, *ent.AnnouncementReadMutation) (ent.Value, error)

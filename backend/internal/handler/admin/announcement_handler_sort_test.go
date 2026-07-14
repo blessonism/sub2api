@@ -42,10 +42,12 @@ func (r *announcementRepoCapture) GetByID(ctx context.Context, id int64) (*servi
 type announcementUserRepoCapture struct {
 	service.UserRepository
 	listParams pagination.PaginationParams
+	filters    service.UserListFilters
 }
 
 func (r *announcementUserRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
 	r.listParams = params
+	r.filters = filters
 	return []service.User{}, &pagination.PaginationResult{
 		Total:    0,
 		Page:     params.Page,
@@ -74,7 +76,7 @@ func newAnnouncementSortTestRouter(announcementRepo *announcementRepoCapture, us
 		userRepo,
 		&announcementUserSubRepoCapture{},
 	)
-	handler := NewAnnouncementHandler(svc)
+	handler := NewAnnouncementHandler(svc, nil)
 	router := gin.New()
 	router.GET("/admin/announcements", handler.List)
 	router.GET("/admin/announcements/:id/read-status", handler.ListReadStatus)
@@ -133,6 +135,7 @@ func TestAdminAnnouncementReadStatusSortDefaults(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "email", userRepo.listParams.SortBy)
-	require.Equal(t, "asc", userRepo.listParams.SortOrder)
+	require.Equal(t, "read_at", userRepo.listParams.SortBy)
+	require.Equal(t, "desc", userRepo.listParams.SortOrder)
+	require.Equal(t, int64(1), userRepo.filters.ReadStatusAnnouncementID)
 }

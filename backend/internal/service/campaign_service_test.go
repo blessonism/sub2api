@@ -48,6 +48,42 @@ func TestCalculateCampaignRewardsUsesRankWeightsAndContributionSqrt(t *testing.T
 	}
 }
 
+func TestCalculateCampaignRewardsPreservesFractionalInviteCounts(t *testing.T) {
+	cfg := campaignTestConfig(0)
+	rows := []CampaignLeaderboardRow{
+		campaignTestLeaderboardRow(1, 1, 100),
+		campaignTestLeaderboardRow(2, 1, 100),
+	}
+	rows[0].ValidInviteCount = 1.25
+	rows[1].ValidInviteCount = 1.5
+
+	summary := calculateCampaignRewards(7, cfg, 10_000, rows, CampaignCalculationPreview, "fractional")
+	if len(summary.Results) != 2 || summary.Results[0].UserID != 2 {
+		t.Fatalf("小数有效邀请次数应完整参与排序：%+v", summary.Results)
+	}
+	if !summary.Results[0].ContributionWeight.GreaterThan(summary.Results[1].ContributionWeight) {
+		t.Fatalf("小数有效邀请次数应完整参与贡献权重计算")
+	}
+}
+
+func TestBuildInitialCampaignConfigRejectsHistoricalInviteRatioOutsideRange(t *testing.T) {
+	input := CampaignCreateInput{
+		StartAt:                  time.Now(),
+		RechargeThresholdCents:   2_000,
+		HistoricalInviteRatio:    decimal.RequireFromString("1.01"),
+		PoolInjectionRate:        decimal.RequireFromString("0.1"),
+		RankPoolRatio:            decimal.RequireFromString("0.8"),
+		ContributionPoolRatio:    decimal.RequireFromString("0.2"),
+		RankRewardCount:          10,
+		RankWeights:              append([]int64(nil), defaultCampaignRankWeights...),
+		MinPayoutAmountCents:     100,
+		AllowAccumulatedRecharge: true,
+	}
+	if _, err := buildInitialCampaignConfig(input); !errors.Is(err, ErrCampaignInvalidConfig) {
+		t.Fatalf("超出范围的历史邀请折算比例应被拒绝，err=%v", err)
+	}
+}
+
 func TestCalculateCampaignRewardsWithholdsBelowMinimumPayout(t *testing.T) {
 	cfg := campaignTestConfig(10_000)
 	rows := []CampaignLeaderboardRow{
@@ -662,7 +698,7 @@ func TestCampaignGetMyDataReturnsCurrentRankOutsideTop50(t *testing.T) {
 		t.Fatalf("Top50 列表未命中当前用户时应查询当前用户排名补位")
 	}
 	if got.ValidInviteCount != 1 || got.InviteeRechargeAmountCents != 20_000 {
-		t.Fatalf("补位排名行应同步我的有效邀请与充值金额，valid=%d recharge=%d", got.ValidInviteCount, got.InviteeRechargeAmountCents)
+		t.Fatalf("补位排名行应同步我的有效邀请与充值金额，valid=%g recharge=%d", got.ValidInviteCount, got.InviteeRechargeAmountCents)
 	}
 }
 
@@ -1204,7 +1240,7 @@ func campaignTestLeaderboardRow(userID int64, validInvites int, rechargeCents in
 	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
 	return CampaignLeaderboardRow{
 		UserID:                     userID,
-		ValidInviteCount:           validInvites,
+		ValidInviteCount:           float64(validInvites),
 		PendingInviteCount:         1,
 		InviteeRechargeAmountCents: rechargeCents,
 		ReachedCountAt:             now,

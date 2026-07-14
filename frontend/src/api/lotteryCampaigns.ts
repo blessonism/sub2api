@@ -66,6 +66,7 @@ export interface LotteryMyData {
   entry_status: string
   next_draw_at?: string | null
   participant_count: number
+  round_completed: boolean
   winners: LotteryWinner[]
 }
 
@@ -73,7 +74,14 @@ export interface LotteryPublicWinner {
   masked_email: string
   prize_name: string
   reward_amount_cents: number
+  entry_date: string
+  is_current_round: boolean
   created_at: string
+}
+
+export interface LotteryParticipant {
+  masked_email: string
+  entry_count: number
 }
 
 export async function getActiveLotteryCampaign(): Promise<{ campaign: LotteryCampaign | null }> {
@@ -98,11 +106,17 @@ export async function getRecentLotteryWinners(campaignId: number, limit?: number
   return data
 }
 
+export async function getLotteryParticipants(campaignId: number): Promise<{ items: LotteryParticipant[] }> {
+  const { data } = await apiClient.get<{ items: LotteryParticipant[] }>(`/lottery-campaigns/${campaignId}/participants`)
+  return data
+}
+
 export const lotteryCampaignsAPI = {
   getActiveLotteryCampaign,
   getMyLotteryCampaignData,
   enrollLotteryCampaign,
   getRecentLotteryWinners,
+  getLotteryParticipants,
 }
 
 export default lotteryCampaignsAPI

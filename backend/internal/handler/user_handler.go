@@ -142,6 +142,23 @@ func (h *UserHandler) GetLotteryCampaignWinners(c *gin.Context) {
 	response.Success(c, gin.H{"items": winners})
 }
 
+func (h *UserHandler) GetLotteryCampaignParticipants(c *gin.Context) {
+	campaignID, ok := parseCampaignIDParam(c)
+	if !ok {
+		return
+	}
+	if h.lotteryCampaignService == nil {
+		response.NotFound(c, "Lottery campaign service unavailable")
+		return
+	}
+	participants, err := h.lotteryCampaignService.Participants(c.Request.Context(), campaignID, time.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": participants})
+}
+
 // GetActiveCampaign 返回当前进行中的邀请奖励活动。
 func (h *UserHandler) GetActiveCampaign(c *gin.Context) {
 	if h.campaignService == nil {
