@@ -115,6 +115,13 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center space-x-1">
               <button
+                @click="openEmailBroadcast(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                :title="t('admin.announcements.emailBroadcast.action')"
+              >
+                <Icon name="mail" size="sm" />
+              </button>
+              <button
                 @click="openReadStatus(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
                 :title="t('admin.announcements.readStatus')"
@@ -240,6 +247,13 @@
       :announcement-id="readStatusAnnouncementId"
       @close="showReadStatusDialog = false"
     />
+
+    <AnnouncementEmailBroadcastDialog
+      :show="showEmailBroadcastDialog"
+      :announcement-id="emailBroadcastAnnouncementId"
+      @close="showEmailBroadcastDialog = false"
+      @broadcast-created="markAnnouncementBroadcasted"
+    />
   </AppLayout>
 </template>
 
@@ -265,6 +279,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 import AnnouncementTargetingEditor from '@/components/admin/announcements/AnnouncementTargetingEditor.vue'
 import AnnouncementReadStatusDialog from '@/components/admin/announcements/AnnouncementReadStatusDialog.vue'
+import AnnouncementEmailBroadcastDialog from '@/components/admin/announcements/AnnouncementEmailBroadcastDialog.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -566,6 +581,10 @@ const showDeleteDialog = ref(false)
 const deletingAnnouncement = ref<Announcement | null>(null)
 
 function handleDelete(row: Announcement) {
+  if (broadcastedAnnouncementIds.has(row.id)) {
+    appStore.showError(t('admin.announcements.emailBroadcast.deleteBlocked'))
+    return
+  }
   deletingAnnouncement.value = row
   showDeleteDialog.value = true
 }
@@ -592,6 +611,20 @@ const readStatusAnnouncementId = ref<number | null>(null)
 function openReadStatus(row: Announcement) {
   readStatusAnnouncementId.value = row.id
   showReadStatusDialog.value = true
+}
+
+// ===== Email broadcast =====
+const showEmailBroadcastDialog = ref(false)
+const emailBroadcastAnnouncementId = ref<number | null>(null)
+const broadcastedAnnouncementIds = new Set<number>()
+
+function openEmailBroadcast(row: Announcement) {
+  emailBroadcastAnnouncementId.value = row.id
+  showEmailBroadcastDialog.value = true
+}
+
+function markAnnouncementBroadcasted(id: number) {
+  broadcastedAnnouncementIds.add(id)
 }
 
 onMounted(async () => {

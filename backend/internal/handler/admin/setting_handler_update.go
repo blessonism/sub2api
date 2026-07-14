@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // UpdateSettingsRequest 更新设置请求
@@ -299,6 +302,11 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// Token leaderboard user-facing controls
+	TokenLeaderboardUserVisible   *bool   `json:"token_leaderboard_user_visible"`
+	TokenLeaderboardCommonGroupID *int64  `json:"token_leaderboard_common_group_id"`
+	TokenLeaderboardTierTooltip   *string `json:"token_leaderboard_tier_tooltip"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -327,11 +335,81 @@ type UpdateSettingsRequest struct {
 	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
 }
 
+const settingsReplaceModeHeader = "X-Settings-Write-Mode"
+
+var errIncompleteSettingsReplaceRequest = errors.New("full settings replacement request is incomplete")
+
+func requiredSettingsReplaceFields() []string {
+	typ := reflect.TypeOf(UpdateSettingsRequest{})
+	fields := make([]string, 0, typ.NumField())
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Type.Kind() == reflect.Pointer {
+			continue
+		}
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "" || name == "-" {
+			continue
+		}
+		fields = append(fields, name)
+	}
+	sort.Strings(fields)
+	return fields
+}
+
+func validateSettingsReplaceFields(payload map[string]json.RawMessage) error {
+	for _, field := range requiredSettingsReplaceFields() {
+		if _, ok := payload[field]; !ok {
+			return errIncompleteSettingsReplaceRequest
+		}
+	}
+	return nil
+}
+
+type updateTokenLeaderboardSettingsRequest struct {
+	CommonGroupID int64  `json:"token_leaderboard_common_group_id"`
+	TierTooltip   string `json:"token_leaderboard_tier_tooltip"`
+}
+
+// UpdateTokenLeaderboardSettings 仅更新排行榜页面拥有的设置。
+func (h *SettingHandler) UpdateTokenLeaderboardSettings(c *gin.Context) {
+	var req updateTokenLeaderboardSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	updated, err := h.settingService.UpdateTokenLeaderboardSettings(c.Request.Context(), service.TokenLeaderboardSettings{
+		CommonGroupID: req.CommonGroupID,
+		TierTooltip:   req.TierTooltip,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, updated)
+}
+
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
+	if c.GetHeader(settingsReplaceModeHeader) != "replace" {
+		response.ErrorWithDetails(c, http.StatusBadRequest, "Full settings replacement requires X-Settings-Write-Mode: replace", "INVALID_SETTINGS_REPLACE_REQUEST", nil)
+		return
+	}
+
+	var rawPayload map[string]json.RawMessage
+	if err := c.ShouldBindBodyWith(&rawPayload, binding.JSON); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := validateSettingsReplaceFields(rawPayload); err != nil {
+		response.ErrorWithDetails(c, http.StatusBadRequest, err.Error(), "INVALID_SETTINGS_REPLACE_REQUEST", nil)
+		return
+	}
+
 	var req UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -1505,6 +1583,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		TokenLeaderboardUserVisible: func() bool {
+			if req.TokenLeaderboardUserVisible != nil {
+				return *req.TokenLeaderboardUserVisible
+			}
+			return previousSettings.TokenLeaderboardUserVisible
+		}(),
+		TokenLeaderboardCommonGroupID: func() int64 {
+			if req.TokenLeaderboardCommonGroupID != nil {
+				return *req.TokenLeaderboardCommonGroupID
+			}
+			return previousSettings.TokenLeaderboardCommonGroupID
+		}(),
+		TokenLeaderboardTierTooltip: func() string {
+			if req.TokenLeaderboardTierTooltip != nil {
+				return *req.TokenLeaderboardTierTooltip
+			}
+			return previousSettings.TokenLeaderboardTierTooltip
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1879,7 +1975,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
-		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		AvailableChannelsEnabled:      updatedSettings.AvailableChannelsEnabled,
+		TokenLeaderboardUserVisible:   updatedSettings.TokenLeaderboardUserVisible,
+		TokenLeaderboardCommonGroupID: updatedSettings.TokenLeaderboardCommonGroupID,
+		TokenLeaderboardTierTooltip:   updatedSettings.TokenLeaderboardTierTooltip,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

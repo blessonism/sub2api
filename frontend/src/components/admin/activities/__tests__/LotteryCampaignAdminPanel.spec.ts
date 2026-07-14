@@ -21,6 +21,7 @@ const {
   deleteLotteryCampaign,
   syncLotteryEntries,
   drawLotteryCampaign,
+  listLotteryWinners,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ const {
   deleteLotteryCampaign: vi.fn(),
   syncLotteryEntries: vi.fn(),
   drawLotteryCampaign: vi.fn(),
+  listLotteryWinners: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
@@ -49,6 +51,7 @@ vi.mock('@/api/admin', () => ({
       deleteLotteryCampaign,
       syncLotteryEntries,
       drawLotteryCampaign,
+      listLotteryWinners,
     },
   },
 }))
@@ -108,9 +111,11 @@ describe('LotteryCampaignAdminPanel', () => {
     deleteLotteryCampaign.mockReset()
     syncLotteryEntries.mockReset()
     drawLotteryCampaign.mockReset()
+    listLotteryWinners.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     listLotteryCampaigns.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+    listLotteryWinners.mockResolvedValue({ items: [] })
   })
 
   it('converts million-unit token inputs to raw token payload values', async () => {
@@ -247,5 +252,62 @@ describe('LotteryCampaignAdminPanel', () => {
     await vm.submitSave()
     expect(createLotteryCampaign).not.toHaveBeenCalled()
     expect(showError).toHaveBeenCalledWith('admin.lotteryCampaigns.invalidThresholdCost')
+  })
+
+  it('allows an ended published campaign to become persistent and shows its winners', async () => {
+    listLotteryCampaigns.mockResolvedValue({
+      items: [{
+        id: 7,
+        name: 'Ended Lottery',
+        description: '',
+        rules_text: '',
+        status: 'published',
+        participation_mode: 'auto',
+        draw_schedule_type: 'single',
+        prize_mode: 'single',
+        entry_mode: 'daily_once',
+        threshold_tokens: 100_000,
+        entry_step_tokens: 0,
+        max_entries_per_user: 1,
+        start_at: '2026-07-01T00:00:00.000Z',
+        end_at: '2026-07-02T00:00:00.000Z',
+        draw_at: '2026-07-02T00:00:00.000Z',
+        daily_draw_time: '',
+        prize_tiers: [{ id: 1, campaign_id: 7, tier_name: 'Gold', winner_count: 1, reward_amount_cents: 1000, sort_order: 1, created_at: '2026-07-01T00:00:00.000Z' }],
+        created_at: '2026-07-01T00:00:00.000Z',
+        updated_at: '2026-07-02T00:00:00.000Z',
+        is_featured: false,
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    listLotteryWinners.mockResolvedValue({
+      items: [{
+        id: 11,
+        batch_id: 9,
+        campaign_id: 7,
+        user_id: 42,
+        prize_tier_id: 1,
+        prize_name: 'Gold',
+        entry_date: '2026-07-02',
+        reward_amount_cents: 1000,
+        status: 'success',
+        idempotency_key: 'hidden-in-admin-only-response',
+        error_message: '',
+        created_at: '2026-07-02T00:00:00.000Z',
+        processed_at: '2026-07-02T00:01:00.000Z',
+      }],
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const persistentButton = wrapper.findAll('button').find(button => button.text().includes('admin.lotteryCampaigns.setFeatured'))
+    expect(persistentButton?.attributes('disabled')).toBeUndefined()
+    expect(listLotteryWinners).toHaveBeenCalledWith(7)
+    expect(wrapper.text()).toContain('#42')
+    expect(wrapper.text()).toContain('Gold')
   })
 })

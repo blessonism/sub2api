@@ -37,6 +37,7 @@ type campaignCreateRequest struct {
 	InitialBonusCents        int64    `json:"initial_bonus_cents"`
 	RechargeThresholdCents   int64    `json:"recharge_threshold_cents"`
 	AllowAccumulatedRecharge *bool    `json:"allow_accumulated_recharge"`
+	HistoricalInviteRatio    *float64 `json:"historical_invite_ratio"`
 	PoolInjectionRate        *float64 `json:"pool_injection_rate"`
 	PoolInjectionScope       string   `json:"pool_injection_scope"`
 	RankPoolRatio            *float64 `json:"rank_pool_ratio"`
@@ -47,18 +48,19 @@ type campaignCreateRequest struct {
 }
 
 type campaignUpdateRequest struct {
-	Name             *string            `json:"name"`
-	Description      *string            `json:"description"`
-	CoverURL         *string            `json:"cover_url"`
-	RulesText        *string            `json:"rules_text"`
-	WarmupStartAt    optionalTimeString `json:"warmup_start_at"`
-	StartAt          *string            `json:"start_at"`
-	EndAt            *string            `json:"end_at"`
-	AuditStartAt     optionalTimeString `json:"audit_start_at"`
-	AuditEndAt       optionalTimeString `json:"audit_end_at"`
-	PublicityStartAt optionalTimeString `json:"publicity_start_at"`
-	PublicityEndAt   optionalTimeString `json:"publicity_end_at"`
-	PayoutDueAt      optionalTimeString `json:"payout_due_at"`
+	Name                  *string            `json:"name"`
+	Description           *string            `json:"description"`
+	CoverURL              *string            `json:"cover_url"`
+	RulesText             *string            `json:"rules_text"`
+	WarmupStartAt         optionalTimeString `json:"warmup_start_at"`
+	StartAt               *string            `json:"start_at"`
+	EndAt                 *string            `json:"end_at"`
+	AuditStartAt          optionalTimeString `json:"audit_start_at"`
+	AuditEndAt            optionalTimeString `json:"audit_end_at"`
+	PublicityStartAt      optionalTimeString `json:"publicity_start_at"`
+	PublicityEndAt        optionalTimeString `json:"publicity_end_at"`
+	PayoutDueAt           optionalTimeString `json:"payout_due_at"`
+	HistoricalInviteRatio *float64           `json:"historical_invite_ratio"`
 }
 
 type optionalTimeString struct {
@@ -171,6 +173,19 @@ func (h *CampaignHandler) Get(c *gin.Context) {
 		return
 	}
 	response.Success(c, campaign)
+}
+
+func (h *CampaignHandler) GetConfig(c *gin.Context) {
+	id, ok := parseAdminCampaignID(c)
+	if !ok {
+		return
+	}
+	cfg, err := h.svc.GetCampaignConfig(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
 }
 
 func (h *CampaignHandler) Delete(c *gin.Context) {
@@ -490,6 +505,9 @@ func (req campaignCreateRequest) toServiceInput(c *gin.Context) (service.Campaig
 		MinPayoutAmountCents:     req.MinPayoutAmountCents,
 		OperatorID:               adminSubjectID(c),
 	}
+	if req.HistoricalInviteRatio != nil {
+		input.HistoricalInviteRatio = decimal.NewFromFloat(*req.HistoricalInviteRatio)
+	}
 	input.WarmupStartAt = parseOptionalRequestTime(c, req.WarmupStartAt)
 	input.AuditStartAt = parseOptionalRequestTime(c, req.AuditStartAt)
 	input.AuditEndAt = parseOptionalRequestTime(c, req.AuditEndAt)
@@ -547,6 +565,10 @@ func (req campaignUpdateRequest) toServiceInput(c *gin.Context) (service.Campaig
 	}
 	if input.PayoutDueAt, ok = parseOptionalRequestTimePatch(c, req.PayoutDueAt); !ok {
 		return service.CampaignUpdateInput{}, false
+	}
+	if req.HistoricalInviteRatio != nil {
+		ratio := decimal.NewFromFloat(*req.HistoricalInviteRatio)
+		input.HistoricalInviteRatio = &ratio
 	}
 	return input, true
 }

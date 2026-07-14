@@ -10,6 +10,7 @@ const {
   deleteCampaign,
   freezeLeaderboard,
   getCampaign,
+  getCampaignConfig,
   getFinalRewardResults,
   getLeaderboard,
   getPoolSummary,
@@ -31,6 +32,7 @@ const {
   deleteCampaign: vi.fn(),
   freezeLeaderboard: vi.fn(),
   getCampaign: vi.fn(),
+  getCampaignConfig: vi.fn(),
   getFinalRewardResults: vi.fn(),
   getLeaderboard: vi.fn(),
   getPoolSummary: vi.fn(),
@@ -56,6 +58,7 @@ vi.mock('@/api/admin', () => ({
       deleteCampaign,
       freezeLeaderboard,
       getCampaign,
+      getCampaignConfig,
       getFinalRewardResults,
       getLeaderboard,
       getPoolSummary,
@@ -158,6 +161,7 @@ describe('admin CampaignRewardsView', () => {
     deleteCampaign.mockReset()
     freezeLeaderboard.mockReset()
     getCampaign.mockReset()
+    getCampaignConfig.mockReset()
     getFinalRewardResults.mockReset()
     getLeaderboard.mockReset()
     getPoolSummary.mockReset()
@@ -174,6 +178,7 @@ describe('admin CampaignRewardsView', () => {
 
     listCampaigns.mockResolvedValue({ items: [campaign], total: 1, page: 1, page_size: 50 })
     getCampaign.mockResolvedValue(campaign)
+    getCampaignConfig.mockResolvedValue({ historical_invite_ratio: '0.3' })
     getPoolSummary.mockResolvedValue({
       campaign_id: 9,
       confirmed_pool_cents: 10000,
@@ -376,6 +381,7 @@ describe('admin CampaignRewardsView', () => {
     await flushPromises()
 
     expect(createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      historical_invite_ratio: 0,
       rank_reward_count: 9,
       rank_weights: [32, 20, 15, 10, 8, 6, 4, 3, 2],
     }))
@@ -507,6 +513,7 @@ describe('admin CampaignRewardsView', () => {
     const updated = {
       ...campaign,
       name: '生产邀请活动',
+      historical_invite_ratio: 0.3,
       end_at: new Date('2026-07-09T12:30').toISOString(),
       audit_start_at: new Date('2026-07-10T09:00').toISOString(),
       audit_end_at: null,
@@ -521,6 +528,7 @@ describe('admin CampaignRewardsView', () => {
 
     const dialog = wrapper.get('[data-testid="base-dialog"]')
     await dialog.find('input[type="text"]').setValue('生产邀请活动')
+    await dialog.find('input[type="number"]').setValue('40')
     const timeInputs = dialog.findAll('input[type="datetime-local"]')
     await timeInputs[2].setValue('2026-07-09T12:30')
     await timeInputs[3].setValue('2026-07-10T09:00')
@@ -531,6 +539,7 @@ describe('admin CampaignRewardsView', () => {
 
     expect(updateCampaign).toHaveBeenCalledWith(9, expect.objectContaining({
       name: '生产邀请活动',
+      historical_invite_ratio: 0.4,
       end_at: new Date('2026-07-09T12:30').toISOString(),
       audit_start_at: new Date('2026-07-10T09:00').toISOString(),
       audit_end_at: null,

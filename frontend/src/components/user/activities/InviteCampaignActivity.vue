@@ -144,6 +144,9 @@
               <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatCents(myData?.invitee_recharge_amount_cents) }}</p>
             </div>
           </div>
+          <p v-if="myData?.historical_valid_invite_count" class="mt-3 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('campaignRewards.historicalInviteBreakdown', { activity: myData.activity_valid_invite_count, historical: myData.historical_valid_invite_count, weighted: formatCount(myData.historical_weighted_invite_count) }) }}
+          </p>
           <div class="mt-5 rounded-xl border border-primary-100 bg-primary-50 p-4 text-sm text-primary-800 dark:border-primary-900/50 dark:bg-primary-900/20 dark:text-primary-200">
             {{ progressHint }}
           </div>

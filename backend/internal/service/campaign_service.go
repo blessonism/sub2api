@@ -92,6 +92,7 @@ type CampaignConfigVersion struct {
 	EffectiveAt              time.Time       `json:"effective_at"`
 	RechargeThresholdCents   int64           `json:"recharge_threshold_cents"`
 	AllowAccumulatedRecharge bool            `json:"allow_accumulated_recharge"`
+	HistoricalInviteRatio    decimal.Decimal `json:"historical_invite_ratio"`
 	PoolInjectionRate        decimal.Decimal `json:"pool_injection_rate"`
 	PoolInjectionScope       string          `json:"pool_injection_scope"`
 	RankPoolRatio            decimal.Decimal `json:"rank_pool_ratio"`
@@ -174,6 +175,7 @@ type CampaignPoolSummary struct {
 type CampaignDeleteImpact struct {
 	Participants         int64 `json:"participants"`
 	InviteRecords        int64 `json:"invite_records"`
+	HistoricalInvites    int64 `json:"historical_invites"`
 	PoolEntries          int64 `json:"pool_entries"`
 	PoolAdjustments      int64 `json:"pool_adjustments"`
 	LeaderboardSnapshots int64 `json:"leaderboard_snapshots"`
@@ -183,7 +185,7 @@ type CampaignDeleteImpact struct {
 }
 
 func (i CampaignDeleteImpact) HasBusinessData() bool {
-	return i.Participants+i.InviteRecords+i.PoolEntries+i.PoolAdjustments+
+	return i.Participants+i.InviteRecords+i.HistoricalInvites+i.PoolEntries+i.PoolAdjustments+
 		i.LeaderboardSnapshots+i.RewardResults+i.PayoutBatches+i.PayoutItems > 0
 }
 
@@ -198,7 +200,10 @@ type CampaignLeaderboardRow struct {
 	UserID                     int64     `json:"user_id"`
 	MaskedEmail                string    `json:"masked_email,omitempty"`
 	Username                   string    `json:"username,omitempty"`
-	ValidInviteCount           int       `json:"valid_invite_count"`
+	ValidInviteCount           float64   `json:"valid_invite_count"`
+	ActivityValidInviteCount   int       `json:"activity_valid_invite_count"`
+	HistoricalValidInviteCount int       `json:"historical_valid_invite_count"`
+	HistoricalWeightedCount    float64   `json:"historical_weighted_invite_count"`
 	PendingInviteCount         int       `json:"pending_invite_count"`
 	InviteeRechargeAmountCents int64     `json:"invitee_recharge_amount_cents"`
 	ManualValidInviteDelta     int       `json:"manual_valid_invite_delta"`
@@ -277,6 +282,7 @@ type CampaignCreateInput struct {
 	InitialBonusCents        int64
 	RechargeThresholdCents   int64
 	AllowAccumulatedRecharge bool
+	HistoricalInviteRatio    decimal.Decimal
 	PoolInjectionRate        decimal.Decimal
 	PoolInjectionScope       string
 	RankPoolRatio            decimal.Decimal
@@ -288,19 +294,20 @@ type CampaignCreateInput struct {
 }
 
 type CampaignUpdateInput struct {
-	Name             *string
-	Description      *string
-	CoverURL         *string
-	RulesText        *string
-	WarmupStartAt    **time.Time
-	StartAt          *time.Time
-	EndAt            *time.Time
-	AuditStartAt     **time.Time
-	AuditEndAt       **time.Time
-	PublicityStartAt **time.Time
-	PublicityEndAt   **time.Time
-	PayoutDueAt      **time.Time
-	OperatorID       *int64
+	Name                  *string
+	Description           *string
+	CoverURL              *string
+	RulesText             *string
+	WarmupStartAt         **time.Time
+	StartAt               *time.Time
+	EndAt                 *time.Time
+	AuditStartAt          **time.Time
+	AuditEndAt            **time.Time
+	PublicityStartAt      **time.Time
+	PublicityEndAt        **time.Time
+	PayoutDueAt           **time.Time
+	HistoricalInviteRatio *decimal.Decimal
+	OperatorID            *int64
 }
 
 type CampaignConfigVersionInput struct {
@@ -390,7 +397,10 @@ type CampaignMyData struct {
 	UserID                           int64                  `json:"user_id"`
 	InviteCode                       string                 `json:"invite_code"`
 	InviteLink                       string                 `json:"invite_link"`
-	ValidInviteCount                 int                    `json:"valid_invite_count"`
+	ValidInviteCount                 float64                `json:"valid_invite_count"`
+	ActivityValidInviteCount         int                    `json:"activity_valid_invite_count"`
+	HistoricalValidInviteCount       int                    `json:"historical_valid_invite_count"`
+	HistoricalWeightedInviteCount    float64                `json:"historical_weighted_invite_count"`
 	PendingInviteCount               int                    `json:"pending_invite_count"`
 	InvalidInviteCount               int                    `json:"invalid_invite_count"`
 	CurrentRank                      *int                   `json:"current_rank,omitempty"`
@@ -398,8 +408,8 @@ type CampaignMyData struct {
 	EstimatedContributionRewardCents int64                  `json:"estimated_contribution_reward_cents"`
 	EstimatedTotalRewardCents        int64                  `json:"estimated_total_reward_cents"`
 	InviteeRechargeAmountCents       int64                  `json:"invitee_recharge_amount_cents"`
-	DistanceToPrevious               int                    `json:"distance_to_previous"`
-	DistanceToTop10                  int                    `json:"distance_to_top10"`
+	DistanceToPrevious               float64                `json:"distance_to_previous"`
+	DistanceToTop10                  float64                `json:"distance_to_top10"`
 	InviteRecords                    []CampaignInviteRecord `json:"invite_records"`
 }
 
@@ -450,6 +460,10 @@ type CampaignRepository interface {
 
 type campaignAffiliateProfileRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
+}
+
+type campaignHistoricalSnapshotRepository interface {
+	EnsureHistoricalInviteSnapshot(ctx context.Context, campaign *Campaign, cfg *CampaignConfigVersion) error
 }
 
 type CampaignBalanceGrantService interface {
@@ -525,6 +539,7 @@ func (s *CampaignService) CopyCampaign(ctx context.Context, campaignID int64, op
 		InitialBonusCents:        0,
 		RechargeThresholdCents:   cfg.RechargeThresholdCents,
 		AllowAccumulatedRecharge: cfg.AllowAccumulatedRecharge,
+		HistoricalInviteRatio:    cfg.HistoricalInviteRatio,
 		PoolInjectionRate:        cfg.PoolInjectionRate,
 		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(cfg.PoolInjectionScope),
 		RankPoolRatio:            cfg.RankPoolRatio,
@@ -559,6 +574,11 @@ func (s *CampaignService) UpdateCampaign(ctx context.Context, campaignID int64, 
 	if err := validateCampaignTime(nextStart, nextEnd); err != nil {
 		return nil, err
 	}
+	if input.HistoricalInviteRatio != nil {
+		if input.HistoricalInviteRatio.IsNegative() || input.HistoricalInviteRatio.GreaterThan(decimal.NewFromInt(1)) {
+			return nil, ErrCampaignInvalidConfig
+		}
+	}
 	return s.repo.UpdateCampaign(ctx, campaignID, input)
 }
 
@@ -577,6 +597,14 @@ func (s *CampaignService) GetCampaign(ctx context.Context, campaignID int64) (*C
 		return nil, ErrCampaignNotFound
 	}
 	return s.repo.GetCampaign(ctx, campaignID)
+}
+
+func (s *CampaignService) GetCampaignConfig(ctx context.Context, campaignID int64) (*CampaignConfigVersion, error) {
+	cfg, err := s.repo.GetPublishedConfigVersion(ctx, campaignID)
+	if err == nil {
+		return cfg, nil
+	}
+	return s.repo.GetLatestConfigVersion(ctx, campaignID)
 }
 
 func (s *CampaignService) DeleteCampaign(ctx context.Context, campaignID int64, operatorID *int64) (*CampaignDeleteResult, error) {
@@ -819,7 +847,7 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 	if participant != nil {
 		result.InviteCode = participant.InviteCodeSnapshot
 		result.InviteLink = participant.InviteLinkSnapshot
-		result.ValidInviteCount = participant.ValidInviteCount
+		result.ValidInviteCount = float64(participant.ValidInviteCount)
 		result.PendingInviteCount = participant.PendingInviteCount
 		result.InvalidInviteCount = participant.InvalidInviteCount
 		result.InviteeRechargeAmountCents = participant.InviteeRechargeAmountCents
@@ -830,12 +858,15 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 	if err := fillCampaignInviteIdentity(ctx, s.repo, &result); err != nil {
 		return nil, err
 	}
-	var previousCount int
+	var previousCount float64
 	for i, row := range rows {
 		if row.UserID == userID {
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.ActivityValidInviteCount = row.ActivityValidInviteCount
+			result.HistoricalValidInviteCount = row.HistoricalValidInviteCount
+			result.HistoricalWeightedInviteCount = row.HistoricalWeightedCount
 			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
@@ -854,6 +885,9 @@ func (s *CampaignService) GetMyData(ctx context.Context, campaignID, userID int6
 			rank := row.Rank
 			result.CurrentRank = &rank
 			result.ValidInviteCount = row.ValidInviteCount
+			result.ActivityValidInviteCount = row.ActivityValidInviteCount
+			result.HistoricalValidInviteCount = row.HistoricalValidInviteCount
+			result.HistoricalWeightedInviteCount = row.HistoricalWeightedCount
 			result.PendingInviteCount = row.PendingInviteCount
 			result.InviteeRechargeAmountCents = row.InviteeRechargeAmountCents
 			result.EstimatedTotalRewardCents = row.EstimatedRewardCents
@@ -1006,6 +1040,18 @@ func (s *CampaignService) Leaderboard(ctx context.Context, campaignID int64, lim
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
+	campaign, err := s.repo.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	cfg, configErr := s.repo.GetPublishedConfigVersion(ctx, campaignID)
+	if configErr == nil {
+		if snapshotter, ok := s.repo.(campaignHistoricalSnapshotRepository); ok {
+			if err := snapshotter.EnsureHistoricalInviteSnapshot(ctx, campaign, cfg); err != nil {
+				return nil, err
+			}
+		}
+	}
 	rows, err := s.repo.ListLeaderboardRows(ctx, campaignID, limit)
 	if err != nil {
 		return nil, err
@@ -1014,8 +1060,7 @@ func (s *CampaignService) Leaderboard(ctx context.Context, campaignID int64, lim
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := s.repo.GetPublishedConfigVersion(ctx, campaignID)
-	if err != nil {
+	if configErr != nil {
 		cfg, err = s.repo.GetLatestConfigVersionAt(ctx, campaignID, time.Now())
 		if err != nil {
 			return nil, err
@@ -1284,6 +1329,7 @@ func buildInitialCampaignConfig(input CampaignCreateInput) (CampaignConfigVersio
 		EffectiveAt:              input.StartAt,
 		RechargeThresholdCents:   input.RechargeThresholdCents,
 		AllowAccumulatedRecharge: input.AllowAccumulatedRecharge,
+		HistoricalInviteRatio:    input.HistoricalInviteRatio,
 		PoolInjectionRate:        input.PoolInjectionRate,
 		PoolInjectionScope:       normalizedCampaignPoolInjectionScope(input.PoolInjectionScope),
 		RankPoolRatio:            input.RankPoolRatio,
@@ -1340,7 +1386,8 @@ func validateCampaignConfig(cfg CampaignConfigVersion) error {
 	if cfg.RechargeThresholdCents < 0 || cfg.MinPayoutAmountCents < 0 || cfg.RankRewardCount <= 0 {
 		return ErrCampaignInvalidConfig
 	}
-	if cfg.PoolInjectionRate.IsNegative() || cfg.RankPoolRatio.IsNegative() || cfg.ContributionPoolRatio.IsNegative() {
+	if cfg.PoolInjectionRate.IsNegative() || cfg.RankPoolRatio.IsNegative() || cfg.ContributionPoolRatio.IsNegative() ||
+		cfg.HistoricalInviteRatio.IsNegative() || cfg.HistoricalInviteRatio.GreaterThan(decimal.NewFromInt(1)) {
 		return ErrCampaignInvalidConfig
 	}
 	if !isCampaignPoolInjectionScope(cfg.PoolInjectionScope) {
@@ -1411,7 +1458,7 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 	weightSum := decimal.Zero
 	for _, row := range sortedRows {
 		if row.ValidInviteCount > 0 {
-			weightSum = weightSum.Add(decimal.NewFromFloat(math.Sqrt(float64(row.ValidInviteCount))))
+			weightSum = weightSum.Add(decimal.NewFromFloat(math.Sqrt(row.ValidInviteCount)))
 		}
 	}
 	results := make([]CampaignRewardResult, 0, len(sortedRows))
@@ -1426,7 +1473,7 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 		contributionWeight := decimal.Zero
 		contributionReward := int64(0)
 		if row.ValidInviteCount > 0 && !weightSum.IsZero() {
-			contributionWeight = decimal.NewFromFloat(math.Sqrt(float64(row.ValidInviteCount)))
+			contributionWeight = decimal.NewFromFloat(math.Sqrt(row.ValidInviteCount))
 			contributionReward = decimal.NewFromInt(contributionPool).Mul(contributionWeight).Div(weightSum).Floor().IntPart()
 		}
 		gross := rankReward + contributionReward

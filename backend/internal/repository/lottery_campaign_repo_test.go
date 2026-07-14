@@ -11,7 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func TestGetActiveLotteryCampaignPrefersFeaturedCampaign(t *testing.T) {
+func TestGetActiveLotteryCampaignReturnsFeaturedCampaignOutsideActiveWindow(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
@@ -26,8 +26,7 @@ SELECT id, name, description, rules_text, status, participation_mode, draw_sched
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
-  AND start_at <= $1
-  AND end_at >= $1
+  AND (is_featured = TRUE OR (start_at <= $1 AND end_at >= $1))
 ORDER BY is_featured DESC, start_at ASC, id ASC
 LIMIT 1`)).
 		WithArgs(now).
@@ -38,7 +37,7 @@ LIMIT 1`)).
 			"created_at", "updated_at", "is_featured",
 		}).AddRow(
 			int64(7), "Token 抽奖", "", "", "published", "auto", "single", "single", "daily_once", "token",
-			int64(100), int64(0), int64(0), int64(0), 1, now.Add(-time.Hour), now.Add(time.Hour), now.Add(30*time.Minute),
+			int64(100), int64(0), int64(0), int64(0), 1, now.Add(-48*time.Hour), now.Add(-24*time.Hour), now.Add(-25*time.Hour),
 			"", nil, nil, now.Add(-2*time.Hour), now.Add(-time.Hour), true,
 		))
 	mock.ExpectQuery(regexp.QuoteMeta(`
@@ -62,6 +61,25 @@ ORDER BY sort_order ASC, id ASC`)).
 	}
 }
 
+func TestMaskLotteryParticipantEmailKeepsPublicIdentityRecognizable(t *testing.T) {
+	tests := []struct {
+		email string
+		want  string
+	}{
+		{email: "current@example.com", want: "cur****nt@example.com"},
+		{email: "alpha@example.com", want: "alp****ha@example.com"},
+		{email: "ab@example.com", want: "a****@example.com"},
+		{email: "用户测试@example.com", want: "用****@example.com"},
+		{email: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := maskLotteryParticipantEmail(tt.email); got != tt.want {
+			t.Errorf("maskLotteryParticipantEmail(%q) = %q, want %q", tt.email, got, tt.want)
+		}
+	}
+}
+
 func TestUpsertLotteryEntryPersistsUSDUsageWithTypedStatus(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -70,19 +88,62 @@ func TestUpsertLotteryEntryPersistsUSDUsageWithTypedStatus(t *testing.T) {
 	defer db.Close()
 
 	repo := NewLotteryCampaignRepository(db)
-	entryDate := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
-	now := entryDate.Add(time.Hour)
-	mock.ExpectQuery("INSERT INTO lottery_entries").
+	entryDate := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+INSERT INTO lottery_entries (campaign_id, user_id, entry_date, tokens, cost_microusd, entry_count, status, enrolled_at, created_at, updated_at)
+VALUES ($1, $2, $3::date, $4, $5, $6, $7::varchar, CASE WHEN $7::varchar = 'enrolled' THEN NOW() ELSE NULL END, NOW(), NOW())
+ON CONFLICT (campaign_id, user_id, entry_date) DO UPDATE
+SET tokens = EXCLUDED.tokens,
+	cost_microusd = EXCLUDED.cost_microusd,
+	entry_count = EXCLUDED.entry_count,
+	status = CASE WHEN lottery_entries.status = 'enrolled' THEN 'enrolled' ELSE EXCLUDED.status END,
+	enrolled_at = CASE
+		WHEN lottery_entries.enrolled_at IS NOT NULL THEN lottery_entries.enrolled_at
+		WHEN EXCLUDED.status = 'enrolled' THEN NOW()
+		ELSE NULL
+	END,
+	updated_at = NOW()
+RETURNING id, campaign_id, user_id, entry_date, tokens, cost_microusd, entry_count, status, enrolled_at, created_at, updated_at`)).
 		WithArgs(int64(7), int64(42), entryDate, int64(0), int64(1_250_000), 2, "enrolled").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "campaign_id", "user_id", "entry_date", "tokens", "cost_microusd", "entry_count", "status", "enrolled_at", "created_at", "updated_at"}).
-			AddRow(int64(9), int64(7), int64(42), entryDate, int64(0), int64(1_250_000), 2, "enrolled", now, now, now))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "campaign_id", "user_id", "entry_date", "tokens", "cost_microusd", "entry_count", "status", "enrolled_at", "created_at", "updated_at",
+		}).AddRow(int64(9), int64(7), int64(42), entryDate, int64(0), int64(1_250_000), 2, "enrolled", now, now, now))
 
 	entry, err := repo.UpsertLotteryEntry(context.Background(), service.LotteryCampaign{ID: 7}, 42, entryDate, service.LotteryUsage{CostMicrousd: 1_250_000}, 2, true)
 	if err != nil {
 		t.Fatalf("upsert lottery entry: %v", err)
 	}
-	if entry.CostMicrousd != 1_250_000 || entry.EntryCount != 2 {
+	if entry.Status != "enrolled" || entry.CostMicrousd != 1_250_000 || entry.EntryCount != 2 {
 		t.Fatalf("unexpected entry: %+v", entry)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestCountLotteryParticipantsCountsOnlyEnrolledUsersInCurrentDraw(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewLotteryCampaignRepository(db)
+	entryDate := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT COUNT(DISTINCT user_id)
+FROM lottery_entries
+WHERE campaign_id = $1 AND entry_date = $2::date AND status = 'enrolled'`)).
+		WithArgs(int64(7), entryDate).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+
+	count, err := repo.CountLotteryParticipants(context.Background(), 7, entryDate)
+	if err != nil {
+		t.Fatalf("count lottery participants: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("participant count = %d, want 3", count)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

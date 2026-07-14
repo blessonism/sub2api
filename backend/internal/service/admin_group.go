@@ -160,6 +160,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	videoPrice480P := normalizePrice(input.VideoPrice480P)
 	videoPrice720P := normalizePrice(input.VideoPrice720P)
 	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
+	webSearchPricePerCall := normalizePrice(input.WebSearchPricePerCall)
 	imageRateMultiplier := 1.0
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -194,13 +195,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		videoRateMultiplier = *input.VideoRateMultiplier
 	}
 
-	peakRateMultiplier := 1.0
-	if input.PeakRateMultiplier != nil {
-		peakRateMultiplier = *input.PeakRateMultiplier
-	}
-	// 先归一化（非订阅分组清空高峰配置、清洗停用状态下的脏字段）再校验，与 UpdateGroup 同一收口。
-	peakRateEnabled, peakStart, peakEnd, peakRateMultiplier := NormalizePeakRateConfig(subscriptionType, input.PeakRateEnabled, input.PeakStart, input.PeakEnd, peakRateMultiplier)
-	if err := ValidatePeakRateConfig(subscriptionType, peakRateEnabled, peakStart, peakEnd, peakRateMultiplier); err != nil {
+	timeRatePriority, timeRatePeriods, err := NormalizeAndValidateTimeRateStrategy(input.TimeRatePriority, input.TimeRatePeriods)
+	if err != nil {
 		return nil, err
 	}
 
@@ -268,6 +264,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		VisibleRateMultiplier:           input.VisibleRateMultiplier,
+		TimeRatePriority:                timeRatePriority,
+		TimeRatePeriods:                 timeRatePeriods,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -282,16 +280,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		VideoRateIndependent:            input.VideoRateIndependent,
 		VideoRateMultiplier:             videoRateMultiplier,
-		PeakRateEnabled:                 peakRateEnabled,
-		PeakStart:                       peakStart,
-		PeakEnd:                         peakEnd,
-		PeakRateMultiplier:              peakRateMultiplier,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
 		VideoPrice480P:                  videoPrice480P,
 		VideoPrice720P:                  videoPrice720P,
 		VideoPrice1080P:                 videoPrice1080P,
+		WebSearchPricePerCall:           webSearchPricePerCall,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -469,11 +464,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
 	}
-	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
-	// 前端始终发送这三个字段，无需 nil 守卫
-	group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
-	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
-	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	// 限额字段支持部分更新；显式 null/负数表示无限制，0 表示不允许用量。
+	if input.DailyLimitUSDSet {
+		group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
+	}
+	if input.WeeklyLimitUSDSet {
+		group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
+	}
+	if input.MonthlyLimitUSDSet {
+		group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
@@ -520,24 +520,19 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.VideoRateMultiplier = *input.VideoRateMultiplier
 	}
-	if input.PeakRateEnabled != nil {
-		group.PeakRateEnabled = *input.PeakRateEnabled
+	if input.TimeRatePriority != nil {
+		group.TimeRatePriority = *input.TimeRatePriority
 	}
-	if input.PeakStart != nil {
-		group.PeakStart = *input.PeakStart
+	if input.TimeRatePeriods != nil {
+		group.TimeRatePeriods = *input.TimeRatePeriods
 	}
-	if input.PeakEnd != nil {
-		group.PeakEnd = *input.PeakEnd
-	}
-	if input.PeakRateMultiplier != nil {
-		group.PeakRateMultiplier = *input.PeakRateMultiplier
-	}
-	// 先归一化（非订阅分组——含本次更新转为非订阅——静默清空高峰配置，清洗停用状态下的脏字段），
-	// 再收敛校验：Update 可能只传部分 peak 字段，需对合并后的最终配置统一校验，
-	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
-	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
-	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
-		return nil, err
+	if input.TimeRatePriority != nil || input.TimeRatePeriods != nil {
+		priority, periods, err := NormalizeAndValidateTimeRateStrategy(group.TimeRatePriority, group.TimeRatePeriods)
+		if err != nil {
+			return nil, err
+		}
+		group.TimeRatePriority = priority
+		group.TimeRatePeriods = periods
 	}
 	if input.ImagePrice1K != nil {
 		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)
@@ -556,6 +551,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.VideoPrice1080P != nil {
 		group.VideoPrice1080P = normalizePrice(input.VideoPrice1080P)
+	}
+	if input.WebSearchPricePerCall != nil {
+		group.WebSearchPricePerCall = normalizePrice(input.WebSearchPricePerCall)
 	}
 
 	// Claude Code 客户端限制

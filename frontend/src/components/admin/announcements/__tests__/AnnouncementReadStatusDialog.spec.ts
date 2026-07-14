@@ -49,6 +49,32 @@ describe('AnnouncementReadStatusDialog', () => {
     vi.useFakeTimers()
   })
 
+  it('loads read users from newest to oldest by default', async () => {
+    getReadStatus.mockResolvedValue({ items: [], total: 0, pages: 0, page: 1, page_size: 20 })
+
+    const wrapper = mount(AnnouncementReadStatusDialog, {
+      props: { show: false, announcementId: 1 },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          DataTable: true,
+          Pagination: true,
+          Icon: true,
+        },
+      },
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(getReadStatus).toHaveBeenCalledWith(
+      1,
+      1,
+      20,
+      { search: '', sort_by: 'read_at', sort_order: 'desc' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+  })
+
   it('closes by aborting active requests and clearing debounced reloads', async () => {
     let activeSignal: AbortSignal | undefined
     getReadStatus.mockImplementation(async (...args: any[]) => {

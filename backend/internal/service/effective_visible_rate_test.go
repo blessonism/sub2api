@@ -52,3 +52,22 @@ func TestEffectiveVisibleRateForGroup_Precedence(t *testing.T) {
 	group.VisibleRateMultiplier = nil
 	require.Equal(t, 2.0, effectiveVisibleRateForGroup(group, rates))
 }
+
+func TestEffectiveVisibleRateForGroup_TimeRateUserPriority(t *testing.T) {
+	groupVisible := 1.5
+	group := &Group{
+		ID:                    10,
+		RateMultiplier:        2,
+		VisibleRateMultiplier: &groupVisible,
+		TimeRatePriority:      TimeRatePriorityUserFirst,
+		TimeRatePeriods: []GroupTimeRatePeriod{{
+			StartTime: "00:00", EndTime: "24:00", RateMultiplier: 0.5, VisibleRateMultiplier: 0.3, Enabled: true,
+		}},
+	}
+
+	require.Equal(t, 0.3, effectiveVisibleRateForGroup(group, userGroupRateMaps{}))
+	require.Equal(t, 0.7, effectiveVisibleRateForGroup(group, userGroupRateMaps{actual: map[int64]float64{10: 0.7}}))
+	require.Equal(t, 0.6, effectiveVisibleRateForGroup(group, userGroupRateMaps{
+		actual: map[int64]float64{10: 0.7}, visible: map[int64]float64{10: 0.6},
+	}))
+}

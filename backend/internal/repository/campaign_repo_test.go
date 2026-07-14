@@ -86,6 +86,82 @@ func TestCampaignRepositoryRecordRechargeIsSourceIdempotent(t *testing.T) {
 	}
 }
 
+func TestCampaignRepositoryEnsureHistoricalInviteSnapshotIsIdempotent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := NewCampaignRepository(db).(*campaignRepository)
+	ctx := context.Background()
+	startAt := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	campaign := &service.Campaign{ID: 7, Status: service.CampaignStatusActive, StartAt: startAt}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT historical_invite_snapshot_at FROM campaigns WHERE id = $1 FOR UPDATE")).
+		WithArgs(campaign.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"historical_invite_snapshot_at"}).AddRow(nil))
+	mock.ExpectExec("WITH recharge_events AS").
+		WithArgs(campaign.ID, startAt).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE campaigns SET historical_invite_snapshot_at = NOW(), updated_at = NOW() WHERE id = $1")).
+		WithArgs(campaign.ID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := repo.EnsureHistoricalInviteSnapshot(ctx, campaign, nil); err != nil {
+		t.Fatalf("生成历史邀请快照失败：%v", err)
+	}
+
+	snapshotAt := startAt.Add(time.Minute)
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT historical_invite_snapshot_at FROM campaigns WHERE id = $1 FOR UPDATE")).
+		WithArgs(campaign.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"historical_invite_snapshot_at"}).AddRow(snapshotAt))
+	mock.ExpectCommit()
+	if err := repo.EnsureHistoricalInviteSnapshot(ctx, campaign, nil); err != nil {
+		t.Fatalf("重复生成历史邀请快照应直接成功：%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCampaignRepositoryUpdateCampaignRejectsRatioChangeAfterFinalSettlement(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	repo := NewCampaignRepository(db)
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	ratio := decimal.RequireFromString("0.4")
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("FROM campaigns WHERE id = \\$1 FOR UPDATE").
+		WithArgs(int64(7)).
+		WillReturnRows(campaignRows().AddRow(
+			int64(7), "活动", "", "", "", service.CampaignStatusActive, nil, now.Add(-time.Hour), now.Add(time.Hour),
+			nil, nil, nil, nil, nil, int64(11), nil, nil, now, now,
+		))
+	mock.ExpectQuery("SELECT cv.id, cv.historical_invite_ratio::text").
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "historical_invite_ratio"}).AddRow(int64(11), "0.3"))
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	_, err = repo.UpdateCampaign(context.Background(), 7, service.CampaignUpdateInput{HistoricalInviteRatio: &ratio})
+	if !errors.Is(err, service.ErrCampaignSettlementLocked) {
+		t.Fatalf("存在最终结算时应拒绝修改历史折算比例，err=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestCampaignRepositoryInsertPoolEntryAllowsNilInviteRecord(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -248,15 +324,15 @@ func TestCampaignRepositoryGetCampaignDeleteImpactCountsDependencies(t *testing.
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT\n\t(SELECT COUNT(*) FROM campaign_participants WHERE campaign_id = $1)")).
 		WithArgs(campaignID).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"participants", "invite_records", "pool_entries", "pool_adjustments",
+			"participants", "invite_records", "historical_invites", "pool_entries", "pool_adjustments",
 			"leaderboard_snapshots", "reward_results", "payout_batches", "payout_items",
-		}).AddRow(int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7), int64(8)))
+		}).AddRow(int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7), int64(8), int64(9)))
 
 	impact, err := repo.GetCampaignDeleteImpact(ctx, campaignID)
 	if err != nil {
 		t.Fatalf("统计删除影响失败：%v", err)
 	}
-	if impact.Participants != 1 || impact.InviteRecords != 2 || impact.PayoutItems != 8 {
+	if impact.Participants != 1 || impact.InviteRecords != 2 || impact.HistoricalInvites != 3 || impact.PayoutItems != 9 {
 		t.Fatalf("删除影响统计不符合预期：%+v", impact)
 	}
 	if !impact.HasBusinessData() {
@@ -356,7 +432,7 @@ func TestCampaignRepositoryListLeaderboardRowsScansPendingInviteCount(t *testing
 	mock.ExpectQuery(regexp.QuoteMeta("WITH invite_base AS (")).
 		WithArgs(int64(7), 50).
 		WillReturnRows(campaignLeaderboardRows().AddRow(
-			1, int64(21), "alpha@example.com", "alpha", 3, 2, int64(8_000),
+			1, int64(21), "alpha@example.com", "alpha", 3.5, 3, 1, 0.5, 2, int64(8_000),
 			0, int64(0), false, now, now.Add(-time.Hour), int64(0), int64(0),
 		))
 
@@ -386,9 +462,18 @@ func campaignInviteRows() *sqlmock.Rows {
 	})
 }
 
+func campaignRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "name", "description", "cover_url", "rules_text", "status", "warmup_start_at", "start_at", "end_at",
+		"audit_start_at", "audit_end_at", "publicity_start_at", "publicity_end_at", "payout_due_at",
+		"published_config_version_id", "created_by", "updated_by", "created_at", "updated_at",
+	})
+}
+
 func campaignLeaderboardRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"rank", "user_id", "email", "username", "valid_invite_count", "pending_invite_count",
+		"rank", "user_id", "email", "username", "valid_invite_count", "activity_valid_invite_count",
+		"historical_valid_invite_count", "historical_weighted_count", "pending_invite_count",
 		"recharge_amount", "manual_valid_invite_delta", "manual_recharge_delta", "has_manual_adjustment",
 		"reached_count_at", "joined_at", "estimated_reward_cents", "final_reward_cents",
 	})

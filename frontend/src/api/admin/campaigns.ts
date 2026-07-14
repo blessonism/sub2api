@@ -24,6 +24,7 @@ export interface CampaignCreateRequest {
   initial_bonus_cents?: number
   recharge_threshold_cents?: number
   allow_accumulated_recharge?: boolean
+  historical_invite_ratio?: number
   pool_injection_rate?: number
   pool_injection_scope?: 'invitees_only' | 'all_users'
   rank_pool_ratio?: number
@@ -46,6 +47,7 @@ export interface CampaignUpdateRequest {
   publicity_start_at?: string | null
   publicity_end_at?: string | null
   payout_due_at?: string | null
+  historical_invite_ratio?: number
 }
 
 export interface CampaignConfigVersionRequest {
@@ -182,6 +184,11 @@ export async function getCampaign(id: number): Promise<Campaign> {
   return data
 }
 
+export async function getCampaignConfig(id: number): Promise<CampaignConfigVersion> {
+  const { data } = await apiClient.get<CampaignConfigVersion>(`/admin/campaigns/${id}/config`)
+  return data
+}
+
 export async function deleteCampaign(id: number): Promise<CampaignDeleteResult> {
   const { data } = await apiClient.delete<CampaignDeleteResult>(`/admin/campaigns/${id}`)
   return data
@@ -272,6 +279,7 @@ export const campaignsAdminAPI = {
   updateCampaign,
   copyCampaign,
   getCampaign,
+  getCampaignConfig,
   deleteCampaign,
   publishCampaign,
   createConfigVersion,

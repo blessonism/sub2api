@@ -330,12 +330,15 @@ func TestAPIContracts(t *testing.T) {
 				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                  10,
-						Name:                "Group One",
-						Description:         "desc",
-						Platform:            service.PlatformAnthropic,
-						RateMultiplier:      1.5,
-						PeakRateMultiplier:  1.0,
+						ID:               10,
+						Name:             "Group One",
+						Description:      "desc",
+						Platform:         service.PlatformAnthropic,
+						RateMultiplier:   1.5,
+						TimeRatePriority: service.TimeRatePriorityScheduleFirst,
+						TimeRatePeriods: []service.GroupTimeRatePeriod{{
+							StartTime: "00:00", EndTime: "24:00", RateMultiplier: 2.25, VisibleRateMultiplier: 0.75, Enabled: true,
+						}},
 						IsExclusive:         false,
 						Status:              service.StatusActive,
 						SubscriptionType:    service.SubscriptionTypeStandard,
@@ -362,11 +365,7 @@ func TestAPIContracts(t *testing.T) {
 						"name": "Group One",
 						"description": "desc",
 						"platform": "anthropic",
-						"rate_multiplier": 1.5,
-						"peak_rate_enabled": false,
-						"peak_start": "",
-						"peak_end": "",
-						"peak_rate_multiplier": 1,
+						"rate_multiplier": 0.75,
 						"is_exclusive": false,
 						"status": "active",
 						"subscription_type": "standard",
@@ -379,6 +378,7 @@ func TestAPIContracts(t *testing.T) {
 						"video_price_480p": null,
 						"video_price_720p": null,
 						"video_price_1080p": null,
+						"web_search_price_per_call": null,
 						"allow_image_generation": false,
 						"allow_batch_image_generation": false,
 						"batch_image_discount_multiplier": 0,
@@ -1391,7 +1391,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	userHandler := handler.NewUserHandler(userService, nil, nil, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)

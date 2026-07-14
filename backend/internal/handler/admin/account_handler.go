@@ -471,6 +471,14 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
+	if raw := c.Query("account_collection_id"); raw != "" {
+		collectionID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || collectionID <= 0 {
+			response.BadRequest(c, "Invalid account_collection_id")
+			return
+		}
+		c.Request = c.Request.WithContext(service.WithAccountCollectionFilter(c.Request.Context(), collectionID))
+	}
 	page, pageSize := response.ParsePagination(c)
 	platform := c.Query("platform")
 	accountType := c.Query("type")
