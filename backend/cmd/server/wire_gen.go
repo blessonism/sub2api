@@ -192,7 +192,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, rpmCache, compositeTokenCacheInvalidator)
 	accountCollectionService := service.NewAccountCollectionService(db)
 	accountCollectionHandler := admin.NewAccountCollectionHandler(accountCollectionService)
-	adminAnnouncementHandler := admin.NewAnnouncementHandler(announcementService)
+	announcementEmailBroadcastRepository := repository.NewAnnouncementEmailBroadcastRepository(db)
+	announcementEmailService := service.NewAnnouncementEmailService(announcementRepository, userRepository, announcementEmailBroadcastRepository, emailService, settingService)
+	adminAnnouncementHandler := admin.NewAnnouncementHandler(announcementService, announcementEmailService)
 	dataManagementService := service.NewDataManagementService()
 	dataManagementHandler := admin.NewDataManagementHandler(dataManagementService)
 	backupObjectStoreFactory := repository.NewS3BackupStoreFactory()
@@ -310,12 +312,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyExpiryService := service.ProvideProxyExpiryService(proxyRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository, settingRepository, notificationEmailService, leaderLockCache, db)
 	batchImageWorkerRuntime := service.ProvideBatchImageWorkerRuntime(batchImageRepository, accountRepository, batchImageQueue, usageBillingRepository, usageLogRepository, batchImageModelPricingResolver, apiKeyAuthCacheInvalidator, configConfig)
+	announcementEmailWorker := service.NewAnnouncementEmailWorker(announcementEmailBroadcastRepository, emailService)
 	conversationCaptureCleanupService := service.ProvideConversationCaptureCleanupService(conversationCaptureService)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, tokenUsageAutoPolicyRunner, lotteryCampaignRunner, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, conversationCaptureWorkerPool, conversationExportWorkerPool, conversationCaptureCleanupService, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, upstreamRelayMonitoringRunner, userPlatformQuotaUsageFlusher)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, tokenUsageAutoPolicyRunner, lotteryCampaignRunner, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, announcementEmailWorker, billingCacheService, usageRecordWorkerPool, conversationCaptureWorkerPool, conversationExportWorkerPool, conversationCaptureCleanupService, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, upstreamRelayMonitoringRunner, userPlatformQuotaUsageFlusher)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -363,6 +366,7 @@ func provideCleanup(
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
+	announcementEmailWorker *service.AnnouncementEmailWorker,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	conversationCaptureWorkerPool *service.ConversationCaptureWorkerPool,
@@ -498,6 +502,12 @@ func provideCleanup(
 			}},
 			{"EmailQueueService", func() error {
 				emailQueue.Stop()
+				return nil
+			}},
+			{"AnnouncementEmailWorker", func() error {
+				if announcementEmailWorker != nil {
+					announcementEmailWorker.Stop()
+				}
 				return nil
 			}},
 			{"BillingCacheService", func() error {

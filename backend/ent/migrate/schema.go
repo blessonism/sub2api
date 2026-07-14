@@ -302,6 +302,76 @@ var (
 			},
 		},
 	}
+	// AnnouncementEmailBroadcastsColumns holds the columns for the "announcement_email_broadcasts" table.
+	AnnouncementEmailBroadcastsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "announcement_id", Type: field.TypeInt64, Unique: true},
+		{Name: "subject", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "body_html", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "total_count", Type: field.TypeInt, Default: 0},
+		{Name: "sent_count", Type: field.TypeInt, Default: 0},
+		{Name: "failed_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AnnouncementEmailBroadcastsTable holds the schema information for the "announcement_email_broadcasts" table.
+	AnnouncementEmailBroadcastsTable = &schema.Table{
+		Name:       "announcement_email_broadcasts",
+		Columns:    AnnouncementEmailBroadcastsColumns,
+		PrimaryKey: []*schema.Column{AnnouncementEmailBroadcastsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "announcementemailbroadcast_status",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementEmailBroadcastsColumns[4]},
+			},
+		},
+	}
+	// AnnouncementEmailDeliveriesColumns holds the columns for the "announcement_email_deliveries" table.
+	AnnouncementEmailDeliveriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "broadcast_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "email", Type: field.TypeString, Size: 320},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "last_attempt_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "sent_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AnnouncementEmailDeliveriesTable holds the schema information for the "announcement_email_deliveries" table.
+	AnnouncementEmailDeliveriesTable = &schema.Table{
+		Name:       "announcement_email_deliveries",
+		Columns:    AnnouncementEmailDeliveriesColumns,
+		PrimaryKey: []*schema.Column{AnnouncementEmailDeliveriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "announcementemaildelivery_broadcast_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{AnnouncementEmailDeliveriesColumns[1], AnnouncementEmailDeliveriesColumns[2]},
+			},
+			{
+				Name:    "announcementemaildelivery_status_lease_expires_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementEmailDeliveriesColumns[4], AnnouncementEmailDeliveriesColumns[6], AnnouncementEmailDeliveriesColumns[0]},
+			},
+			{
+				Name:    "announcementemaildelivery_broadcast_id_status_id",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementEmailDeliveriesColumns[1], AnnouncementEmailDeliveriesColumns[4], AnnouncementEmailDeliveriesColumns[0]},
+			},
+			{
+				Name:    "announcementemaildelivery_broadcast_id_email",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementEmailDeliveriesColumns[1], AnnouncementEmailDeliveriesColumns[3]},
+			},
+		},
+	}
 	// AnnouncementReadsColumns holds the columns for the "announcement_reads" table.
 	AnnouncementReadsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2202,6 +2272,8 @@ var (
 		AccountsTable,
 		AccountGroupsTable,
 		AnnouncementsTable,
+		AnnouncementEmailBroadcastsTable,
+		AnnouncementEmailDeliveriesTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
@@ -2260,6 +2332,12 @@ func init() {
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",
+	}
+	AnnouncementEmailBroadcastsTable.Annotation = &entsql.Annotation{
+		Table: "announcement_email_broadcasts",
+	}
+	AnnouncementEmailDeliveriesTable.Annotation = &entsql.Annotation{
+		Table: "announcement_email_deliveries",
 	}
 	AnnouncementReadsTable.ForeignKeys[0].RefTable = AnnouncementsTable
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable

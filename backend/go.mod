@@ -40,6 +40,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/tiktoken-go/tokenizer v0.8.0
 	github.com/wechatpay-apiv3/wechatpay-go v0.2.21
+	github.com/yuin/goldmark v1.4.13
 	github.com/zeromicro/go-zero v1.9.4
 	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.51.0

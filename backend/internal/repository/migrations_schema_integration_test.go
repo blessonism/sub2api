@@ -149,6 +149,16 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// announcement email broadcast: durable job and recipient audit tables
+	requireColumn(t, tx, "announcement_email_broadcasts", "subject", "text", 0, false)
+	requireColumn(t, tx, "announcement_email_broadcasts", "body_html", "text", 0, false)
+	requireColumn(t, tx, "announcement_email_broadcasts", "failed_count", "integer", 0, false)
+	requireColumn(t, tx, "announcement_email_deliveries", "lease_expires_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "announcement_email_deliveries", "error_message", "character varying", 500, true)
+	requireIndex(t, tx, "announcement_email_deliveries", "announcement_email_deliveries_claim_idx")
+	requireForeignKeyOnDelete(t, tx, "announcement_email_broadcasts", "announcement_id", "announcements", "RESTRICT")
+	requireForeignKeyOnDelete(t, tx, "announcement_email_deliveries", "user_id", "users", "SET NULL")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

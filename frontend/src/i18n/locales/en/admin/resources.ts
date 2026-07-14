@@ -442,7 +442,34 @@ export default {
       failedToUpdate: 'Failed to update announcement',
       failedToDelete: 'Failed to delete announcement',
       failedToLoadReadStatus: 'Failed to load read status',
-      deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.'
+      deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.',
+      emailBroadcast: {
+        action: 'Send Email',
+        title: 'Announcement Email Broadcast',
+        confirmMessage: 'This will email {count} users who currently match the announcement rules. Sent messages cannot be recalled.',
+        unavailable: 'This announcement cannot be emailed now. Check that it is active, SMTP is configured, and eligible recipients exist.',
+        confirmSend: 'Confirm Send',
+        total: 'Recipients',
+        pending: 'Pending',
+        sent: 'Sent',
+        failed: 'Failed',
+        attempts: 'Attempts',
+        lastAttempt: 'Last Attempt',
+        error: 'Error',
+        retryFailed: 'Retry Failed',
+        started: 'Announcement email broadcast started',
+        retryStarted: 'Failed emails queued for retry',
+        loadFailed: 'Failed to load email broadcast status',
+        sendFailed: 'Failed to start announcement email broadcast',
+        retryFailedMessage: 'Failed to retry email deliveries',
+        deleteBlocked: 'This announcement has an email broadcast record and can only be archived.',
+        status: {
+          pending: 'Pending',
+          processing: 'Sending',
+          sent: 'Sent',
+          failed: 'Failed'
+        }
+      }
     },
 
     // Promo Codes

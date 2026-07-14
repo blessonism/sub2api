@@ -71,6 +71,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // batchImageWorker
 		pricingSvc,
 		emailQueueSvc,
+		nil, // announcementEmailWorker
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
 		nil, // conversationCaptureWorkerPool

@@ -18,6 +18,12 @@ type AccountGroup func(*sql.Selector)
 // Announcement is the predicate function for announcement builders.
 type Announcement func(*sql.Selector)
 
+// AnnouncementEmailBroadcast is the predicate function for announcementemailbroadcast builders.
+type AnnouncementEmailBroadcast func(*sql.Selector)
+
+// AnnouncementEmailDelivery is the predicate function for announcementemaildelivery builders.
+type AnnouncementEmailDelivery func(*sql.Selector)
+
 // AnnouncementRead is the predicate function for announcementread builders.
 type AnnouncementRead func(*sql.Selector)
 

@@ -22,6 +22,10 @@ type Tx struct {
 	AccountGroup *AccountGroupClient
 	// Announcement is the client for interacting with the Announcement builders.
 	Announcement *AnnouncementClient
+	// AnnouncementEmailBroadcast is the client for interacting with the AnnouncementEmailBroadcast builders.
+	AnnouncementEmailBroadcast *AnnouncementEmailBroadcastClient
+	// AnnouncementEmailDelivery is the client for interacting with the AnnouncementEmailDelivery builders.
+	AnnouncementEmailDelivery *AnnouncementEmailDeliveryClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
@@ -231,6 +235,8 @@ func (tx *Tx) init() {
 	tx.Account = NewAccountClient(tx.config)
 	tx.AccountGroup = NewAccountGroupClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
+	tx.AnnouncementEmailBroadcast = NewAnnouncementEmailBroadcastClient(tx.config)
+	tx.AnnouncementEmailDelivery = NewAnnouncementEmailDeliveryClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
