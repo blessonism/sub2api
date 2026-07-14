@@ -144,66 +144,29 @@ func (_u *GroupUpdate) ClearVisibleRateMultiplier() *GroupUpdate {
 	return _u
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
-	_u.mutation.SetPeakRateEnabled(v)
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (_u *GroupUpdate) SetTimeRatePriority(v string) *GroupUpdate {
+	_u.mutation.SetTimeRatePriority(v)
 	return _u
 }
 
-// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillablePeakRateEnabled(v *bool) *GroupUpdate {
+// SetNillableTimeRatePriority sets the "time_rate_priority" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableTimeRatePriority(v *string) *GroupUpdate {
 	if v != nil {
-		_u.SetPeakRateEnabled(*v)
+		_u.SetTimeRatePriority(*v)
 	}
 	return _u
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (_u *GroupUpdate) SetPeakStart(v string) *GroupUpdate {
-	_u.mutation.SetPeakStart(v)
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (_u *GroupUpdate) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpdate {
+	_u.mutation.SetTimeRatePeriods(v)
 	return _u
 }
 
-// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillablePeakStart(v *string) *GroupUpdate {
-	if v != nil {
-		_u.SetPeakStart(*v)
-	}
-	return _u
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (_u *GroupUpdate) SetPeakEnd(v string) *GroupUpdate {
-	_u.mutation.SetPeakEnd(v)
-	return _u
-}
-
-// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillablePeakEnd(v *string) *GroupUpdate {
-	if v != nil {
-		_u.SetPeakEnd(*v)
-	}
-	return _u
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (_u *GroupUpdate) SetPeakRateMultiplier(v float64) *GroupUpdate {
-	_u.mutation.ResetPeakRateMultiplier()
-	_u.mutation.SetPeakRateMultiplier(v)
-	return _u
-}
-
-// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillablePeakRateMultiplier(v *float64) *GroupUpdate {
-	if v != nil {
-		_u.SetPeakRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
-func (_u *GroupUpdate) AddPeakRateMultiplier(v float64) *GroupUpdate {
-	_u.mutation.AddPeakRateMultiplier(v)
+// AppendTimeRatePeriods appends value to the "time_rate_periods" field.
+func (_u *GroupUpdate) AppendTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpdate {
+	_u.mutation.AppendTimeRatePeriods(v)
 	return _u
 }
 
@@ -1210,14 +1173,9 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.PeakStart(); ok {
-		if err := group.PeakStartValidator(v); err != nil {
-			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.PeakEnd(); ok {
-		if err := group.PeakEndValidator(v); err != nil {
-			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+	if v, ok := _u.mutation.TimeRatePriority(); ok {
+		if err := group.TimeRatePriorityValidator(v); err != nil {
+			return &ValidationError{Name: "time_rate_priority", err: fmt.Errorf(`ent: validator failed for field "Group.time_rate_priority": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Status(); ok {
@@ -1288,20 +1246,16 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.VisibleRateMultiplierCleared() {
 		_spec.ClearField(group.FieldVisibleRateMultiplier, field.TypeFloat64)
 	}
-	if value, ok := _u.mutation.PeakRateEnabled(); ok {
-		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+	if value, ok := _u.mutation.TimeRatePriority(); ok {
+		_spec.SetField(group.FieldTimeRatePriority, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.PeakStart(); ok {
-		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+	if value, ok := _u.mutation.TimeRatePeriods(); ok {
+		_spec.SetField(group.FieldTimeRatePeriods, field.TypeJSON, value)
 	}
-	if value, ok := _u.mutation.PeakEnd(); ok {
-		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.PeakRateMultiplier(); ok {
-		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
-		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	if value, ok := _u.mutation.AppendedTimeRatePeriods(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldTimeRatePeriods, value)
+		})
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
@@ -1940,66 +1894,29 @@ func (_u *GroupUpdateOne) ClearVisibleRateMultiplier() *GroupUpdateOne {
 	return _u
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (_u *GroupUpdateOne) SetPeakRateEnabled(v bool) *GroupUpdateOne {
-	_u.mutation.SetPeakRateEnabled(v)
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (_u *GroupUpdateOne) SetTimeRatePriority(v string) *GroupUpdateOne {
+	_u.mutation.SetTimeRatePriority(v)
 	return _u
 }
 
-// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillablePeakRateEnabled(v *bool) *GroupUpdateOne {
+// SetNillableTimeRatePriority sets the "time_rate_priority" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableTimeRatePriority(v *string) *GroupUpdateOne {
 	if v != nil {
-		_u.SetPeakRateEnabled(*v)
+		_u.SetTimeRatePriority(*v)
 	}
 	return _u
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (_u *GroupUpdateOne) SetPeakStart(v string) *GroupUpdateOne {
-	_u.mutation.SetPeakStart(v)
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (_u *GroupUpdateOne) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpdateOne {
+	_u.mutation.SetTimeRatePeriods(v)
 	return _u
 }
 
-// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillablePeakStart(v *string) *GroupUpdateOne {
-	if v != nil {
-		_u.SetPeakStart(*v)
-	}
-	return _u
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (_u *GroupUpdateOne) SetPeakEnd(v string) *GroupUpdateOne {
-	_u.mutation.SetPeakEnd(v)
-	return _u
-}
-
-// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillablePeakEnd(v *string) *GroupUpdateOne {
-	if v != nil {
-		_u.SetPeakEnd(*v)
-	}
-	return _u
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (_u *GroupUpdateOne) SetPeakRateMultiplier(v float64) *GroupUpdateOne {
-	_u.mutation.ResetPeakRateMultiplier()
-	_u.mutation.SetPeakRateMultiplier(v)
-	return _u
-}
-
-// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillablePeakRateMultiplier(v *float64) *GroupUpdateOne {
-	if v != nil {
-		_u.SetPeakRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
-func (_u *GroupUpdateOne) AddPeakRateMultiplier(v float64) *GroupUpdateOne {
-	_u.mutation.AddPeakRateMultiplier(v)
+// AppendTimeRatePeriods appends value to the "time_rate_periods" field.
+func (_u *GroupUpdateOne) AppendTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpdateOne {
+	_u.mutation.AppendTimeRatePeriods(v)
 	return _u
 }
 
@@ -3019,14 +2936,9 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.PeakStart(); ok {
-		if err := group.PeakStartValidator(v); err != nil {
-			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.PeakEnd(); ok {
-		if err := group.PeakEndValidator(v); err != nil {
-			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+	if v, ok := _u.mutation.TimeRatePriority(); ok {
+		if err := group.TimeRatePriorityValidator(v); err != nil {
+			return &ValidationError{Name: "time_rate_priority", err: fmt.Errorf(`ent: validator failed for field "Group.time_rate_priority": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.Status(); ok {
@@ -3114,20 +3026,16 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if _u.mutation.VisibleRateMultiplierCleared() {
 		_spec.ClearField(group.FieldVisibleRateMultiplier, field.TypeFloat64)
 	}
-	if value, ok := _u.mutation.PeakRateEnabled(); ok {
-		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+	if value, ok := _u.mutation.TimeRatePriority(); ok {
+		_spec.SetField(group.FieldTimeRatePriority, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.PeakStart(); ok {
-		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+	if value, ok := _u.mutation.TimeRatePeriods(); ok {
+		_spec.SetField(group.FieldTimeRatePeriods, field.TypeJSON, value)
 	}
-	if value, ok := _u.mutation.PeakEnd(); ok {
-		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.PeakRateMultiplier(); ok {
-		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
-		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	if value, ok := _u.mutation.AppendedTimeRatePeriods(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldTimeRatePeriods, value)
+		})
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
