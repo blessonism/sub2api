@@ -241,6 +241,9 @@ class ConfigAndSelectionTests(unittest.TestCase):
                 "activity-center",
                 "token-leaderboards",
                 "upstream-relay-monitoring",
+                "announcement-email-broadcast",
+                "group-time-rate-strategy",
+                "user-public-group-account-binding",
             }.issubset(capability_ids)
         )
         self.assertTrue(checks["frontend-typecheck"].fallback)
@@ -266,6 +269,9 @@ class ConfigAndSelectionTests(unittest.TestCase):
             "frontend/src/components/user/activities/LotteryCampaignActivity.vue": "activity-center-frontend",
             "frontend/src/views/user/LeaderboardView.vue": "leaderboard-frontend",
             "backend/internal/service/upstream_relay_group_monitoring.go": "upstream-monitoring-backend",
+            "backend/internal/service/announcement_email_worker.go": "announcement-email-backend",
+            "backend/internal/service/group_time_rate.go": "group-time-rate-backend",
+            "backend/internal/service/user_group_account_binding.go": "user-group-account-binding-backend",
         }
         for path, expected_check in representative_checks.items():
             with self.subTest(path=path):
