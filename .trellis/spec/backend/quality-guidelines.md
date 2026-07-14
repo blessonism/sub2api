@@ -32,6 +32,53 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Durable announcement email broadcasts
+
+#### 1. Scope / Trigger
+- Trigger: changing administrator announcement email broadcast creation, recipient selection, delivery processing, retry, or progress APIs.
+
+#### 2. Signatures
+- Management APIs: `GET|POST /api/v1/admin/announcements/:id/email-broadcast`, `GET .../deliveries`, and `POST .../retry-failed`.
+- Persistence: `announcement_email_broadcasts` owns one immutable message snapshot per announcement; `announcement_email_deliveries` owns one recipient snapshot per user.
+- Worker entrypoint: `AnnouncementEmailBroadcastRepository.ClaimNext(ctx, leaseUntil)`.
+
+#### 3. Contracts
+- Only an announcement active at server time can create a broadcast, and `announcement_id` is unique across broadcasts.
+- Recipients are active, non-deleted users with valid non-reserved email addresses who match `AnnouncementTargeting` using non-expired active subscriptions.
+- Sent recipients are immutable. Retry changes only `failed` deliveries back to `pending` and preserves `attempt_count`.
+- The worker claims rows with `FOR UPDATE SKIP LOCKED`; result writes update the delivery and broadcast counters in one transaction.
+- Existing broadcasts block hard deletion of their announcement. User deletion keeps the email snapshot and clears only `user_id`.
+
+#### 4. Validation & Error Matrix
+- Inactive announcement -> `ANNOUNCEMENT_EMAIL_NOT_ACTIVE`.
+- Existing broadcast -> `ANNOUNCEMENT_EMAIL_BROADCAST_EXISTS`.
+- No eligible recipients -> `ANNOUNCEMENT_EMAIL_NO_RECIPIENTS`.
+- More than 10,000 recipients -> `ANNOUNCEMENT_EMAIL_TOO_MANY_RECIPIENTS`.
+- Retry without failed deliveries -> `ANNOUNCEMENT_EMAIL_NO_FAILURES`.
+- Delete after broadcast creation -> `ANNOUNCEMENT_EMAIL_BROADCAST_DELETE_BLOCKED`.
+
+#### 5. Good/Base/Bad Cases
+- Good: an expired processing lease is reclaimed, increments `attempt_count`, and reaches one terminal counter update.
+- Base: a completed broadcast returns progress and delivery history without recalculating recipients.
+- Bad: loading subscriptions with `status='active'` but not checking `expires_at`, which emails users whose announcement is no longer visible.
+
+#### 6. Tests Required
+- Service: reserved/invalid email exclusion and safe Markdown rendering without raw HTML.
+- Repository integration: create, claim, expired-lease recovery, failure, retry, success counters, migration shape, and delete restriction.
+- API/frontend: all four paths, send confirmation, running-state polling, failed retry, zh/en keys, and type alignment.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+if subscription.Status == SubscriptionStatusActive { groups[subscription.GroupID] = struct{}{} }
+```
+
+Correct:
+```go
+if subscription.Status == SubscriptionStatusActive && subscription.ExpiresAt.After(now) { groups[subscription.GroupID] = struct{}{} }
+```
+
 ### Scenario: Versioned authentication cache snapshots
 
 #### 1. Scope / Trigger

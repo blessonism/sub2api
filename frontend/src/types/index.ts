@@ -371,6 +371,42 @@ export interface AnnouncementUserReadStatus {
   read_at?: string
 }
 
+export type AnnouncementEmailBroadcastStatus = 'pending' | 'running' | 'completed' | 'partial_failed'
+export type AnnouncementEmailDeliveryStatus = 'pending' | 'processing' | 'sent' | 'failed'
+
+export interface AnnouncementEmailBroadcast {
+  id: number
+  announcement_id: number
+  status: AnnouncementEmailBroadcastStatus
+  total_count: number
+  pending_count: number
+  sent_count: number
+  failed_count: number
+  created_by?: number
+  created_at: string
+  started_at?: string
+  completed_at?: string
+}
+
+export interface AnnouncementEmailBroadcastOverview {
+  broadcast: AnnouncementEmailBroadcast | null
+  eligible_count: number
+  can_send: boolean
+}
+
+export interface AnnouncementEmailDelivery {
+  id: number
+  broadcast_id: number
+  user_id?: number
+  email: string
+  status: AnnouncementEmailDeliveryStatus
+  attempt_count: number
+  error_message?: string
+  last_attempt_at?: string
+  sent_at?: string
+  created_at: string
+}
+
 // ==================== Proxy Node Types ====================
 
 export interface ProxyNode {

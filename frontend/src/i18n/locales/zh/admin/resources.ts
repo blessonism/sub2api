@@ -439,7 +439,34 @@ export default {
       failedToUpdate: '更新公告失败',
       failedToDelete: '删除公告失败',
       failedToLoadReadStatus: '加载已读情况失败',
-      deleteConfirm: '确定要删除该公告吗？此操作无法撤销。'
+      deleteConfirm: '确定要删除该公告吗？此操作无法撤销。',
+      emailBroadcast: {
+        action: '群发邮件',
+        title: '公告邮件群发',
+        confirmMessage: '将向当前命中公告条件的 {count} 名用户发送邮件。发送后只能重试失败项，请确认内容无误。',
+        unavailable: '该公告当前不可群发。请确认公告正在生效、SMTP 已配置且存在有效收件人。',
+        confirmSend: '确认群发',
+        total: '总收件人',
+        pending: '待发送',
+        sent: '发送成功',
+        failed: '发送失败',
+        attempts: '尝试次数',
+        lastAttempt: '最后尝试',
+        error: '失败原因',
+        retryFailed: '重试失败项',
+        started: '公告邮件群发已开始',
+        retryStarted: '失败邮件已重新排队',
+        loadFailed: '加载群发状态失败',
+        sendFailed: '启动公告邮件群发失败',
+        retryFailedMessage: '重试失败邮件失败',
+        deleteBlocked: '该公告已有邮件群发记录，只能归档，不能删除。',
+        status: {
+          pending: '待发送',
+          processing: '发送中',
+          sent: '已发送',
+          failed: '失败'
+        }
+      }
     },
 
     // Promo Codes

@@ -8,6 +8,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/ent/announcementemailbroadcast"
+	"github.com/Wei-Shaw/sub2api/ent/announcementemaildelivery"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -314,6 +316,54 @@ func init() {
 	announcement.DefaultUpdatedAt = announcementDescUpdatedAt.Default.(func() time.Time)
 	// announcement.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	announcement.UpdateDefaultUpdatedAt = announcementDescUpdatedAt.UpdateDefault.(func() time.Time)
+	announcementemailbroadcastFields := schema.AnnouncementEmailBroadcast{}.Fields()
+	_ = announcementemailbroadcastFields
+	// announcementemailbroadcastDescStatus is the schema descriptor for status field.
+	announcementemailbroadcastDescStatus := announcementemailbroadcastFields[3].Descriptor()
+	// announcementemailbroadcast.DefaultStatus holds the default value on creation for the status field.
+	announcementemailbroadcast.DefaultStatus = announcementemailbroadcastDescStatus.Default.(string)
+	// announcementemailbroadcast.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	announcementemailbroadcast.StatusValidator = announcementemailbroadcastDescStatus.Validators[0].(func(string) error)
+	// announcementemailbroadcastDescTotalCount is the schema descriptor for total_count field.
+	announcementemailbroadcastDescTotalCount := announcementemailbroadcastFields[4].Descriptor()
+	// announcementemailbroadcast.DefaultTotalCount holds the default value on creation for the total_count field.
+	announcementemailbroadcast.DefaultTotalCount = announcementemailbroadcastDescTotalCount.Default.(int)
+	// announcementemailbroadcastDescSentCount is the schema descriptor for sent_count field.
+	announcementemailbroadcastDescSentCount := announcementemailbroadcastFields[5].Descriptor()
+	// announcementemailbroadcast.DefaultSentCount holds the default value on creation for the sent_count field.
+	announcementemailbroadcast.DefaultSentCount = announcementemailbroadcastDescSentCount.Default.(int)
+	// announcementemailbroadcastDescFailedCount is the schema descriptor for failed_count field.
+	announcementemailbroadcastDescFailedCount := announcementemailbroadcastFields[6].Descriptor()
+	// announcementemailbroadcast.DefaultFailedCount holds the default value on creation for the failed_count field.
+	announcementemailbroadcast.DefaultFailedCount = announcementemailbroadcastDescFailedCount.Default.(int)
+	// announcementemailbroadcastDescCreatedAt is the schema descriptor for created_at field.
+	announcementemailbroadcastDescCreatedAt := announcementemailbroadcastFields[8].Descriptor()
+	// announcementemailbroadcast.DefaultCreatedAt holds the default value on creation for the created_at field.
+	announcementemailbroadcast.DefaultCreatedAt = announcementemailbroadcastDescCreatedAt.Default.(func() time.Time)
+	announcementemaildeliveryFields := schema.AnnouncementEmailDelivery{}.Fields()
+	_ = announcementemaildeliveryFields
+	// announcementemaildeliveryDescEmail is the schema descriptor for email field.
+	announcementemaildeliveryDescEmail := announcementemaildeliveryFields[2].Descriptor()
+	// announcementemaildelivery.EmailValidator is a validator for the "email" field. It is called by the builders before save.
+	announcementemaildelivery.EmailValidator = announcementemaildeliveryDescEmail.Validators[0].(func(string) error)
+	// announcementemaildeliveryDescStatus is the schema descriptor for status field.
+	announcementemaildeliveryDescStatus := announcementemaildeliveryFields[3].Descriptor()
+	// announcementemaildelivery.DefaultStatus holds the default value on creation for the status field.
+	announcementemaildelivery.DefaultStatus = announcementemaildeliveryDescStatus.Default.(string)
+	// announcementemaildelivery.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	announcementemaildelivery.StatusValidator = announcementemaildeliveryDescStatus.Validators[0].(func(string) error)
+	// announcementemaildeliveryDescAttemptCount is the schema descriptor for attempt_count field.
+	announcementemaildeliveryDescAttemptCount := announcementemaildeliveryFields[4].Descriptor()
+	// announcementemaildelivery.DefaultAttemptCount holds the default value on creation for the attempt_count field.
+	announcementemaildelivery.DefaultAttemptCount = announcementemaildeliveryDescAttemptCount.Default.(int)
+	// announcementemaildeliveryDescErrorMessage is the schema descriptor for error_message field.
+	announcementemaildeliveryDescErrorMessage := announcementemaildeliveryFields[6].Descriptor()
+	// announcementemaildelivery.ErrorMessageValidator is a validator for the "error_message" field. It is called by the builders before save.
+	announcementemaildelivery.ErrorMessageValidator = announcementemaildeliveryDescErrorMessage.Validators[0].(func(string) error)
+	// announcementemaildeliveryDescCreatedAt is the schema descriptor for created_at field.
+	announcementemaildeliveryDescCreatedAt := announcementemaildeliveryFields[9].Descriptor()
+	// announcementemaildelivery.DefaultCreatedAt holds the default value on creation for the created_at field.
+	announcementemaildelivery.DefaultCreatedAt = announcementemaildeliveryDescCreatedAt.Default.(func() time.Time)
 	announcementreadFields := schema.AnnouncementRead{}.Fields()
 	_ = announcementreadFields
 	// announcementreadDescReadAt is the schema descriptor for read_at field.
