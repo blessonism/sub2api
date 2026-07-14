@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-status build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan
+.PHONY: dev-up dev-down dev-status build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan upstream-sync-preflight upstream-sync-check
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -52,3 +52,9 @@ test-datamanagementd:
 
 secret-scan:
 	@python3 tools/secret_scan.py
+
+upstream-sync-preflight:
+	@python3 tools/upstream_sync.py preflight $(UPSTREAM_SYNC_ARGS)
+
+upstream-sync-check:
+	@python3 tools/upstream_sync.py check $(UPSTREAM_SYNC_ARGS)

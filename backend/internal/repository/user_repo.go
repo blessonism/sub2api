@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
@@ -500,7 +501,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	usersQuery := q.
 		Offset(params.Offset()).
 		Limit(params.Limit())
-	for _, order := range userListOrder(params) {
+	for _, order := range userListOrder(params, filters) {
 		usersQuery = usersQuery.Order(order)
 	}
 
@@ -588,10 +589,13 @@ func (r *userRepository) ListBalanceSummaryUsers(ctx context.Context) ([]service
 	return result, nil
 }
 
-func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+func userListOrder(params pagination.PaginationParams, filters service.UserListFilters) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	if sortBy == "read_at" && filters.ReadStatusAnnouncementID > 0 {
+		return []func(*entsql.Selector){userAnnouncementReadOrder(filters.ReadStatusAnnouncementID, sortOrder)}
+	}
 	if sortBy == "last_used_at" {
 		return userLastUsedAtOrder(sortOrder)
 	}
@@ -654,6 +658,25 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 		}
 	}
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)}
+}
+
+func userAnnouncementReadOrder(announcementID int64, sortOrder string) func(*entsql.Selector) {
+	return func(s *entsql.Selector) {
+		reads := entsql.Table(announcementread.Table)
+		s.LeftJoin(reads).OnP(entsql.And(
+			entsql.ColumnsEQ(s.C(dbuser.FieldID), reads.C(announcementread.FieldUserID)),
+			entsql.EQ(reads.C(announcementread.FieldAnnouncementID), announcementID),
+		))
+		s.OrderExprFunc(func(b *entsql.Builder) {
+			b.Ident(reads.C(announcementread.FieldReadAt)).WriteString(" IS NULL")
+		})
+		if sortOrder == pagination.SortOrderAsc {
+			s.OrderBy(entsql.Asc(reads.C(announcementread.FieldReadAt)))
+		} else {
+			s.OrderBy(entsql.Desc(reads.C(announcementread.FieldReadAt)))
+		}
+		s.OrderBy(entsql.Asc(s.C(dbuser.FieldID)))
+	}
 }
 
 func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {

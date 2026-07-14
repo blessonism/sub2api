@@ -65,6 +65,18 @@
         </div>
       </div>
 
+      <div
+        v-if="drawStatus === 'completed'"
+        data-testid="lottery-draw-completed"
+        class="flex items-start gap-3 border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-amber-950 dark:bg-amber-900/20 dark:text-amber-100"
+      >
+        <Icon name="gift" size="md" class="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+        <div>
+          <p class="font-semibold">{{ t('lotteryCampaign.drawCompletedTitle') }}</p>
+          <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ t('lotteryCampaign.drawCompletedDescription', { count: wheelWinners.length }) }}</p>
+        </div>
+      </div>
+
       <!-- Metrics -->
       <div class="grid gap-4 sm:grid-cols-3">
         <div class="card p-5">
@@ -90,11 +102,11 @@
         </div>
       </div>
 
-      <section v-if="participants.length" class="card overflow-hidden" aria-labelledby="lottery-wheel-title">
+      <section v-if="participants.length || drawStatus === 'completed'" class="card overflow-hidden" aria-labelledby="lottery-wheel-title">
         <header class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div class="flex flex-wrap items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" :class="drawStatusClass" /><h2 id="lottery-wheel-title" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.wheelTitle') }}</h2><span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="drawStatusBadgeClass">{{ t(`lotteryCampaign.wheelStatuses.${drawStatus}`) }}</span></div>
-            <p class="mt-1 text-sm text-gray-600 dark:text-dark-300">{{ t('lotteryCampaign.wheelDescription') }}</p>
+            <p class="mt-1 text-sm text-gray-600 dark:text-dark-300">{{ drawStatus === 'completed' ? t('lotteryCampaign.wheelCompletedDescription') : t('lotteryCampaign.wheelDescription') }}</p>
           </div>
           <div class="flex items-center gap-5 text-sm">
             <div><span class="text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.participants') }}</span><strong class="ml-2 tabular-nums text-gray-900 dark:text-white">{{ participants.length }}</strong></div>
@@ -102,31 +114,60 @@
           </div>
         </header>
         <div class="grid gap-0 lg:grid-cols-[minmax(360px,1.05fr)_minmax(280px,.95fr)]">
-          <div class="flex min-h-[390px] items-center justify-center bg-gray-50/70 p-6 dark:bg-dark-900/40">
+          <div class="flex min-h-[390px] flex-col items-center justify-center gap-5 bg-gray-50/70 p-6 dark:bg-dark-900/40">
             <div class="relative aspect-square w-full max-w-[350px]">
               <div class="user-wheel-pointer" aria-hidden="true" />
               <div class="user-wheel" :style="userWheelStyle" role="img" :aria-label="t('lotteryCampaign.wheelAriaLabel')">
-                <span v-for="segment in wheelSegments" :key="segment.key" class="user-wheel-label" :class="{ 'is-current': segment.isCurrent }" :style="segment.labelStyle">{{ segment.shortEmail }}</span>
-                <span class="user-wheel-hub"><strong>{{ myParticipant?.entry_count ?? entryCount }}</strong><small>{{ t('lotteryCampaign.myWeight') }}</small></span>
+                <span v-for="segment in wheelSegments" :key="segment.key" class="user-wheel-label" :class="{ 'is-current': segment.isCurrent, 'is-winner': segment.isWinner }" :style="segment.labelStyle">{{ segment.shortEmail }}</span>
+                <span class="user-wheel-hub">
+                  <template v-if="drawStatus === 'completed'">
+                    <strong>{{ wheelWinners.length }}</strong><small>{{ t('lotteryCampaign.wheelWinnerCount') }}</small>
+                  </template>
+                  <template v-else>
+                    <strong>{{ myParticipant?.entry_count ?? entryCount }}</strong><small>{{ t('lotteryCampaign.myWeight') }}</small>
+                  </template>
+                </span>
+              </div>
+            </div>
+            <div v-if="wheelWinners.length" data-testid="lottery-wheel-winners" class="w-full max-w-[350px] border-t border-amber-200 pt-4 dark:border-amber-800/60">
+              <p class="text-center text-xs font-semibold uppercase text-amber-700 dark:text-amber-300">{{ t('lotteryCampaign.wheelWinners') }}</p>
+              <div class="mt-2 flex flex-wrap justify-center gap-2">
+                <span v-for="(winner, index) in wheelWinners.slice(0, 5)" :key="`${winner.entry_date}-${winner.created_at}-${index}`" class="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                  <Icon name="gift" size="xs" />
+                  {{ winner.masked_email }} · {{ winner.prize_name || t('lotteryCampaign.prize') }}
+                </span>
               </div>
             </div>
           </div>
           <div class="flex min-h-[390px] flex-col p-5">
-            <div v-if="myParticipant" class="rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
-              <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-primary-800 dark:text-primary-200">{{ t('lotteryCampaign.mySector') }}</span><span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-200">{{ t('lotteryCampaign.weightTimes', { count: myParticipant.entry_count }) }}</span></div>
-              <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">{{ myParticipant.masked_email }}</p>
-              <div class="mt-3 grid grid-cols-2 gap-3 border-t border-primary-100 pt-3 text-xs dark:border-primary-800/50"><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.myProbability') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ myProbability }}%</strong></div><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.lastUpdated') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ formatRelativeTime(participantsUpdatedAt) }}</strong></div></div>
-            </div>
-            <div class="mt-4 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.weightDistribution') }}</h3><button type="button" class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300" @click="openParticipants">{{ t('lotteryCampaign.viewAll') }}</button></div>
-            <ol class="mt-2 divide-y divide-gray-100 dark:divide-dark-700">
-              <li v-for="participant in rankedParticipants.slice(0, 7)" :key="participant.key" class="flex items-center gap-3 py-2.5">
-                <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: participant.color }" />
-                <span class="min-w-0 flex-1 truncate text-sm" :class="participant.isCurrent ? 'font-semibold text-primary-700 dark:text-primary-200' : 'text-gray-700 dark:text-dark-200'">{{ participant.displayEmail }}<span v-if="participant.isCurrent"> {{ t('lotteryCampaign.me') }}</span></span>
-                <span class="text-xs tabular-nums text-gray-500 dark:text-dark-400">{{ participant.share }}%</span>
-                <span class="w-12 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white">×{{ participant.entry_count }}</span>
-              </li>
-            </ol>
-            <p class="mt-auto pt-4 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.fairnessFormula', { probability: t('lotteryCampaign.probabilityFormula') }) }}</p>
+            <template v-if="drawStatus !== 'completed'">
+              <div v-if="myParticipant" class="rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
+                <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-primary-800 dark:text-primary-200">{{ t('lotteryCampaign.mySector') }}</span><span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-200">{{ t('lotteryCampaign.weightTimes', { count: myParticipant.entry_count }) }}</span></div>
+                <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">{{ myParticipant.masked_email }}</p>
+                <div class="mt-3 grid grid-cols-2 gap-3 border-t border-primary-100 pt-3 text-xs dark:border-primary-800/50"><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.myProbability') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ myProbability }}%</strong></div><div><span class="block text-primary-600/70 dark:text-primary-300/70">{{ t('lotteryCampaign.lastUpdated') }}</span><strong class="mt-1 block text-sm text-primary-900 dark:text-primary-100">{{ formatRelativeTime(participantsUpdatedAt) }}</strong></div></div>
+              </div>
+              <div class="mt-4 flex items-center justify-between"><h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.weightDistribution') }}</h3><button type="button" class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300" @click="openParticipants">{{ t('lotteryCampaign.viewAll') }}</button></div>
+              <ol class="mt-2 divide-y divide-gray-100 dark:divide-dark-700">
+                <li v-for="participant in rankedParticipants.slice(0, 7)" :key="participant.key" class="flex items-center gap-3 py-2.5">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: participant.color }" />
+                  <span class="min-w-0 flex-1 truncate text-sm" :class="participant.isCurrent ? 'font-semibold text-primary-700 dark:text-primary-200' : 'text-gray-700 dark:text-dark-200'">{{ participant.displayEmail }}<span v-if="participant.isCurrent"> {{ t('lotteryCampaign.me') }}</span></span>
+                  <span class="text-xs tabular-nums text-gray-500 dark:text-dark-400">{{ participant.share }}%</span>
+                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white">×{{ participant.entry_count }}</span>
+                </li>
+              </ol>
+              <p class="mt-auto pt-4 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.fairnessFormula', { probability: t('lotteryCampaign.probabilityFormula') }) }}</p>
+            </template>
+            <template v-else>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('lotteryCampaign.roundResults') }}</h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.roundResultsDescription') }}</p>
+              <p v-if="wheelWinners.length === 0" class="mt-5 text-sm text-gray-500 dark:text-dark-400">{{ t('lotteryCampaign.roundNoWinners') }}</p>
+              <ol v-else class="mt-4 divide-y divide-gray-100 dark:divide-dark-700">
+                <li v-for="(winner, index) in wheelWinners" :key="`${winner.entry_date}-${winner.created_at}-${index}`" class="flex items-center justify-between gap-3 py-3">
+                  <div class="min-w-0"><p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ winner.masked_email }}</p><p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ winner.prize_name || t('lotteryCampaign.prize') }}</p></div>
+                  <span class="shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-300">{{ formatCents(winner.reward_amount_cents) }}</span>
+                </li>
+              </ol>
+            </template>
           </div>
         </div>
       </section>
@@ -366,6 +407,8 @@ const campaignDescription = computed(() => {
 const WHEEL_COLORS = ['#0f766e', '#2563eb', '#d97706', '#be123c', '#7c3aed', '#0891b2']
 const currentMaskedEmail = computed(() => maskParticipantEmail(authStore.user?.email ?? ''))
 const totalParticipantWeight = computed(() => participants.value.reduce((sum, item) => sum + participantWeight(item), 0))
+const wheelWinners = computed(() => recentWinners.value.filter(winner => winner.is_current_round))
+const winnerEmails = computed(() => new Set(wheelWinners.value.map(winner => winner.masked_email)))
 const wheelSegments = computed(() => {
   let cursor = 0
   const occurrences = new Map<string, number>()
@@ -379,15 +422,15 @@ const wheelSegments = computed(() => {
     const occurrence = (occurrences.get(item.masked_email) ?? 0) + 1
     occurrences.set(item.masked_email, occurrence)
     const displayEmail = (totals.get(item.masked_email) ?? 0) > 1 ? `${item.masked_email} · ${occurrence}` : item.masked_email
-    return { ...item, displayEmail, key: `${item.masked_email}-${index}`, color: WHEEL_COLORS[index % WHEEL_COLORS.length], start, end: cursor, isCurrent: item.masked_email === currentMaskedEmail.value, shortEmail: displayEmail.slice(0, 12), labelStyle: { transform: `rotate(${angle}deg) translateY(-132px) rotate(${-angle}deg)` } }
+    return { ...item, displayEmail, key: `${item.masked_email}-${index}`, color: WHEEL_COLORS[index % WHEEL_COLORS.length], start, end: cursor, isCurrent: item.masked_email === currentMaskedEmail.value, isWinner: winnerEmails.value.has(item.masked_email), shortEmail: displayEmail.slice(0, 12), labelStyle: { transform: `rotate(${angle}deg) translateY(-132px) rotate(${-angle}deg)` } }
   })
 })
-const userWheelStyle = computed(() => ({ background: `conic-gradient(${wheelSegments.value.map(segment => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(', ')})` }))
+const userWheelStyle = computed(() => ({ background: wheelSegments.value.length ? `conic-gradient(${wheelSegments.value.map(segment => `${segment.color} ${segment.start}deg ${segment.end}deg`).join(', ')})` : '#475569' }))
 const rankedParticipants = computed(() => wheelSegments.value.map(segment => ({ ...segment, share: Math.round(participantWeight(segment) / totalParticipantWeight.value * 1000) / 10 })).sort((a, b) => b.entry_count - a.entry_count))
 const myParticipant = computed(() => wheelSegments.value.find(segment => segment.isCurrent) ?? null)
 const myProbability = computed(() => myParticipant.value ? (participantWeight(myParticipant.value) / totalParticipantWeight.value * 100).toFixed(1) : '0.0')
 const drawStatus = computed(() => {
-  if (myData.value?.winners?.length) return 'completed'
+  if (myData.value?.round_completed || wheelWinners.value.length) return 'completed'
   const drawAt = nextDrawAt.value ? new Date(nextDrawAt.value).getTime() : 0
   return drawAt && drawAt <= now.value.getTime() ? 'drawing' : 'open'
 })
@@ -535,8 +578,7 @@ async function load(): Promise<void> {
     home.value = await lotteryCampaignsAPI.getActiveLotteryCampaign()
     if (home.value.campaign) {
       myData.value = await lotteryCampaignsAPI.getMyLotteryCampaignData(home.value.campaign.id)
-      void loadWinners()
-      void loadParticipants()
+      await Promise.all([loadWinners(), loadParticipants()])
     }
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('lotteryCampaign.loadFailed')))
@@ -549,7 +591,7 @@ async function loadWinners(): Promise<void> {
   const campaignId = home.value?.campaign?.id
   if (!campaignId) return
   try {
-    const { items } = await lotteryCampaignsAPI.getRecentLotteryWinners(campaignId)
+    const { items } = await lotteryCampaignsAPI.getRecentLotteryWinners(campaignId, 50)
     recentWinners.value = items
   } catch {
     // Recent winners are supplementary; keep the page usable if this fails.
@@ -622,6 +664,7 @@ onUnmounted(() => {
 .user-wheel::after { content:''; position:absolute; inset:8px; border:1px solid rgba(255,255,255,.5); border-radius:inherit; }
 .user-wheel-label { position:absolute; z-index:1; top:50%; left:50%; width:5.5rem; margin:-.5rem 0 0 -2.75rem; overflow:hidden; color:#fff; font-size:.625rem; font-weight:700; line-height:1rem; text-align:center; text-overflow:ellipsis; text-shadow:0 1px 2px rgba(0,0,0,.65); white-space:nowrap; transform-origin:center; }
 .user-wheel-label.is-current { color:#fff; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:2px; }
+.user-wheel-label.is-winner { color:#fef3c7; font-size:.7rem; text-decoration:underline; text-decoration-color:#fbbf24; text-decoration-thickness:3px; text-underline-offset:3px; }
 .user-wheel-hub { position:absolute; z-index:2; inset:50% auto auto 50%; display:flex; width:5.25rem; height:5.25rem; flex-direction:column; align-items:center; justify-content:center; border:5px solid #fff; border-radius:9999px; background:#111827; color:#fff; transform:translate(-50%,-50%); }
 .user-wheel-hub strong { font-size:1.25rem; line-height:1.3; }
 .user-wheel-hub small { color:#d1d5db; font-size:.625rem; }

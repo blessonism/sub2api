@@ -26,8 +26,8 @@
         :data="items"
         :loading="loading"
         :server-side-sort="true"
-        default-sort-key="email"
-        default-sort-order="asc"
+        :sort-key="sortState.sort_by"
+        :sort-order="sortState.sort_order"
         @sort="handleSort"
       >
         <template #cell-email="{ value }">
@@ -107,8 +107,8 @@ const pagination = reactive({
 })
 
 const sortState = reactive({
-  sort_by: 'email',
-  sort_order: 'asc' as 'asc' | 'desc'
+  sort_by: 'read_at',
+  sort_order: 'desc' as 'asc' | 'desc'
 })
 
 const items = ref<AnnouncementUserReadStatus[]>([])
@@ -118,7 +118,7 @@ const columns = computed<Column[]>(() => [
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
   { key: 'balance', label: t('common.balance'), sortable: true },
   { key: 'eligible', label: t('admin.announcements.eligible') },
-  { key: 'read_at', label: t('admin.announcements.readAt') }
+  { key: 'read_at', label: t('admin.announcements.readAt'), sortable: true }
 ])
 
 let currentController: AbortController | null = null
@@ -131,8 +131,8 @@ function resetDialogState() {
   pagination.page = 1
   pagination.total = 0
   pagination.pages = 0
-  sortState.sort_by = 'email'
-  sortState.sort_order = 'asc'
+  sortState.sort_by = 'read_at'
+  sortState.sort_order = 'desc'
 }
 
 function cancelPendingLoad(resetState = false) {

@@ -104,6 +104,9 @@ func (r *announcementRepository) Update(ctx context.Context, a *service.Announce
 func (r *announcementRepository) Delete(ctx context.Context, id int64) error {
 	client := clientFromContext(ctx, r.client)
 	_, err := client.Announcement.Delete().Where(announcement.IDEQ(id)).Exec(ctx)
+	if err != nil && strings.Contains(err.Error(), "announcement_email_broadcasts_announcement_id_fkey") {
+		return service.ErrAnnouncementDeleteBroadcast
+	}
 	return err
 }
 

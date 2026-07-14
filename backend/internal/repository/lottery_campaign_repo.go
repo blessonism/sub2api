@@ -147,8 +147,7 @@ SELECT id, name, description, rules_text, status, participation_mode, draw_sched
 	daily_draw_time, created_by, updated_by, created_at, updated_at, is_featured
 FROM lottery_campaigns
 WHERE status = 'published'
-  AND start_at <= $1
-  AND end_at >= $1
+  AND (is_featured = TRUE OR (start_at <= $1 AND end_at >= $1))
 ORDER BY is_featured DESC, start_at ASC, id ASC
 LIMIT 1`, now)
 	item, err := scanLotteryCampaign(row)
@@ -630,7 +629,7 @@ WHERE w.campaign_id = $1`
 
 func (r *lotteryCampaignRepository) ListRecentPublicLotteryWinners(ctx context.Context, campaignID int64, limit int) ([]service.LotteryPublicWinner, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT COALESCE(u.email, ''), COALESCE(p.tier_name, ''), w.reward_amount_cents, w.created_at
+SELECT COALESCE(u.email, ''), COALESCE(p.tier_name, ''), w.reward_amount_cents, w.entry_date, w.created_at
 FROM lottery_winners w
 LEFT JOIN lottery_prize_tiers p ON p.id = w.prize_tier_id
 LEFT JOIN users u ON u.id = w.user_id
@@ -645,10 +644,10 @@ LIMIT $2`, campaignID, limit)
 	for rows.Next() {
 		var email string
 		var item service.LotteryPublicWinner
-		if err := rows.Scan(&email, &item.PrizeName, &item.RewardAmountCents, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&email, &item.PrizeName, &item.RewardAmountCents, &item.EntryDate, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		item.MaskedEmail = maskEmail(email)
+		item.MaskedEmail = maskLotteryParticipantEmail(email)
 		out = append(out, item)
 	}
 	return out, rows.Err()

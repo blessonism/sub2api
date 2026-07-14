@@ -13,8 +13,13 @@ import (
 )
 
 func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	multiplier, _ := s.getUserGroupRateMultiplierWithSource(ctx, userID, groupID, groupDefaultMultiplier)
+	return multiplier
+}
+
+func (s *GatewayService) getUserGroupRateMultiplierWithSource(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) (float64, bool) {
 	if s == nil {
-		return groupDefaultMultiplier
+		return groupDefaultMultiplier, false
 	}
 	resolver := s.userGroupRateResolver
 	if resolver == nil {
@@ -26,7 +31,18 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 			"service.gateway",
 		)
 	}
-	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
+	return resolver.ResolveWithSource(ctx, userID, groupID, groupDefaultMultiplier)
+}
+
+func (s *GatewayService) getUserGroupVisibleRateMultiplierWithSource(ctx context.Context, userID, groupID int64, groupVisibleMultiplier *float64, effectiveRateMultiplier float64) (float64, bool) {
+	if s == nil {
+		return effectiveRateMultiplier, false
+	}
+	resolver := s.userGroupRateResolver
+	if resolver == nil {
+		resolver = newUserGroupRateResolver(s.userGroupRateRepo, s.userGroupRateCache, resolveUserGroupRateCacheTTL(s.cfg), &s.userGroupRateSF, "service.gateway")
+	}
+	return resolver.ResolveVisibleWithSource(ctx, userID, groupID, groupVisibleMultiplier, effectiveRateMultiplier)
 }
 
 // RecordUsageInput 记录使用量的输入参数。
@@ -657,16 +673,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0
+	hasUserRateOverride := false
+	visibleMultiplier := multiplier
+	hasUserVisibleRateOverride := false
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
-		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		multiplier, hasUserRateOverride = s.getUserGroupRateMultiplierWithSource(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		visibleMultiplier, hasUserVisibleRateOverride = s.getUserGroupVisibleRateMultiplierWithSource(ctx, user.ID, *apiKey.GroupID, apiKey.Group.VisibleRateMultiplier, multiplier)
+	} else {
+		visibleMultiplier = multiplier
 	}
-	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
-	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
+	multiplier, imageMultiplier, visibleMultiplier := computeTimeRateAwareRates(apiKey, multiplier, hasUserRateOverride, visibleMultiplier, hasUserVisibleRateOverride, timezone.Now())
 
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -696,7 +716,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
-		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+		requestedModel, multiplier, visibleMultiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -887,6 +907,7 @@ func (s *GatewayService) buildRecordUsageLog(
 	subscription *UserSubscription,
 	requestedModel string,
 	multiplier float64,
+	visibleMultiplier float64,
 	imageMultiplier float64,
 	accountRateMultiplier float64,
 	billingType int8,
@@ -915,6 +936,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		RateMultiplier:        multiplier,
+		VisibleRateMultiplier: &visibleMultiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
 		BillingMode:           resolveBillingMode(result, cost),

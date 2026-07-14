@@ -24,6 +24,7 @@ import {
   drawLotteryCampaign,
   featureLotteryCampaign,
   listLotteryCampaigns,
+  listLotteryWinners,
   publishLotteryCampaign,
   syncLotteryEntries,
   updateLotteryCampaign,
@@ -109,5 +110,13 @@ describe('lottery campaigns api', () => {
     post.mockResolvedValueOnce({ data: { id: 9 } })
     await drawLotteryCampaign(7, '2026-07-08')
     expect(post).toHaveBeenCalledWith('/admin/lottery-campaigns/7/draw', undefined, { params: { date: '2026-07-08' } })
+
+    get.mockResolvedValueOnce({ data: { items: [] } })
+    await listLotteryWinners(7)
+    expect(get).toHaveBeenCalledWith('/admin/lottery-campaigns/7/winners')
+
+    get.mockResolvedValueOnce({ data: { items: [] } })
+    await listLotteryWinners(7, 9)
+    expect(get).toHaveBeenCalledWith('/admin/lottery-campaigns/7/draw-batches/9/winners')
   })
 })

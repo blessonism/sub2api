@@ -119,59 +119,23 @@ func (_c *GroupCreate) SetNillableVisibleRateMultiplier(v *float64) *GroupCreate
 	return _c
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
-	_c.mutation.SetPeakRateEnabled(v)
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (_c *GroupCreate) SetTimeRatePriority(v string) *GroupCreate {
+	_c.mutation.SetTimeRatePriority(v)
 	return _c
 }
 
-// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
-func (_c *GroupCreate) SetNillablePeakRateEnabled(v *bool) *GroupCreate {
+// SetNillableTimeRatePriority sets the "time_rate_priority" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableTimeRatePriority(v *string) *GroupCreate {
 	if v != nil {
-		_c.SetPeakRateEnabled(*v)
+		_c.SetTimeRatePriority(*v)
 	}
 	return _c
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (_c *GroupCreate) SetPeakStart(v string) *GroupCreate {
-	_c.mutation.SetPeakStart(v)
-	return _c
-}
-
-// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
-func (_c *GroupCreate) SetNillablePeakStart(v *string) *GroupCreate {
-	if v != nil {
-		_c.SetPeakStart(*v)
-	}
-	return _c
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (_c *GroupCreate) SetPeakEnd(v string) *GroupCreate {
-	_c.mutation.SetPeakEnd(v)
-	return _c
-}
-
-// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
-func (_c *GroupCreate) SetNillablePeakEnd(v *string) *GroupCreate {
-	if v != nil {
-		_c.SetPeakEnd(*v)
-	}
-	return _c
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (_c *GroupCreate) SetPeakRateMultiplier(v float64) *GroupCreate {
-	_c.mutation.SetPeakRateMultiplier(v)
-	return _c
-}
-
-// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
-func (_c *GroupCreate) SetNillablePeakRateMultiplier(v *float64) *GroupCreate {
-	if v != nil {
-		_c.SetPeakRateMultiplier(*v)
-	}
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (_c *GroupCreate) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupCreate {
+	_c.mutation.SetTimeRatePeriods(v)
 	return _c
 }
 
@@ -479,6 +443,20 @@ func (_c *GroupCreate) SetVideoPrice1080p(v float64) *GroupCreate {
 func (_c *GroupCreate) SetNillableVideoPrice1080p(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetVideoPrice1080p(*v)
+	}
+	return _c
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (_c *GroupCreate) SetWebSearchPricePerCall(v float64) *GroupCreate {
+	_c.mutation.SetWebSearchPricePerCall(v)
+	return _c
+}
+
+// SetNillableWebSearchPricePerCall sets the "web_search_price_per_call" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableWebSearchPricePerCall(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetWebSearchPricePerCall(*v)
 	}
 	return _c
 }
@@ -822,21 +800,13 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
-	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
-		v := group.DefaultPeakRateEnabled
-		_c.mutation.SetPeakRateEnabled(v)
+	if _, ok := _c.mutation.TimeRatePriority(); !ok {
+		v := group.DefaultTimeRatePriority
+		_c.mutation.SetTimeRatePriority(v)
 	}
-	if _, ok := _c.mutation.PeakStart(); !ok {
-		v := group.DefaultPeakStart
-		_c.mutation.SetPeakStart(v)
-	}
-	if _, ok := _c.mutation.PeakEnd(); !ok {
-		v := group.DefaultPeakEnd
-		_c.mutation.SetPeakEnd(v)
-	}
-	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
-		v := group.DefaultPeakRateMultiplier
-		_c.mutation.SetPeakRateMultiplier(v)
+	if _, ok := _c.mutation.TimeRatePeriods(); !ok {
+		v := group.DefaultTimeRatePeriods
+		_c.mutation.SetTimeRatePeriods(v)
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		v := group.DefaultIsExclusive
@@ -960,27 +930,16 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
 	}
-	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
-		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
+	if _, ok := _c.mutation.TimeRatePriority(); !ok {
+		return &ValidationError{Name: "time_rate_priority", err: errors.New(`ent: missing required field "Group.time_rate_priority"`)}
 	}
-	if _, ok := _c.mutation.PeakStart(); !ok {
-		return &ValidationError{Name: "peak_start", err: errors.New(`ent: missing required field "Group.peak_start"`)}
-	}
-	if v, ok := _c.mutation.PeakStart(); ok {
-		if err := group.PeakStartValidator(v); err != nil {
-			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
+	if v, ok := _c.mutation.TimeRatePriority(); ok {
+		if err := group.TimeRatePriorityValidator(v); err != nil {
+			return &ValidationError{Name: "time_rate_priority", err: fmt.Errorf(`ent: validator failed for field "Group.time_rate_priority": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.PeakEnd(); !ok {
-		return &ValidationError{Name: "peak_end", err: errors.New(`ent: missing required field "Group.peak_end"`)}
-	}
-	if v, ok := _c.mutation.PeakEnd(); ok {
-		if err := group.PeakEndValidator(v); err != nil {
-			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
-		return &ValidationError{Name: "peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.peak_rate_multiplier"`)}
+	if _, ok := _c.mutation.TimeRatePeriods(); !ok {
+		return &ValidationError{Name: "time_rate_periods", err: errors.New(`ent: missing required field "Group.time_rate_periods"`)}
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
@@ -1132,21 +1091,13 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldVisibleRateMultiplier, field.TypeFloat64, value)
 		_node.VisibleRateMultiplier = &value
 	}
-	if value, ok := _c.mutation.PeakRateEnabled(); ok {
-		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
-		_node.PeakRateEnabled = value
+	if value, ok := _c.mutation.TimeRatePriority(); ok {
+		_spec.SetField(group.FieldTimeRatePriority, field.TypeString, value)
+		_node.TimeRatePriority = value
 	}
-	if value, ok := _c.mutation.PeakStart(); ok {
-		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
-		_node.PeakStart = value
-	}
-	if value, ok := _c.mutation.PeakEnd(); ok {
-		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
-		_node.PeakEnd = value
-	}
-	if value, ok := _c.mutation.PeakRateMultiplier(); ok {
-		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
-		_node.PeakRateMultiplier = value
+	if value, ok := _c.mutation.TimeRatePeriods(); ok {
+		_spec.SetField(group.FieldTimeRatePeriods, field.TypeJSON, value)
+		_node.TimeRatePeriods = value
 	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
@@ -1235,6 +1186,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.VideoPrice1080p(); ok {
 		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
 		_node.VideoPrice1080p = &value
+	}
+	if value, ok := _c.mutation.WebSearchPricePerCall(); ok {
+		_spec.SetField(group.FieldWebSearchPricePerCall, field.TypeFloat64, value)
+		_node.WebSearchPricePerCall = &value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1554,57 +1509,27 @@ func (u *GroupUpsert) ClearVisibleRateMultiplier() *GroupUpsert {
 	return u
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (u *GroupUpsert) SetPeakRateEnabled(v bool) *GroupUpsert {
-	u.Set(group.FieldPeakRateEnabled, v)
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (u *GroupUpsert) SetTimeRatePriority(v string) *GroupUpsert {
+	u.Set(group.FieldTimeRatePriority, v)
 	return u
 }
 
-// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
-func (u *GroupUpsert) UpdatePeakRateEnabled() *GroupUpsert {
-	u.SetExcluded(group.FieldPeakRateEnabled)
+// UpdateTimeRatePriority sets the "time_rate_priority" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateTimeRatePriority() *GroupUpsert {
+	u.SetExcluded(group.FieldTimeRatePriority)
 	return u
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (u *GroupUpsert) SetPeakStart(v string) *GroupUpsert {
-	u.Set(group.FieldPeakStart, v)
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (u *GroupUpsert) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpsert {
+	u.Set(group.FieldTimeRatePeriods, v)
 	return u
 }
 
-// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
-func (u *GroupUpsert) UpdatePeakStart() *GroupUpsert {
-	u.SetExcluded(group.FieldPeakStart)
-	return u
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (u *GroupUpsert) SetPeakEnd(v string) *GroupUpsert {
-	u.Set(group.FieldPeakEnd, v)
-	return u
-}
-
-// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
-func (u *GroupUpsert) UpdatePeakEnd() *GroupUpsert {
-	u.SetExcluded(group.FieldPeakEnd)
-	return u
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (u *GroupUpsert) SetPeakRateMultiplier(v float64) *GroupUpsert {
-	u.Set(group.FieldPeakRateMultiplier, v)
-	return u
-}
-
-// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
-func (u *GroupUpsert) UpdatePeakRateMultiplier() *GroupUpsert {
-	u.SetExcluded(group.FieldPeakRateMultiplier)
-	return u
-}
-
-// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
-func (u *GroupUpsert) AddPeakRateMultiplier(v float64) *GroupUpsert {
-	u.Add(group.FieldPeakRateMultiplier, v)
+// UpdateTimeRatePeriods sets the "time_rate_periods" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateTimeRatePeriods() *GroupUpsert {
+	u.SetExcluded(group.FieldTimeRatePeriods)
 	return u
 }
 
@@ -2010,6 +1935,30 @@ func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
 	return u
 }
 
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsert) SetWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Set(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateWebSearchPricePerCall() *GroupUpsert {
+	u.SetExcluded(group.FieldWebSearchPricePerCall)
+	return u
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsert) AddWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Add(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsert) ClearWebSearchPricePerCall() *GroupUpsert {
+	u.SetNull(group.FieldWebSearchPricePerCall)
+	return u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsert) SetClaudeCodeOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldClaudeCodeOnly, v)
@@ -2396,66 +2345,31 @@ func (u *GroupUpsertOne) ClearVisibleRateMultiplier() *GroupUpsertOne {
 	})
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (u *GroupUpsertOne) SetPeakRateEnabled(v bool) *GroupUpsertOne {
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (u *GroupUpsertOne) SetTimeRatePriority(v string) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakRateEnabled(v)
+		s.SetTimeRatePriority(v)
 	})
 }
 
-// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdatePeakRateEnabled() *GroupUpsertOne {
+// UpdateTimeRatePriority sets the "time_rate_priority" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateTimeRatePriority() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakRateEnabled()
+		s.UpdateTimeRatePriority()
 	})
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (u *GroupUpsertOne) SetPeakStart(v string) *GroupUpsertOne {
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (u *GroupUpsertOne) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakStart(v)
+		s.SetTimeRatePeriods(v)
 	})
 }
 
-// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdatePeakStart() *GroupUpsertOne {
+// UpdateTimeRatePeriods sets the "time_rate_periods" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateTimeRatePeriods() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakStart()
-	})
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (u *GroupUpsertOne) SetPeakEnd(v string) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakEnd(v)
-	})
-}
-
-// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdatePeakEnd() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakEnd()
-	})
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (u *GroupUpsertOne) SetPeakRateMultiplier(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakRateMultiplier(v)
-	})
-}
-
-// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
-func (u *GroupUpsertOne) AddPeakRateMultiplier(v float64) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddPeakRateMultiplier(v)
-	})
-}
-
-// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdatePeakRateMultiplier() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakRateMultiplier()
+		s.UpdateTimeRatePeriods()
 	})
 }
 
@@ -2925,6 +2839,34 @@ func (u *GroupUpsertOne) UpdateVideoPrice1080p() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) SetWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) AddWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) ClearWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
 	})
 }
 
@@ -3517,66 +3459,31 @@ func (u *GroupUpsertBulk) ClearVisibleRateMultiplier() *GroupUpsertBulk {
 	})
 }
 
-// SetPeakRateEnabled sets the "peak_rate_enabled" field.
-func (u *GroupUpsertBulk) SetPeakRateEnabled(v bool) *GroupUpsertBulk {
+// SetTimeRatePriority sets the "time_rate_priority" field.
+func (u *GroupUpsertBulk) SetTimeRatePriority(v string) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakRateEnabled(v)
+		s.SetTimeRatePriority(v)
 	})
 }
 
-// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdatePeakRateEnabled() *GroupUpsertBulk {
+// UpdateTimeRatePriority sets the "time_rate_priority" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateTimeRatePriority() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakRateEnabled()
+		s.UpdateTimeRatePriority()
 	})
 }
 
-// SetPeakStart sets the "peak_start" field.
-func (u *GroupUpsertBulk) SetPeakStart(v string) *GroupUpsertBulk {
+// SetTimeRatePeriods sets the "time_rate_periods" field.
+func (u *GroupUpsertBulk) SetTimeRatePeriods(v []domain.GroupTimeRatePeriod) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakStart(v)
+		s.SetTimeRatePeriods(v)
 	})
 }
 
-// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdatePeakStart() *GroupUpsertBulk {
+// UpdateTimeRatePeriods sets the "time_rate_periods" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateTimeRatePeriods() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakStart()
-	})
-}
-
-// SetPeakEnd sets the "peak_end" field.
-func (u *GroupUpsertBulk) SetPeakEnd(v string) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakEnd(v)
-	})
-}
-
-// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdatePeakEnd() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakEnd()
-	})
-}
-
-// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
-func (u *GroupUpsertBulk) SetPeakRateMultiplier(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetPeakRateMultiplier(v)
-	})
-}
-
-// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
-func (u *GroupUpsertBulk) AddPeakRateMultiplier(v float64) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.AddPeakRateMultiplier(v)
-	})
-}
-
-// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdatePeakRateMultiplier() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdatePeakRateMultiplier()
+		s.UpdateTimeRatePeriods()
 	})
 }
 
@@ -4046,6 +3953,34 @@ func (u *GroupUpsertBulk) UpdateVideoPrice1080p() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) SetWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) AddWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) ClearWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
 	})
 }
 

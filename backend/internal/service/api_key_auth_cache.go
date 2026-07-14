@@ -79,6 +79,7 @@ type APIKeyAuthGroupSnapshot struct {
 	VideoPrice480P                  *float64 `json:"video_price_480p,omitempty"`
 	VideoPrice720P                  *float64 `json:"video_price_720p,omitempty"`
 	VideoPrice1080P                 *float64 `json:"video_price_1080p,omitempty"`
+	WebSearchPricePerCall           *float64 `json:"web_search_price_per_call,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
@@ -101,13 +102,8 @@ type APIKeyAuthGroupSnapshot struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
 
-	// 高峰时段倍率：PeakRateEnabled 为 true 且请求时刻处于 [PeakStart, PeakEnd) 时，
-	// token 计费倍率额外乘以 PeakRateMultiplier（详见 Group.PeakMultiplierAt）。
-	// 必须随快照缓存，否则扣费路径拿到的 apiKey.Group 缺字段、高峰倍率失效。
-	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
-	PeakStart          string  `json:"peak_start"`
-	PeakEnd            string  `json:"peak_end"`
-	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	TimeRatePriority string                `json:"time_rate_priority"`
+	TimeRatePeriods  []GroupTimeRatePeriod `json:"time_rate_periods,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

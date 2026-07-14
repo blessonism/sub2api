@@ -109,13 +109,17 @@ When updating `frontend/src/api/lotteryCampaigns.ts` or `frontend/src/api/admin/
 
 - Keep `LotteryCampaign` fields aligned with backend JSON names, including `is_featured`, `prize_tiers`, `draw_schedule_type`, `daily_draw_time`, and all timestamp fields.
 - Add admin API methods for each backend management action instead of calling raw `apiClient` from Vue components. Current action paths include `/admin/lottery-campaigns/:id/feature` and `DELETE /admin/lottery-campaigns/:id`.
+- Use `/admin/lottery-campaigns/:id/winners` for an activity-level admin winner list; keep `/draw-batches/:batch_id/winners` for batch-scoped tools. Never reuse the admin `LotteryWinner` response in user-facing winner views.
+- Treat `is_featured` as persistent user-page selection, not as an active-time-window signal. The admin feature action is available for any `published` campaign, while enrollment controls still depend on backend entry-window state.
+- For user lottery round state, use backend `round_completed` and `LotteryPublicWinner.is_current_round`; never infer completion from a non-empty campaign-wide winner history.
 - Reuse the full `LotteryCampaignRequest` payload for create and edit so published campaign edits stay contract-compatible with backend validation.
 - Keep destructive copy in i18n, not hardcoded component strings, and include zh/en keys for edit, hard delete, cascade warning, feature selection, and validation messages.
 - Validate obvious time errors in the admin UI before submit, but keep backend validation authoritative.
 
 Required checks:
 
-- API test verifies create, update, publish, cancel, feature, hard delete, sync, and draw endpoint paths.
+- API test verifies create, update, publish, cancel, feature, hard delete, sync, draw, and activity-level winner endpoint paths.
+- Admin component test covers an ended published campaign being selectable for persistent display and rendering its winner records.
 - `pnpm typecheck` passes after adding fields to `LotteryCampaign`.
 - Targeted i18n scan or component review confirms every `admin.lotteryCampaigns.*` key used by the panel exists in both locale files.
 
