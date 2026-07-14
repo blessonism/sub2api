@@ -233,8 +233,8 @@ func (h *AnnouncementHandler) ListReadStatus(c *gin.Context) {
 	params := pagination.PaginationParams{
 		Page:      page,
 		PageSize:  pageSize,
-		SortBy:    c.DefaultQuery("sort_by", "email"),
-		SortOrder: c.DefaultQuery("sort_order", "asc"),
+		SortBy:    c.DefaultQuery("sort_by", "read_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 	search := strings.TrimSpace(c.Query("search"))
 	if len(search) > 200 {
