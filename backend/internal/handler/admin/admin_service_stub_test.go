@@ -58,6 +58,12 @@ type stubAdminService struct {
 		sortOrder string
 		calls     int
 	}
+	lastBatchConcurrency struct {
+		userIDs []int64
+		value   int
+		mode    string
+		calls   int
+	}
 	lastListProxies struct {
 		protocol  string
 		status    string
@@ -214,6 +220,10 @@ func (s *stubAdminService) UpdateBalanceSummaryExclusions(ctx context.Context, u
 }
 
 func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
+	s.lastBatchConcurrency.userIDs = append([]int64(nil), userIDs...)
+	s.lastBatchConcurrency.value = value
+	s.lastBatchConcurrency.mode = mode
+	s.lastBatchConcurrency.calls++
 	return len(userIDs), nil
 }
 

@@ -1020,6 +1020,20 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 	return int(affected), nil
 }
 
+func (r *userRepository) BatchRaiseConcurrencyFloor(ctx context.Context, userIDs []int64, value int) (int, error) {
+	if len(userIDs) == 0 {
+		return 0, nil
+	}
+	res, err := r.sql.ExecContext(ctx,
+		"UPDATE users SET concurrency = GREATEST(concurrency, $1), updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL AND concurrency < $1",
+		value, pq.Array(userIDs))
+	if err != nil {
+		return 0, fmt.Errorf("batch raise concurrency floor: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
 }

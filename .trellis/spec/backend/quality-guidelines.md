@@ -32,6 +32,50 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Admin global user concurrency floor
+
+#### 1. Scope / Trigger
+- Trigger: changing the admin operation that raises the minimum concurrency of all users.
+
+#### 2. Signatures
+- Endpoint: `POST /api/v1/admin/users/batch-concurrency`.
+- Floor payload: `{"all":true,"concurrency":<positive integer>,"mode":"floor"}`.
+- Repository operation: `BatchRaiseConcurrencyFloor(ctx, userIDs, value)`.
+
+#### 3. Contracts
+- `all=true` covers every non-soft-deleted account, including disabled users and admins.
+- Floor mode only raises users below the requested value; equal or higher values remain unchanged.
+- The response keeps the existing `{"affected": number}` shape and counts only rows actually raised.
+- Existing `set` and `add` modes keep their current behavior.
+
+#### 4. Validation & Error Matrix
+- Floor value `< 1` -> `400 concurrency must be at least 1 in floor mode`.
+- Missing target users with `all=false` -> existing `400 user_ids is required unless all=true`.
+- Empty user set or no value below the floor -> success with `affected: 0`.
+
+#### 5. Good/Base/Bad Cases
+- Good: floor `5` changes concurrency `2` to `5` while concurrency `8` remains `8`.
+- Base: every user is already at least `5`, so no row changes and `affected` is zero.
+- Bad: read current values and later overwrite selected rows with `5`, which can lower a concurrent update to `8`.
+
+#### 6. Tests Required
+- Repository SQL test asserts atomic `GREATEST(concurrency, $1)` plus `concurrency < $1` and soft-delete filtering.
+- Handler test covers active, disabled, and admin users for `all=true`, plus invalid floor rejection.
+- Frontend API/view tests cover the payload, integer validation, success count, and list refresh.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+UPDATE users SET concurrency = $1 WHERE id = ANY($2)
+```
+
+Correct:
+```sql
+UPDATE users SET concurrency = GREATEST(concurrency, $1)
+WHERE id = ANY($2) AND deleted_at IS NULL AND concurrency < $1
+```
+
 ### Scenario: Campaign historical invite weighting
 
 #### 1. Scope / Trigger

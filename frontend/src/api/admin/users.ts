@@ -184,6 +184,15 @@ export async function updateConcurrency(id: number, concurrency: number): Promis
   return update(id, { concurrency })
 }
 
+export async function raiseConcurrencyFloor(concurrency: number): Promise<{ affected: number }> {
+  const { data } = await apiClient.post<{ affected: number }>('/admin/users/batch-concurrency', {
+    all: true,
+    concurrency,
+    mode: 'floor'
+  })
+  return data
+}
+
 /**
  * Toggle user status
  * @param id - User ID
@@ -408,6 +417,7 @@ export const usersAPI = {
   delete: deleteUser,
   updateBalance,
   updateConcurrency,
+  raiseConcurrencyFloor,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,
