@@ -75,8 +75,9 @@ type UpdateUserRequest struct {
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
-	GroupRates        map[int64]*float64 `json:"group_rates"`
-	VisibleGroupRates map[int64]*float64 `json:"visible_group_rates"`
+	GroupRates           map[int64]*float64                         `json:"group_rates"`
+	VisibleGroupRates    map[int64]*float64                         `json:"visible_group_rates"`
+	GroupAccountBindings *map[int64]service.UserGroupAccountBinding `json:"group_account_bindings"`
 }
 
 // UpdateBalanceRequest represents balance update request
@@ -311,19 +312,20 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	// 使用指针类型直接传递，nil 表示未提供该字段
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:             req.Email,
-		Password:          req.Password,
-		Username:          req.Username,
-		Notes:             req.Notes,
-		Role:              req.Role,
-		Balance:           req.Balance,
-		Concurrency:       req.Concurrency,
-		RPMLimit:          req.RPMLimit,
-		Status:            req.Status,
-		AllowedGroups:     req.AllowedGroups,
-		GroupRates:        req.GroupRates,
-		VisibleGroupRates: req.VisibleGroupRates,
-		ActorAdminID:      getAdminIDFromContext(c),
+		Email:                req.Email,
+		Password:             req.Password,
+		Username:             req.Username,
+		Notes:                req.Notes,
+		Role:                 req.Role,
+		Balance:              req.Balance,
+		Concurrency:          req.Concurrency,
+		RPMLimit:             req.RPMLimit,
+		Status:               req.Status,
+		AllowedGroups:        req.AllowedGroups,
+		GroupRates:           req.GroupRates,
+		VisibleGroupRates:    req.VisibleGroupRates,
+		GroupAccountBindings: req.GroupAccountBindings,
+		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

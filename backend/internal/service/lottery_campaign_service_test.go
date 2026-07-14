@@ -125,7 +125,7 @@ func TestLotteryCreateRejectsDailyCampaignWithoutDrawInWindow(t *testing.T) {
 	}
 }
 
-func TestLotteryFeatureRequiresPublishedActiveCampaign(t *testing.T) {
+func TestLotteryFeatureRequiresPublishedCampaignRegardlessOfWindow(t *testing.T) {
 	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
 	repo := &lotteryServiceRepoStub{
 		campaign: LotteryCampaign{ID: 7, Status: LotteryStatusPublished, StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
@@ -139,9 +139,16 @@ func TestLotteryFeatureRequiresPublishedActiveCampaign(t *testing.T) {
 		t.Fatalf("feature calls = %d, campaign = %+v", repo.featureCalls, featured)
 	}
 
-	repo.campaign.StartAt = now.Add(time.Hour)
+	repo.campaign.StartAt = now.Add(-48 * time.Hour)
+	repo.campaign.EndAt = now.Add(-24 * time.Hour)
+	repo.campaign.IsFeatured = false
+	if _, err := svc.Feature(context.Background(), 7, nil, now); err != nil {
+		t.Fatalf("feature ended published campaign failed: %v", err)
+	}
+
+	repo.campaign.Status = LotteryStatusCancelled
 	if _, err := svc.Feature(context.Background(), 7, nil, now); !errors.Is(err, ErrLotteryFeaturedInvalid) {
-		t.Fatalf("feature future err = %v, want ErrLotteryFeaturedInvalid", err)
+		t.Fatalf("feature cancelled err = %v, want ErrLotteryFeaturedInvalid", err)
 	}
 }
 
@@ -536,6 +543,57 @@ func TestLotteryRecentWinnersRejectsInvisibleCampaign(t *testing.T) {
 	}
 }
 
+func TestLotteryFeaturedEndedCampaignKeepsWinnersVisibleButEntriesClosed(t *testing.T) {
+	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	repo := &lotteryServiceRepoStub{
+		campaign: LotteryCampaign{
+			ID: 7, Status: LotteryStatusPublished, IsFeatured: true,
+			DrawScheduleType: LotteryDrawSingle, ParticipationMode: LotteryParticipationAuto,
+			EntryMode: LotteryEntryDailyOnce, ThresholdTokens: 100,
+			StartAt: now.Add(-48 * time.Hour), EndAt: now.Add(-24 * time.Hour), DrawAt: lotteryPtrTime(now.Add(-25 * time.Hour)),
+		},
+		tokens:        200,
+		publicWinners: []LotteryPublicWinner{{MaskedEmail: "j***@example.com", PrizeName: "Gold", RewardAmountCents: 10000, EntryDate: now.Add(-25 * time.Hour), CreatedAt: now.Add(-24 * time.Hour)}},
+	}
+	svc := NewLotteryCampaignService(repo, nil)
+
+	winners, err := svc.RecentWinners(context.Background(), 7, 10, now)
+	if err != nil || len(winners) != 1 {
+		t.Fatalf("featured ended winners = %+v, err = %v", winners, err)
+	}
+	if !winners[0].IsCurrentRound {
+		t.Fatalf("featured ended single winner should be marked as current round: %+v", winners[0])
+	}
+	data, err := svc.MyData(context.Background(), 7, 42, now)
+	if err != nil {
+		t.Fatalf("featured ended my data failed: %v", err)
+	}
+	if repo.upsertCalls != 0 || data.EntryStatus != "not_eligible" || data.EntryCount != 0 {
+		t.Fatalf("ended campaign mutated entries: upserts=%d status=%s count=%d", repo.upsertCalls, data.EntryStatus, data.EntryCount)
+	}
+}
+
+func TestLotteryMyDataReportsCompletedRoundWithoutWinners(t *testing.T) {
+	now := time.Date(2026, 7, 8, 21, 0, 0, 0, time.UTC)
+	repo := &lotteryServiceRepoStub{
+		campaign: LotteryCampaign{
+			ID: 7, Status: LotteryStatusPublished, IsFeatured: true,
+			DrawScheduleType: LotteryDrawDaily, ParticipationMode: LotteryParticipationAuto,
+			EntryMode: LotteryEntryDailyOnce, ThresholdTokens: 100,
+			StartAt: now.Add(-24 * time.Hour), EndAt: now.Add(24 * time.Hour), DailyDrawTime: "20:00",
+		},
+		batch: &LotteryDrawBatch{ID: 9, CampaignID: 7, DrawDate: dateOnly(now), Status: lotteryDrawStatusSuccess},
+	}
+
+	data, err := NewLotteryCampaignService(repo, nil).MyData(context.Background(), 7, 42, now)
+	if err != nil {
+		t.Fatalf("my data failed: %v", err)
+	}
+	if !data.RoundCompleted {
+		t.Fatal("successful empty draw must report round_completed")
+	}
+}
+
 func TestLotteryRecentWinnersDefaultsAndCapsLimit(t *testing.T) {
 	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
 	repo := &lotteryServiceRepoStub{
@@ -560,6 +618,28 @@ func TestLotteryRecentWinnersDefaultsAndCapsLimit(t *testing.T) {
 	}
 	if repo.recentLimitArg != lotteryPublicWinnersMaxLimit {
 		t.Fatalf("limit arg = %d, want capped %d", repo.recentLimitArg, lotteryPublicWinnersMaxLimit)
+	}
+}
+
+func TestLotteryRecentWinnersMarksOnlyCurrentDailyRound(t *testing.T) {
+	now := time.Date(2026, 7, 8, 21, 0, 0, 0, time.UTC)
+	repo := &lotteryServiceRepoStub{
+		campaign: LotteryCampaign{
+			ID: 7, Status: LotteryStatusPublished, DrawScheduleType: LotteryDrawDaily,
+			StartAt: now.Add(-48 * time.Hour), EndAt: now.Add(48 * time.Hour), DailyDrawTime: "20:00",
+		},
+		publicWinners: []LotteryPublicWinner{
+			{MaskedEmail: "today@example.com", EntryDate: now},
+			{MaskedEmail: "old@example.com", EntryDate: now.AddDate(0, 0, -1)},
+		},
+	}
+
+	winners, err := NewLotteryCampaignService(repo, nil).RecentWinners(context.Background(), 7, 10, now)
+	if err != nil {
+		t.Fatalf("recent winners failed: %v", err)
+	}
+	if !winners[0].IsCurrentRound || winners[1].IsCurrentRound {
+		t.Fatalf("current round flags = %+v", winners)
 	}
 }
 

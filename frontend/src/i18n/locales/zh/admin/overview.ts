@@ -578,6 +578,12 @@ export default {
       useDefaultRate: '使用默认',
       customRatePlaceholder: '留空使用默认',
       groupConfigUpdated: '分组配置更新成功',
+      limitAccounts: '限定调度账号',
+      accountBindingStrict: '严格限制',
+      accountBindingFallback: '不可立即承接时回退分组账号',
+      accountBindingRequired: '请为「{group}」至少选择一个账号',
+      noGroupAccounts: '该分组暂无账号',
+      failedToLoadGroupAccounts: '加载分组账号失败',
       replaceGroup: '替换分组',
       clickToReplace: '点击替换分组',
       replaceGroupTitle: '替换专属分组',
@@ -929,6 +935,13 @@ export default {
           '视频按秒计费：费用 = 每秒价格 × 时长（1-15 秒，未指定默认 8 秒）。默认叠加当前分组有效倍率；开启独立倍率后改用视频独立倍率。',
         finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
+      },
+      webSearchPricing: {
+        title: 'Codex 网页搜索计费',
+        pricePerCall: '搜索单次价格（USD/次）',
+        pricePerCallHint:
+          '留空使用默认价 $0.01/次（官方定价 $10/1000 次）；填 0 表示免费。实际扣费会叠加分组费率倍数。',
+        finalPricePreview: '应用当前倍率后的单次价格：{price}'
       },
       peakRate: {
         enable: '启用高峰倍率',

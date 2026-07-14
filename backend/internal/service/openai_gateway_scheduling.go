@@ -23,17 +23,7 @@ import (
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
-	if c == nil {
-		return ""
-	}
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
-	}
-	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-	}
-	return sessionID
+	return explicitOpenAIRequestSessionID(c, body)
 }
 
 func explicitOpenAISessionID(c *gin.Context, body []byte) string {
@@ -51,11 +41,33 @@ func explicitOpenAISessionID(c *gin.Context, body []byte) string {
 	return sessionID
 }
 
+// explicitOpenAIRequestSessionID extends the common OpenAI session signals
+// with Grok's native conversation header only for requests authenticated to a
+// Grok group. This keeps an unrelated x-grok-conv-id header from changing
+// scheduling or upstream session behavior for non-Grok groups.
+func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
+	if c == nil {
+		return ""
+	}
+
+	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+	}
+	if sessionID == "" && isGrokRequestContext(c) {
+		sessionID = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
+	}
+	if sessionID == "" && len(body) > 0 {
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+	}
+	return sessionID
+}
+
 // GenerateExplicitSessionHash generates a sticky-session hash only from explicit
 // client session signals. It intentionally skips content-derived fallback and is
 // used by stateless endpoints such as /v1/images.
 func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body []byte) string {
-	sessionID := explicitOpenAISessionID(c, body)
+	sessionID := explicitOpenAIRequestSessionID(c, body)
 	if sessionID == "" {
 		return ""
 	}
@@ -70,14 +82,15 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 // Priority:
 //  1. Header: session_id
 //  2. Header: conversation_id
-//  3. Body:   prompt_cache_key (opencode)
-//  4. Body:   content-based fallback (model + system + tools + first user message)
+//  3. Header: x-grok-conv-id (Grok groups only)
+//  4. Body:   prompt_cache_key (opencode)
+//  5. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
 	}
 
-	sessionID := explicitOpenAISessionID(c, body)
+	sessionID := explicitOpenAIRequestSessionID(c, body)
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
@@ -146,7 +159,19 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
+	}
+
+	account, err := s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(withUserGroupAccountBinding(ctx, binding.AccountIDs)), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
+	if !binding.FallbackToGroup || !isNoAvailableAccountSelectionError(err) {
+		return account, err
+	}
+	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(withoutUserGroupAccountBinding(ctx)), groupID, PlatformOpenAI, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs), false, 0, "")
 }
 
 // noAvailableOpenAISelectionError builds the standard "no account available" error
@@ -621,7 +646,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		}
 	}
 
-	if _, excluded := excludedIDs[accountID]; excluded {
+	if isAccountExcludedForRequest(ctx, excludedIDs, accountID) {
 		return nil
 	}
 
@@ -686,7 +711,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 
 		// 跳过被排除的账号
 		// Skip excluded accounts
-		if _, excluded := excludedIDs[acc.ID]; excluded {
+		if isAccountExcludedForRequest(ctx, excludedIDs, acc.ID) {
 			continue
 		}
 
@@ -771,7 +796,22 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
-	return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "")
+	binding, applies, err := resolveRequestUserGroupAccountBinding(ctx, s.userGroupAccountBindingResolver, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !applies {
+		return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "")
+	}
+
+	result, err := s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(withUserGroupAccountBinding(ctx, binding.AccountIDs)), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "")
+	if !binding.FallbackToGroup || (err == nil && result != nil && result.Acquired) || (err != nil && !isNoAvailableAccountSelectionError(err)) {
+		return result, err
+	}
+	if result != nil && result.ReleaseFunc != nil {
+		result.ReleaseFunc()
+	}
+	return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(withoutUserGroupAccountBinding(ctx)), groupID, PlatformOpenAI, sessionHash, requestedModel, excludeUserGroupBoundAccounts(excludedIDs, binding.AccountIDs), false, "")
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability) (*AccountSelectionResult, error) {
@@ -827,13 +867,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, ErrNoAvailableAccounts
 	}
 
-	isExcluded := func(accountID int64) bool {
-		if excludedIDs == nil {
-			return false
-		}
-		_, excluded := excludedIDs[accountID]
-		return excluded
-	}
+	isExcluded := func(accountID int64) bool { return isAccountExcludedForRequest(ctx, excludedIDs, accountID) }
 
 	// ============ Layer 1: Sticky session ============
 	if sessionHash != "" {

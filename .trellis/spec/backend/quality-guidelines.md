@@ -81,6 +81,115 @@ SELECT value FROM redeem_codes rc
 WHERE NOT EXISTS (SELECT 1 FROM payment_orders po WHERE po.recharge_code = rc.code);
 ```
 
+### Scenario: Durable announcement email broadcasts
+
+#### 1. Scope / Trigger
+- Trigger: changing administrator announcement email broadcast creation, recipient selection, delivery processing, retry, or progress APIs.
+
+#### 2. Signatures
+- Management APIs: `GET|POST /api/v1/admin/announcements/:id/email-broadcast`, `GET .../deliveries`, and `POST .../retry-failed`.
+- Persistence: `announcement_email_broadcasts` owns one immutable message snapshot per announcement; `announcement_email_deliveries` owns one recipient snapshot per user.
+- Worker entrypoint: `AnnouncementEmailBroadcastRepository.ClaimNext(ctx, leaseUntil)`.
+
+#### 3. Contracts
+- Only an announcement active at server time can create a broadcast, and `announcement_id` is unique across broadcasts.
+- Recipients are active, non-deleted users with valid non-reserved email addresses who match `AnnouncementTargeting` using non-expired active subscriptions.
+- Sent recipients are immutable. Retry changes only `failed` deliveries back to `pending` and preserves `attempt_count`.
+- The worker claims rows with `FOR UPDATE SKIP LOCKED`; result writes update the delivery and broadcast counters in one transaction.
+- Existing broadcasts block hard deletion of their announcement. User deletion keeps the email snapshot and clears only `user_id`.
+
+#### 4. Validation & Error Matrix
+- Inactive announcement -> `ANNOUNCEMENT_EMAIL_NOT_ACTIVE`.
+- Existing broadcast -> `ANNOUNCEMENT_EMAIL_BROADCAST_EXISTS`.
+- No eligible recipients -> `ANNOUNCEMENT_EMAIL_NO_RECIPIENTS`.
+- More than 10,000 recipients -> `ANNOUNCEMENT_EMAIL_TOO_MANY_RECIPIENTS`.
+- Retry without failed deliveries -> `ANNOUNCEMENT_EMAIL_NO_FAILURES`.
+- Delete after broadcast creation -> `ANNOUNCEMENT_EMAIL_BROADCAST_DELETE_BLOCKED`.
+
+#### 5. Good/Base/Bad Cases
+- Good: an expired processing lease is reclaimed, increments `attempt_count`, and reaches one terminal counter update.
+- Base: a completed broadcast returns progress and delivery history without recalculating recipients.
+- Bad: loading subscriptions with `status='active'` but not checking `expires_at`, which emails users whose announcement is no longer visible.
+
+#### 6. Tests Required
+- Service: reserved/invalid email exclusion and safe Markdown rendering without raw HTML.
+- Repository integration: create, claim, expired-lease recovery, failure, retry, success counters, migration shape, and delete restriction.
+- API/frontend: all four paths, send confirmation, running-state polling, failed retry, zh/en keys, and type alignment.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+if subscription.Status == SubscriptionStatusActive { groups[subscription.GroupID] = struct{}{} }
+```
+
+Correct:
+```go
+if subscription.Status == SubscriptionStatusActive && subscription.ExpiresAt.After(now) { groups[subscription.GroupID] = struct{}{} }
+```
+
+### Scenario: Versioned authentication cache snapshots
+
+#### 1. Scope / Trigger
+- Trigger: adding, removing, or changing fields serialized in `APIKeyAuthSnapshot` or its nested user/group snapshots.
+
+#### 2. Contracts
+- Every serialized schema change must increment `apiKeyAuthSnapshotVersion`, so an older L1/L2 entry cannot be accepted with silently missing authorization or billing fields.
+- When merging branches that independently used the same next version for different fields, the combined schema must advance to a new version rather than keeping either branch's number.
+- Snapshot construction and restoration must carry the same field set in both directions.
+
+#### 3. Tests Required
+- Snapshot round-trip tests cover new fields.
+- Cache lookup tests reject entries whose version predates the combined schema.
+
+### Scenario: Persistent lottery campaign visibility and winner disclosure
+
+#### 1. Scope / Trigger
+- Trigger: changing lottery campaign feature selection, public visibility, entry availability, or winner list APIs.
+
+#### 2. Signatures
+- Persistent marker: `lottery_campaigns.is_featured` (at most one row is selected by `SetFeaturedLotteryCampaign`).
+- Public selection: `GET /api/v1/lottery-campaigns/active`.
+- Public winners: `GET /api/v1/lottery-campaigns/:id/winners`.
+- Admin winners: `GET /api/v1/admin/lottery-campaigns/:id/winners`, with the existing batch-scoped route retained.
+
+#### 3. Contracts
+- A published featured campaign remains publicly readable outside its start/end window and takes priority over newer active campaigns until an admin changes the featured selection.
+- Public readability and entry availability are separate decisions. Featured status never reopens enrollment before `start_at` or after `end_at` / the draw window.
+- Public winner DTOs contain only `masked_email`, `prize_name`, `reward_amount_cents`, `entry_date`, `is_current_round`, and `created_at`, and only successful winners.
+- `LotteryMyData.round_completed` comes from the current/final draw batch terminal status, so rounds with zero winners can still present an unambiguous completed state.
+- Daily winner history must not complete or highlight the next round. The service marks `is_current_round` against the server-timezone result date; frontend round UI filters on that field.
+- Admin winner DTOs may include operational identifiers and payout status but must stay behind admin routes.
+
+#### 4. Validation & Error Matrix
+- Feature a non-published campaign -> `LOTTERY_FEATURED_INVALID`.
+- Read a draft/cancelled/archived or ended non-featured campaign through public detail/winner APIs -> `LOTTERY_CAMPAIGN_NOT_FOUND`.
+- Enroll in a featured campaign outside its entry window -> `LOTTERY_ENTRIES_CLOSED`.
+
+#### 5. Good/Base/Bad Cases
+- Good: an ended published featured campaign shows persisted masked winners while all entry writes remain closed.
+- Base: when no campaign is featured, the active endpoint returns the normal published campaign inside its time window.
+- Bad: implementing entry availability by calling a visibility helper that treats featured campaigns as timelessly visible.
+- Bad: returning the admin `LotteryWinner` DTO from a public handler.
+
+#### 6. Tests Required
+- Repository: featured campaign is selected even after `end_at` and wins priority ordering.
+- Service: ended featured winner data is readable, no entry upsert occurs, and non-published campaigns cannot be featured.
+- Service: daily historical winners are not marked current, and a successful zero-winner batch reports `round_completed=true`.
+- API/frontend: campaign-level admin winner path, persistent action availability, and masked public winner rendering.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+return lotteryCampaignVisible(campaign, now) // may be true solely because is_featured=true
+```
+
+Correct:
+```go
+return campaign.Status == LotteryStatusPublished && lotteryCampaignInWindow(campaign, now)
+```
+
 ### Scenario: User-visible usage ranking/statistics APIs
 
 #### 1. Scope / Trigger
@@ -809,6 +918,49 @@ UpdateSnapshotTodayUsage(ctx, connectorID, partialUsage, checkedAt, true)
 Correct:
 ```go
 UpdateSnapshotTodayUsage(ctx, connectorID, partialUsage, checkedAt, false)
+```
+
+---
+
+### Scenario: Admin announcement read-status sorting
+
+#### 1. Scope / Trigger
+- Trigger: changing the admin announcement read-status list ordering or pagination.
+
+#### 2. Signatures
+- Route: `GET /api/v1/admin/announcements/:id/read-status`.
+- Default query: `sort_by=read_at&sort_order=desc`.
+- Repository entrypoint: `UserRepository.ListWithFilters`, with `UserListFilters.ReadStatusAnnouncementID` set to the route announcement ID.
+
+#### 3. Contracts
+- Read users sort by `announcement_reads.read_at` in the requested direction; unread users always follow read users.
+- Ordering is applied before `OFFSET/LIMIT` and ties use `users.id ASC`.
+- The join matches both `announcement_id` and `user_id`; the response schema remains unchanged.
+
+#### 4. Validation & Error Matrix
+- Missing or non-positive announcement ID -> existing handler validation error.
+- `sort_by=read_at` without `ReadStatusAnnouncementID` -> normal user-list fallback ordering, without an unscoped read join.
+
+#### 5. Good/Base/Bad Cases
+- Good: page 1 contains the most recently read users and unread users begin only after all read users.
+- Base: when nobody has read the announcement, users remain stable by ID.
+- Bad: fetch a page by email and sort only that page by `read_at` in the service or frontend.
+
+#### 6. Tests Required
+- Handler test asserts the `read_at desc` defaults and announcement ID propagation.
+- Repository query test asserts the scoped left join, nulls-last expression, stable tie-break, and ordering before pagination.
+- Frontend test asserts the initial API request uses `read_at desc`.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+sort.Slice(pageUsers, byReadAt)
+```
+
+Correct:
+```sql
+ORDER BY ar.read_at IS NULL, ar.read_at DESC, users.id ASC LIMIT $1 OFFSET $2
 ```
 
 ---

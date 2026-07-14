@@ -2,13 +2,23 @@ name: CI
 
 on:
   push:
+    branches-ignore:
+      - 'sync/upstream-*'
   pull_request:
+  workflow_call:
+    inputs:
+      force:
+        description: 'Run the complete gate when called after downstream sync quick checks'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   test:
+    if: inputs.force || github.event_name != 'pull_request' || !startsWith(github.head_ref, 'sync/upstream-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -29,6 +39,7 @@ jobs:
         run: make test-integration
 
   frontend:
+    if: inputs.force || github.event_name != 'pull_request' || !startsWith(github.head_ref, 'sync/upstream-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -49,6 +60,7 @@ jobs:
         run: make test-frontend
 
   golangci-lint:
+    if: inputs.force || github.event_name != 'pull_request' || !startsWith(github.head_ref, 'sync/upstream-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

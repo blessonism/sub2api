@@ -5,6 +5,10 @@
 import { apiClient } from '../client'
 import type {
   Announcement,
+  AnnouncementEmailBroadcast,
+  AnnouncementEmailBroadcastOverview,
+  AnnouncementEmailDelivery,
+  AnnouncementEmailDeliveryStatus,
   AnnouncementUserReadStatus,
   BasePaginationResponse,
   CreateAnnouncementRequest,
@@ -28,6 +32,34 @@ export async function list(
     params: { page, page_size: pageSize, ...filters },
     signal: options?.signal
   })
+  return data
+}
+
+export async function getEmailBroadcast(id: number): Promise<AnnouncementEmailBroadcastOverview> {
+  const { data } = await apiClient.get<AnnouncementEmailBroadcastOverview>(`/admin/announcements/${id}/email-broadcast`)
+  return data
+}
+
+export async function createEmailBroadcast(id: number): Promise<AnnouncementEmailBroadcast> {
+  const { data } = await apiClient.post<AnnouncementEmailBroadcast>(`/admin/announcements/${id}/email-broadcast`)
+  return data
+}
+
+export async function listEmailDeliveries(
+  id: number,
+  page: number = 1,
+  pageSize: number = 20,
+  filters?: { status?: AnnouncementEmailDeliveryStatus | ''; search?: string }
+): Promise<BasePaginationResponse<AnnouncementEmailDelivery>> {
+  const { data } = await apiClient.get<BasePaginationResponse<AnnouncementEmailDelivery>>(
+    `/admin/announcements/${id}/email-broadcast/deliveries`,
+    { params: { page, page_size: pageSize, ...filters } }
+  )
+  return data
+}
+
+export async function retryFailedEmailDeliveries(id: number): Promise<AnnouncementEmailBroadcast> {
+  const { data } = await apiClient.post<AnnouncementEmailBroadcast>(`/admin/announcements/${id}/email-broadcast/retry-failed`)
   return data
 }
 
@@ -80,7 +112,11 @@ const announcementsAPI = {
   create,
   update,
   delete: deleteAnnouncement,
-  getReadStatus
+  getReadStatus,
+  getEmailBroadcast,
+  createEmailBroadcast,
+  listEmailDeliveries,
+  retryFailedEmailDeliveries
 }
 
 export default announcementsAPI

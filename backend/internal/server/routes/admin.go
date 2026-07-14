@@ -473,6 +473,10 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		announcements.PUT("/:id", h.Admin.Announcement.Update)
 		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
 		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
+		announcements.GET("/:id/email-broadcast", h.Admin.Announcement.GetEmailBroadcast)
+		announcements.POST("/:id/email-broadcast", h.Admin.Announcement.CreateEmailBroadcast)
+		announcements.GET("/:id/email-broadcast/deliveries", h.Admin.Announcement.ListEmailDeliveries)
+		announcements.POST("/:id/email-broadcast/retry-failed", h.Admin.Announcement.RetryFailedEmailDeliveries)
 	}
 }
 
@@ -859,6 +863,7 @@ func registerLotteryCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		lotteries.POST("/:id/sync-entries", h.Admin.LotteryCampaign.SyncEntries)
 		lotteries.POST("/:id/draw", h.Admin.LotteryCampaign.Draw)
 		lotteries.GET("/:id/draw-batches", h.Admin.LotteryCampaign.ListBatches)
+		lotteries.GET("/:id/winners", h.Admin.LotteryCampaign.ListWinners)
 		lotteries.GET("/:id/draw-batches/:batch_id/winners", h.Admin.LotteryCampaign.ListWinners)
 		lotteries.GET("/:id/designations", h.Admin.LotteryCampaign.GetDesignations)
 		lotteries.PUT("/:id/designations", h.Admin.LotteryCampaign.ReplaceDesignations)

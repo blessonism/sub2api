@@ -61,6 +61,7 @@ export interface LotteryMyData {
   entry_status: string
   next_draw_at?: string | null
   participant_count: number
+  round_completed: boolean
   winners: LotteryWinner[]
 }
 
@@ -68,6 +69,8 @@ export interface LotteryPublicWinner {
   masked_email: string
   prize_name: string
   reward_amount_cents: number
+  entry_date: string
+  is_current_round: boolean
   created_at: string
 }
 

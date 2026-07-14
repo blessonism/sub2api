@@ -134,6 +134,13 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 			user.VisibleGroupRates = visibleRates
 		}
 	}
+	if s.userGroupAccountBindingResolver != nil {
+		bindings, err := s.userGroupAccountBindingResolver.ListByUserID(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("load user group account bindings: %w", err)
+		}
+		user.GroupAccountBindings = bindings
+	}
 	return user, nil
 }
 
@@ -250,6 +257,14 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, err
 	}
 
+	var normalizedBindings map[int64]UserGroupAccountBinding
+	if input.GroupAccountBindings != nil {
+		normalizedBindings, err = s.validateUserGroupAccountBindings(ctx, *input.GroupAccountBindings)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Protect admin users: cannot disable admin accounts
 	if user.Role == "admin" && input.Status == "disabled" {
 		return nil, errors.New("cannot disable admin user")
@@ -330,11 +345,20 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			logger.LegacyPrintf("service.admin", "failed to sync user visible group rates: user_id=%d err=%v", user.ID, err)
 		}
 	}
+	if input.GroupAccountBindings != nil {
+		if s.userGroupAccountBindingResolver == nil {
+			return nil, errors.New("user group account binding service is unavailable")
+		}
+		if err := s.userGroupAccountBindingResolver.ReplaceByUserID(ctx, user.ID, normalizedBindings); err != nil {
+			return nil, fmt.Errorf("sync user group account bindings: %w", err)
+		}
+		user.GroupAccountBindings = normalizedBindings
+	}
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || input.GroupRates != nil || input.VisibleGroupRates != nil {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || input.GroupRates != nil || input.VisibleGroupRates != nil || input.GroupAccountBindings != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -361,6 +385,60 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func (s *adminServiceImpl) validateUserGroupAccountBindings(ctx context.Context, bindings map[int64]UserGroupAccountBinding) (map[int64]UserGroupAccountBinding, error) {
+	invalid := func(format string, args ...any) error {
+		return infraerrors.BadRequest("INVALID_GROUP_ACCOUNT_BINDING", fmt.Sprintf(format, args...))
+	}
+	normalized := make(map[int64]UserGroupAccountBinding, len(bindings))
+	for groupID, binding := range bindings {
+		if groupID <= 0 || len(binding.AccountIDs) == 0 {
+			return nil, invalid("group account binding requires a group and at least one account (group_id=%d)", groupID)
+		}
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.IsExclusive || group.SubscriptionType != SubscriptionTypeStandard {
+			return nil, invalid("group account binding only supports standard public groups (group_id=%d)", groupID)
+		}
+
+		allowedIDs, err := s.groupRepo.GetAccountIDsByGroupIDs(ctx, []int64{groupID})
+		if err != nil {
+			return nil, err
+		}
+		allowed := make(map[int64]struct{}, len(allowedIDs))
+		for _, accountID := range allowedIDs {
+			allowed[accountID] = struct{}{}
+		}
+
+		seen := make(map[int64]struct{}, len(binding.AccountIDs))
+		accountIDs := make([]int64, 0, len(binding.AccountIDs))
+		for _, accountID := range binding.AccountIDs {
+			if accountID <= 0 {
+				return nil, invalid("invalid account id %d (group_id=%d)", accountID, groupID)
+			}
+			if _, ok := allowed[accountID]; !ok {
+				return nil, invalid("account %d does not belong to group %d", accountID, groupID)
+			}
+			if _, duplicate := seen[accountID]; duplicate {
+				continue
+			}
+			seen[accountID] = struct{}{}
+			accountIDs = append(accountIDs, accountID)
+		}
+		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDs)
+		if err != nil {
+			return nil, err
+		}
+		if len(accounts) != len(accountIDs) {
+			return nil, invalid("group account binding contains a missing or deleted account (group_id=%d)", groupID)
+		}
+		sort.Slice(accountIDs, func(i, j int) bool { return accountIDs[i] < accountIDs[j] })
+		normalized[groupID] = UserGroupAccountBinding{AccountIDs: accountIDs, FallbackToGroup: binding.FallbackToGroup}
+	}
+	return normalized, nil
 }
 
 func sameInt64Set(a, b []int64) bool {
