@@ -2098,7 +2098,15 @@ export default {
       "columns": {
         "usageGrok": "用量 (Grok)"
       },
-      "visibleRate": "用户可见倍率"
+      "visibleRate": "用户可见倍率",
+      "concurrencyFloorAction": "统一并发下限",
+      "concurrencyFloorTitle": "统一所有用户并发下限",
+      "concurrencyFloorDescription": "将全部未删除账号（包括已禁用用户和管理员）的并发提高到指定下限；已有更高并发不会降低。",
+      "concurrencyFloorLabel": "并发下限",
+      "concurrencyFloorConfirm": "确认提高",
+      "concurrencyFloorInvalid": "并发下限必须是大于等于 1 的整数",
+      "concurrencyFloorSuccess": "已提高 {count} 个用户的并发下限",
+      "concurrencyFloorFailed": "统一并发下限失败"
     },
     "groups": {
       "timeRate": {

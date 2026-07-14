@@ -44,6 +44,18 @@ func TestApplyRedeemConcurrencyAdjustment_UsesAtomicFloor(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestBatchRaiseConcurrencyFloor_OnlyRaisesLowerValues(t *testing.T) {
+	repo, mock := newRedeemAdjustmentRepoMock(t)
+	mock.ExpectExec(`UPDATE users SET concurrency = GREATEST\(concurrency, \$1\), updated_at = NOW\(\) WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND concurrency < \$1`).
+		WithArgs(5, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	affected, err := repo.BatchRaiseConcurrencyFloor(context.Background(), []int64{1, 2}, 5)
+	require.NoError(t, err)
+	require.Equal(t, 1, affected)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyRedeemAdjustment_MissingUser(t *testing.T) {
 	repo, mock := newRedeemAdjustmentRepoMock(t)
 	mock.ExpectExec(`UPDATE users SET balance = GREATEST\(balance \+ \$1, 0\), updated_at = NOW\(\) WHERE id = \$2 AND deleted_at IS NULL`).
