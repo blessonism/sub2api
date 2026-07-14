@@ -37,3 +37,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 管理员一键调整用户并发
+
+**Date**: 2026-07-14
+**Task**: 管理员一键调整用户并发
+**Branch**: `feature/admin-user-concurrency-adjustment`
+
+### Summary
+
+为管理员用户列表增加全量并发下限调整能力，使用原子更新保证已有更高并发不被降低，并补齐前后端测试。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3bbbce55f` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
