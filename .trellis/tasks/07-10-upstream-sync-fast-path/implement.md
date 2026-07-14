@@ -33,5 +33,6 @@ git diff --check
 - CLI 单元测试 25 项通过；Python 编译、JSON 解析、workflow YAML 解析与 `git diff --check` 通过。
 - 历史 `2c503a333^1...2c503a333^2` 预检约 0.7 秒，识别 72 个冲突候选、`usage_log_repo.go` 拆分和 UsageView 交叉修改，并选中 Dashboard integration 与用户 UsageView 回归。
 - 五个后端 fallback 编译检查并行完成，阶段耗时约 5.5 秒，最长单项约 5.5 秒。
-- `5a18ff2bb` 上 Dashboard handler、repository integration、DashboardView、UsageView 与 latency health 回归均通过；feature 分支在合入前需基于包含该提交的最新 `custom/main` 更新基线。
+- 已合入 `34c867a56` 所在的最新 `custom/main`，现有 workflow reusable 调用保持兼容。
 - 活动中心和排行榜后端定向检查通过。上游监控后端检查在当前 `custom/main` 基线暴露 `TestUpstreamRelayRepositoryUpsertsRecommendationPolicy` SQL mock 参数数量不匹配；该既有失败应由对应监控任务修复，不得从同步矩阵移除。
+- 新增公告邮件、分时倍率和用户公开分组账号绑定能力映射；对应后端、集成、前端检查及类型检查通过。
