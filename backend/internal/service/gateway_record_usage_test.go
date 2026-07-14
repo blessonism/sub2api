@@ -234,7 +234,7 @@ func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersist
 	require.InDelta(t, 0.19, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
-func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *testing.T) {
+func TestGatewayServiceRecordUsage_TimeRateAffectsTokenModeImageOutputTokens(t *testing.T) {
 	groupID := int64(902)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -257,13 +257,12 @@ func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *
 			ID:      802,
 			GroupID: i64p(groupID),
 			Group: &Group{
-				ID:                 groupID,
-				RateMultiplier:     1.0,
-				SubscriptionType:   SubscriptionTypeSubscription,
-				PeakRateEnabled:    true,
-				PeakStart:          "00:00",
-				PeakEnd:            "23:59",
-				PeakRateMultiplier: 3.0,
+				ID:               groupID,
+				RateMultiplier:   1.0,
+				TimeRatePriority: TimeRatePriorityScheduleFirst,
+				TimeRatePeriods: []GroupTimeRatePeriod{{
+					StartTime: "00:00", EndTime: "24:00", RateMultiplier: 3, VisibleRateMultiplier: 3, Enabled: true,
+				}},
 			},
 		},
 		User:    &User{ID: 602},
@@ -275,6 +274,8 @@ func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
 	require.Equal(t, 3.0, usageRepo.lastLog.RateMultiplier)
+	require.NotNil(t, usageRepo.lastLog.VisibleRateMultiplier)
+	require.Equal(t, 3.0, *usageRepo.lastLog.VisibleRateMultiplier)
 
 	textInput := 1000 * 3e-6
 	textOutput := 500 * 15e-6
