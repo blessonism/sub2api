@@ -425,7 +425,7 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_TimeRateAffectsTokenModeImageOutputTokens(t *testing.T) {
 	groupID := int64(14)
 	groupRate := 1.0
 	usage := OpenAIUsage{
@@ -452,13 +452,12 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 			ID:      1004,
 			GroupID: i64p(groupID),
 			Group: &Group{
-				ID:                 groupID,
-				RateMultiplier:     groupRate,
-				SubscriptionType:   "subscription",
-				PeakRateEnabled:    true,
-				PeakStart:          "00:00",
-				PeakEnd:            "23:59",
-				PeakRateMultiplier: 3.0,
+				ID:               groupID,
+				RateMultiplier:   groupRate,
+				TimeRatePriority: TimeRatePriorityScheduleFirst,
+				TimeRatePeriods: []GroupTimeRatePeriod{{
+					StartTime: "00:00", EndTime: "24:00", RateMultiplier: 3, VisibleRateMultiplier: 3, Enabled: true,
+				}},
 			},
 		},
 		User:    &User{ID: 2004},
@@ -468,6 +467,8 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, 3.0, usageRepo.lastLog.RateMultiplier)
+	require.NotNil(t, usageRepo.lastLog.VisibleRateMultiplier)
+	require.Equal(t, 3.0, *usageRepo.lastLog.VisibleRateMultiplier)
 	require.Equal(t, usage.ImageOutputTokens, usageRepo.lastLog.ImageOutputTokens)
 
 	expected, err := svc.billingService.CalculateCostUnified(CostInput{

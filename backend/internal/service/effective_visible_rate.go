@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // userGroupRateMaps 保存用户专属真实倍率与显式可见倍率。
@@ -37,11 +39,19 @@ func effectiveVisibleRateForGroup(group *Group, rates userGroupRateMaps) float64
 	if group == nil {
 		return 1
 	}
-	if rate, ok := rates.visible[group.ID]; ok {
-		return rate
+	actual, actualOverride := rates.actual[group.ID]
+	if !actualOverride {
+		actual = group.RateMultiplier
 	}
-	if rate, ok := rates.actual[group.ID]; ok {
-		return rate
+	visible, visibleOverride := rates.visible[group.ID]
+	if !visibleOverride {
+		if actualOverride {
+			visible = actual
+			visibleOverride = true
+		} else {
+			visible = group.VisibleEffectiveRateMultiplier()
+		}
 	}
-	return group.VisibleEffectiveRateMultiplier()
+	_, currentVisible := group.EffectiveTimeRate(actual, actualOverride, visible, visibleOverride, timezone.Now())
+	return currentVisible
 }

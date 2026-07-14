@@ -232,7 +232,7 @@ export interface PublicSettings {
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
   version: string
-  // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
+  // 服务器全局时区（IANA 名称与当前 UTC 偏移），分时倍率等服务端本地时间窗口的展示标注用；
   // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
   server_timezone?: string
   server_utc_offset?: string
@@ -501,6 +501,16 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type TimeRatePriority = 'schedule_first' | 'user_first' | 'proportional'
+
+export interface GroupTimeRatePeriod {
+  start_time: string
+  end_time: string
+  rate_multiplier: number
+  visible_rate_multiplier: number
+  enabled: boolean
+}
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -539,11 +549,6 @@ export interface Group {
   video_price_1080p: number | null
   // Codex 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
   web_search_price_per_call: number | null
-  // 高峰时段倍率配置
-  peak_rate_enabled: boolean
-  peak_start: string
-  peak_end: string
-  peak_rate_multiplier: number
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -559,6 +564,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  time_rate_priority: TimeRatePriority
+  time_rate_periods: GroupTimeRatePeriod[]
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -674,10 +681,8 @@ export interface CreateGroupRequest {
   video_price_720p?: number | null
   video_price_1080p?: number | null
   web_search_price_per_call?: number | null
-  peak_rate_enabled?: boolean
-  peak_start?: string
-  peak_end?: string
-  peak_rate_multiplier?: number
+  time_rate_priority?: TimeRatePriority
+  time_rate_periods?: GroupTimeRatePeriod[]
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -723,10 +728,8 @@ export interface UpdateGroupRequest {
   video_price_720p?: number | null
   video_price_1080p?: number | null
   web_search_price_per_call?: number | null
-  peak_rate_enabled?: boolean
-  peak_start?: string
-  peak_end?: string
-  peak_rate_multiplier?: number
+  time_rate_priority?: TimeRatePriority
+  time_rate_periods?: GroupTimeRatePeriod[]
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null

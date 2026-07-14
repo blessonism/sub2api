@@ -257,17 +257,14 @@ type CreateGroupInput struct {
 	BatchImageHoldMultiplier     *float64
 	VideoRateIndependent         bool
 	VideoRateMultiplier          *float64
-	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
-	PeakRateEnabled    bool
-	PeakStart          string
-	PeakEnd            string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
+	TimeRatePriority             string
+	TimeRatePeriods              []GroupTimeRatePeriod
+	ImagePrice1K                 *float64
+	ImagePrice2K                 *float64
+	ImagePrice4K                 *float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；nil/负数按默认价 0.01 处理
 	WebSearchPricePerCall *float64
 	ClaudeCodeOnly        bool   // 仅允许 Claude Code 客户端
@@ -304,8 +301,11 @@ type UpdateGroupInput struct {
 	Status                   string
 	SubscriptionType         string   // standard/subscription
 	DailyLimitUSD            *float64 // 日限额 (USD)
+	DailyLimitUSDSet         bool
 	WeeklyLimitUSD           *float64 // 周限额 (USD)
+	WeeklyLimitUSDSet        bool
 	MonthlyLimitUSD          *float64 // 月限额 (USD)
+	MonthlyLimitUSDSet       bool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool
@@ -315,17 +315,14 @@ type UpdateGroupInput struct {
 	BatchImageHoldMultiplier     *float64
 	VideoRateIndependent         *bool
 	VideoRateMultiplier          *float64
-	// 高峰时段倍率配置（nil 表示不修改）
-	PeakRateEnabled    *bool
-	PeakStart          *string
-	PeakEnd            *string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
+	TimeRatePriority             *string
+	TimeRatePeriods              *[]GroupTimeRatePeriod
+	ImagePrice1K                 *float64
+	ImagePrice2K                 *float64
+	ImagePrice4K                 *float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示不修改，负数表示清除回默认价 0.01
 	WebSearchPricePerCall *float64
 	ClaudeCodeOnly        *bool  // 仅允许 Claude Code 客户端
