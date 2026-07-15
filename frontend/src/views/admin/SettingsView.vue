@@ -4185,6 +4185,51 @@
                 <Toggle v-model="form.enable_cch_signing" />
               </div>
 
+              <!-- Codex Base Prompt Injection -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.codexBasePromptInjection") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexBasePromptInjectionHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.enable_codex_base_prompt_injection" />
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.gatewayForwarding.codexBasePrompt") }}
+                </label>
+                <select v-model="builtinCodexPromptModel" class="input mb-2 w-full sm:w-64" data-testid="codex-base-prompt-model">
+                  <option value="codex">Codex</option>
+                  <option value="gpt-5.1">GPT-5.1</option>
+                  <option value="gpt-5.2">GPT-5.2</option>
+                  <option value="fallback">{{ t("admin.settings.gatewayForwarding.codexBasePromptFallbackModel") }}</option>
+                </select>
+                <textarea
+                  v-model="form.codex_base_prompt"
+                  class="input min-h-[220px] w-full resize-y font-mono text-xs"
+                  :placeholder="t('admin.settings.gatewayForwarding.codexBasePromptPlaceholder')"
+                  spellcheck="false"
+                />
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" class="btn btn-secondary h-8 px-3 text-xs" data-testid="load-builtin-codex-base-prompt" @click="form.codex_base_prompt = selectedBuiltinCodexBasePrompt">
+                    {{ t("admin.settings.gatewayForwarding.loadBuiltinCodexBasePrompt") }}
+                  </button>
+                  <button type="button" class="btn btn-ghost h-8 px-3 text-xs" @click="form.codex_base_prompt = ''">
+                    {{ t("admin.settings.gatewayForwarding.clearCodexBasePrompt") }}
+                  </button>
+                </div>
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.viewBuiltinCodexBasePrompt") }}
+                  </summary>
+                  <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ selectedBuiltinCodexBasePrompt }}</pre>
+                </details>
+              </div>
+
               <!-- Claude OAuth System Prompt Injection -->
               <div class="flex items-center justify-between">
                 <div>
@@ -8307,6 +8352,9 @@ const form = reactive<SettingsForm>({
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_codex_base_prompt_injection: true,
+  codex_base_prompt: "",
+  builtin_codex_base_prompts: {},
   enable_claude_oauth_system_prompt_injection: true,
   claude_oauth_system_prompt: "",
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,
@@ -8343,6 +8391,11 @@ const form = reactive<SettingsForm>({
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
+
+const builtinCodexPromptModel = ref("codex");
+const selectedBuiltinCodexBasePrompt = computed(
+  () => form.builtin_codex_base_prompts[builtinCodexPromptModel.value] || "",
+);
 
 type OpenAIAdvancedSchedulerOverrideKey =
   | "openai_advanced_scheduler_lb_top_k"
@@ -9615,6 +9668,9 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
+      enable_codex_base_prompt_injection:
+        form.enable_codex_base_prompt_injection,
+      codex_base_prompt: form.codex_base_prompt?.trim() || "",
       enable_claude_oauth_system_prompt_injection:
         form.enable_claude_oauth_system_prompt_injection,
       claude_oauth_system_prompt: form.claude_oauth_system_prompt?.trim()

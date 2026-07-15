@@ -66,3 +66,20 @@ func TestDefaultCodexSynthInstructionsModelAware(t *testing.T) {
 	require.True(t, strings.Contains(defaultCodexSynthInstructions("gpt-5.2"), "You are GPT-5.2 running in the Codex CLI"))
 	require.True(t, strings.Contains(defaultCodexSynthInstructions("gpt-5.1"), "You are GPT-5.1 running in the Codex CLI"))
 }
+
+func TestResolveCodexSynthInstructions(t *testing.T) {
+	const custom = "custom admin prompt\nkeep formatting"
+	require.Equal(t, custom, resolveCodexSynthInstructions("gpt-5.5", custom))
+	require.Contains(t, resolveCodexSynthInstructions("gpt-5.5", "  "), "You are Codex")
+}
+
+func TestApplyCodexOAuthTransform_DefaultPromptOptions(t *testing.T) {
+	withoutPrompt := map[string]any{"model": "gpt-5.5"}
+	applyCodexOAuthTransformWithOptions(withoutPrompt, codexOAuthTransformOptions{SkipDefaultInstructions: true})
+	_, present := withoutPrompt["instructions"]
+	require.False(t, present)
+
+	customPrompt := map[string]any{"model": "gpt-5.5"}
+	applyCodexOAuthTransformWithOptions(customPrompt, codexOAuthTransformOptions{DefaultInstructions: "admin prompt"})
+	require.Equal(t, "admin prompt", customPrompt["instructions"])
+}

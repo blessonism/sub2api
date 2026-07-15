@@ -221,6 +221,8 @@ type UpdateSettingsRequest struct {
 	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
+	EnableCodexBasePromptInjection         *bool   `json:"enable_codex_base_prompt_injection"`
+	CodexBasePrompt                        *string `json:"codex_base_prompt"`
 	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
 	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
 	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
@@ -1418,6 +1420,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableCCHSigning
 		}(),
+		EnableCodexBasePromptInjection: func() bool {
+			if req.EnableCodexBasePromptInjection != nil {
+				return *req.EnableCodexBasePromptInjection
+			}
+			return previousSettings.EnableCodexBasePromptInjection
+		}(),
+		CodexBasePrompt: func() string {
+			if req.CodexBasePrompt != nil {
+				return *req.CodexBasePrompt
+			}
+			return previousSettings.CodexBasePrompt
+		}(),
 		EnableClaudeOAuthSystemPromptInjection: func() bool {
 			if req.EnableClaudeOAuthSystemPromptInjection != nil {
 				return *req.EnableClaudeOAuthSystemPromptInjection
@@ -1902,6 +1916,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableFingerprintUnification:                           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       updatedSettings.EnableCCHSigning,
+		EnableCodexBasePromptInjection:                         updatedSettings.EnableCodexBasePromptInjection,
+		CodexBasePrompt:                                        updatedSettings.CodexBasePrompt,
+		BuiltinCodexBasePrompts:                                builtinCodexBasePrompts(),
 		EnableClaudeOAuthSystemPromptInjection:                 updatedSettings.EnableClaudeOAuthSystemPromptInjection,
 		ClaudeOAuthSystemPrompt:                                updatedSettings.ClaudeOAuthSystemPrompt,
 		ClaudeOAuthSystemPromptBlocks:                          updatedSettings.ClaudeOAuthSystemPromptBlocks,

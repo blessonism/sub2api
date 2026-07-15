@@ -209,8 +209,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && !compatMessagesBridge {
-		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
+	codexBasePromptEnabled, codexBasePrompt := s.codexBasePromptSettings(ctx)
+	if instructionsEmpty && !compatMessagesBridge && codexBasePromptEnabled {
+		markPatchSet("instructions", resolveCodexSynthInstructions(reqModel, codexBasePrompt))
 	}
 
 	billingModel := account.GetMappedModel(reqModel)
@@ -336,7 +337,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ensureCodexOAuthInstructionsField(decoded)
 			markDecodedModified()
 		} else {
-			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
+			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
+				IsCodexCLI:              isCodexCLI,
+				IsCompact:               isCompactRequest,
+				SkipDefaultInstructions: !codexBasePromptEnabled,
+				DefaultInstructions:     codexBasePrompt,
+			})
 		}
 		if codexResult.Modified {
 			markDecodedModified()
