@@ -758,6 +758,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+	if v, ok := settings[SettingKeyEnableCodexBasePromptInjection]; ok && v != "" {
+		result.EnableCodexBasePromptInjection = v == "true"
+	} else {
+		result.EnableCodexBasePromptInjection = true
+	}
+	result.CodexBasePrompt = strings.TrimSpace(settings[SettingKeyCodexBasePrompt])
 	if v, ok := settings[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {
 		result.EnableClaudeOAuthSystemPromptInjection = v == "true"
 	} else {
