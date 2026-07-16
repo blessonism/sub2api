@@ -558,6 +558,9 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
+  enable_codex_base_prompt_injection: boolean;
+  codex_base_prompt: string;
+  builtin_codex_base_prompts: Record<string, string>;
   enable_claude_oauth_system_prompt_injection: boolean;
   claude_oauth_system_prompt: string;
   claude_oauth_system_prompt_blocks: string;
@@ -839,6 +842,8 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
+  enable_codex_base_prompt_injection?: boolean;
+  codex_base_prompt?: string;
   enable_claude_oauth_system_prompt_injection?: boolean;
   claude_oauth_system_prompt?: string;
   claude_oauth_system_prompt_blocks?: string;

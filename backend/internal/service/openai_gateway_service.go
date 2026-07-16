@@ -413,6 +413,13 @@ type OpenAIGatewayService struct {
 	openaiCompatAnthropicDigestSessions sync.Map
 }
 
+func (s *OpenAIGatewayService) codexBasePromptSettings(ctx context.Context) (bool, string) {
+	if s == nil || s.settingService == nil {
+		return true, ""
+	}
+	return s.settingService.GetCodexBasePromptSettings(ctx)
+}
+
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
 	accountRepo AccountRepository,

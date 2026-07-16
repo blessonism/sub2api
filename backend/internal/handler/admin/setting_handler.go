@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -21,6 +22,15 @@ var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
 var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func builtinCodexBasePrompts() map[string]string {
+	return map[string]string{
+		"codex":    openai.CodexBaseInstructionsForModel("gpt-5-codex"),
+		"gpt-5.1":  openai.CodexBaseInstructionsForModel("gpt-5.1"),
+		"gpt-5.2":  openai.CodexBaseInstructionsForModel("gpt-5.2"),
+		"fallback": openai.CodexBaseInstructionsForModel("gpt-5.5"),
+	}
+}
 
 // generateMenuItemID generates a short random hex ID for a custom menu item.
 func generateMenuItemID() (string, error) {
@@ -253,6 +263,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:                           settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       settings.EnableCCHSigning,
+		EnableCodexBasePromptInjection:                         settings.EnableCodexBasePromptInjection,
+		CodexBasePrompt:                                        settings.CodexBasePrompt,
+		BuiltinCodexBasePrompts:                                builtinCodexBasePrompts(),
 		EnableClaudeOAuthSystemPromptInjection:                 settings.EnableClaudeOAuthSystemPromptInjection,
 		ClaudeOAuthSystemPrompt:                                settings.ClaudeOAuthSystemPrompt,
 		ClaudeOAuthSystemPromptBlocks:                          settings.ClaudeOAuthSystemPromptBlocks,

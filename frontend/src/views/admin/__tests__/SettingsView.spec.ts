@@ -397,6 +397,14 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_codex_base_prompt_injection: true,
+  codex_base_prompt: "",
+  builtin_codex_base_prompts: {
+    codex: "built-in codex prompt",
+    "gpt-5.1": "built-in 5.1 prompt",
+    "gpt-5.2": "built-in 5.2 prompt",
+    fallback: "built-in fallback prompt",
+  },
   enable_claude_oauth_system_prompt_injection: true,
   claude_oauth_system_prompt: "",
   claude_oauth_system_prompt_blocks: "",
@@ -752,6 +760,43 @@ describe("admin SettingsView payment visible method controls", () => {
         },
       },
     ]);
+  });
+
+  it("submits Codex Base Prompt switch and custom prompt", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_codex_base_prompt_injection: false,
+      codex_base_prompt: "custom admin prompt",
+      builtin_codex_base_prompts: baseSettingsResponse.builtin_codex_base_prompts,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enable_codex_base_prompt_injection: false,
+        codex_base_prompt: "custom admin prompt",
+      }),
+    );
+  });
+
+  it("loads the selected model-specific built-in Codex prompt", async () => {
+    getSettings.mockResolvedValueOnce(baseSettingsResponse);
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-testid="codex-base-prompt-model"]').setValue("gpt-5.2");
+    await wrapper.get('[data-testid="load-builtin-codex-base-prompt"]').trigger("click");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ codex_base_prompt: "built-in 5.2 prompt" }),
+    );
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {

@@ -401,6 +401,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
 	}
+	if before.EnableCodexBasePromptInjection != after.EnableCodexBasePromptInjection {
+		changed = append(changed, "enable_codex_base_prompt_injection")
+	}
+	if before.CodexBasePrompt != after.CodexBasePrompt {
+		changed = append(changed, "codex_base_prompt")
+	}
 	if before.EnableClaudeOAuthSystemPromptInjection != after.EnableClaudeOAuthSystemPromptInjection {
 		changed = append(changed, "enable_claude_oauth_system_prompt_injection")
 	}
