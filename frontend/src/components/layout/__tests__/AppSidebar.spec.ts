@@ -237,6 +237,13 @@ describe('AppSidebar admin token leaderboard entry', () => {
   })
 })
 
+describe('AppSidebar affiliate leaderboard entry', () => {
+  it('adds the global invite leaderboard under affiliate management', () => {
+    expect(componentSource).toContain("path: '/admin/affiliates/leaderboard'")
+    expect(componentSource).toContain("label: t('nav.affiliateLeaderboard')")
+  })
+})
+
 describe('AppSidebar admin balance redemption entry', () => {
   it('keeps balance and redeem records behind one admin navigation item', () => {
     expect(componentSource).toContain("path: '/admin/balance-redemption'")

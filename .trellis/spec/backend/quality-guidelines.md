@@ -32,6 +32,47 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Admin affiliate invite leaderboard
+
+#### 1. Scope / Trigger
+- Trigger: changing the admin-only global affiliate leaderboard or its lifetime recharge metrics.
+
+#### 2. Signatures
+- Endpoint: `GET /api/v1/admin/affiliates/leaderboard`.
+- Query: `page`, `page_size`, `search`.
+- Response row: `rank`, `user_id`, `email`, `username`, `aff_code`, `invite_count`, `all_credit_amount`, `payment_redeem_amount`.
+
+#### 3. Contracts
+- Rank by `user_affiliates.aff_count DESC`, then `payment_redeem_amount DESC`, then `user_id ASC`.
+- `all_credit_amount` sums invited users' `users.total_recharged`.
+- `payment_redeem_amount` sums positive, used balance redeem codes. Payment fulfillment already creates such a code, so never add payment orders again.
+- Compute the global rank before applying search; filtered results retain their original rank.
+
+#### 4. Validation & Error Matrix
+- Invalid or missing pagination -> existing defaults (`page=1`, `page_size=20`).
+- `page_size > 100` -> clamp to 100 at the handler boundary.
+- Repository failure -> return through `response.ErrorFrom`.
+
+#### 5. Good/Base/Bad Cases
+- Good: payment-generated and standalone balance codes are each counted once.
+- Base: inviters with `aff_count=0` and soft-deleted inviters do not appear.
+- Bad: joining invitees and redeem codes before aggregation, which multiplies both totals.
+
+#### 6. Tests Required
+- Assert separate credit/redeem aggregates, stable ranking, retained global rank after search, pagination arguments, and response field alignment with frontend types.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+SUM(payment_orders.amount) + SUM(redeem_codes.value)
+```
+
+Correct:
+```sql
+SUM(redeem_codes.value) FILTER (WHERE status = 'used' AND type = 'balance' AND value > 0)
+```
+
 ### Scenario: Versioned authentication cache snapshots
 
 #### 1. Scope / Trigger

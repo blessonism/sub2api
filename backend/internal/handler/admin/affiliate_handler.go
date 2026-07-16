@@ -201,6 +201,26 @@ func (h *AffiliateHandler) GetUserOverview(c *gin.Context) {
 	response.Success(c, overview)
 }
 
+// ListLeaderboard returns the global inviter leaderboard.
+// GET /api/v1/admin/affiliates/leaderboard
+func (h *AffiliateHandler) ListLeaderboard(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	filter := service.AffiliateAdminFilter{
+		Search:   c.Query("search"),
+		Page:     page,
+		PageSize: pageSize,
+	}
+	items, total, err := h.affiliateService.AdminListLeaderboard(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
 // ListInviteRecords returns all inviter-invitee relationships.
 // GET /api/v1/admin/affiliates/invites
 func (h *AffiliateHandler) ListInviteRecords(c *gin.Context) {

@@ -70,6 +70,20 @@ describe('router invite routes', () => {
     expect(zhMessages.admin.activities.description).toBeTruthy()
   })
 
+  it('registers the admin invite leaderboard with localized navigation', async () => {
+    const { default: router } = await import('@/router')
+    const route = router.getRoutes().find((record) => record.name === 'AdminAffiliateLeaderboard')
+
+    expect(route?.path).toBe('/admin/affiliates/leaderboard')
+    expect(route?.meta.requiresAdmin).toBe(true)
+    expect(route?.meta.titleKey).toBe('nav.affiliateLeaderboard')
+    expect(route?.meta.descriptionKey).toBe('admin.affiliates.leaderboard.description')
+    expect(enMessages.nav.affiliateLeaderboard).toBe('Invite Leaderboard')
+    expect(zhMessages.nav.affiliateLeaderboard).toBe('邀请排行榜')
+    expect(enMessages.admin.affiliates.leaderboard.paymentRedeemAmount).toBeTruthy()
+    expect(zhMessages.admin.affiliates.leaderboard.paymentRedeemAmount).toBeTruthy()
+  })
+
   it('keeps affiliate rebate separate and maps both activity center paths to the same user page', async () => {
     const { default: router } = await import('@/router')
     const affiliateRoute = router.getRoutes().find((record) => record.name === 'Affiliate')
