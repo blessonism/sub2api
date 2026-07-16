@@ -1387,12 +1387,16 @@ export default {
         "missingReasons": {
           "no_snapshot": "缺少快照",
           "missing_upstream_api_key_binding": "未绑定上游 API Key",
+          "upstream_api_key_not_visible": "上游 API Key 已不可见",
+          "upstream_api_key_group_unavailable": "无法获取 Key 当前分组",
           "upstream_usage_request_failed": "上游用量接口失败",
           "usage_refresh_aborted": "等待修复后重试",
           "usage_refresh_failed": "本次未更新"
         },
         "issues": {
           "missingApiKeyBinding": "本地账号 {account} 的候选映射尚未绑定上游 API Key",
+          "apiKeyNotVisible": "候选绑定的上游 API Key 已不存在或当前账号不可见",
+          "apiKeyGroupUnavailable": "无法从上游获取候选 Key 当前所属分组",
           "noCandidateBindings": "当前连接器还没有候选映射，无法按分组刷新今日用量",
           "noSnapshot": "当前连接器还没有倍率快照",
           "upstreamUsageRequestFailed": "本地账号 {account} 对应的上游用量接口请求失败",
