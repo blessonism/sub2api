@@ -32,11 +32,31 @@ type upstreamRelayRecommendationServiceRepo struct {
 	UpstreamRelayRepository
 
 	candidates  []UpstreamRelayCandidate
+	connector   *UpstreamRelayConnector
+	snapshots   []UpstreamRelayGroupRateSnapshot
 	policy      *UpstreamRelayRecommendationPolicy
 	monitoring  *UpstreamRelayMonitoringPolicy
 	createdRuns int
 	appliedRuns int
 	applyErr    error
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) GetConnector(_ context.Context, id int64) (*UpstreamRelayConnector, error) {
+	if r.connector == nil || r.connector.ID != id {
+		return nil, ErrUpstreamRelayConnectorNotFound
+	}
+	copy := *r.connector
+	return &copy, nil
+}
+
+func (r *upstreamRelayRecommendationServiceRepo) ListSnapshots(_ context.Context, connectorID int64) ([]UpstreamRelayGroupRateSnapshot, error) {
+	items := make([]UpstreamRelayGroupRateSnapshot, 0, len(r.snapshots))
+	for _, snapshot := range r.snapshots {
+		if snapshot.ConnectorID == 0 || snapshot.ConnectorID == connectorID {
+			items = append(items, snapshot)
+		}
+	}
+	return items, nil
 }
 
 func (r *upstreamRelayRecommendationServiceRepo) ListRecommendationInputs(context.Context) ([]UpstreamRelayCandidate, error) {
@@ -782,6 +802,9 @@ func TestUpstreamRelayParseUsageStatsFallsBackToTokenBreakdown(t *testing.T) {
 
 func TestUpstreamRelayRefreshMonitoringDataSyncsSnapshotsAndMetrics(t *testing.T) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-***","group_id":"g1"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
 		_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.25}]`))
@@ -839,6 +862,9 @@ func TestUpstreamRelayRefreshMonitoringDataSyncsSnapshotsAndMetrics(t *testing.T
 
 func TestUpstreamRelayRefreshMonitoringDataReportsPartialSnapshotFailure(t *testing.T) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-***","group_id":"g1"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`[{"id":"g1","name":"Group 1","platform":"openai","status":"active","rate_multiplier":1.25}]`))
 	})
@@ -890,6 +916,9 @@ func TestUpstreamRelayRefreshConnectorMetricsUpdatesUsageFromBoundAPIKeyStats(t 
 	usageListCalls := 0
 	statsCalls := 0
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"特惠","key":"sk-***","group_id":"g1"},{"id":856,"name":"稳定","key":"sk-***","group_id":"g1"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
 		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
@@ -1023,8 +1052,8 @@ func TestUpstreamRelayListConnectorAPIKeysReturnsVisibleOptions(t *testing.T) {
 	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
 		_, _ = w.Write([]byte(`{"data":{"items":[
-			{"id":855,"name":"特惠","key":"sk-live-secret-value-a"},
-			{"id":856,"key_name":"稳定","key":"sk-***masked-b***"}
+			{"id":855,"name":"特惠","key":"sk-live-secret-value-a","group_id":"new-group"},
+			{"id":856,"key_name":"稳定","key":"sk-***masked-b***","group_id":42}
 		],"pages":1}}`))
 	})
 	server := httptest.NewServer(mux)
@@ -1047,9 +1076,150 @@ func TestUpstreamRelayListConnectorAPIKeysReturnsVisibleOptions(t *testing.T) {
 	require.Equal(t, int64(855), items[0].ID)
 	require.Equal(t, "特惠", items[0].Name)
 	require.Equal(t, "sk-liv***ue-a", items[0].MaskedKey)
+	require.Equal(t, "new-group", items[0].GroupID)
 	require.Equal(t, int64(856), items[1].ID)
 	require.Equal(t, "稳定", items[1].Name)
 	require.Equal(t, "sk-***masked-b***", items[1].MaskedKey)
+	require.Equal(t, "42", items[1].GroupID)
+}
+
+func TestUpstreamRelayUsageFollowsCurrentAPIKeyGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"特惠","key":"sk-live","group_id":"new-group"}],"pages":1}}`))
+	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "855", r.URL.Query().Get("api_key_id"))
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":1.25,"total_tokens":100}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{ID: 7, BaseURL: server.URL, BearerTokenEncrypted: "session-token"},
+		bindings: []UpstreamRelayCandidateUsageBinding{
+			{CandidateID: 1, AccountID: 10, UpstreamGroupID: "old-group", UpstreamAPIKeyID: 855},
+			{CandidateID: 2, AccountID: 11, UpstreamGroupID: "old-group", UpstreamAPIKeyID: 855},
+		},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	usage, _, issues, err := svc.fetchUpstreamGroupUsageForDate(context.Background(), repo.connector, upstreamRelayUsageDate(time.Now()))
+
+	require.NoError(t, err)
+	require.Empty(t, issues)
+	require.Equal(t, UpstreamRelayGroupTodayUsage{ActualCost: 1.25, TotalTokens: 100}, usage["new-group"])
+	require.NotContains(t, usage, "old-group")
+}
+
+func TestUpstreamRelayHistoricalUsageKeepsSavedCandidateGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("historical usage must not resolve today's API key group")
+	})
+	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"total_actual_cost":1.25,"total_tokens":100}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{ID: 7, BaseURL: server.URL, BearerTokenEncrypted: "session-token"},
+		bindings:  []UpstreamRelayCandidateUsageBinding{{CandidateID: 1, AccountID: 10, UpstreamGroupID: "saved-group", UpstreamAPIKeyID: 855}},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	usage, _, issues, err := svc.fetchUpstreamGroupUsageForDate(context.Background(), repo.connector, upstreamRelayPreviousUsageDate(time.Now()))
+
+	require.NoError(t, err)
+	require.Empty(t, issues)
+	require.Equal(t, UpstreamRelayGroupTodayUsage{ActualCost: 1.25, TotalTokens: 100}, usage["saved-group"])
+}
+
+func TestUpstreamRelayListCandidatesUsesCurrentAPIKeyGroupSnapshot(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-live","group_id":"new-group"}],"pages":1}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayRecommendationServiceRepo{
+		connector:  &UpstreamRelayConnector{ID: 7, BaseURL: server.URL, BearerTokenEncrypted: "session-token"},
+		candidates: []UpstreamRelayCandidate{{ID: 1, ConnectorID: 7, UpstreamGroupID: "old-group", UpstreamAPIKeyID: int64Ptr(855)}},
+		snapshots:  []UpstreamRelayGroupRateSnapshot{{ConnectorID: 7, UpstreamGroupID: "new-group", Name: "New Group", FinalRateMultiplier: 0.5}},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	items, _, err := svc.ListCandidates(context.Background(), 1, 20, UpstreamRelayCandidateListFilters{})
+
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "new-group", items[0].UpstreamGroupID)
+	require.Equal(t, "New Group", items[0].UpstreamGroupName)
+	require.NotNil(t, items[0].LatestSnapshot)
+}
+
+func TestUpstreamRelayPreviewRecommendationsUsesCurrentAPIKeyGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-live","group_id":"new-group"}],"pages":1}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	now := time.Now()
+	priority := 50
+	repo := &upstreamRelayRecommendationServiceRepo{
+		connector: &UpstreamRelayConnector{ID: 7, BaseURL: server.URL, BearerTokenEncrypted: "session-token"},
+		candidates: []UpstreamRelayCandidate{{
+			ID: 1, ConnectorID: 7, AccountID: 101, ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			UpstreamGroupID: "old-group", UpstreamAPIKeyID: int64Ptr(855), CurrentPriority: &priority,
+			Enabled: true, LatestProbe: &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{UpstreamGroupID: "old-group", FinalRateMultiplier: 0.8, LastSeenAt: now},
+		}, {
+			ID: 2, ConnectorID: 7, AccountID: 102, ConnectorStatus: UpstreamRelayConnectorStatusActive,
+			UpstreamGroupID: "missing-group", UpstreamAPIKeyID: int64Ptr(856), CurrentPriority: &priority,
+			Enabled: true, LatestProbe: &UpstreamRelayProbeResult{Success: true, ProbedAt: now},
+			LatestSnapshot: &UpstreamRelayGroupRateSnapshot{UpstreamGroupID: "missing-group", FinalRateMultiplier: 0.4, LastSeenAt: now},
+		}},
+		snapshots: []UpstreamRelayGroupRateSnapshot{{ConnectorID: 7, UpstreamGroupID: "new-group", Name: "New Group", FinalRateMultiplier: 0.5, LastSeenAt: now}},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	preview, err := svc.PreviewRecommendations(context.Background(), nil)
+
+	require.NoError(t, err)
+	require.Len(t, preview.Suggestions, 1)
+	require.Equal(t, "new-group", preview.Suggestions[0].UpstreamGroupID)
+	require.Len(t, preview.Exclusions, 1)
+	require.Equal(t, int64(2), preview.Exclusions[0].CandidateID)
+}
+
+func TestUpstreamRelayUsageReportsMissingCurrentAPIKeyGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"特惠","key":"sk-live"}],"pages":1}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	repo := &upstreamRelayMetricsRefreshRepo{
+		connector: &UpstreamRelayConnector{ID: 7, BaseURL: server.URL, BearerTokenEncrypted: "session-token"},
+		bindings:  []UpstreamRelayCandidateUsageBinding{{CandidateID: 1, AccountID: 10, UpstreamGroupID: "old-group", UpstreamAPIKeyID: 855}},
+	}
+	svc := NewUpstreamRelayGroupMonitoringService(repo, nil, upstreamRelayTestEncryptor{})
+	svc.httpClient = server.Client()
+
+	usage, _, issues, err := svc.fetchUpstreamGroupUsageForDate(context.Background(), repo.connector, upstreamRelayUsageDate(time.Now()))
+
+	require.NoError(t, err)
+	require.Empty(t, usage)
+	require.Len(t, issues, 1)
+	require.Equal(t, upstreamRelayMetricsIssueAPIKeyGroupUnavailable, issues[0].Code)
 }
 
 func TestNormalizeUpstreamRelayCandidateMasksAPIKeyDisplayValue(t *testing.T) {
@@ -1085,6 +1255,9 @@ func TestNormalizeUpstreamRelayCandidateAcceptsAnthropicProbeProtocol(t *testing
 
 func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateAPIKeyBinding(t *testing.T) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-***","group_id":"g2"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
 	})
@@ -1167,6 +1340,9 @@ func TestUpstreamRelayRefreshConnectorMetricsReportsMissingCandidateBindingsAsSt
 
 func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFailure(t *testing.T) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-***","group_id":"g1"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
 	})
@@ -1220,6 +1396,9 @@ func TestUpstreamRelayRefreshConnectorMetricsKeepsExistingUsageSnapshotOnUsageFa
 
 func TestUpstreamRelayRefreshConnectorMetricsExplainsMissingSnapshots(t *testing.T) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"items":[{"id":855,"name":"Key","key":"sk-***","group_id":"g1"}],"pages":1}}`))
+	})
 	mux.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"balance":12.34}}`))
 	})
