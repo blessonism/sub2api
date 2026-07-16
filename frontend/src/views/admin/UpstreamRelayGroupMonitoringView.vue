@@ -1819,6 +1819,8 @@ const DEFAULT_PAUSE_CONSECUTIVE_FAILURES_THRESHOLD = 3
 const METRICS_MISSING_REASON_KEYS = new Set([
   'no_snapshot',
   'missing_upstream_api_key_binding',
+  'upstream_api_key_not_visible',
+  'upstream_api_key_group_unavailable',
   'upstream_usage_request_failed',
   'usage_refresh_aborted',
   'usage_refresh_failed'
@@ -3683,6 +3685,10 @@ function syncSelectedCandidateAPIKey() {
   const selected = selectedCandidateAPIKey.value
   candidateForm.upstream_api_key_name = selected?.name || ''
   candidateForm.upstream_api_key_masked = selected?.masked_key || ''
+  if (selected?.group_id) {
+    candidateForm.upstream_group_id = selected.group_id
+    candidateSourceSnapshot.value = candidateSnapshotByGroupId(candidateForm.connector_id, selected.group_id)
+  }
   if (!selected) {
     candidateForm.upstream_api_key_id = null
   }
@@ -4607,6 +4613,18 @@ function metricsUsageIssuePresentation(result: UpstreamRelayConnectorMetricsRefr
       rawDetail: raw && raw !== summary ? raw : undefined
     }
   }
+  if (issue?.code === 'upstream_api_key_not_visible' || issue?.code === 'upstream_api_key_group_unavailable') {
+    const summary = tM(`metricsRefresh.issues.${issue.code === 'upstream_api_key_not_visible' ? 'apiKeyNotVisible' : 'apiKeyGroupUnavailable'}`)
+    return {
+      summary,
+      guidance: tM('metricsRefresh.guidance.bindApiKey'),
+      action: 'edit_candidate',
+      actionLabel: tM('metricsRefresh.actions.bindApiKey'),
+      candidateId: issue.candidate_id,
+      accountId: issue.account_id,
+      rawDetail: raw && raw !== summary ? raw : undefined
+    }
+  }
   if (issue?.code === 'no_candidate_bindings') {
     const summary = tM('metricsRefresh.issues.noCandidateBindings')
     return {
@@ -4652,7 +4670,10 @@ function metricsUsageIssuePresentation(result: UpstreamRelayConnectorMetricsRefr
 function isActionableMetricsIssue(result: UpstreamRelayConnectorMetricsRefreshResult) {
   const raw = result.usage_detail.issue?.message || result.usage_detail.error || result.usage_error || ''
   const issue = result.usage_detail.issue || inferMetricsIssue(raw)
-  return issue?.code === 'missing_upstream_api_key_binding' || issue?.code === 'no_candidate_bindings'
+  return issue?.code === 'missing_upstream_api_key_binding'
+    || issue?.code === 'upstream_api_key_not_visible'
+    || issue?.code === 'upstream_api_key_group_unavailable'
+    || issue?.code === 'no_candidate_bindings'
 }
 
 function metricsRefreshWarning(result: UpstreamRelayConnectorMetricsRefreshResult) {

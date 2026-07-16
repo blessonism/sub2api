@@ -2658,6 +2658,35 @@ describe('UpstreamRelayGroupMonitoringView', () => {
     }))
   })
 
+  it('候选选择上游 API Key 后自动回显 Key 当前分组', async () => {
+    listConnectorAPIKeys.mockResolvedValue([{ id: 855, name: 'team-key', masked_key: 'sk-***', group_id: 'team-alpha' }])
+    listSnapshots.mockResolvedValue([{
+      id: 501,
+      connector_id: 7,
+      upstream_group_id: 'team-alpha',
+      name: 'Team Alpha',
+      platform: 'claude',
+      status: 'active',
+      default_rate_multiplier: 1,
+      final_rate_multiplier: 1.25,
+      source: 'login_available_groups',
+      last_seen_at: '2026-06-28T12:00:00Z',
+    }])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('candidates.newCandidate'))!.trigger('click')
+    await flushPromises()
+
+    const form = wrapper.get('#candidate-form')
+    const formSelects = form.findAll('select')
+    await formSelects[3]!.setValue('855')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="candidate-upstream-group-select"]').element).toHaveProperty('value', 'team-alpha')
+    expect(wrapper.find('[data-testid="candidate-upstream-group-manual-input"]').exists()).toBe(false)
+  })
+
   it('自动监控页展示派生阈值并保存配置', async () => {
     const wrapper = mountView()
     await flushPromises()

@@ -1371,12 +1371,16 @@ export default {
         "missingReasons": {
           "no_snapshot": "Missing snapshot",
           "missing_upstream_api_key_binding": "Upstream API key not bound",
+          "upstream_api_key_not_visible": "Upstream API key is no longer visible",
+          "upstream_api_key_group_unavailable": "Current key group unavailable",
           "upstream_usage_request_failed": "Upstream usage request failed",
           "usage_refresh_aborted": "Retry after fixing the mapping",
           "usage_refresh_failed": "Not updated this time"
         },
         "issues": {
           "missingApiKeyBinding": "The candidate mapping for local account {account} has no upstream API key",
+          "apiKeyNotVisible": "The candidate's upstream API key no longer exists or is not visible to this account",
+          "apiKeyGroupUnavailable": "The upstream API did not return the candidate key's current group",
           "noCandidateBindings": "This connector has no candidate mappings, so usage cannot be refreshed by group",
           "noSnapshot": "This connector has no rate snapshots yet",
           "upstreamUsageRequestFailed": "The upstream usage request for local account {account} failed",
