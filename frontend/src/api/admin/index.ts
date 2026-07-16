@@ -39,6 +39,7 @@ import conversationsAPI from './conversations'
 import campaignsAPI from './campaigns'
 import lotteryCampaignsAPI from './lotteryCampaigns'
 import accountCollectionsAPI from './accountCollections'
+import auditAPI from './audit'
 
 /**
  * Unified admin API object for convenient access
@@ -79,7 +80,8 @@ export const adminAPI = {
   conversations: conversationsAPI,
   campaigns: campaignsAPI,
   lotteryCampaigns: lotteryCampaignsAPI,
-  accountCollections: accountCollectionsAPI
+  accountCollections: accountCollectionsAPI,
+  audit: auditAPI
 }
 
 export {
@@ -118,12 +120,14 @@ export {
   conversationsAPI,
   campaignsAPI,
   lotteryCampaignsAPI,
-  accountCollectionsAPI
+  accountCollectionsAPI,
+  auditAPI
 }
 
 export default adminAPI
 
 // Re-export types used by components
+export type { AuditLog, AuditLogQuery, AuditLogListResponse } from './audit'
 export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
