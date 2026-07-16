@@ -128,6 +128,10 @@ func (r *paymentFulfillmentAffiliateRepoStub) ListUsersWithCustomSettings(contex
 	panic("unexpected ListUsersWithCustomSettings call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) ListAffiliateLeaderboard(context.Context, AffiliateAdminFilter) ([]AffiliateLeaderboardEntry, int64, error) {
+	panic("unexpected ListAffiliateLeaderboard call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
 	panic("unexpected ListAffiliateInviteRecords call")
 }

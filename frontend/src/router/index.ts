@@ -709,6 +709,18 @@ const routes: RouteRecordRaw[] = [
     redirect: '/admin/affiliates/invites'
   },
   {
+    path: '/admin/affiliates/leaderboard',
+    name: 'AdminAffiliateLeaderboard',
+    component: () => import('@/views/admin/affiliates/AdminAffiliateLeaderboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Affiliate Invite Leaderboard',
+      titleKey: 'nav.affiliateLeaderboard',
+      descriptionKey: 'admin.affiliates.leaderboard.description'
+    }
+  },
+  {
     path: '/admin/affiliates/invites',
     name: 'AdminAffiliateInvites',
     component: () => import('@/views/admin/affiliates/AdminAffiliateInvitesView.vue'),

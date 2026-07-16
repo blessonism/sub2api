@@ -110,6 +110,7 @@ type AffiliateRepository interface {
 	SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error
 	BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error
 	ListUsersWithCustomSettings(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error)
+	ListAffiliateLeaderboard(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateLeaderboardEntry, int64, error)
 	ListAffiliateInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error)
 	ListAffiliateRebateRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error)
 	ListAffiliateTransferRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error)
@@ -132,6 +133,17 @@ type AffiliateAdminEntry struct {
 	AffCodeCustom        bool     `json:"aff_code_custom"`
 	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent,omitempty"`
 	AffCount             int      `json:"aff_count"`
+}
+
+type AffiliateLeaderboardEntry struct {
+	Rank                int64   `json:"rank"`
+	UserID              int64   `json:"user_id"`
+	Email               string  `json:"email"`
+	Username            string  `json:"username"`
+	AffCode             string  `json:"aff_code"`
+	InviteCount         int     `json:"invite_count"`
+	AllCreditAmount     float64 `json:"all_credit_amount"`
+	PaymentRedeemAmount float64 `json:"payment_redeem_amount"`
 }
 
 type AffiliateRecordFilter struct {
@@ -565,6 +577,13 @@ func (s *AffiliateService) AdminListCustomUsers(ctx context.Context, filter Affi
 		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
 	}
 	return s.repo.ListUsersWithCustomSettings(ctx, filter)
+}
+
+func (s *AffiliateService) AdminListLeaderboard(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateLeaderboardEntry, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	return s.repo.ListAffiliateLeaderboard(ctx, filter)
 }
 
 func (s *AffiliateService) AdminListInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {

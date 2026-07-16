@@ -50,6 +50,54 @@ LEFT JOIN (
 WHERE ua.user_id = $1
 LIMIT 1`
 
+const affiliateLeaderboardCTE = `
+WITH invitee_credit AS (
+    SELECT ua.inviter_id,
+           COALESCE(SUM(invitee.total_recharged), 0) AS all_credit_amount
+    FROM user_affiliates ua
+    JOIN users invitee ON invitee.id = ua.user_id
+    WHERE ua.inviter_id IS NOT NULL
+    GROUP BY ua.inviter_id
+), payment_redeem AS (
+    SELECT ua.inviter_id,
+           COALESCE(SUM(rc.value), 0) AS payment_redeem_amount
+    FROM user_affiliates ua
+    JOIN redeem_codes rc ON rc.used_by = ua.user_id
+    WHERE ua.inviter_id IS NOT NULL
+      AND rc.status = 'used'
+      AND rc.type = 'balance'
+      AND rc.value > 0
+    GROUP BY ua.inviter_id
+), ranked AS (
+    SELECT ROW_NUMBER() OVER (
+               ORDER BY inviter_aff.aff_count DESC,
+                        COALESCE(payment_redeem.payment_redeem_amount, 0) DESC,
+                        inviter_aff.user_id ASC
+           )::bigint AS rank,
+           inviter_aff.user_id,
+           COALESCE(inviter.email, '') AS email,
+           COALESCE(inviter.username, '') AS username,
+           inviter_aff.aff_code,
+           inviter_aff.aff_count AS invite_count,
+           COALESCE(invitee_credit.all_credit_amount, 0)::double precision AS all_credit_amount,
+           COALESCE(payment_redeem.payment_redeem_amount, 0)::double precision AS payment_redeem_amount
+    FROM user_affiliates inviter_aff
+    JOIN users inviter ON inviter.id = inviter_aff.user_id
+    LEFT JOIN invitee_credit ON invitee_credit.inviter_id = inviter_aff.user_id
+    LEFT JOIN payment_redeem ON payment_redeem.inviter_id = inviter_aff.user_id
+    WHERE inviter_aff.aff_count > 0
+      AND inviter.deleted_at IS NULL
+)
+`
+
+const affiliateLeaderboardSearch = `
+WHERE $1 = ''
+   OR email ILIKE $2
+   OR username ILIKE $2
+   OR user_id::text ILIKE $2
+   OR aff_code ILIKE $2
+`
+
 type affiliateQueryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -449,6 +497,68 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 			&item.AffCode,
 			&item.TotalRebate,
 			&item.CreatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+func (r *affiliateRepository) ListAffiliateLeaderboard(ctx context.Context, filter service.AffiliateAdminFilter) ([]service.AffiliateLeaderboardEntry, int64, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := filter.PageSize
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	search := strings.TrimSpace(filter.Search)
+	pattern := "%" + search + "%"
+	client := clientFromContext(ctx, r.client)
+
+	var total int64
+	countRows, err := client.QueryContext(ctx, affiliateLeaderboardCTE+`SELECT COUNT(*) FROM ranked `+affiliateLeaderboardSearch, search, pattern)
+	if err != nil {
+		return nil, 0, err
+	}
+	if countRows.Next() {
+		err = countRows.Scan(&total)
+	} else if rowsErr := countRows.Err(); rowsErr != nil {
+		err = rowsErr
+	}
+	_ = countRows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := client.QueryContext(ctx, affiliateLeaderboardCTE+`
+SELECT rank, user_id, email, username, aff_code, invite_count, all_credit_amount, payment_redeem_amount
+FROM ranked
+`+affiliateLeaderboardSearch+`
+ORDER BY rank ASC
+LIMIT $3 OFFSET $4`, search, pattern, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := make([]service.AffiliateLeaderboardEntry, 0)
+	for rows.Next() {
+		var item service.AffiliateLeaderboardEntry
+		if err := rows.Scan(
+			&item.Rank,
+			&item.UserID,
+			&item.Email,
+			&item.Username,
+			&item.AffCode,
+			&item.InviteCount,
+			&item.AllCreditAmount,
+			&item.PaymentRedeemAmount,
 		); err != nil {
 			return nil, 0, err
 		}
