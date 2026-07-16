@@ -13,6 +13,7 @@ export default {
     "leaderboard": "Leaderboard",
     "activities": "Activity Center",
     "campaignRewards": "Campaign Rewards",
+    "affiliateLeaderboard": "Invite Leaderboard",
     "redeemRecords": "Redeem Records",
     "externalPayment": "Buy Plan"
   },
@@ -412,6 +413,21 @@ export default {
     "retry": "Retry"
   },
   "admin": {
+    "affiliates": {
+      "leaderboard": {
+        "description": "Rank inviters by lifetime invitations and invited-user recharge contribution",
+        "searchPlaceholder": "Search inviter email, username, user ID, or invite code",
+        "rank": "Rank",
+        "inviter": "Inviter",
+        "affCode": "Invite Code",
+        "inviteCount": "Lifetime Invites",
+        "allCreditAmount": "All Balance Credits",
+        "paymentRedeemAmount": "Payments & Balance Codes",
+        "empty": "No invite leaderboard data",
+        "emptyDescription": "Inviters appear here after they invite at least one user.",
+        "loadFailed": "Failed to load invite leaderboard"
+      }
+    },
     "accounts": {
       "accountCollections": {
         "all": "All accounts",

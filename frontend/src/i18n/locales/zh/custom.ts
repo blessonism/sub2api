@@ -13,6 +13,7 @@ export default {
     "leaderboard": "排行榜",
     "activities": "活动中心",
     "campaignRewards": "邀请活动",
+    "affiliateLeaderboard": "邀请排行榜",
     "redeemRecords": "兑换记录",
     "externalPayment": "购买套餐"
   },
@@ -412,6 +413,21 @@ export default {
     "retry": "重试"
   },
   "admin": {
+    "affiliates": {
+      "leaderboard": {
+        "description": "按累计邀请人数查看全站邀请人及其受邀用户充值贡献",
+        "searchPlaceholder": "搜索邀请人邮箱、用户名、用户 ID 或邀请码",
+        "rank": "名次",
+        "inviter": "邀请人",
+        "affCode": "邀请码",
+        "inviteCount": "累计邀请人数",
+        "allCreditAmount": "所有额度增加",
+        "paymentRedeemAmount": "支付及余额兑换码",
+        "empty": "暂无邀请排行数据",
+        "emptyDescription": "产生邀请关系后，邀请人会出现在这里。",
+        "loadFailed": "加载邀请排行榜失败"
+      }
+    },
     "accounts": {
       "accountCollections": {
         "all": "全部账号",

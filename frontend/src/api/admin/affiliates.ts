@@ -23,6 +23,23 @@ export interface ListAffiliateUsersParams {
   search?: string
 }
 
+export interface AffiliateLeaderboardEntry {
+  rank: number
+  user_id: number
+  email: string
+  username: string
+  aff_code: string
+  invite_count: number
+  all_credit_amount: number
+  payment_redeem_amount: number
+}
+
+export interface ListAffiliateLeaderboardParams {
+  page?: number
+  page_size?: number
+  search?: string
+}
+
 export interface ListAffiliateRecordsParams {
   page?: number
   page_size?: number
@@ -186,6 +203,22 @@ export async function listInviteRecords(
   return data
 }
 
+export async function listLeaderboard(
+  params: ListAffiliateLeaderboardParams = {},
+): Promise<PaginatedResponse<AffiliateLeaderboardEntry>> {
+  const { data } = await apiClient.get<PaginatedResponse<AffiliateLeaderboardEntry>>(
+    '/admin/affiliates/leaderboard',
+    {
+      params: {
+        page: params.page ?? 1,
+        page_size: params.page_size ?? 20,
+        search: params.search ?? '',
+      },
+    },
+  )
+  return data
+}
+
 export async function listRebateRecords(
   params: ListAffiliateRecordsParams = {},
 ): Promise<PaginatedResponse<AffiliateRebateRecord>> {
@@ -221,6 +254,7 @@ export const affiliatesAPI = {
   updateUserSettings,
   clearUserSettings,
   batchSetRate,
+  listLeaderboard,
   listInviteRecords,
   listRebateRecords,
   listTransferRecords,
