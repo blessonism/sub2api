@@ -431,6 +431,10 @@ func (r *oauthEmailAffiliateRepoStub) ListUsersWithCustomSettings(context.Contex
 	panic("unexpected ListUsersWithCustomSettings call")
 }
 
+func (r *oauthEmailAffiliateRepoStub) ListAffiliateLeaderboard(context.Context, service.AffiliateAdminFilter) ([]service.AffiliateLeaderboardEntry, int64, error) {
+	panic("unexpected ListAffiliateLeaderboard call")
+}
+
 func (r *oauthEmailAffiliateRepoStub) ListAffiliateInviteRecords(context.Context, service.AffiliateRecordFilter) ([]service.AffiliateInviteRecord, int64, error) {
 	panic("unexpected ListAffiliateInviteRecords call")
 }
