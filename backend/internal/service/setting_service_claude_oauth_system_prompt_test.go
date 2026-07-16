@@ -47,3 +47,28 @@ func TestSettingService_GetClaudeOAuthSystemPromptInjectionSettings(t *testing.T
 		require.Equal(t, customBlocks, blocks)
 	})
 }
+
+func TestSettingService_GetCodexBasePromptSettings(t *testing.T) {
+	t.Run("defaults to enabled with empty custom prompt", func(t *testing.T) {
+		resetGatewayForwardingSettingsCacheForTest(t)
+		svc := NewSettingService(&gatewayTTLSettingRepo{data: map[string]string{}}, &config.Config{})
+
+		enabled, prompt := svc.GetCodexBasePromptSettings(context.Background())
+
+		require.True(t, enabled)
+		require.Empty(t, prompt)
+	})
+
+	t.Run("uses configured switch and prompt", func(t *testing.T) {
+		resetGatewayForwardingSettingsCacheForTest(t)
+		svc := NewSettingService(&gatewayTTLSettingRepo{data: map[string]string{
+			SettingKeyEnableCodexBasePromptInjection: "false",
+			SettingKeyCodexBasePrompt:                "custom prompt",
+		}}, &config.Config{})
+
+		enabled, prompt := svc.GetCodexBasePromptSettings(context.Background())
+
+		require.False(t, enabled)
+		require.Equal(t, "custom prompt", prompt)
+	})
+}

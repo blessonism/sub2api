@@ -56,6 +56,8 @@ type cachedGatewayForwardingSettings struct {
 	fingerprintUnification           bool
 	metadataPassthrough              bool
 	cchSigning                       bool
+	codexBasePromptInjection         bool
+	codexBasePrompt                  string
 	claudeOAuthSystemPromptInjection bool
 	claudeOAuthSystemPrompt          string
 	claudeOAuthSystemPromptBlocks    string
@@ -587,9 +589,9 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
-	clientDatelineNormalization                                                           bool
-	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
+	fp, mp, cch, codexBasePromptInjection, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
+	clientDatelineNormalization                                                                                     bool
+	codexBasePrompt, claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                         string
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
@@ -599,6 +601,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				fp:                               cached.fingerprintUnification,
 				mp:                               cached.metadataPassthrough,
 				cch:                              cached.cchSigning,
+				codexBasePromptInjection:         cached.codexBasePromptInjection,
+				codexBasePrompt:                  cached.codexBasePrompt,
 				claudeOAuthSystemPromptInjection: cached.claudeOAuthSystemPromptInjection,
 				claudeOAuthSystemPrompt:          cached.claudeOAuthSystemPrompt,
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
@@ -615,6 +619,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					fp:                               cached.fingerprintUnification,
 					mp:                               cached.metadataPassthrough,
 					cch:                              cached.cchSigning,
+					codexBasePromptInjection:         cached.codexBasePromptInjection,
+					codexBasePrompt:                  cached.codexBasePrompt,
 					claudeOAuthSystemPromptInjection: cached.claudeOAuthSystemPromptInjection,
 					claudeOAuthSystemPrompt:          cached.claudeOAuthSystemPrompt,
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
@@ -630,6 +636,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableFingerprintUnification,
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
+			SettingKeyEnableCodexBasePromptInjection,
+			SettingKeyCodexBasePrompt,
 			SettingKeyEnableClaudeOAuthSystemPromptInjection,
 			SettingKeyClaudeOAuthSystemPrompt,
 			SettingKeyClaudeOAuthSystemPromptBlocks,
@@ -643,13 +651,14 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				fingerprintUnification:           true,
 				metadataPassthrough:              false,
 				cchSigning:                       false,
+				codexBasePromptInjection:         true,
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				clientDatelineNormalization:      true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+			return gatewayForwardingSettingsResult{fp: true, codexBasePromptInjection: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -657,6 +666,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		}
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
 		cch := values[SettingKeyEnableCCHSigning] == "true"
+		codexPromptInjection := true
+		if v, ok := values[SettingKeyEnableCodexBasePromptInjection]; ok && v != "" {
+			codexPromptInjection = v == "true"
+		}
+		codexPrompt := strings.TrimSpace(values[SettingKeyCodexBasePrompt])
 		systemPromptInjection := true
 		if v, ok := values[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {
 			systemPromptInjection = v == "true"
@@ -676,6 +690,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
 			cchSigning:                       cch,
+			codexBasePromptInjection:         codexPromptInjection,
+			codexBasePrompt:                  codexPrompt,
 			claudeOAuthSystemPromptInjection: systemPromptInjection,
 			claudeOAuthSystemPrompt:          systemPrompt,
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
@@ -688,6 +704,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			fp:                               fp,
 			mp:                               mp,
 			cch:                              cch,
+			codexBasePromptInjection:         codexPromptInjection,
+			codexBasePrompt:                  codexPrompt,
 			claudeOAuthSystemPromptInjection: systemPromptInjection,
 			claudeOAuthSystemPrompt:          systemPrompt,
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
@@ -699,7 +717,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
+	return gatewayForwardingSettingsResult{fp: true, codexBasePromptInjection: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -708,6 +726,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fingerprintUnification, metadataPassthrough, cchSigning bool) {
 	result := s.getGatewayForwardingSettingsCached(ctx)
 	return result.fp, result.mp, result.cch
+}
+
+// GetCodexBasePromptSettings 返回默认 Codex Base Prompt 注入开关和全局自定义正文。
+func (s *SettingService) GetCodexBasePromptSettings(ctx context.Context) (enabled bool, prompt string) {
+	result := s.getGatewayForwardingSettingsCached(ctx)
+	return result.codexBasePromptInjection, result.codexBasePrompt
 }
 
 // IsAnthropicCacheTTL1hInjectionEnabled 检查是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl。

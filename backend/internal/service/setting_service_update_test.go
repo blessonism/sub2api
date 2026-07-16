@@ -54,6 +54,20 @@ type settingGetAllRepoStub struct {
 	values map[string]string
 }
 
+func TestSettingService_UpdateSettings_CodexBasePrompt(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		EnableCodexBasePromptInjection: false,
+		CodexBasePrompt:                "  custom prompt  ",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "false", repo.updates[SettingKeyEnableCodexBasePromptInjection])
+	require.Equal(t, "custom prompt", repo.updates[SettingKeyCodexBasePrompt])
+}
+
 func (s *settingGetAllRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
 	panic("unexpected Get call")
 }

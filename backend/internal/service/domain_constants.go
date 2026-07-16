@@ -477,6 +477,10 @@ const (
 	// 网关随之不再注入/签名 cch（见 buildBillingAttributionText）。保留该 key 仅为向后兼容，
 	// 开关不再产生任何效果。
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
+	// SettingKeyEnableCodexBasePromptInjection 是否在 instructions 为空时注入 Codex Base Prompt（默认 true）
+	SettingKeyEnableCodexBasePromptInjection = "enable_codex_base_prompt_injection"
+	// SettingKeyCodexBasePrompt 管理员自定义的全局 Codex Base Prompt（空值使用内置模型 Prompt）
+	SettingKeyCodexBasePrompt = "codex_base_prompt"
 	// SettingKeyEnableClaudeOAuthSystemPromptInjection 是否对 Claude OAuth mimic 路径注入 Claude Code system blocks（默认 true）
 	SettingKeyEnableClaudeOAuthSystemPromptInjection = "enable_claude_oauth_system_prompt_injection"
 	// SettingKeyClaudeOAuthSystemPrompt Claude OAuth mimic 路径注入的通用扩展 system prompt（空值使用内置默认）

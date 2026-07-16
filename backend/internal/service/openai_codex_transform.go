@@ -80,6 +80,7 @@ type codexOAuthTransformOptions struct {
 	IsCodexCLI              bool
 	IsCompact               bool
 	SkipDefaultInstructions bool
+	DefaultInstructions     string
 	PreserveToolCallIDs     bool
 }
 
@@ -224,7 +225,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.DefaultInstructions) {
 		result.Modified = true
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
@@ -1144,6 +1145,13 @@ func defaultCodexSynthInstructions(model string) string {
 	return "You are a helpful coding assistant."
 }
 
+func resolveCodexSynthInstructions(model, custom string) string {
+	if custom = strings.TrimSpace(custom); custom != "" {
+		return custom
+	}
+	return defaultCodexSynthInstructions(model)
+}
+
 // ensureCodexReasoningInclude 在请求带 reasoning 时补齐 include:["reasoning.encrypted_content"]。
 //
 // 真实 Codex 在 reasoning 存在时总会请求加密推理内容（ChatGPT/store=false 场景下用于上下文回放）。
@@ -1214,12 +1222,12 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 }
 
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+func applyInstructions(reqBody map[string]any, custom string) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
 	model, _ := reqBody["model"].(string)
-	reqBody["instructions"] = defaultCodexSynthInstructions(model)
+	reqBody["instructions"] = resolveCodexSynthInstructions(model, custom)
 	return true
 }
 
