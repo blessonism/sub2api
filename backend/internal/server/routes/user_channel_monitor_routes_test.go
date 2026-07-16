@@ -15,7 +15,7 @@ func TestUserChannelMonitorGptIntelligenceRouteIsRegistered(t *testing.T) {
 
 	RegisterUserRoutes(v1, &handler.Handlers{
 		ChannelMonitor: &handler.ChannelMonitorUserHandler{},
-	}, func(c *gin.Context) { c.Next() }, nil)
+	}, func(c *gin.Context) { c.Next() }, nil, nil)
 
 	registered := map[string]bool{}
 	for _, route := range router.Routes() {

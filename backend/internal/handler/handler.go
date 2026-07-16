@@ -44,6 +44,7 @@ type AdminHandlers struct {
 	TokenUsagePolicy        *admin.TokenUsagePolicyHandler
 	UpstreamRelayMonitoring *admin.UpstreamRelayGroupMonitoringHandler
 	Conversation            *admin.ConversationHandler
+	AuditLog                *admin.AuditLogHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -64,6 +65,7 @@ type Handlers struct {
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
+	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 }
 
