@@ -375,6 +375,7 @@ export interface UpstreamRelayAPIKeyOption {
   id: number
   name?: string
   masked_key?: string
+  group_id?: string
 }
 
 export interface UpstreamRelayRecommendationSuggestion {

@@ -569,6 +569,8 @@ SELECT r.target_group_id FROM runs r WHERE r.id = $1
 - Connector rows represent the upstream relay login account; show upstream account balance only on connector surfaces.
 - Candidate rows represent an account-scoped local mapping to an upstream group; show today's usage snapshot for `connector_id + upstream_group_id`, not upstream account balance.
 - Candidate rows own the upstream API key mapping (`upstream_api_key_id` plus display-only name/masked key); do not store this connector-specific mapping in `accounts.credentials`.
+- Resolve each bound Key's current `group_id` from upstream `/api/v1/keys` before aggregating today's usage. The saved candidate `upstream_group_id` is editable configuration/history and must not be the runtime source of truth after the upstream Key changes group. Historical-date finalization uses the saved candidate group because no historical Key-group API is available.
+- Candidate list and recommendation DTOs should decorate the effective current Key group in memory; do not silently rewrite the saved candidate mapping. Repeated bindings of one upstream Key must contribute one usage total.
 - Candidate usage window follows the local configured timezone day when refreshed from local statistics; full sync may still follow the date sent to the upstream ordinary-user `/usage` endpoint.
 - Full connector sync may refresh group visibility/rates and upsert snapshots. Lightweight metrics refresh must not update snapshot today-usage fields from local logs; it may update them from upstream `/api/v1/usage/stats` using candidate `upstream_api_key_id`.
 - Lightweight metrics refresh must not call upstream `/groups/available`, upstream `/groups/rates`, `UpsertSnapshots`, snapshot-change insertion, or stale snapshot marking.
@@ -960,6 +962,7 @@ ORDER BY is_featured DESC, start_at ASC, id ASC
 - No candidate bindings -> `usage_detail.status=skipped`, issue code `no_candidate_bindings`, no existing usage snapshot is cleared.
 - Candidate missing API key -> issue code `missing_upstream_api_key_binding`; other valid groups continue.
 - Upstream key usage request fails -> issue code `upstream_usage_request_failed`; other valid keys continue.
+- Bound Key is no longer visible -> issue code `upstream_api_key_not_visible`; Key has no current group -> `upstream_api_key_group_unavailable`. Do not silently fall back to the saved candidate group.
 - Some groups updated and some missing -> `usage_detail.status=partial`.
 - No groups updated and at least one group failed -> `usage_detail.status=failed`.
 - Snapshot missing for an otherwise valid binding -> `missing_groups[].reason=no_snapshot`; request a full connector sync.

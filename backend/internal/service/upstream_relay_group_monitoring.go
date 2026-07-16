@@ -314,12 +314,14 @@ const (
 	upstreamRelayMetricsRefreshStatusFailed  = "failed"
 	upstreamRelayMetricsRefreshStatusSkipped = "skipped"
 
-	upstreamRelayMetricsIssueNoCandidateBindings   = "no_candidate_bindings"
-	upstreamRelayMetricsIssueMissingAPIKeyBinding  = "missing_upstream_api_key_binding"
-	upstreamRelayMetricsIssueUpstreamUsageRequest  = "upstream_usage_request_failed"
-	upstreamRelayMetricsIssueCandidateBindingsLoad = "candidate_bindings_load_failed"
-	upstreamRelayMetricsIssueUsageRefreshFailed    = "usage_refresh_failed"
-	upstreamRelayMetricsIssueUsageRefreshAborted   = "usage_refresh_aborted"
+	upstreamRelayMetricsIssueNoCandidateBindings    = "no_candidate_bindings"
+	upstreamRelayMetricsIssueMissingAPIKeyBinding   = "missing_upstream_api_key_binding"
+	upstreamRelayMetricsIssueAPIKeyNotVisible       = "upstream_api_key_not_visible"
+	upstreamRelayMetricsIssueAPIKeyGroupUnavailable = "upstream_api_key_group_unavailable"
+	upstreamRelayMetricsIssueUpstreamUsageRequest   = "upstream_usage_request_failed"
+	upstreamRelayMetricsIssueCandidateBindingsLoad  = "candidate_bindings_load_failed"
+	upstreamRelayMetricsIssueUsageRefreshFailed     = "usage_refresh_failed"
+	upstreamRelayMetricsIssueUsageRefreshAborted    = "usage_refresh_aborted"
 
 	UpstreamRelaySnapshotChangeAdded       = "added"
 	UpstreamRelaySnapshotChangeRemoved     = "removed"
@@ -392,6 +394,7 @@ type UpstreamRelayAPIKeyOption struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name,omitempty"`
 	MaskedKey string `json:"masked_key,omitempty"`
+	GroupID   string `json:"group_id,omitempty"`
 }
 
 type UpstreamRelayProbeResult struct {
@@ -1000,7 +1003,7 @@ func buildUpstreamRelayMetricsUsageDetail(
 		}
 	}
 
-	groupIDs := distinctUpstreamRelayCandidateUsageGroups(bindings)
+	groupIDs := distinctUpstreamRelayUsageGroups(bindings, usageByGroup, issues)
 	detail := UpstreamRelayMetricsUsageDetail{
 		TotalGroups: len(groupIDs),
 		CheckedAt:   checkedAt,
@@ -1117,19 +1120,30 @@ func upstreamRelayMetricsIssueFromError(err error) *UpstreamRelayMetricsIssueDet
 	}
 }
 
-func distinctUpstreamRelayCandidateUsageGroups(bindings []UpstreamRelayCandidateUsageBinding) []string {
+func distinctUpstreamRelayUsageGroups(bindings []UpstreamRelayCandidateUsageBinding, usageByGroup map[string]UpstreamRelayGroupTodayUsage, issues []UpstreamRelayMetricsIssueDetail) []string {
 	seen := map[string]struct{}{}
 	out := []string{}
-	for _, binding := range bindings {
-		groupID := strings.TrimSpace(binding.UpstreamGroupID)
+	add := func(groupID string) {
+		groupID = strings.TrimSpace(groupID)
 		if groupID == "" {
-			continue
+			return
 		}
 		if _, ok := seen[groupID]; ok {
-			continue
+			return
 		}
 		seen[groupID] = struct{}{}
 		out = append(out, groupID)
+	}
+	for groupID := range usageByGroup {
+		add(groupID)
+	}
+	for _, issue := range issues {
+		add(issue.UpstreamGroupID)
+	}
+	if len(out) == 0 {
+		for _, binding := range bindings {
+			add(binding.UpstreamGroupID)
+		}
 	}
 	sort.Strings(out)
 	return out
@@ -1182,11 +1196,84 @@ func (s *UpstreamRelayGroupMonitoringService) ListCandidates(ctx context.Context
 	if err != nil {
 		return nil, nil, err
 	}
+	s.decorateCandidateCurrentGroups(ctx, items, false)
 	if err := s.decorateCandidateHealthFreshness(ctx, items); err != nil {
 		return nil, nil, err
 	}
 	sanitizeUpstreamRelayCandidateAPIKeyDisplays(items)
 	return items, pageResult, nil
+}
+
+func (s *UpstreamRelayGroupMonitoringService) decorateCandidateCurrentGroups(ctx context.Context, items []UpstreamRelayCandidate, clearUnresolved bool) {
+	indicesByConnector := map[int64][]int{}
+	for i := range items {
+		if items[i].ConnectorID <= 0 {
+			continue
+		}
+		if items[i].UpstreamAPIKeyID == nil || *items[i].UpstreamAPIKeyID <= 0 {
+			continue
+		}
+		indicesByConnector[items[i].ConnectorID] = append(indicesByConnector[items[i].ConnectorID], i)
+	}
+	for connectorID, indices := range indicesByConnector {
+		connector, err := s.repo.GetConnector(ctx, connectorID)
+		if err == nil {
+			err = s.decryptConnector(connector)
+		}
+		var apiKeys []UpstreamRelayAPIKeyOption
+		if err == nil {
+			apiKeys, err = s.fetchUpstreamAPIKeyOptions(ctx, connector)
+		}
+		var snapshots []UpstreamRelayGroupRateSnapshot
+		if err == nil {
+			snapshots, err = s.repo.ListSnapshots(ctx, connectorID)
+		}
+		if err != nil {
+			if clearUnresolved {
+				for _, index := range indices {
+					items[index].TodayActualCost = nil
+					items[index].TodayTotalTokens = nil
+					items[index].TodayUsageCheckedAt = nil
+					items[index].LatestSnapshot = nil
+				}
+			}
+			continue
+		}
+		groupByKeyID := make(map[int64]string, len(apiKeys))
+		for _, apiKey := range apiKeys {
+			groupByKeyID[apiKey.ID] = strings.TrimSpace(apiKey.GroupID)
+		}
+		snapshotByGroupID := make(map[string]UpstreamRelayGroupRateSnapshot, len(snapshots))
+		for _, snapshot := range snapshots {
+			snapshotByGroupID[snapshot.UpstreamGroupID] = snapshot
+		}
+		for _, index := range indices {
+			groupID := groupByKeyID[*items[index].UpstreamAPIKeyID]
+			if groupID == "" {
+				if clearUnresolved {
+					items[index].TodayActualCost = nil
+					items[index].TodayTotalTokens = nil
+					items[index].TodayUsageCheckedAt = nil
+					items[index].LatestSnapshot = nil
+				}
+				continue
+			}
+			items[index].UpstreamGroupID = groupID
+			items[index].UpstreamGroupName = ""
+			items[index].TodayActualCost = nil
+			items[index].TodayTotalTokens = nil
+			items[index].TodayUsageCheckedAt = nil
+			items[index].LatestSnapshot = nil
+			if snapshot, ok := snapshotByGroupID[groupID]; ok {
+				snapshotCopy := snapshot
+				items[index].UpstreamGroupName = snapshot.Name
+				items[index].TodayActualCost = snapshot.TodayActualCost
+				items[index].TodayTotalTokens = snapshot.TodayTotalTokens
+				items[index].TodayUsageCheckedAt = snapshot.TodayUsageCheckedAt
+				items[index].LatestSnapshot = &snapshotCopy
+			}
+		}
+	}
 }
 
 func (s *UpstreamRelayGroupMonitoringService) ListConnectorAPIKeys(ctx context.Context, connectorID int64) ([]UpstreamRelayAPIKeyOption, error) {
@@ -1479,6 +1566,7 @@ func (s *UpstreamRelayGroupMonitoringService) GenerateRecommendations(ctx contex
 	if err != nil {
 		return nil, err
 	}
+	s.decorateCandidateCurrentGroups(ctx, candidates, true)
 	policy, err := s.GetRecommendationPolicy(ctx)
 	if err != nil {
 		return nil, err
@@ -1601,6 +1689,7 @@ func (s *UpstreamRelayGroupMonitoringService) PreviewRecommendations(ctx context
 	if err != nil {
 		return nil, err
 	}
+	s.decorateCandidateCurrentGroups(ctx, candidates, true)
 	preview := buildUpstreamRelayRecommendationPreview(candidates, policy)
 	return &preview, nil
 }
@@ -2058,7 +2147,21 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx
 	}
 	issues := make([]UpstreamRelayMetricsIssueDetail, 0)
 	usageByKey := map[int64]UpstreamRelayGroupTodayUsage{}
+	// ponytail: 上游没有 Key 分组历史接口；历史日期使用候选保存分组，若上游支持按日期查询再替换。
+	resolveCurrentGroups := date == upstreamRelayUsageDate(time.Now())
+	apiKeyByID := map[int64]UpstreamRelayAPIKeyOption{}
+	if resolveCurrentGroups {
+		apiKeys, err := s.fetchUpstreamAPIKeyOptions(ctx, connector)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		apiKeyByID = make(map[int64]UpstreamRelayAPIKeyOption, len(apiKeys))
+		for _, apiKey := range apiKeys {
+			apiKeyByID[apiKey.ID] = apiKey
+		}
+	}
 	failedKeys := map[int64]string{}
+	countedKeys := map[int64]struct{}{}
 	invalidGroups := map[string]struct{}{}
 	for _, binding := range bindings {
 		if binding.UpstreamGroupID == "" {
@@ -2076,15 +2179,45 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx
 			continue
 		}
 		upstreamKeyID := binding.UpstreamAPIKeyID
+		currentGroupID := strings.TrimSpace(binding.UpstreamGroupID)
+		if resolveCurrentGroups {
+			apiKey, visible := apiKeyByID[upstreamKeyID]
+			if !visible {
+				issues = append(issues, UpstreamRelayMetricsIssueDetail{
+					Code:            upstreamRelayMetricsIssueAPIKeyNotVisible,
+					Message:         fmt.Sprintf("upstream api key %d is not visible", upstreamKeyID),
+					CandidateID:     binding.CandidateID,
+					AccountID:       binding.AccountID,
+					UpstreamGroupID: binding.UpstreamGroupID,
+				})
+				invalidGroups[binding.UpstreamGroupID] = struct{}{}
+				continue
+			}
+			currentGroupID = strings.TrimSpace(apiKey.GroupID)
+			if currentGroupID == "" {
+				issues = append(issues, UpstreamRelayMetricsIssueDetail{
+					Code:            upstreamRelayMetricsIssueAPIKeyGroupUnavailable,
+					Message:         fmt.Sprintf("upstream api key %d has no current group", upstreamKeyID),
+					CandidateID:     binding.CandidateID,
+					AccountID:       binding.AccountID,
+					UpstreamGroupID: binding.UpstreamGroupID,
+				})
+				invalidGroups[binding.UpstreamGroupID] = struct{}{}
+				continue
+			}
+		}
+		if _, counted := countedKeys[upstreamKeyID]; counted {
+			continue
+		}
 		if message, failed := failedKeys[upstreamKeyID]; failed {
 			issues = append(issues, UpstreamRelayMetricsIssueDetail{
 				Code:            upstreamRelayMetricsIssueUpstreamUsageRequest,
 				Message:         message,
 				CandidateID:     binding.CandidateID,
 				AccountID:       binding.AccountID,
-				UpstreamGroupID: binding.UpstreamGroupID,
+				UpstreamGroupID: currentGroupID,
 			})
-			invalidGroups[binding.UpstreamGroupID] = struct{}{}
+			invalidGroups[currentGroupID] = struct{}{}
 			continue
 		}
 		usage, cached := usageByKey[upstreamKeyID]
@@ -2098,17 +2231,18 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamGroupUsageForDate(ctx
 					Message:         message,
 					CandidateID:     binding.CandidateID,
 					AccountID:       binding.AccountID,
-					UpstreamGroupID: binding.UpstreamGroupID,
+					UpstreamGroupID: currentGroupID,
 				})
-				invalidGroups[binding.UpstreamGroupID] = struct{}{}
+				invalidGroups[currentGroupID] = struct{}{}
 				continue
 			}
 			usageByKey[upstreamKeyID] = usage
 		}
-		groupUsage := out[binding.UpstreamGroupID]
+		groupUsage := out[currentGroupID]
 		groupUsage.ActualCost += usage.ActualCost
 		groupUsage.TotalTokens += usage.TotalTokens
-		out[binding.UpstreamGroupID] = groupUsage
+		out[currentGroupID] = groupUsage
+		countedKeys[upstreamKeyID] = struct{}{}
 	}
 	for groupID := range invalidGroups {
 		delete(out, groupID)
@@ -2236,6 +2370,7 @@ func (s *UpstreamRelayGroupMonitoringService) fetchUpstreamAPIKeyOptions(ctx con
 				ID:        item.ID,
 				Name:      item.Name,
 				MaskedKey: maskUpstreamRelayAPIKeyForDisplay(item.Key),
+				GroupID:   item.GroupID,
 			})
 		}
 		if pages <= page {
@@ -3620,9 +3755,10 @@ type upstreamRelayUsagePageItem struct {
 }
 
 type upstreamRelayAPIKeyPageItem struct {
-	ID   int64
-	Name string
-	Key  string
+	ID      int64
+	Name    string
+	Key     string
+	GroupID string
 }
 
 func maskUpstreamRelayAPIKeyForDisplay(key string) string {
@@ -3684,10 +3820,16 @@ func parseUpstreamAPIKeyPage(body []byte) ([]upstreamRelayAPIKeyPageItem, int, e
 		id := relayInt64(m["id"])
 		name := strings.TrimSpace(relayString(firstPresent(m, "name", "key_name", "label")))
 		key := strings.TrimSpace(relayString(m["key"]))
+		groupID := strings.TrimSpace(relayString(firstPresent(m, "group_id", "groupId")))
+		if groupID == "" {
+			if group, ok := m["group"].(map[string]any); ok {
+				groupID = strings.TrimSpace(relayString(firstPresent(group, "id", "group_id")))
+			}
+		}
 		if id <= 0 || (key == "" && name == "") {
 			continue
 		}
-		out = append(out, upstreamRelayAPIKeyPageItem{ID: id, Name: name, Key: key})
+		out = append(out, upstreamRelayAPIKeyPageItem{ID: id, Name: name, Key: key, GroupID: groupID})
 	}
 	return out, pages, nil
 }
