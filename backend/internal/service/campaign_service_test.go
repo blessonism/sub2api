@@ -34,7 +34,7 @@ func TestCalculateCampaignRewardsUsesRankWeightsAndContributionSqrt(t *testing.T
 	}
 	first := summary.Results[0]
 	second := summary.Results[1]
-	if first.RankRewardAmountCents != 24_000 || second.RankRewardAmountCents != 16_000 {
+	if first.RankRewardAmountCents != 48_000 || second.RankRewardAmountCents != 32_000 {
 		t.Fatalf("Top 权重奖励不符合预期：first=%d second=%d", first.RankRewardAmountCents, second.RankRewardAmountCents)
 	}
 
@@ -45,6 +45,34 @@ func TestCalculateCampaignRewardsUsesRankWeightsAndContributionSqrt(t *testing.T
 	}
 	if summary.TotalFinalPayoutCents != first.FinalPayoutAmountCents+second.FinalPayoutAmountCents {
 		t.Fatalf("最终发放汇总不等于明细合计")
+	}
+}
+
+func TestCalculateCampaignRewardsRedistributesVacantRankWeights(t *testing.T) {
+	cfg := campaignTestConfig(0)
+	rows := []CampaignLeaderboardRow{
+		campaignTestLeaderboardRow(1, 1, 10_000),
+		campaignTestLeaderboardRow(2, 1, 10_000),
+		campaignTestLeaderboardRow(3, 1, 10_000),
+		campaignTestLeaderboardRow(4, 1, 10_000),
+		campaignTestLeaderboardRow(5, 1, 10_000),
+	}
+
+	summary := calculateCampaignRewards(7, cfg, 100_000, rows, CampaignCalculationFinal, "partial-ranking")
+	var totalRankReward int64
+	for _, result := range summary.Results {
+		totalRankReward += result.RankRewardAmountCents
+	}
+	if totalRankReward+summary.TotalRoundingResidualCents != summary.RankPoolCents {
+		t.Fatalf("空缺名次奖金应由实际五人瓜分：rank=%d residual=%d pool=%d", totalRankReward, summary.TotalRoundingResidualCents, summary.RankPoolCents)
+	}
+
+	for userID := int64(6); userID <= 10; userID++ {
+		rows = append(rows, campaignTestLeaderboardRow(userID, 1, 10_000))
+	}
+	full := calculateCampaignRewards(7, cfg, 100_000, rows, CampaignCalculationFinal, "full-ranking")
+	if full.Results[0].RankRewardAmountCents != 24_000 || full.Results[9].RankRewardAmountCents != 1_600 {
+		t.Fatalf("满榜时应保持原权重：first=%d tenth=%d", full.Results[0].RankRewardAmountCents, full.Results[9].RankRewardAmountCents)
 	}
 }
 

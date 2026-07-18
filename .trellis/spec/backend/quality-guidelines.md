@@ -32,6 +32,21 @@ Questions to answer:
 
 <!-- Patterns that must always be used -->
 
+### Scenario: Campaign rank rewards with vacant places
+
+#### Scope / Trigger
+- Trigger: changing `calculateCampaignRewards` or campaign rank-weight validation.
+
+#### Contracts
+- `rank_weights` describes the relative weights of configured places and totals 100 across `rank_reward_count`.
+- When fewer users rank than `rank_reward_count`, normalize only the occupied places' weights so vacant places do not reserve reward money.
+- When all configured places are occupied, payouts stay equal to `rank_pool × rank_weight ÷ 100`.
+- Keep integer-cent flooring and record only the resulting cent-level remainder in `rounding_residual_cents`.
+
+#### Tests Required
+- Cover a partially filled leaderboard and assert rank rewards plus the flooring remainder equal the rank pool.
+- Preserve a full-leaderboard case so normalization cannot change established percentages.
+
 ### Scenario: Admin affiliate invite leaderboard
 
 #### 1. Scope / Trigger
