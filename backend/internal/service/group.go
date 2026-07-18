@@ -20,9 +20,18 @@ type Group struct {
 	VisibleRateMultiplier *float64
 	TimeRatePriority      string
 	TimeRatePeriods       []GroupTimeRatePeriod
-	IsExclusive           bool
-	Status                string
-	Hydrated              bool // indicates the group was loaded from a trusted repository source
+	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
+	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
+	PeakRateEnabled    bool
+	PeakStart          string
+	PeakEnd            string
+	PeakRateMultiplier float64
+	IsExclusive        bool
+	Status             string
+	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	// DuplicateOperationID is internal persistence metadata used only to recover
+	// an already committed one-click copy. It must never be mapped to API DTOs.
+	DuplicateOperationID string
 
 	SubscriptionType    string
 	DailyLimitUSD       *float64
