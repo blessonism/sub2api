@@ -1455,6 +1455,11 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 	})
 	rankPool := decimal.NewFromInt(finalPoolCents).Mul(cfg.RankPoolRatio).Floor().IntPart()
 	contributionPool := decimal.NewFromInt(finalPoolCents).Mul(cfg.ContributionPoolRatio).Floor().IntPart()
+	rankWinnerCount := min(len(sortedRows), cfg.RankRewardCount, len(cfg.RankWeights))
+	var rankWeightSum int64
+	for _, weight := range cfg.RankWeights[:rankWinnerCount] {
+		rankWeightSum += weight
+	}
 	weightSum := decimal.Zero
 	for _, row := range sortedRows {
 		if row.ValidInviteCount > 0 {
@@ -1467,8 +1472,8 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 		var rankPtr *int
 		rankPtr = &rank
 		rankReward := int64(0)
-		if rank <= cfg.RankRewardCount && rank <= len(cfg.RankWeights) {
-			rankReward = decimal.NewFromInt(rankPool).Mul(decimal.NewFromInt(cfg.RankWeights[rank-1])).Div(decimal.NewFromInt(100)).Floor().IntPart()
+		if rank <= rankWinnerCount && rankWeightSum > 0 {
+			rankReward = decimal.NewFromInt(rankPool).Mul(decimal.NewFromInt(cfg.RankWeights[rank-1])).Div(decimal.NewFromInt(rankWeightSum)).Floor().IntPart()
 		}
 		contributionWeight := decimal.Zero
 		contributionReward := int64(0)
