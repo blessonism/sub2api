@@ -1755,8 +1755,8 @@ func (s *UpstreamRelayGroupMonitoringService) normalizeConnectorInput(ctx contex
 		baseURLChanged = existing.BaseURL != baseURL
 	}
 	if authMode == UpstreamRelayAuthModePasswordLogin {
-		loginEmail := strings.TrimSpace(stringValue(input.LoginEmail))
-		loginPassword := strings.TrimSpace(stringValue(input.LoginPassword))
+		loginEmail := strings.TrimSpace(stringPointerValue(input.LoginEmail))
+		loginPassword := strings.TrimSpace(stringPointerValue(input.LoginPassword))
 		inputEmailProvided := input.LoginEmail != nil && loginEmail != ""
 		if loginEmail == "" && connector.LoginEmailEncrypted != "" && !baseURLChanged {
 			loginEmail = strings.TrimSpace(s.decryptForDisplay(connector.LoginEmailEncrypted))
@@ -1792,7 +1792,7 @@ func (s *UpstreamRelayGroupMonitoringService) normalizeConnectorInput(ctx contex
 		}
 		return connector, updated, nil
 	}
-	explicitBearerToken := strings.TrimSpace(stringValue(input.BearerToken)) != ""
+		explicitBearerToken := strings.TrimSpace(stringPointerValue(input.BearerToken)) != ""
 	if (baseURLChanged || previousAuthMode == UpstreamRelayAuthModePasswordLogin) && !explicitBearerToken {
 		return nil, false, ErrUpstreamRelayInvalidManualSession
 	}
@@ -4092,7 +4092,7 @@ func firstPresent(m map[string]any, keys ...string) any {
 	return nil
 }
 
-func stringValue(value *string) string {
+func stringPointerValue(value *string) string {
 	if value == nil {
 		return ""
 	}
