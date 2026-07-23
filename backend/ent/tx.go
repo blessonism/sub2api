@@ -46,6 +46,8 @@ type Tx struct {
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
+	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
+	CompositeModelRoute *CompositeModelRouteClient
 	// ConversationExportJob is the client for interacting with the ConversationExportJob builders.
 	ConversationExportJob *ConversationExportJobClient
 	// ConversationSession is the client for interacting with the ConversationSession builders.
@@ -247,6 +249,7 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
+	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
 	tx.ConversationExportJob = NewConversationExportJobClient(tx.config)
 	tx.ConversationSession = NewConversationSessionClient(tx.config)
 	tx.ConversationTurn = NewConversationTurnClient(tx.config)

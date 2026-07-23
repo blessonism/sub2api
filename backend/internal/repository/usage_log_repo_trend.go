@@ -144,19 +144,40 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	if limit <= 0 {
 		limit = 12
 	}
+	calibrationStartDate, calibrationEndDateExclusive := calibrationAllocationDateRange(startTime, endTime)
 
-	query := `
-		WITH user_spend AS (
+	query := fmt.Sprintf(`
+		WITH raw_user_spend AS (
 			SELECT
 				u.user_id,
-				COALESCE(us.email, '') as email,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
+				COALESCE(SUM(%s), 0) as actual_cost,
 				COUNT(*) as requests,
-				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
+				MAX(u.created_at) as last_used_at
 			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email
+			GROUP BY u.user_id
+		),
+		calibration_usage AS (
+			SELECT
+				target_user_id AS user_id,
+				COALESCE(SUM(token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations
+			WHERE allocation_date >= $4::date AND allocation_date < $5::date
+			GROUP BY target_user_id
+		),
+		user_spend AS (
+			SELECT
+				COALESCE(r.user_id, c.user_id) AS user_id,
+				COALESCE(us.email, '') AS email,
+				COALESCE(r.actual_cost, 0) AS actual_cost,
+				COALESCE(r.requests, 0) AS requests,
+				COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) AS tokens,
+				COALESCE(r.last_used_at, to_timestamp(0)) AS last_used_at
+			FROM raw_user_spend r
+			FULL OUTER JOIN calibration_usage c ON c.user_id = r.user_id
+			LEFT JOIN users us ON us.id = COALESCE(r.user_id, c.user_id)
+			WHERE COALESCE(r.requests, 0) > 0 OR COALESCE(r.tokens, 0) + COALESCE(c.token_delta, 0) <> 0
 		),
 		ranked AS (
 			SELECT
@@ -165,6 +186,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				actual_cost,
 				requests,
 				tokens,
+				last_used_at,
 				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
 				COALESCE(SUM(requests) OVER (), 0) as total_requests,
 				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
@@ -178,14 +200,15 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			actual_cost,
 			requests,
 			tokens,
+			last_used_at,
 			total_actual_cost,
 			total_requests,
 			total_tokens
 		FROM ranked
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
-	`
+	`, userSpendingRankingCostExpr)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, calibrationStartDate, calibrationEndDateExclusive)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +225,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &row.LastUsedAt, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)
