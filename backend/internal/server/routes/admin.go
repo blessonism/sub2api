@@ -403,6 +403,8 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	users := admin.Group("/users")
 	{
 		users.GET("", h.Admin.User.List)
+		users.POST("/balance-reduction/preview", h.Admin.User.PreviewAllUserBalanceReduction)
+		users.POST("/balance-reduction", h.Admin.User.ReduceAllUserBalances)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("/:id/auth-identities", h.Admin.User.BindAuthIdentity)
 		users.POST("", h.Admin.User.Create)

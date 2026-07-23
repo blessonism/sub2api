@@ -2126,7 +2126,27 @@ export default {
       "concurrencyFloorConfirm": "确认提高",
       "concurrencyFloorInvalid": "并发下限必须是大于等于 1 的整数",
       "concurrencyFloorSuccess": "已提高 {count} 个用户的并发下限",
-      "concurrencyFloorFailed": "统一并发下限失败"
+      "concurrencyFloorFailed": "统一并发下限失败",
+      "balanceReductionAction": "缩减全部余额",
+      "balanceReductionTitle": "缩减全部用户余额",
+      "balanceReductionDescription": "输入大于 1 的有限小数倍数。系统将预览全部未删除账号（包括已禁用用户和管理员）的余额缩减结果。",
+      "balanceReductionFactor": "缩减倍数",
+      "balanceReductionFactorPlaceholder": "例如 10 或 2.5",
+      "balanceReductionPreview": "生成预览",
+      "balanceReductionPreviewing": "正在预览",
+      "balanceReductionInvalid": "缩减倍数必须大于 1，且最多保留 8 位小数",
+      "balanceReductionPreviewFailed": "余额缩减预览失败",
+      "balanceReductionConfirmTitle": "确认缩减全部用户余额",
+      "balanceReductionConfirmDescription": "此操作会修改全部未删除账号，包括已禁用用户和管理员。执行时将按最新余额重新计算。",
+      "balanceReductionPreviewFactor": "缩减倍数",
+      "balanceReductionPreviewUsers": "目标用户数",
+      "balanceReductionPreviewCurrent": "当前余额总额",
+      "balanceReductionPreviewReduced": "缩减后总额",
+      "balanceReductionPreviewDecrease": "预计减少金额",
+      "balanceReductionExecute": "确认执行",
+      "balanceReductionExecuting": "正在执行",
+      "balanceReductionSuccess": "已缩减 {count} 个用户的余额，共减少 ${amount}",
+      "balanceReductionFailed": "批量缩减用户余额失败"
     },
     "groups": {
       "timeRate": {

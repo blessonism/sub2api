@@ -10,7 +10,9 @@ const {
   getBatchUsersUsage,
   listEnabledDefinitions,
   getBatchUserAttributes,
+  previewAllUserBalanceReduction,
   raiseConcurrencyFloor,
+  reduceAllUserBalances,
   showError,
   showSuccess
 } = vi.hoisted(() => ({
@@ -19,7 +21,9 @@ const {
   getBatchUsersUsage: vi.fn(),
   listEnabledDefinitions: vi.fn(),
   getBatchUserAttributes: vi.fn(),
+  previewAllUserBalanceReduction: vi.fn(),
   raiseConcurrencyFloor: vi.fn(),
+  reduceAllUserBalances: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn()
 }))
@@ -30,6 +34,8 @@ vi.mock('@/api/admin', () => ({
       list: listUsers,
       toggleStatus: vi.fn(),
       delete: vi.fn(),
+      previewAllUserBalanceReduction,
+      reduceAllUserBalances,
       raiseConcurrencyFloor
     },
     groups: {
@@ -136,7 +142,9 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockReset()
     listEnabledDefinitions.mockReset()
     getBatchUserAttributes.mockReset()
+    previewAllUserBalanceReduction.mockReset()
     raiseConcurrencyFloor.mockReset()
+    reduceAllUserBalances.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -152,6 +160,23 @@ describe('admin UsersView', () => {
     listEnabledDefinitions.mockResolvedValue([])
     getBatchUserAttributes.mockResolvedValue({ values: {} })
     raiseConcurrencyFloor.mockResolvedValue({ affected: 2 })
+    previewAllUserBalanceReduction.mockResolvedValue({
+      factor: '2.5',
+      user_count: 3,
+      affected_users: 2,
+      current_total: 30,
+      reduced_total: 12,
+      reduction_total: 18
+    })
+    reduceAllUserBalances.mockResolvedValue({
+      operation_id: 'operation-1',
+      factor: '2.5',
+      user_count: 3,
+      affected_users: 2,
+      current_total: 30,
+      reduced_total: 12,
+      reduction_total: 18
+    })
   })
 
   afterEach(() => {
@@ -430,6 +455,59 @@ describe('admin UsersView', () => {
     expect(raiseConcurrencyFloor).toHaveBeenCalledWith(5)
     expect(showSuccess).toHaveBeenCalledWith('admin.users.concurrencyFloorSuccess')
     expect(listUsers.mock.calls.length).toBeGreaterThan(initialCalls)
+  })
+
+  it('previews and confirms reducing every non-deleted user balance', async () => {
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: {
+            props: ['show'],
+            emits: ['confirm', 'cancel'],
+            template: '<div v-if="show"><slot /><button data-test="confirm-dialog" @click="$emit(\'confirm\')">confirm</button></div>'
+          },
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          BulkEditUserModal: true,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-test="reduce-all-balances"]').trigger('click')
+    await wrapper.get('[data-test="balance-reduction-factor"]').setValue('1')
+    await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
+    expect(previewAllUserBalanceReduction).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.users.balanceReductionInvalid')
+
+    await wrapper.get('[data-test="balance-reduction-factor"]').setValue('2.5')
+    await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
+    await flushPromises()
+    expect(previewAllUserBalanceReduction).toHaveBeenCalledWith('2.5')
+
+    await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
+    await flushPromises()
+    expect(reduceAllUserBalances).toHaveBeenCalledWith('2.5', expect.stringContaining('admin-balance-reduction-'))
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.balanceReductionSuccess')
   })
 
   it('keeps selected user IDs across pages and clears them after a successful bulk update', async () => {

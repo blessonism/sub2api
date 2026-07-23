@@ -19,6 +19,8 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
+	PreviewAllUserBalanceReduction(ctx context.Context, factor string) (*AdminBalanceReductionSummary, error)
+	ReduceAllUserBalances(ctx context.Context, factor string) (*AdminBalanceReductionSummary, error)
 	GrantUserBalances(ctx context.Context, grants []BalanceGrantInput, notes string) ([]BalanceGrantResult, error)
 	GetBalanceSummary(ctx context.Context) (*AdminBalanceSummary, error)
 	UpdateBalanceSummaryExclusions(ctx context.Context, userIDs []int64) (*AdminBalanceSummary, error)
@@ -181,6 +183,17 @@ type BalanceGrantInput struct {
 type BalanceGrantResult struct {
 	User         *User
 	BalanceDelta float64
+}
+
+type AdminBalanceReductionSummary struct {
+	OperationID    string  `json:"operation_id,omitempty"`
+	Factor         string  `json:"factor"`
+	UserCount      int64   `json:"user_count"`
+	AffectedUsers  int64   `json:"affected_users"`
+	CurrentTotal   float64 `json:"current_total"`
+	ReducedTotal   float64 `json:"reduced_total"`
+	ReductionTotal float64 `json:"reduction_total"`
+	UserIDs        []int64 `json:"-"`
 }
 
 type AdminBalanceSummaryBucket struct {

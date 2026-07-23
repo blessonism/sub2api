@@ -198,6 +198,14 @@ func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, 
 	return &user, nil
 }
 
+func (s *stubAdminService) PreviewAllUserBalanceReduction(ctx context.Context, factor string) (*service.AdminBalanceReductionSummary, error) {
+	return &service.AdminBalanceReductionSummary{Factor: factor, UserCount: int64(len(s.users))}, nil
+}
+
+func (s *stubAdminService) ReduceAllUserBalances(ctx context.Context, factor string) (*service.AdminBalanceReductionSummary, error) {
+	return &service.AdminBalanceReductionSummary{OperationID: "test-operation", Factor: factor, UserCount: int64(len(s.users))}, nil
+}
+
 func (s *stubAdminService) GrantUserBalances(ctx context.Context, grants []service.BalanceGrantInput, notes string) ([]service.BalanceGrantResult, error) {
 	results := make([]service.BalanceGrantResult, 0, len(grants))
 	for _, grant := range grants {

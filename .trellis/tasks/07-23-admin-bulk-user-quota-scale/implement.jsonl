@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "管理员全量余额缩减的跨层契约、原子性与测试要求"}

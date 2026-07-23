@@ -175,6 +175,56 @@ UPDATE users SET concurrency = GREATEST(concurrency, $1)
 WHERE id = ANY($2) AND deleted_at IS NULL AND concurrency < $1
 ```
 
+### Scenario: Admin all-user balance reduction
+
+#### 1. Scope / Trigger
+- Trigger: changing the admin operation that divides every non-soft-deleted user's wallet balance by one factor.
+
+#### 2. Signatures
+- Preview endpoint: `POST /api/v1/admin/users/balance-reduction/preview`.
+- Execute endpoint: `POST /api/v1/admin/users/balance-reduction`, with the required `Idempotency-Key` header.
+- Request: `{"factor":"<decimal string>"}`; summary fields are `operation_id`, `factor`, `user_count`, `affected_users`, `current_total`, `reduced_total`, and `reduction_total`.
+
+#### 3. Contracts
+- `factor` stays a decimal string across the API and repository boundary; it is greater than `1`, has at most 8 fractional digits, and is cast to PostgreSQL `numeric` for calculation.
+- Both endpoints cover exactly `users.deleted_at IS NULL`, including administrators and disabled users, and change only `users.balance`.
+- Preview is informational. Execution recalculates from locked current rows and stores `GREATEST(ROUND(old_balance / factor, 8), 0)`.
+- Balance updates and one `admin_balance` redeem-code delta per changed user occur in the same SQL statement. Audit notes contain the shared `operation_id` and factor.
+- Replaying the same idempotency key and request returns the stored result without dividing balances again; reusing the key with a different request conflicts.
+
+#### 4. Validation & Error Matrix
+- Empty, non-decimal, non-finite, or more than 8 fractional digits -> `400 invalid factor`.
+- `factor <= 1` -> `400 factor must be greater than 1`.
+- Missing execution idempotency key -> existing admin idempotency validation error.
+- SQL update or audit failure -> return an error with no balance or audit row committed.
+- No eligible users or no changed balances -> success with zero affected users.
+
+#### 5. Good/Base/Bad Cases
+- Good: factor `2.5` divides active, disabled, and administrator balances using database decimal arithmetic, then records each non-zero delta.
+- Base: zero balances stay zero and do not create zero-value audit rows.
+- Bad: applying previewed values during execution, which overwrites intervening consumption or recharge.
+- Bad: paging through users or calling the single-user balance endpoint repeatedly, which permits partial completion.
+
+#### 6. Tests Required
+- Service tests cover decimal normalization, every rejection class, preview forwarding, operation ID/audit notes, cache invalidation, and idempotent response replay.
+- Repository SQL tests assert the soft-delete filter, ordered `FOR UPDATE`, numeric division with `GREATEST`/`ROUND`, and `admin_balance` insertion in the same CTE statement.
+- Frontend API/view tests cover string payloads, client validation, preview confirmation, stable retry key, actual-result messaging, and list refresh.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```go
+for _, user := range preview.Users {
+    setBalance(user.ID, user.PreviewedBalance)
+}
+```
+
+Correct:
+```sql
+WITH targets AS (SELECT id, balance FROM users WHERE deleted_at IS NULL FOR UPDATE)
+UPDATE users SET balance = GREATEST(ROUND(targets.balance / $1::numeric, 8), 0) FROM targets WHERE users.id = targets.id;
+```
+
 ### Scenario: Campaign historical invite weighting
 
 #### 1. Scope / Trigger
