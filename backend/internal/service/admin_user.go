@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -695,6 +697,59 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	return user, nil
+}
+
+var balanceReductionFactorPattern = regexp.MustCompile(`^[0-9]+(?:\.[0-9]{1,8})?$`)
+
+type allUserBalanceReducer interface {
+	PreviewAllUserBalanceReduction(ctx context.Context, factor string) (*AdminBalanceReductionSummary, error)
+	ReduceAllUserBalances(ctx context.Context, factor, operationID, notes string) (*AdminBalanceReductionSummary, error)
+}
+
+func normalizeBalanceReductionFactor(raw string) (string, error) {
+	factor := strings.TrimSpace(raw)
+	if !balanceReductionFactorPattern.MatchString(factor) {
+		return "", infraerrors.BadRequest("INVALID_BALANCE_REDUCTION_FACTOR", "factor must be a decimal with at most 8 fractional digits")
+	}
+	ratio, ok := new(big.Rat).SetString(factor)
+	if !ok || ratio.Cmp(big.NewRat(1, 1)) <= 0 {
+		return "", infraerrors.BadRequest("INVALID_BALANCE_REDUCTION_FACTOR", "factor must be greater than 1")
+	}
+	return strings.TrimRight(strings.TrimRight(ratio.FloatString(8), "0"), "."), nil
+}
+
+func (s *adminServiceImpl) PreviewAllUserBalanceReduction(ctx context.Context, rawFactor string) (*AdminBalanceReductionSummary, error) {
+	factor, err := normalizeBalanceReductionFactor(rawFactor)
+	if err != nil {
+		return nil, err
+	}
+	reducer, ok := s.userRepo.(allUserBalanceReducer)
+	if !ok {
+		return nil, errors.New("user repository does not support all-user balance reduction")
+	}
+	return reducer.PreviewAllUserBalanceReduction(ctx, factor)
+}
+
+func (s *adminServiceImpl) ReduceAllUserBalances(ctx context.Context, rawFactor string) (*AdminBalanceReductionSummary, error) {
+	factor, err := normalizeBalanceReductionFactor(rawFactor)
+	if err != nil {
+		return nil, err
+	}
+	reducer, ok := s.userRepo.(allUserBalanceReducer)
+	if !ok {
+		return nil, errors.New("user repository does not support all-user balance reduction")
+	}
+	operationID, err := GenerateRedeemCode()
+	if err != nil {
+		return nil, fmt.Errorf("generate balance reduction operation id: %w", err)
+	}
+	notes := fmt.Sprintf("批量余额缩减 operation_id=%s factor=%s", operationID, factor)
+	result, err := reducer.ReduceAllUserBalances(ctx, factor, operationID, notes)
+	if err != nil {
+		return nil, err
+	}
+	s.invalidateBalanceGrantCaches(ctx, result.UserIDs)
+	return result, nil
 }
 
 func (s *adminServiceImpl) GrantUserBalances(ctx context.Context, grants []BalanceGrantInput, notes string) ([]BalanceGrantResult, error) {

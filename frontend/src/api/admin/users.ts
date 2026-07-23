@@ -55,6 +55,16 @@ export interface BatchUpdateUserLimitsResponse {
   affected: number
 }
 
+export interface AdminBalanceReductionSummary {
+  operation_id?: string
+  factor: string
+  user_count: number
+  affected_users: number
+  current_total: number
+  reduced_total: number
+  reduction_total: number
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -182,6 +192,28 @@ export async function updateBalance(
     operation,
     notes: notes || ''
   })
+  return data
+}
+
+export async function previewAllUserBalanceReduction(
+  factor: string
+): Promise<AdminBalanceReductionSummary> {
+  const { data } = await apiClient.post<AdminBalanceReductionSummary>(
+    '/admin/users/balance-reduction/preview',
+    { factor }
+  )
+  return data
+}
+
+export async function reduceAllUserBalances(
+  factor: string,
+  idempotencyKey: string
+): Promise<AdminBalanceReductionSummary> {
+  const { data } = await apiClient.post<AdminBalanceReductionSummary>(
+    '/admin/users/balance-reduction',
+    { factor },
+    { headers: { 'Idempotency-Key': idempotencyKey } }
+  )
   return data
 }
 
@@ -438,6 +470,8 @@ export const usersAPI = {
   update,
   delete: deleteUser,
 	updateBalance,
+	previewAllUserBalanceReduction,
+	reduceAllUserBalances,
 	updateConcurrency,
 	raiseConcurrencyFloor,
 	batchUpdateLimits,

@@ -250,6 +250,16 @@
                 <Icon name="bolt" size="sm" class="md:mr-1.5" />
                 <span class="hidden md:inline">{{ t('admin.users.concurrencyFloorAction') }}</span>
               </button>
+              <button
+                data-test="reduce-all-balances"
+                @click="openBalanceReductionDialog"
+                :disabled="previewingBalanceReduction || reducingAllBalances"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.balanceReductionAction')"
+              >
+                <Icon name="dollar" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.users.balanceReductionAction') }}</span>
+              </button>
             </div>
 
             <button
@@ -779,6 +789,42 @@
         class="input"
       />
     </ConfirmDialog>
+    <ConfirmDialog
+      :show="showBalanceReductionDialog"
+      :title="t('admin.users.balanceReductionTitle')"
+      :message="t('admin.users.balanceReductionDescription')"
+      :confirm-text="previewingBalanceReduction ? t('admin.users.balanceReductionPreviewing') : t('admin.users.balanceReductionPreview')"
+      @confirm="previewBalanceReduction"
+      @cancel="closeBalanceReductionDialog"
+    >
+      <label class="input-label" for="balance-reduction-factor">{{ t('admin.users.balanceReductionFactor') }}</label>
+      <input
+        id="balance-reduction-factor"
+        v-model="balanceReductionFactor"
+        data-test="balance-reduction-factor"
+        type="text"
+        inputmode="decimal"
+        class="input"
+        :placeholder="t('admin.users.balanceReductionFactorPlaceholder')"
+      />
+    </ConfirmDialog>
+    <ConfirmDialog
+      :show="!!balanceReductionPreview"
+      :title="t('admin.users.balanceReductionConfirmTitle')"
+      :message="t('admin.users.balanceReductionConfirmDescription')"
+      :confirm-text="reducingAllBalances ? t('admin.users.balanceReductionExecuting') : t('admin.users.balanceReductionExecute')"
+      danger
+      @confirm="executeBalanceReduction"
+      @cancel="cancelBalanceReductionPreview"
+    >
+      <div v-if="balanceReductionPreview" class="space-y-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900/60 dark:bg-red-950/30">
+        <div class="flex justify-between gap-4"><span>{{ t('admin.users.balanceReductionPreviewFactor') }}</span><strong>{{ balanceReductionPreview.factor }}x</strong></div>
+        <div class="flex justify-between gap-4"><span>{{ t('admin.users.balanceReductionPreviewUsers') }}</span><strong>{{ balanceReductionPreview.user_count }}</strong></div>
+        <div class="flex justify-between gap-4"><span>{{ t('admin.users.balanceReductionPreviewCurrent') }}</span><strong>${{ balanceReductionPreview.current_total.toFixed(8) }}</strong></div>
+        <div class="flex justify-between gap-4"><span>{{ t('admin.users.balanceReductionPreviewReduced') }}</span><strong>${{ balanceReductionPreview.reduced_total.toFixed(8) }}</strong></div>
+        <div class="flex justify-between gap-4 text-red-700 dark:text-red-300"><span>{{ t('admin.users.balanceReductionPreviewDecrease') }}</span><strong>${{ balanceReductionPreview.reduction_total.toFixed(8) }}</strong></div>
+      </div>
+    </ConfirmDialog>
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -815,7 +861,7 @@ const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
-import type { PlatformQuotaItem } from '@/api/admin/users'
+import type { AdminBalanceReductionSummary, PlatformQuotaItem } from '@/api/admin/users'
 import type { Column } from '@/components/common/types'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -1386,6 +1432,12 @@ const showDeleteDialog = ref(false)
 const showConcurrencyFloorDialog = ref(false)
 const concurrencyFloor = ref<number | null>(null)
 const raisingConcurrencyFloor = ref(false)
+const showBalanceReductionDialog = ref(false)
+const balanceReductionFactor = ref('')
+const balanceReductionPreview = ref<AdminBalanceReductionSummary | null>(null)
+const balanceReductionIdempotencyKey = ref('')
+const previewingBalanceReduction = ref(false)
+const reducingAllBalances = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
@@ -1426,6 +1478,74 @@ const confirmConcurrencyFloor = async () => {
     appStore.showError(error.response?.data?.detail || t('admin.users.concurrencyFloorFailed'))
   } finally {
     raisingConcurrencyFloor.value = false
+  }
+}
+
+const openBalanceReductionDialog = () => {
+  balanceReductionFactor.value = ''
+  balanceReductionPreview.value = null
+  balanceReductionIdempotencyKey.value = ''
+  showBalanceReductionDialog.value = true
+}
+
+const closeBalanceReductionDialog = () => {
+  if (previewingBalanceReduction.value) return
+  showBalanceReductionDialog.value = false
+}
+
+const isValidBalanceReductionFactor = (value: string): boolean => {
+  if (!/^\d+(?:\.\d{1,8})?$/.test(value)) return false
+  const factor = Number(value)
+  return Number.isFinite(factor) && factor > 1
+}
+
+const previewBalanceReduction = async () => {
+  if (previewingBalanceReduction.value) return
+  const factor = balanceReductionFactor.value.trim()
+  if (!isValidBalanceReductionFactor(factor)) {
+    appStore.showError(t('admin.users.balanceReductionInvalid'))
+    return
+  }
+
+  previewingBalanceReduction.value = true
+  try {
+    const preview = await adminAPI.users.previewAllUserBalanceReduction(factor)
+    balanceReductionFactor.value = preview.factor
+    balanceReductionPreview.value = preview
+    balanceReductionIdempotencyKey.value = `admin-balance-reduction-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
+    showBalanceReductionDialog.value = false
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.balanceReductionPreviewFailed'))
+  } finally {
+    previewingBalanceReduction.value = false
+  }
+}
+
+const cancelBalanceReductionPreview = () => {
+  if (reducingAllBalances.value) return
+  balanceReductionPreview.value = null
+  balanceReductionIdempotencyKey.value = ''
+}
+
+const executeBalanceReduction = async () => {
+  if (reducingAllBalances.value || !balanceReductionPreview.value || !balanceReductionIdempotencyKey.value) return
+  reducingAllBalances.value = true
+  try {
+    const result = await adminAPI.users.reduceAllUserBalances(
+      balanceReductionPreview.value.factor,
+      balanceReductionIdempotencyKey.value
+    )
+    balanceReductionPreview.value = null
+    balanceReductionIdempotencyKey.value = ''
+    appStore.showSuccess(t('admin.users.balanceReductionSuccess', {
+      count: result.affected_users,
+      amount: result.reduction_total.toFixed(8)
+    }))
+    await loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.balanceReductionFailed'))
+  } finally {
+    reducingAllBalances.value = false
   }
 }
 let abortController: AbortController | null = null

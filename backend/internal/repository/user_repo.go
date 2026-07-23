@@ -906,6 +906,68 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
+func (r *userRepository) PreviewAllUserBalanceReduction(ctx context.Context, factor string) (*service.AdminBalanceReductionSummary, error) {
+	result := &service.AdminBalanceReductionSummary{Factor: factor}
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE balance <> GREATEST(ROUND(balance / $1::numeric, 8), 0)),
+			COALESCE(SUM(balance), 0)::double precision,
+			COALESCE(SUM(GREATEST(ROUND(balance / $1::numeric, 8), 0)), 0)::double precision
+		FROM users
+		WHERE deleted_at IS NULL
+	`, []any{factor}, &result.UserCount, &result.AffectedUsers, &result.CurrentTotal, &result.ReducedTotal)
+	if err != nil {
+		return nil, fmt.Errorf("preview all-user balance reduction: %w", err)
+	}
+	result.ReductionTotal = result.CurrentTotal - result.ReducedTotal
+	return result, nil
+}
+
+func (r *userRepository) ReduceAllUserBalances(ctx context.Context, factor, operationID, notes string) (*service.AdminBalanceReductionSummary, error) {
+	result := &service.AdminBalanceReductionSummary{OperationID: operationID, Factor: factor}
+	var userIDs pq.Int64Array
+	err := scanSingleRow(ctx, r.sql, `
+		WITH targets AS MATERIALIZED (
+			SELECT id, balance AS old_balance
+			FROM users
+			WHERE deleted_at IS NULL
+			ORDER BY id
+			FOR UPDATE
+		), updated AS (
+			UPDATE users AS u
+			SET balance = GREATEST(ROUND(t.old_balance / $1::numeric, 8), 0), updated_at = NOW()
+			FROM targets AS t
+			WHERE u.id = t.id AND t.old_balance <> 0
+			RETURNING u.id, t.old_balance, u.balance AS new_balance
+		), audit AS (
+			INSERT INTO redeem_codes (code, type, value, status, used_by, used_at, notes)
+			SELECT md5($2 || ':' || id::text), 'admin_balance', new_balance - old_balance,
+				'used', id, NOW(), $3
+			FROM updated
+			WHERE new_balance <> old_balance
+			RETURNING used_by
+		)
+		SELECT
+			(SELECT COUNT(*) FROM targets),
+			(SELECT COUNT(*) FROM audit),
+			(SELECT COALESCE(SUM(old_balance), 0)::double precision FROM targets),
+			(SELECT COALESCE(SUM(new_balance), 0)::double precision FROM updated),
+			(SELECT COALESCE(array_agg(used_by ORDER BY used_by), ARRAY[]::bigint[]) FROM audit)
+	`, []any{factor, operationID, notes},
+		&result.UserCount,
+		&result.AffectedUsers,
+		&result.CurrentTotal,
+		&result.ReducedTotal,
+		&userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("reduce all user balances: %w", err)
+	}
+	result.ReductionTotal = result.CurrentTotal - result.ReducedTotal
+	result.UserIDs = append([]int64(nil), userIDs...)
+	return result, nil
+}
+
 func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
 	const updateSQL = `
 		UPDATE users

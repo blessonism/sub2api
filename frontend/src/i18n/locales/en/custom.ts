@@ -2110,7 +2110,27 @@ export default {
       "concurrencyFloorConfirm": "Raise concurrency",
       "concurrencyFloorInvalid": "Concurrency floor must be an integer of at least 1",
       "concurrencyFloorSuccess": "Raised concurrency for {count} users",
-      "concurrencyFloorFailed": "Failed to set concurrency floor"
+      "concurrencyFloorFailed": "Failed to set concurrency floor",
+      "balanceReductionAction": "Reduce all balances",
+      "balanceReductionTitle": "Reduce all user balances",
+      "balanceReductionDescription": "Enter a finite factor greater than 1. The preview covers every non-deleted account, including disabled users and admins.",
+      "balanceReductionFactor": "Reduction factor",
+      "balanceReductionFactorPlaceholder": "For example, 10 or 2.5",
+      "balanceReductionPreview": "Preview",
+      "balanceReductionPreviewing": "Previewing",
+      "balanceReductionInvalid": "The reduction factor must be greater than 1 with at most 8 decimal places",
+      "balanceReductionPreviewFailed": "Failed to preview the balance reduction",
+      "balanceReductionConfirmTitle": "Confirm reduction for all user balances",
+      "balanceReductionConfirmDescription": "This changes every non-deleted account, including disabled users and admins. Execution recalculates from the latest balances.",
+      "balanceReductionPreviewFactor": "Reduction factor",
+      "balanceReductionPreviewUsers": "Target users",
+      "balanceReductionPreviewCurrent": "Current total balance",
+      "balanceReductionPreviewReduced": "Reduced total balance",
+      "balanceReductionPreviewDecrease": "Estimated decrease",
+      "balanceReductionExecute": "Reduce balances",
+      "balanceReductionExecuting": "Reducing balances",
+      "balanceReductionSuccess": "Reduced balances for {count} users by ${amount}",
+      "balanceReductionFailed": "Failed to reduce user balances"
     },
     "groups": {
       "timeRate": {

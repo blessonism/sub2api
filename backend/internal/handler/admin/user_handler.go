@@ -97,6 +97,10 @@ type UpdateBalanceRequest struct {
 	Notes     string  `json:"notes"`
 }
 
+type BalanceReductionRequest struct {
+	Factor string `json:"factor" binding:"required"`
+}
+
 type BindUserAuthIdentityRequest struct {
 	ProviderType    string                              `json:"provider_type"`
 	ProviderKey     string                              `json:"provider_key"`
@@ -413,6 +417,33 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 			return nil, execErr
 		}
 		return dto.UserFromServiceAdmin(user), nil
+	})
+}
+
+// PreviewAllUserBalanceReduction previews reducing every non-deleted user's wallet balance.
+func (h *UserHandler) PreviewAllUserBalanceReduction(c *gin.Context) {
+	var req BalanceReductionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.adminService.PreviewAllUserBalanceReduction(c.Request.Context(), req.Factor)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ReduceAllUserBalances atomically reduces every non-deleted user's wallet balance.
+func (h *UserHandler) ReduceAllUserBalances(c *gin.Context) {
+	var req BalanceReductionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	executeAdminIdempotentJSON(c, "admin.users.balance.reduce_all", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.adminService.ReduceAllUserBalances(ctx, req.Factor)
 	})
 }
 

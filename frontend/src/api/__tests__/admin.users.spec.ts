@@ -13,7 +13,9 @@ vi.mock('@/api/client', () => ({
 import {
   batchUpdateLimits,
   bindUserAuthIdentity,
+  previewAllUserBalanceReduction,
   raiseConcurrencyFloor,
+  reduceAllUserBalances,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -142,6 +144,30 @@ describe('admin users api auth identity binding', () => {
       concurrency: 5,
 		mode: 'floor',
 	  })
+  })
+
+  it('previews and executes all-user balance reduction with an idempotency key', async () => {
+    const preview = {
+      factor: '2.5',
+      user_count: 3,
+      affected_users: 2,
+      current_total: 30,
+      reduced_total: 12,
+      reduction_total: 18,
+    }
+    post.mockResolvedValueOnce({ data: preview })
+    await expect(previewAllUserBalanceReduction('2.5')).resolves.toEqual(preview)
+    expect(post).toHaveBeenNthCalledWith(1, '/admin/users/balance-reduction/preview', { factor: '2.5' })
+
+    const result = { ...preview, operation_id: 'operation-1' }
+    post.mockResolvedValueOnce({ data: result })
+    await expect(reduceAllUserBalances('2.5', 'key-1')).resolves.toEqual(result)
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      '/admin/users/balance-reduction',
+      { factor: '2.5' },
+      { headers: { 'Idempotency-Key': 'key-1' } }
+    )
   })
 
   it('posts batch limit updates once with only the supplied limit fields', async () => {
