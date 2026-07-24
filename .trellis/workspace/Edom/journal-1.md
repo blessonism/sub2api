@@ -70,3 +70,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 修复余额校准账期与范围消费校准
+
+**Date**: 2026-07-24
+**Task**: 修复余额校准账期与范围消费校准
+**Branch**: `fix/balance-calibration-time`
+
+### Summary
+
+余额校准按 Token 日期分摊；新增所选范围消费增减量和目标值校准，并同步反向调整用户余额。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1f4fc659d` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
