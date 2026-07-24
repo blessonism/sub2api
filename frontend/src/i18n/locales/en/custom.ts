@@ -80,7 +80,8 @@ export default {
     "adminCalibrationSubmit": "Submit calibration",
     "adminCalibrationSubmitting": "Submitting...",
     "adminCalibrationSuccess": "Calibration submitted",
-    "adminCalibrationFailed": "Failed to submit calibration"
+    "adminCalibrationFailed": "Failed to submit calibration",
+    "adminConsumptionNoTokenAllocationHint": "When the range has no original token usage, the whole spend delta is booked on the start date."
   },
   "channelStatus": {
     "modelIq": {

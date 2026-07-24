@@ -80,7 +80,8 @@ export default {
     "adminCalibrationSubmit": "提交校准",
     "adminCalibrationSubmitting": "提交中...",
     "adminCalibrationSuccess": "校准已提交",
-    "adminCalibrationFailed": "校准提交失败"
+    "adminCalibrationFailed": "校准提交失败",
+    "adminConsumptionNoTokenAllocationHint": "当前范围没有原始 Token 用量时，消费差额将整笔记入开始日期。"
   },
   "channelStatus": {
     "modelIq": {

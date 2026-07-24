@@ -66,6 +66,7 @@ const messages: Record<string, string> = {
   'usage.adminNoUsersFound': 'No matching users found',
   'usage.adminSelectUserFirst': 'Select a target user first',
   'usage.adminDeletedUserCannotCalibrate': 'Deleted users cannot be calibrated',
+  'usage.adminCalibrationFailed': 'Failed to submit calibration',
   'usage.model': 'Model',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
@@ -664,6 +665,55 @@ describe('user UsageView tooltip', () => {
       },
     }, expect.any(String))
     dateTimeFormatSpy.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('surfaces backend error message when calibration submit fails', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({ total_requests: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0 })
+    list.mockResolvedValue({ items: [] })
+    adminCreateCalibration.mockRejectedValue({
+      message: '该范围没有原始用量，无法按比例分摊',
+      reason: 'ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE',
+    })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 7
+    setupState.selectedAdminUser = { id: 7, email: 'user@example.com', deleted: false }
+    setupState.selectedAdminUserDetail = { id: 7, balance: 20 }
+    setupState.calibrationForm.tokenEnabled = false
+    setupState.calibrationForm.balanceEnabled = false
+    setupState.calibrationForm.consumptionEnabled = true
+    setupState.calibrationForm.consumptionMode = 'delta'
+    setupState.calibrationForm.consumptionValue = '-70'
+    setupState.calibrationForm.tokenStartDate = '2026-07-24'
+    setupState.calibrationForm.tokenEndDate = '2026-07-24'
+    setupState.calibrationConsumptionCurrentTotal = 70
+
+    await setupState.submitCalibration()
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('该范围没有原始用量，无法按比例分摊')
     wrapper.unmount()
   })
 
