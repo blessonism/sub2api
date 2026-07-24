@@ -211,16 +211,28 @@ func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalIncludesBalanceCalib
 
 	s.mustInsertUsageLogCost(logOnly.ID, account, 7.00, now)
 	s.mustInsertUsageLogCost(calibrated.ID, account, 1.00, now)
-	_, err := integrationDB.ExecContext(
+	var calibrationID int64
+	err := integrationDB.QueryRowContext(
 		s.ctx,
 		`INSERT INTO admin_usage_calibrations (
 			target_user_id, admin_user_id, reason,
 			balance_mode, balance_input_value, balance_before_value, balance_after_value, balance_delta,
 			created_at
-		) VALUES ($1, $2, 'sort calibration spend', 'delta', -10, 20, 10, -10, $3)`,
+		) VALUES ($1, $2, 'sort calibration spend', 'delta', -10, 20, 10, -10, $3)
+		RETURNING id`,
 		calibrated.ID,
 		admin.ID,
-		now,
+		now.AddDate(0, 0, -60),
+	).Scan(&calibrationID)
+	s.Require().NoError(err)
+	_, err = integrationDB.ExecContext(
+		s.ctx,
+		`INSERT INTO admin_usage_calibration_daily_allocations (
+			calibration_id, target_user_id, allocation_date, original_tokens, token_delta, balance_delta
+		) VALUES ($1, $2, $3::date, 100, 0, -10)`,
+		calibrationID,
+		calibrated.ID,
+		now.Format("2006-01-02"),
 	)
 	s.Require().NoError(err)
 

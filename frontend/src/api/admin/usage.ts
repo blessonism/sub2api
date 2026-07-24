@@ -107,10 +107,17 @@ export interface AdminUsageBalanceCalibrationInput {
   value: number
 }
 
+export interface AdminUsageConsumptionCalibrationInput extends AdminUsageBalanceCalibrationInput {
+  start_date: string
+  end_date: string
+  timezone?: string
+}
+
 export interface CreateAdminUsageCalibrationRequest {
   target_user_id: number
   token?: AdminUsageTokenCalibrationInput
   balance?: AdminUsageBalanceCalibrationInput
+  consumption?: AdminUsageConsumptionCalibrationInput
 }
 
 export interface AdminUsageCalibrationDailyAllocation {
@@ -120,6 +127,7 @@ export interface AdminUsageCalibrationDailyAllocation {
   date: string
   original_tokens: number
   token_delta: number
+  balance_delta?: number
   created_at: string
 }
 
@@ -141,6 +149,14 @@ export interface AdminUsageCalibration {
   balance_before_value?: number
   balance_after_value?: number
   balance_delta?: number
+  consumption_mode?: AdminUsageCalibrationMode
+  consumption_input_value?: number
+  consumption_before_value?: number
+  consumption_after_value?: number
+  consumption_delta?: number
+  consumption_start_date?: string
+  consumption_end_date?: string
+  consumption_timezone?: string
   created_at: string
   allocations?: AdminUsageCalibrationDailyAllocation[]
 }

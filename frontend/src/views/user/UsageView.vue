@@ -434,7 +434,28 @@
         </div>
       </div>
 
-      <div class="grid gap-4 lg:grid-cols-2">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="input-label">{{ t('usage.adminTokenRangeStart') }}</label>
+          <input
+            v-model="calibrationForm.tokenStartDate"
+            type="date"
+            class="input w-full"
+            :disabled="!calibrationForm.tokenEnabled && !calibrationForm.consumptionEnabled"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('usage.adminTokenRangeEnd') }}</label>
+          <input
+            v-model="calibrationForm.tokenEndDate"
+            type="date"
+            class="input w-full"
+            :disabled="!calibrationForm.tokenEnabled && !calibrationForm.consumptionEnabled"
+          />
+        </div>
+      </div>
+
+      <div class="grid gap-4 lg:grid-cols-3">
         <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
           <label class="flex items-center gap-2">
             <input v-model="calibrationForm.tokenEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -460,26 +481,6 @@
                 :disabled="!calibrationForm.tokenEnabled"
                 :placeholder="t('usage.adminTokenValuePlaceholder')"
               />
-            </div>
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label class="input-label">{{ t('usage.adminTokenRangeStart') }}</label>
-                <input
-                  v-model="calibrationForm.tokenStartDate"
-                  type="date"
-                  class="input w-full"
-                  :disabled="!calibrationForm.tokenEnabled"
-                />
-              </div>
-              <div>
-                <label class="input-label">{{ t('usage.adminTokenRangeEnd') }}</label>
-                <input
-                  v-model="calibrationForm.tokenEndDate"
-                  type="date"
-                  class="input w-full"
-                  :disabled="!calibrationForm.tokenEnabled"
-                />
-              </div>
             </div>
             <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
               <div class="flex justify-between gap-4">
@@ -531,6 +532,53 @@
                 <span>{{ t('usage.adminPreviewDelta') }}</span>
                 <span class="font-medium" :class="calibrationBalanceDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
                   {{ formatSignedMoney(calibrationBalanceDelta) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <label class="flex items-center gap-2">
+            <input v-model="calibrationForm.consumptionEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('usage.adminConsumptionCalibration') }}</span>
+          </label>
+
+          <div class="mt-4 space-y-4" :class="{ 'opacity-50': !calibrationForm.consumptionEnabled }">
+            <div>
+              <label class="input-label">{{ t('usage.adminCalibrationMode') }}</label>
+              <Select
+                v-model="calibrationForm.consumptionMode"
+                :options="calibrationModeOptions"
+                :disabled="!calibrationForm.consumptionEnabled"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ consumptionValueLabel }}</label>
+              <input
+                v-model="calibrationForm.consumptionValue"
+                type="number"
+                step="0.000001"
+                class="input w-full"
+                :disabled="!calibrationForm.consumptionEnabled"
+                :placeholder="t('usage.adminConsumptionValuePlaceholder')"
+              />
+            </div>
+            <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+              <div class="flex justify-between gap-4">
+                <span>{{ t('usage.adminCurrentRangeConsumption') }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">${{ calibrationConsumptionCurrentTotal.toFixed(6) }}</span>
+              </div>
+              <div class="mt-1 flex justify-between gap-4">
+                <span>{{ t('usage.adminConsumptionPreviewDelta') }}</span>
+                <span class="font-medium" :class="calibrationConsumptionDelta >= 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'">
+                  {{ formatSignedMoney(calibrationConsumptionDelta) }}
+                </span>
+              </div>
+              <div class="mt-1 flex justify-between gap-4">
+                <span>{{ t('usage.adminWalletImpact') }}</span>
+                <span class="font-medium" :class="calibrationConsumptionDelta <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                  {{ formatSignedMoney(-calibrationConsumptionDelta) }}
                 </span>
               </div>
             </div>
@@ -874,6 +922,9 @@ type CalibrationFormState = {
   balanceEnabled: boolean
   balanceMode: AdminUsageCalibrationMode
   balanceValue: string
+  consumptionEnabled: boolean
+  consumptionMode: AdminUsageCalibrationMode
+  consumptionValue: string
 }
 
 const adminUsers = ref<SimpleUser[]>([])
@@ -887,6 +938,7 @@ const submittingCalibration = ref(false)
 const loadingCalibrations = ref(false)
 const calibrationHistory = ref<AdminUsageCalibration[]>([])
 const calibrationTokenCurrentTotal = ref(0)
+const calibrationConsumptionCurrentTotal = ref(0)
 const calibrationForm = reactive<CalibrationFormState>({
   tokenEnabled: true,
   tokenMode: 'delta',
@@ -895,7 +947,10 @@ const calibrationForm = reactive<CalibrationFormState>({
   tokenEndDate: '',
   balanceEnabled: false,
   balanceMode: 'delta',
-  balanceValue: ''
+  balanceValue: '',
+  consumptionEnabled: false,
+  consumptionMode: 'delta',
+  consumptionValue: ''
 })
 
 const selectedAdminUserID = computed(() => {
@@ -1345,6 +1400,12 @@ const balanceValueLabel = computed(() => {
     : t('usage.adminBalanceDeltaValue')
 })
 
+const consumptionValueLabel = computed(() => {
+  return calibrationForm.consumptionMode === 'target'
+    ? t('usage.adminConsumptionTargetValue')
+    : t('usage.adminConsumptionDeltaValue')
+})
+
 const calibrationCurrentBalance = computed(() => selectedAdminUserDetail.value?.balance ?? 0)
 
 const calibrationTokenDelta = computed(() => {
@@ -1367,16 +1428,27 @@ const calibrationBalanceDelta = computed(() => {
   return value
 })
 
+const calibrationConsumptionDelta = computed(() => {
+  if (!calibrationForm.consumptionEnabled) return 0
+  const value = parseNumberInput(calibrationForm.consumptionValue)
+  if (value == null) return 0
+  if (calibrationForm.consumptionMode === 'target') {
+    return value - calibrationConsumptionCurrentTotal.value
+  }
+  return value
+})
+
 let calibrationStatsRequestSeq = 0
 const loadCalibrationTokenCurrentTotal = async () => {
   if (
     !calibrationDialogVisible.value ||
-    !calibrationForm.tokenEnabled ||
+    (!calibrationForm.tokenEnabled && !calibrationForm.consumptionEnabled) ||
     !selectedAdminUserID.value ||
     !calibrationForm.tokenStartDate ||
     !calibrationForm.tokenEndDate
   ) {
     calibrationTokenCurrentTotal.value = 0
+    calibrationConsumptionCurrentTotal.value = 0
     return
   }
   const seq = ++calibrationStatsRequestSeq
@@ -1389,10 +1461,12 @@ const loadCalibrationTokenCurrentTotal = async () => {
     })
     if (seq === calibrationStatsRequestSeq) {
       calibrationTokenCurrentTotal.value = stats.total_tokens || 0
+      calibrationConsumptionCurrentTotal.value = stats.total_actual_cost || 0
     }
   } catch (error) {
     if (seq === calibrationStatsRequestSeq) {
       calibrationTokenCurrentTotal.value = 0
+      calibrationConsumptionCurrentTotal.value = 0
     }
     console.error('Failed to load calibration token preview:', error)
   }
@@ -1428,7 +1502,11 @@ const resetCalibrationForm = () => {
   calibrationForm.balanceEnabled = false
   calibrationForm.balanceMode = 'delta'
   calibrationForm.balanceValue = ''
+  calibrationForm.consumptionEnabled = false
+  calibrationForm.consumptionMode = 'delta'
+  calibrationForm.consumptionValue = ''
   calibrationTokenCurrentTotal.value = usageStats.value?.total_tokens || 0
+  calibrationConsumptionCurrentTotal.value = usageStats.value?.total_actual_cost || 0
 }
 
 const openCalibrationDialog = async () => {
@@ -1466,8 +1544,12 @@ const validateCalibrationForm = (): CreateAdminUsageCalibrationRequest | null =>
     appStore.showWarning(t('usage.adminDeletedUserCannotCalibrate'))
     return null
   }
-  if (!calibrationForm.tokenEnabled && !calibrationForm.balanceEnabled) {
+  if (!calibrationForm.tokenEnabled && !calibrationForm.balanceEnabled && !calibrationForm.consumptionEnabled) {
     appStore.showWarning(t('usage.adminCalibrationSelectAtLeastOne'))
+    return null
+  }
+  if (calibrationForm.balanceEnabled && calibrationForm.consumptionEnabled) {
+    appStore.showWarning(t('usage.adminBalanceConsumptionExclusive'))
     return null
   }
 
@@ -1475,18 +1557,21 @@ const validateCalibrationForm = (): CreateAdminUsageCalibrationRequest | null =>
     target_user_id: targetUserID
   }
 
-  if (calibrationForm.tokenEnabled) {
-    const tokenValue = parseIntegerInput(calibrationForm.tokenValue)
-    if (tokenValue == null) {
-      appStore.showWarning(t('usage.adminTokenValueRequired'))
-      return null
-    }
+  if (calibrationForm.tokenEnabled || calibrationForm.consumptionEnabled) {
     if (!calibrationForm.tokenStartDate || !calibrationForm.tokenEndDate) {
       appStore.showWarning(t('usage.adminTokenRangeRequired'))
       return null
     }
     if (calibrationForm.tokenStartDate > calibrationForm.tokenEndDate) {
       appStore.showWarning(t('usage.adminTokenRangeInvalid'))
+      return null
+    }
+  }
+
+  if (calibrationForm.tokenEnabled) {
+    const tokenValue = parseIntegerInput(calibrationForm.tokenValue)
+    if (tokenValue == null) {
+      appStore.showWarning(t('usage.adminTokenValueRequired'))
       return null
     }
     if (calibrationForm.tokenMode === 'target' && tokenValue < 0) {
@@ -1522,6 +1607,33 @@ const validateCalibrationForm = (): CreateAdminUsageCalibrationRequest | null =>
     }
   }
 
+  if (calibrationForm.consumptionEnabled) {
+    const consumptionValue = parseNumberInput(calibrationForm.consumptionValue)
+    if (consumptionValue == null) {
+      appStore.showWarning(t('usage.adminConsumptionValueRequired'))
+      return null
+    }
+    if (calibrationForm.consumptionMode === 'target' && consumptionValue < 0) {
+      appStore.showWarning(t('usage.adminConsumptionTargetInvalid'))
+      return null
+    }
+    if (calibrationConsumptionCurrentTotal.value + calibrationConsumptionDelta.value < 0) {
+      appStore.showWarning(t('usage.adminConsumptionNegativeInvalid'))
+      return null
+    }
+    if (calibrationCurrentBalance.value - calibrationConsumptionDelta.value < 0) {
+      appStore.showWarning(t('usage.adminConsumptionBalanceInsufficient'))
+      return null
+    }
+    payload.consumption = {
+      mode: calibrationForm.consumptionMode,
+      value: consumptionValue,
+      start_date: calibrationForm.tokenStartDate,
+      end_date: calibrationForm.tokenEndDate,
+      timezone: browserTimezone()
+    }
+  }
+
   return payload
 }
 
@@ -1554,7 +1666,9 @@ const formatCalibrationSummary = (item: AdminUsageCalibration): string => {
   if (typeof item.token_delta === 'number') {
     parts.push(`${t('usage.adminTokenCalibration')}: ${formatSignedInteger(item.token_delta)}`)
   }
-  if (typeof item.balance_delta === 'number') {
+  if (typeof item.consumption_delta === 'number') {
+    parts.push(`${t('usage.adminConsumptionCalibration')}: ${formatSignedMoney(item.consumption_delta)}`)
+  } else if (typeof item.balance_delta === 'number') {
     parts.push(`${t('usage.adminBalanceCalibration')}: ${formatSignedMoney(item.balance_delta)}`)
   }
   return parts.join(' · ') || t('usage.adminCalibration')
@@ -1564,6 +1678,7 @@ watch(
   () => [
     calibrationDialogVisible.value,
     calibrationForm.tokenEnabled,
+    calibrationForm.consumptionEnabled,
     calibrationForm.tokenStartDate,
     calibrationForm.tokenEndDate,
     selectedAdminUserID.value

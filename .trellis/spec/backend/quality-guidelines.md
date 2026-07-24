@@ -1161,6 +1161,57 @@ ORDER BY ar.read_at IS NULL, ar.read_at DESC, users.id ASC LIMIT $1 OFFSET $2
 
 ---
 
+### Scenario: Admin balance calibration accounting dates
+
+#### 1. Scope / Trigger
+- Trigger: changing admin usage calibration creation, balance-spend aggregation, user usage sorting, or calibration daily allocations.
+
+#### 2. Signatures
+- Audit total: `admin_usage_calibrations.balance_delta NUMERIC(18,6)` and `created_at` as the operation time.
+- Direct spend audit: `consumption_mode`, `consumption_input_value`, `consumption_before_value`, `consumption_after_value`, `consumption_delta`, and the `consumption_*` date/timezone fields.
+- Daily attribution: `admin_usage_calibration_daily_allocations.balance_delta NUMERIC(18,6)` and `allocation_date` as the accounting date.
+- Repository reads: `SumBalanceSpent`, `SumBalanceSpentByUsers`, and `sumBalanceCalibrationsByTimeRange`.
+
+#### 3. Contracts
+- A combined Token and balance calibration allocates the balance delta by each day's original Token share.
+- Allocation uses integer micro-units and deterministic largest remainders; daily values sum exactly to the audit total.
+- Date-filtered statistics read daily balance allocations first. A main audit row is read by `created_at` only when no non-null daily balance allocation exists.
+- Legacy balance calibration only treats negative balance deltas as spend; positive legacy balance deltas do not affect spend.
+- For a direct spend calibration, signed `consumption_delta` always affects reported spend and `balance_delta = -consumption_delta` updates the wallet in the opposite direction.
+- Spend target mode calculates from authoritative range spend inside the repository transaction; frontend preview values are informational only.
+
+#### 4. Validation & Error Matrix
+- Token range has no original usage -> reject through `ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE`; do not create a balance allocation with guessed weights.
+- Daily allocation exists -> exclude the matching main row with `NOT EXISTS`, otherwise the adjustment is counted twice.
+- Legacy balance-only row has no daily allocation -> retain the `created_at` fallback.
+- Spend decrease below zero or spend increase beyond available wallet balance -> reject the whole transaction.
+
+#### 5. Good/Base/Bad Cases
+- Good: a historical three-day combined calibration appears on those three accounting dates and not on the operation date.
+- Good: setting range spend from `10` to `14` records `consumption_delta=4`, `balance_delta=-4`, and deducts wallet balance by `4`.
+- Base: a balance-only legacy calibration remains visible in the operation-time range.
+- Bad: filter every balance calibration directly on `admin_usage_calibrations.created_at`.
+
+#### 6. Tests Required
+- Assert positive and negative micro-unit allocation, deterministic remainder order, and exact total preservation.
+- Assert a combined calibration writes daily balance deltas in the same transaction as the audit and wallet update.
+- Assert single-user, batch-user, leaderboard detail, and user-list sorting use daily attribution without main-row duplication.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+```sql
+SELECT SUM(-balance_delta) FROM admin_usage_calibrations WHERE created_at >= $1;
+```
+
+Correct:
+```sql
+SELECT balance_delta FROM admin_usage_calibration_daily_allocations WHERE allocation_date >= $1::date
+UNION ALL SELECT balance_delta FROM admin_usage_calibrations WHERE NOT EXISTS (...);
+```
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

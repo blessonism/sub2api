@@ -28,3 +28,27 @@ func TestTokenAllocationDateRange_MidnightUsesSameExclusiveDate(t *testing.T) {
 	require.Equal(t, "2026-06-21", startDate)
 	require.Equal(t, "2026-06-22", endDate)
 }
+
+func TestValidateAdminUsageConsumptionCalibrationInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   AdminUsageConsumptionCalibrationInput
+		wantErr bool
+	}{
+		{name: "valid target", input: AdminUsageConsumptionCalibrationInput{Mode: "target", Value: 10, StartDate: "2026-06-01", EndDate: "2026-06-02", Timezone: "Asia/Shanghai"}},
+		{name: "negative target", input: AdminUsageConsumptionCalibrationInput{Mode: "target", Value: -1, StartDate: "2026-06-01", EndDate: "2026-06-02"}, wantErr: true},
+		{name: "reversed range", input: AdminUsageConsumptionCalibrationInput{Mode: "delta", Value: 1, StartDate: "2026-06-02", EndDate: "2026-06-01"}, wantErr: true},
+		{name: "invalid timezone", input: AdminUsageConsumptionCalibrationInput{Mode: "delta", Value: 1, StartDate: "2026-06-01", EndDate: "2026-06-02", Timezone: "Mars/Olympus"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAdminUsageConsumptionCalibrationInput(&tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

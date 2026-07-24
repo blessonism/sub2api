@@ -66,9 +66,10 @@ type CreateUsageCleanupTaskRequest struct {
 }
 
 type CreateAdminUsageCalibrationRequest struct {
-	TargetUserID int64                                      `json:"target_user_id"`
-	Token        *service.AdminUsageTokenCalibrationInput   `json:"token,omitempty"`
-	Balance      *service.AdminUsageBalanceCalibrationInput `json:"balance,omitempty"`
+	TargetUserID int64                                          `json:"target_user_id"`
+	Token        *service.AdminUsageTokenCalibrationInput       `json:"token,omitempty"`
+	Balance      *service.AdminUsageBalanceCalibrationInput     `json:"balance,omitempty"`
+	Consumption  *service.AdminUsageConsumptionCalibrationInput `json:"consumption,omitempty"`
 }
 
 type adminUsageListResponse struct {
@@ -518,6 +519,7 @@ func (h *UsageHandler) CreateCalibration(c *gin.Context) {
 		AdminUserID:  subject.UserID,
 		Token:        req.Token,
 		Balance:      req.Balance,
+		Consumption:  req.Consumption,
 	}
 	executeAdminIdempotentJSON(c, "admin.usage.calibrations.create", input, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		record, execErr := h.calibrationService.Create(ctx, input)
