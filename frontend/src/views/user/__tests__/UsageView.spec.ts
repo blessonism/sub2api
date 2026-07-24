@@ -609,6 +609,64 @@ describe('user UsageView tooltip', () => {
     dateTimeFormatSpy.mockRestore()
   })
 
+  it('submits range consumption target with timezone', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({ total_requests: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0 })
+    list.mockResolvedValue({ items: [] })
+    adminCreateCalibration.mockResolvedValue({})
+    const dateTimeFormatSpy = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => ({
+      resolvedOptions: () => ({ timeZone: 'Asia/Tokyo' }),
+    }) as Intl.DateTimeFormat)
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 7
+    setupState.selectedAdminUser = { id: 7, email: 'user@example.com', deleted: false }
+    setupState.selectedAdminUserDetail = { id: 7, balance: 20 }
+    setupState.calibrationForm.tokenEnabled = false
+    setupState.calibrationForm.balanceEnabled = false
+    setupState.calibrationForm.consumptionEnabled = true
+    setupState.calibrationForm.consumptionMode = 'target'
+    setupState.calibrationForm.consumptionValue = '14'
+    setupState.calibrationForm.tokenStartDate = '2026-06-01'
+    setupState.calibrationForm.tokenEndDate = '2026-06-02'
+    setupState.calibrationConsumptionCurrentTotal = 10
+
+    await setupState.submitCalibration()
+
+    expect(adminCreateCalibration).toHaveBeenCalledWith({
+      target_user_id: 7,
+      consumption: {
+        mode: 'target',
+        value: 14,
+        start_date: '2026-06-01',
+        end_date: '2026-06-02',
+        timezone: 'Asia/Tokyo',
+      },
+    }, expect.any(String))
+    dateTimeFormatSpy.mockRestore()
+    wrapper.unmount()
+  })
+
   it('searches admin users only after clicking search and selects from real results', async () => {
     authState.isAdmin = true
     query.mockResolvedValue({ items: [], total: 0, pages: 0 })

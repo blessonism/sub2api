@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
+	"math/bits"
 	"sort"
 	"strings"
 	"time"
@@ -27,7 +29,10 @@ type allocationPlanRow struct {
 	Date           string
 	OriginalTokens int64
 	TokenDelta     int64
+	BalanceDelta   *float64
 }
+
+const adminUsageBalanceScale int64 = 1_000_000
 
 func NewAdminUsageCalibrationRepository(sqlDB *sql.DB) service.AdminUsageCalibrationRepository {
 	return &adminUsageCalibrationRepository{sql: sqlDB}
@@ -69,28 +74,44 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 	}
 
 	var (
-		tokenMode        *string
-		tokenInput       *int64
-		tokenBefore      *int64
-		tokenAfter       *int64
-		tokenDelta       *int64
-		tokenStartDate   *string
-		tokenEndDate     *string
-		tokenTimezone    *string
-		allocationRows   []allocationPlanRow
-		balanceMode      *string
-		balanceInput     *float64
-		balanceBefore    *float64
-		balanceAfter     *float64
-		balanceDelta     *float64
-		effectiveBalance = currentBalance
+		tokenMode            *string
+		tokenInput           *int64
+		tokenBefore          *int64
+		tokenAfter           *int64
+		tokenDelta           *int64
+		tokenStartDate       *string
+		tokenEndDate         *string
+		tokenTimezone        *string
+		allocationRows       []allocationPlanRow
+		balanceMode          *string
+		balanceInput         *float64
+		balanceBefore        *float64
+		balanceAfter         *float64
+		balanceDelta         *float64
+		consumptionMode      *string
+		consumptionInput     *float64
+		consumptionBefore    *float64
+		consumptionAfter     *float64
+		consumptionDelta     *float64
+		consumptionStartDate *string
+		consumptionEndDate   *string
+		consumptionTimezone  *string
+		effectiveBalance     = currentBalance
+		rawTokenRows         []rawDailyTokenRow
+		rawTokenTotal        int64
+		tokenBeforeValue     int64
+		tokenAfterValue      int64
 	)
 
 	if input.Token != nil {
-		plan, before, after, delta, err := r.planTokenCalibration(ctx, tx, input.TargetUserID, *input.Token)
+		plan, rawRows, originalTotal, before, after, delta, err := r.planTokenCalibration(ctx, tx, input.TargetUserID, *input.Token)
 		if err != nil {
 			return nil, err
 		}
+		rawTokenRows = rawRows
+		rawTokenTotal = originalTotal
+		tokenBeforeValue = before
+		tokenAfterValue = after
 		if delta != 0 {
 			mode := input.Token.Mode
 			tz := strings.TrimSpace(input.Token.Timezone)
@@ -136,7 +157,77 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 		}
 	}
 
-	if tokenDelta == nil && balanceDelta == nil {
+	if input.Consumption != nil {
+		tz := strings.TrimSpace(input.Consumption.Timezone)
+		if tz == "" {
+			tz = "UTC"
+		}
+		rows, originalTokens, err := queryOriginalDailyTokens(ctx, tx, input.TargetUserID, input.Consumption.StartDate, input.Consumption.EndDate, tz)
+		if err != nil {
+			return nil, err
+		}
+		if originalTokens == 0 {
+			return nil, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE", "该范围没有原始用量，无法按比例分摊")
+		}
+		startTime, endTime, err := calibrationTimeRange(input.Consumption.StartDate, input.Consumption.EndDate, tz)
+		if err != nil {
+			return nil, err
+		}
+		originalCost, err := queryOriginalUsageCost(ctx, tx, input.TargetUserID, startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+		existingDelta, err := sumBalanceSpentByTimeRange(ctx, tx, input.TargetUserID, startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+		before := originalCost + existingDelta
+		delta, after, walletAfter, err := calculateConsumptionCalibration(input.Consumption.Mode, input.Consumption.Value, before, currentBalance)
+		if err != nil {
+			return nil, err
+		}
+		walletDelta := -delta
+		if delta != 0 {
+			walletMode := service.AdminUsageCalibrationModeDelta
+			consumptionMode = &input.Consumption.Mode
+			consumptionInput = &input.Consumption.Value
+			consumptionBefore = &before
+			consumptionAfter = &after
+			consumptionDelta = &delta
+			consumptionStartDate = &input.Consumption.StartDate
+			consumptionEndDate = &input.Consumption.EndDate
+			consumptionTimezone = &tz
+			balanceMode = &walletMode
+			balanceInput = &walletDelta
+			balanceBefore = &currentBalance
+			balanceAfter = &walletAfter
+			balanceDelta = &walletDelta
+			effectiveBalance = walletAfter
+			allocationRows = mergeAllocationPlans(allocationRows, allocateBalanceDelta(rows, originalTokens, walletDelta))
+		}
+	}
+
+	if input.Token != nil && input.Consumption == nil && balanceDelta != nil {
+		if tokenDelta == nil {
+			mode := input.Token.Mode
+			tz := strings.TrimSpace(input.Token.Timezone)
+			if tz == "" {
+				tz = "UTC"
+			}
+			zero := int64(0)
+			tokenMode = &mode
+			tokenInput = &input.Token.Value
+			tokenBefore = &tokenBeforeValue
+			tokenAfter = &tokenAfterValue
+			tokenDelta = &zero
+			tokenStartDate = &input.Token.StartDate
+			tokenEndDate = &input.Token.EndDate
+			tokenTimezone = &tz
+		}
+		allocationRows = mergeAllocationPlans(allocationRows, allocateBalanceDelta(rawTokenRows, rawTokenTotal, *balanceDelta))
+	}
+
+	if (tokenDelta == nil || *tokenDelta == 0) && balanceDelta == nil {
 		return nil, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NO_CHANGE", "calibration does not change token usage or balance")
 	}
 
@@ -158,9 +249,17 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 			balance_input_value,
 			balance_before_value,
 			balance_after_value,
-			balance_delta
+			balance_delta,
+			consumption_mode,
+			consumption_input_value,
+			consumption_before_value,
+			consumption_after_value,
+			consumption_delta,
+			consumption_start_date,
+			consumption_end_date,
+			consumption_timezone
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::date, $23::date, $24)
 		RETURNING
 			id,
 			target_user_id,
@@ -179,6 +278,14 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 			balance_before_value,
 			balance_after_value,
 			balance_delta,
+			consumption_mode,
+			consumption_input_value,
+			consumption_before_value,
+			consumption_after_value,
+			consumption_delta,
+			TO_CHAR(consumption_start_date, 'YYYY-MM-DD'),
+			TO_CHAR(consumption_end_date, 'YYYY-MM-DD'),
+			consumption_timezone,
 			created_at
 	`
 	if err := scanAdminUsageCalibrationRow(ctx, tx, insertQuery, []any{
@@ -198,6 +305,14 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 		nullableFloat64Value(balanceBefore),
 		nullableFloat64Value(balanceAfter),
 		nullableFloat64Value(balanceDelta),
+		nullableStringValue(consumptionMode),
+		nullableFloat64Value(consumptionInput),
+		nullableFloat64Value(consumptionBefore),
+		nullableFloat64Value(consumptionAfter),
+		nullableFloat64Value(consumptionDelta),
+		nullableStringValue(consumptionStartDate),
+		nullableStringValue(consumptionEndDate),
+		nullableStringValue(consumptionTimezone),
 	}, &record); err != nil {
 		return nil, fmt.Errorf("insert admin usage calibration: %w", err)
 	}
@@ -223,21 +338,42 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 	return &record, nil
 }
 
-func (r *adminUsageCalibrationRepository) planTokenCalibration(ctx context.Context, exec sqlQueryer, userID int64, input service.AdminUsageTokenCalibrationInput) ([]allocationPlanRow, int64, int64, int64, error) {
+func calculateConsumptionCalibration(mode string, value, currentConsumption, currentBalance float64) (delta, after, walletAfter float64, err error) {
+	switch mode {
+	case service.AdminUsageCalibrationModeDelta:
+		delta = value
+	case service.AdminUsageCalibrationModeTarget:
+		delta = value - currentConsumption
+	default:
+		return 0, 0, 0, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "consumption.mode"})
+	}
+	delta = math.Round(delta*float64(adminUsageBalanceScale)) / float64(adminUsageBalanceScale)
+	after = currentConsumption + delta
+	if after < 0 {
+		return 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NEGATIVE_CONSUMPTION", "consumption calibration cannot make range consumption negative")
+	}
+	walletAfter = currentBalance - delta
+	if walletAfter < 0 {
+		return 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NEGATIVE_BALANCE", "consumption calibration cannot make user balance negative")
+	}
+	return delta, after, walletAfter, nil
+}
+
+func (r *adminUsageCalibrationRepository) planTokenCalibration(ctx context.Context, exec sqlQueryer, userID int64, input service.AdminUsageTokenCalibrationInput) ([]allocationPlanRow, []rawDailyTokenRow, int64, int64, int64, int64, error) {
 	tz := strings.TrimSpace(input.Timezone)
 	if tz == "" {
 		tz = "UTC"
 	}
 	rows, originalTotal, err := queryOriginalDailyTokens(ctx, exec, userID, input.StartDate, input.EndDate, tz)
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, nil, 0, 0, 0, 0, err
 	}
 	if originalTotal == 0 {
-		return nil, 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE", "该范围没有原始用量，无法按比例分摊")
+		return nil, nil, 0, 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE", "该范围没有原始用量，无法按比例分摊")
 	}
 	existingDelta, err := sumTokenAllocationsByDateRange(ctx, exec, userID, input.StartDate, exclusiveDate(input.EndDate))
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, nil, 0, 0, 0, 0, err
 	}
 	before := originalTotal + existingDelta
 	if before < 0 {
@@ -250,17 +386,17 @@ func (r *adminUsageCalibrationRepository) planTokenCalibration(ctx context.Conte
 	case service.AdminUsageCalibrationModeTarget:
 		delta = input.Value - before
 	default:
-		return nil, 0, 0, 0, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "token.mode"})
+		return nil, nil, 0, 0, 0, 0, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "token.mode"})
 	}
 	after := before + delta
 	if after < 0 {
-		return nil, 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NEGATIVE_TOKENS", "token calibration cannot make token usage negative")
+		return nil, nil, 0, 0, 0, 0, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NEGATIVE_TOKENS", "token calibration cannot make token usage negative")
 	}
 	if delta == 0 {
-		return nil, before, after, 0, nil
+		return nil, rows, originalTotal, before, after, 0, nil
 	}
 	plan := allocateTokenDelta(rows, originalTotal, delta)
-	return plan, before, after, delta, nil
+	return plan, rows, originalTotal, before, after, delta, nil
 }
 
 func queryOriginalDailyTokens(ctx context.Context, exec sqlQueryer, userID int64, startDate, endDate, tz string) ([]rawDailyTokenRow, int64, error) {
@@ -299,31 +435,61 @@ func queryOriginalDailyTokens(ctx context.Context, exec sqlQueryer, userID int64
 	return result, total, nil
 }
 
+func queryOriginalUsageCost(ctx context.Context, exec sqlQueryer, userID int64, startTime, endTime time.Time) (float64, error) {
+	var total float64
+	if err := scanSingleRow(ctx, exec, `
+		SELECT COALESCE(SUM(actual_cost), 0)
+		FROM usage_logs
+		WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
+	`, []any{userID, startTime, endTime}, &total); err != nil {
+		return 0, fmt.Errorf("query original usage cost: %w", err)
+	}
+	return total, nil
+}
+
+func calibrationTimeRange(startDate, endDate, timezoneName string) (time.Time, time.Time, error) {
+	location, err := time.LoadLocation(timezoneName)
+	if err != nil {
+		return time.Time{}, time.Time{}, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "consumption.timezone"})
+	}
+	start, err := time.ParseInLocation("2006-01-02", startDate, location)
+	if err != nil {
+		return time.Time{}, time.Time{}, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "consumption.start_date"})
+	}
+	end, err := time.ParseInLocation("2006-01-02", endDate, location)
+	if err != nil || end.Before(start) {
+		return time.Time{}, time.Time{}, service.ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "consumption.date_range"})
+	}
+	return start, end.AddDate(0, 0, 1), nil
+}
+
 func allocateTokenDelta(rows []rawDailyTokenRow, originalTotal int64, delta int64) []allocationPlanRow {
+	return allocateIntegerDelta(rows, originalTotal, delta)
+}
+
+func allocateIntegerDelta(rows []rawDailyTokenRow, originalTotal int64, delta int64) []allocationPlanRow {
 	if delta == 0 || originalTotal <= 0 {
 		return nil
 	}
-	sign := int64(1)
-	absDelta := delta
+	negative := delta < 0
+	absDelta := uint64(delta)
 	if delta < 0 {
-		sign = -1
-		absDelta = -delta
+		absDelta = uint64(-(delta + 1)) + 1
 	}
 	type weightedRow struct {
 		Date           string
 		OriginalTokens int64
-		Base           int64
-		Remainder      int64
+		Base           uint64
+		Remainder      uint64
 	}
 	weighted := make([]weightedRow, 0, len(rows))
-	var baseTotal int64
+	var baseTotal uint64
 	for _, row := range rows {
 		if row.Tokens <= 0 {
 			continue
 		}
-		product := absDelta * row.Tokens
-		base := product / originalTotal
-		remainder := product % originalTotal
+		hi, lo := bits.Mul64(absDelta, uint64(row.Tokens))
+		base, remainder := bits.Div64(hi, lo, uint64(originalTotal))
 		baseTotal += base
 		weighted = append(weighted, weightedRow{
 			Date:           row.Date,
@@ -343,7 +509,7 @@ func allocateTokenDelta(rows []rawDailyTokenRow, originalTotal int64, delta int6
 		return weighted[i].Date < weighted[j].Date
 	})
 	for i := range weighted {
-		if remaining <= 0 {
+		if remaining == 0 {
 			break
 		}
 		weighted[i].Base++
@@ -354,7 +520,10 @@ func allocateTokenDelta(rows []rawDailyTokenRow, originalTotal int64, delta int6
 	})
 	plan := make([]allocationPlanRow, 0, len(weighted))
 	for _, row := range weighted {
-		tokenDelta := row.Base * sign
+		tokenDelta := int64(row.Base)
+		if negative {
+			tokenDelta = -tokenDelta
+		}
 		if tokenDelta == 0 {
 			continue
 		}
@@ -367,6 +536,54 @@ func allocateTokenDelta(rows []rawDailyTokenRow, originalTotal int64, delta int6
 	return plan
 }
 
+func allocateBalanceDelta(rows []rawDailyTokenRow, originalTotal int64, delta float64) []allocationPlanRow {
+	if originalTotal <= 0 || delta == 0 {
+		return nil
+	}
+	units := int64(math.Round(math.Abs(delta) * float64(adminUsageBalanceScale)))
+	if units == 0 {
+		return nil
+	}
+	if delta < 0 {
+		units = -units
+	}
+	allocated := allocateIntegerDelta(rows, originalTotal, units)
+	unitsByDate := make(map[string]int64, len(allocated))
+	for _, row := range allocated {
+		unitsByDate[row.Date] = row.TokenDelta
+	}
+	plan := make([]allocationPlanRow, 0, len(rows))
+	for _, row := range rows {
+		if row.Tokens <= 0 {
+			continue
+		}
+		value := float64(unitsByDate[row.Date]) / float64(adminUsageBalanceScale)
+		plan = append(plan, allocationPlanRow{Date: row.Date, OriginalTokens: row.Tokens, BalanceDelta: &value})
+	}
+	return plan
+}
+
+func mergeAllocationPlans(tokenRows, balanceRows []allocationPlanRow) []allocationPlanRow {
+	byDate := make(map[string]allocationPlanRow, len(tokenRows)+len(balanceRows))
+	for _, row := range tokenRows {
+		byDate[row.Date] = row
+	}
+	for _, row := range balanceRows {
+		if existing, ok := byDate[row.Date]; ok {
+			existing.BalanceDelta = row.BalanceDelta
+			byDate[row.Date] = existing
+			continue
+		}
+		byDate[row.Date] = row
+	}
+	result := make([]allocationPlanRow, 0, len(byDate))
+	for _, row := range byDate {
+		result = append(result, row)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Date < result[j].Date })
+	return result
+}
+
 func insertAdminUsageCalibrationAllocations(ctx context.Context, exec sqlExecutor, calibrationID, targetUserID int64, rows []allocationPlanRow) ([]service.AdminUsageCalibrationDailyAllocation, error) {
 	result := make([]service.AdminUsageCalibrationDailyAllocation, 0, len(rows))
 	query := `
@@ -375,10 +592,11 @@ func insertAdminUsageCalibrationAllocations(ctx context.Context, exec sqlExecuto
 			target_user_id,
 			allocation_date,
 			original_tokens,
-			token_delta
+			token_delta,
+			balance_delta
 		)
-		VALUES ($1, $2, $3::date, $4, $5)
-		RETURNING id, calibration_id, target_user_id, TO_CHAR(allocation_date, 'YYYY-MM-DD'), original_tokens, token_delta, created_at
+		VALUES ($1, $2, $3::date, $4, $5, $6)
+		RETURNING id, calibration_id, target_user_id, TO_CHAR(allocation_date, 'YYYY-MM-DD'), original_tokens, token_delta, balance_delta, created_at
 	`
 	for _, row := range rows {
 		var out service.AdminUsageCalibrationDailyAllocation
@@ -386,13 +604,14 @@ func insertAdminUsageCalibrationAllocations(ctx context.Context, exec sqlExecuto
 			ctx,
 			exec,
 			query,
-			[]any{calibrationID, targetUserID, row.Date, row.OriginalTokens, row.TokenDelta},
+			[]any{calibrationID, targetUserID, row.Date, row.OriginalTokens, row.TokenDelta, nullableFloat64Value(row.BalanceDelta)},
 			&out.ID,
 			&out.CalibrationID,
 			&out.TargetUserID,
 			&out.Date,
 			&out.OriginalToken,
 			&out.TokenDelta,
+			&out.BalanceDelta,
 			&out.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("insert admin usage calibration allocation: %w", err)
@@ -447,6 +666,14 @@ func (r *adminUsageCalibrationRepository) ListAdminUsageCalibrations(ctx context
 			balance_before_value,
 			balance_after_value,
 			balance_delta,
+			consumption_mode,
+			consumption_input_value,
+			consumption_before_value,
+			consumption_after_value,
+			consumption_delta,
+			TO_CHAR(consumption_start_date, 'YYYY-MM-DD'),
+			TO_CHAR(consumption_end_date, 'YYYY-MM-DD'),
+			consumption_timezone,
 			created_at
 		FROM admin_usage_calibrations
 		%s
@@ -499,7 +726,7 @@ func (r *adminUsageCalibrationRepository) attachAllocations(ctx context.Context,
 		byID[items[i].ID] = &items[i]
 	}
 	query := `
-		SELECT id, calibration_id, target_user_id, TO_CHAR(allocation_date, 'YYYY-MM-DD'), original_tokens, token_delta, created_at
+		SELECT id, calibration_id, target_user_id, TO_CHAR(allocation_date, 'YYYY-MM-DD'), original_tokens, token_delta, balance_delta, created_at
 		FROM admin_usage_calibration_daily_allocations
 		WHERE calibration_id = ANY($1)
 		ORDER BY allocation_date ASC, id ASC
@@ -511,7 +738,7 @@ func (r *adminUsageCalibrationRepository) attachAllocations(ctx context.Context,
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var allocation service.AdminUsageCalibrationDailyAllocation
-		if err := rows.Scan(&allocation.ID, &allocation.CalibrationID, &allocation.TargetUserID, &allocation.Date, &allocation.OriginalToken, &allocation.TokenDelta, &allocation.CreatedAt); err != nil {
+		if err := rows.Scan(&allocation.ID, &allocation.CalibrationID, &allocation.TargetUserID, &allocation.Date, &allocation.OriginalToken, &allocation.TokenDelta, &allocation.BalanceDelta, &allocation.CreatedAt); err != nil {
 			return err
 		}
 		if item, ok := byID[allocation.CalibrationID]; ok {
@@ -572,23 +799,37 @@ func (r *adminUsageCalibrationRepository) SumTokenAllocationsByDate(ctx context.
 }
 
 func (r *adminUsageCalibrationRepository) SumBalanceSpent(ctx context.Context, userID int64, startTime, endTime time.Time) (float64, error) {
-	conditions := []string{"balance_delta < 0"}
-	args := make([]any, 0, 3)
-	if userID > 0 {
-		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
-		args = append(args, userID)
-	}
-	if !startTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
-		args = append(args, startTime)
-	}
-	if !endTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
-		args = append(args, endTime)
-	}
-	query := "SELECT COALESCE(SUM(-balance_delta), 0) FROM admin_usage_calibrations " + buildWhere(conditions)
+	return sumBalanceSpentByTimeRange(ctx, r.sql, userID, startTime, endTime)
+}
+
+func sumBalanceSpentByTimeRange(ctx context.Context, exec sqlQueryer, userID int64, startTime, endTime time.Time) (float64, error) {
+	args := append([]any{userID}, balanceCalibrationRangeArgs(startTime, endTime)...)
+	query := `
+		WITH balance_deltas AS (
+			SELECT a.target_user_id, -a.balance_delta AS consumption_delta
+			FROM admin_usage_calibration_daily_allocations a
+			JOIN admin_usage_calibrations c ON c.id = a.calibration_id
+			WHERE a.balance_delta IS NOT NULL
+			  AND (c.consumption_delta IS NOT NULL OR a.balance_delta < 0)
+			  AND ($1::bigint = 0 OR a.target_user_id = $1)
+			  AND ($2::date IS NULL OR allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			UNION ALL
+			SELECT c.target_user_id, COALESCE(c.consumption_delta, -c.balance_delta)
+			FROM admin_usage_calibrations c
+			WHERE (c.consumption_delta IS NOT NULL OR c.balance_delta < 0)
+			  AND ($1::bigint = 0 OR c.target_user_id = $1)
+			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
+			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
+			  AND NOT EXISTS (
+				SELECT 1 FROM admin_usage_calibration_daily_allocations a
+				WHERE a.calibration_id = c.id AND a.balance_delta IS NOT NULL
+			  )
+		)
+		SELECT COALESCE(SUM(consumption_delta), 0) FROM balance_deltas
+	`
 	var total float64
-	if err := scanSingleRow(ctx, r.sql, query, args, &total); err != nil {
+	if err := scanSingleRow(ctx, exec, query, args, &total); err != nil {
 		return 0, fmt.Errorf("sum balance calibration spend: %w", err)
 	}
 	return total, nil
@@ -600,20 +841,31 @@ func (r *adminUsageCalibrationRepository) SumBalanceSpentByUsers(ctx context.Con
 	if len(ids) == 0 {
 		return result, nil
 	}
-	conditions := []string{"target_user_id = ANY($1)", "balance_delta < 0"}
-	args := []any{pq.Array(ids)}
-	if !startTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
-		args = append(args, startTime)
-	}
-	if !endTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
-		args = append(args, endTime)
-	}
+	args := append([]any{pq.Array(ids)}, balanceCalibrationRangeArgs(startTime, endTime)...)
 	query := `
-		SELECT target_user_id, COALESCE(SUM(-balance_delta), 0) AS spent
-		FROM admin_usage_calibrations
-		` + buildWhere(conditions) + `
+		WITH balance_deltas AS (
+			SELECT a.target_user_id, -a.balance_delta AS consumption_delta
+			FROM admin_usage_calibration_daily_allocations a
+			JOIN admin_usage_calibrations c ON c.id = a.calibration_id
+			WHERE a.target_user_id = ANY($1)
+			  AND a.balance_delta IS NOT NULL
+			  AND (c.consumption_delta IS NOT NULL OR a.balance_delta < 0)
+			  AND ($2::date IS NULL OR allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			UNION ALL
+			SELECT c.target_user_id, COALESCE(c.consumption_delta, -c.balance_delta)
+			FROM admin_usage_calibrations c
+			WHERE c.target_user_id = ANY($1)
+			  AND (c.consumption_delta IS NOT NULL OR c.balance_delta < 0)
+			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
+			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
+			  AND NOT EXISTS (
+				SELECT 1 FROM admin_usage_calibration_daily_allocations a
+				WHERE a.calibration_id = c.id AND a.balance_delta IS NOT NULL
+			  )
+		)
+		SELECT target_user_id, COALESCE(SUM(consumption_delta), 0) AS spent
+		FROM balance_deltas
 		GROUP BY target_user_id
 	`
 	rows, err := r.sql.QueryContext(ctx, query, args...)
@@ -659,26 +911,58 @@ func sumTokenAllocationsByDateRange(ctx context.Context, exec sqlQueryer, userID
 }
 
 func sumBalanceCalibrationsByTimeRange(ctx context.Context, exec sqlQueryer, userID int64, startTime, endTime time.Time) (float64, error) {
-	conditions := make([]string, 0, 3)
-	args := make([]any, 0, 3)
-	if userID > 0 {
-		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
-		args = append(args, userID)
-	}
-	if !startTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
-		args = append(args, startTime)
-	}
-	if !endTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
-		args = append(args, endTime)
-	}
-	query := "SELECT COALESCE(SUM(balance_delta), 0) FROM admin_usage_calibrations " + buildWhere(conditions)
+	args := append([]any{userID}, balanceCalibrationRangeArgs(startTime, endTime)...)
+	query := `
+		WITH balance_deltas AS (
+			SELECT target_user_id, balance_delta
+			FROM admin_usage_calibration_daily_allocations
+			WHERE balance_delta IS NOT NULL
+			  AND ($1::bigint = 0 OR target_user_id = $1)
+			  AND ($2::date IS NULL OR allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			UNION ALL
+			SELECT c.target_user_id, c.balance_delta
+			FROM admin_usage_calibrations c
+			WHERE c.balance_delta IS NOT NULL
+			  AND ($1::bigint = 0 OR c.target_user_id = $1)
+			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
+			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
+			  AND NOT EXISTS (
+				SELECT 1 FROM admin_usage_calibration_daily_allocations a
+				WHERE a.calibration_id = c.id AND a.balance_delta IS NOT NULL
+			  )
+		)
+		SELECT COALESCE(SUM(balance_delta), 0) FROM balance_deltas
+	`
 	var total float64
 	if err := scanSingleRow(ctx, exec, query, args, &total); err != nil {
 		return 0, err
 	}
 	return total, nil
+}
+
+func balanceCalibrationRangeArgs(startTime, endTime time.Time) []any {
+	startDate, endDateExclusive := calibrationAllocationDateRange(startTime, endTime)
+	return []any{
+		nullableRangeString(startDate),
+		nullableRangeString(endDateExclusive),
+		nullableRangeTime(startTime),
+		nullableRangeTime(endTime),
+	}
+}
+
+func nullableRangeString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableRangeTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value
 }
 
 func scanAdminUsageCalibrationRow(ctx context.Context, exec sqlQueryer, query string, args []any, out *service.AdminUsageCalibration) error {
@@ -701,19 +985,27 @@ func scanAdminUsageCalibrationRow(ctx context.Context, exec sqlQueryer, query st
 
 func scanAdminUsageCalibrationFromRows(rows *sql.Rows, out *service.AdminUsageCalibration) error {
 	var (
-		tokenMode      sql.NullString
-		tokenInput     sql.NullInt64
-		tokenBefore    sql.NullInt64
-		tokenAfter     sql.NullInt64
-		tokenDelta     sql.NullInt64
-		tokenStartDate sql.NullString
-		tokenEndDate   sql.NullString
-		tokenTimezone  sql.NullString
-		balanceMode    sql.NullString
-		balanceInput   sql.NullFloat64
-		balanceBefore  sql.NullFloat64
-		balanceAfter   sql.NullFloat64
-		balanceDelta   sql.NullFloat64
+		tokenMode            sql.NullString
+		tokenInput           sql.NullInt64
+		tokenBefore          sql.NullInt64
+		tokenAfter           sql.NullInt64
+		tokenDelta           sql.NullInt64
+		tokenStartDate       sql.NullString
+		tokenEndDate         sql.NullString
+		tokenTimezone        sql.NullString
+		balanceMode          sql.NullString
+		balanceInput         sql.NullFloat64
+		balanceBefore        sql.NullFloat64
+		balanceAfter         sql.NullFloat64
+		balanceDelta         sql.NullFloat64
+		consumptionMode      sql.NullString
+		consumptionInput     sql.NullFloat64
+		consumptionBefore    sql.NullFloat64
+		consumptionAfter     sql.NullFloat64
+		consumptionDelta     sql.NullFloat64
+		consumptionStartDate sql.NullString
+		consumptionEndDate   sql.NullString
+		consumptionTimezone  sql.NullString
 	)
 	if err := rows.Scan(
 		&out.ID,
@@ -733,6 +1025,14 @@ func scanAdminUsageCalibrationFromRows(rows *sql.Rows, out *service.AdminUsageCa
 		&balanceBefore,
 		&balanceAfter,
 		&balanceDelta,
+		&consumptionMode,
+		&consumptionInput,
+		&consumptionBefore,
+		&consumptionAfter,
+		&consumptionDelta,
+		&consumptionStartDate,
+		&consumptionEndDate,
+		&consumptionTimezone,
 		&out.CreatedAt,
 	); err != nil {
 		return err
@@ -750,6 +1050,14 @@ func scanAdminUsageCalibrationFromRows(rows *sql.Rows, out *service.AdminUsageCa
 	out.BalanceBeforeValue = nullCalibrationFloat64Ptr(balanceBefore)
 	out.BalanceAfterValue = nullCalibrationFloat64Ptr(balanceAfter)
 	out.BalanceDelta = nullCalibrationFloat64Ptr(balanceDelta)
+	out.ConsumptionMode = nullStringPtr(consumptionMode)
+	out.ConsumptionInputValue = nullCalibrationFloat64Ptr(consumptionInput)
+	out.ConsumptionBeforeValue = nullCalibrationFloat64Ptr(consumptionBefore)
+	out.ConsumptionAfterValue = nullCalibrationFloat64Ptr(consumptionAfter)
+	out.ConsumptionDelta = nullCalibrationFloat64Ptr(consumptionDelta)
+	out.ConsumptionStartDate = nullStringPtr(consumptionStartDate)
+	out.ConsumptionEndDate = nullStringPtr(consumptionEndDate)
+	out.ConsumptionTimezone = nullStringPtr(consumptionTimezone)
 	return nil
 }
 

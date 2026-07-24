@@ -909,8 +909,8 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
 		WithArgs(userID, "2025-01-01", "2025-01-02").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
-	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(balance_delta\\), 0\\) FROM admin_usage_calibrations").
-		WithArgs(userID, start, end).
+	mock.ExpectQuery("(?s)WITH balance_deltas AS .*admin_usage_calibration_daily_allocations.*SELECT COALESCE\\(SUM\\(balance_delta\\), 0\\) FROM balance_deltas").
+		WithArgs(userID, "2025-01-01", "2025-01-02", start, end).
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(-2.5))
 
 	got, err := repo.GetAdminTokenLeaderboardUserDetails(context.Background(), start, end, userID, usagestats.AdminTokenLeaderboardFilters{})
