@@ -432,6 +432,12 @@
         <div class="mt-1 text-xs text-amber-700 dark:text-amber-300">
           {{ t('usage.adminCalibrationAdminOnlyHint') }}
         </div>
+        <div
+          v-if="calibrationForm.consumptionEnabled && calibrationTokenCurrentTotal <= 0"
+          class="mt-1 text-xs text-amber-700 dark:text-amber-300"
+        >
+          {{ t('usage.adminConsumptionNoTokenAllocationHint') }}
+        </div>
       </div>
 
       <div class="grid gap-3 sm:grid-cols-2">
@@ -861,6 +867,7 @@ import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, UserErrorRequest, AdminUser } from '@/types'
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
@@ -1655,7 +1662,7 @@ const submitCalibration = async () => {
     ])
   } catch (error) {
     console.error('Failed to submit calibration:', error)
-    appStore.showError(t('usage.adminCalibrationFailed'))
+    appStore.showError(extractApiErrorMessage(error, t('usage.adminCalibrationFailed')))
   } finally {
     submittingCalibration.value = false
   }

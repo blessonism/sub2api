@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对错误处理是否合规"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对单测与实现质量"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对前端错误透出与文案"}
+{"file": ".trellis/tasks/07-24-no-token-consumption-calibration/prd.md", "reason": "对照验收标准"}

@@ -166,9 +166,6 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 		if err != nil {
 			return nil, err
 		}
-		if originalTokens == 0 {
-			return nil, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NO_ORIGINAL_USAGE", "该范围没有原始用量，无法按比例分摊")
-		}
 		startTime, endTime, err := calibrationTimeRange(input.Consumption.StartDate, input.Consumption.EndDate, tz)
 		if err != nil {
 			return nil, err
@@ -203,7 +200,11 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 			balanceAfter = &walletAfter
 			balanceDelta = &walletDelta
 			effectiveBalance = walletAfter
-			allocationRows = mergeAllocationPlans(allocationRows, allocateBalanceDelta(rows, originalTokens, walletDelta))
+			if originalTokens > 0 {
+				allocationRows = mergeAllocationPlans(allocationRows, allocateBalanceDelta(rows, originalTokens, walletDelta))
+			} else {
+				allocationRows = mergeAllocationPlans(allocationRows, allocateBalanceDeltaOnDate(input.Consumption.StartDate, walletDelta))
+			}
 		}
 	}
 
@@ -561,6 +562,24 @@ func allocateBalanceDelta(rows []rawDailyTokenRow, originalTotal int64, delta fl
 		plan = append(plan, allocationPlanRow{Date: row.Date, OriginalTokens: row.Tokens, BalanceDelta: &value})
 	}
 	return plan
+}
+
+// allocateBalanceDeltaOnDate assigns the whole wallet delta to a single day when
+// there is no original token usage to weight against (e.g. pure calibration spend).
+func allocateBalanceDeltaOnDate(date string, delta float64) []allocationPlanRow {
+	date = strings.TrimSpace(date)
+	if date == "" || delta == 0 {
+		return nil
+	}
+	value := math.Round(delta*float64(adminUsageBalanceScale)) / float64(adminUsageBalanceScale)
+	if value == 0 {
+		return nil
+	}
+	return []allocationPlanRow{{
+		Date:           date,
+		OriginalTokens: 0,
+		BalanceDelta:   &value,
+	}}
 }
 
 func mergeAllocationPlans(tokenRows, balanceRows []allocationPlanRow) []allocationPlanRow {

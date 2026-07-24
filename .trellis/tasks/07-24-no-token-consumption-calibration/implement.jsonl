@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "后端错误码与 BadRequest 约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "仓储/服务变更质量要求"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端错误展示与测试约定"}
+{"file": ".trellis/tasks/07-24-no-token-consumption-calibration/prd.md", "reason": "本任务需求与验收"}
+{"file": ".trellis/tasks/07-24-no-token-consumption-calibration/design.md", "reason": "无 Token 归属与数据流设计"}
