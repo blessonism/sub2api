@@ -31,6 +31,7 @@ type UpdateSettingsRequest struct {
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	PasskeyEnabled                   *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
 	SessionBindingEnabled            *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
 	StepUpEnabled                    *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
@@ -320,6 +321,11 @@ type UpdateSettingsRequest struct {
 	TokenLeaderboardCommonGroupID *int64  `json:"token_leaderboard_common_group_id"`
 	TokenLeaderboardTierTooltip   *string `json:"token_leaderboard_tier_tooltip"`
 
+	// Model Plaza feature switches + description
+	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription *string `json:"model_plaza_description"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -440,18 +446,70 @@ func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
 	return true
 }
 
+// settingKeyJSONAliases covers the request fields whose JSON name differs from
+// the setting key they persist to. Every other field of UpdateSettingsRequest
+// is named after its setting key.
+var settingKeyJSONAliases = map[string]string{
+	"smtp_from_email": service.SettingKeySMTPFrom,
+}
+
+// settingKeyByJSONName maps the value-typed top-level JSON fields of
+// UpdateSettingsRequest to the setting key each one writes. Resolved once from
+// the struct tags so new fields are covered without touching this file.
+//
+// Pointer-typed fields are deliberately excluded: they already carry their own
+// "omitted = keep the stored value" merge in UpdateSettings, and some of them
+// rely on being rewritten on every save to re-normalize fail-closed security
+// state (see TestUpdateSettingsMalformedForwardedClientIPHeadersRemainFailClosedWhenOmitted).
+// Only the value-typed fields are indistinguishable from a deliberate clear.
+var settingKeyByJSONName = buildSettingKeyByJSONName()
+
+func buildSettingKeyByJSONName() map[string]string {
+	t := reflect.TypeOf(UpdateSettingsRequest{})
+	out := make(map[string]string, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() == reflect.Ptr {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		if alias, ok := settingKeyJSONAliases[name]; ok {
+			out[name] = alias
+			continue
+		}
+		out[name] = name
+	}
+	return out
+}
+
+// omittedSettingKeys reports the setting keys this payload never mentioned.
+// Saving settings is a whole-document PUT, so without this a client that sends
+// only the one field it cares about resets every other field to a zero value.
+func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSettingKeys {
+	omitted := make(service.OmittedSettingKeys, len(settingKeyByJSONName))
+	for jsonName, settingKey := range settingKeyByJSONName {
+		if _, sent := sentFields[jsonName]; !sent {
+			omitted[settingKey] = struct{}{}
+		}
+	}
+	return omitted
+}
+
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if c.GetHeader(settingsReplaceModeHeader) != "replace" {
 		response.ErrorWithDetails(c, http.StatusBadRequest, "Full settings replacement requires X-Settings-Write-Mode: replace", "INVALID_SETTINGS_REPLACE_REQUEST", nil)
 		return
 	}
 
-	var rawPayload map[string]json.RawMessage
-	if err := c.ShouldBindBodyWith(&rawPayload, binding.JSON); err != nil {
+	var sentFields map[string]json.RawMessage
+	if err := c.ShouldBindBodyWith(&sentFields, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if err := validateSettingsReplaceFields(rawPayload); err != nil {
+	if err := validateSettingsReplaceFields(sentFields); err != nil {
 		response.ErrorWithDetails(c, http.StatusBadRequest, err.Error(), "INVALID_SETTINGS_REPLACE_REQUEST", nil)
 		return
 	}
@@ -461,7 +519,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-
+	omitted := omittedSettingKeys(sentFields)
 	previousSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -482,6 +540,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
+	}
+	passkeyEnabled := previousSettings.PasskeyEnabled
+	if req.PasskeyEnabled != nil {
+		passkeyEnabled = *req.PasskeyEnabled
+	}
+	if passkeyEnabled {
+		configured, _, _ := h.settingService.PasskeyConfiguration()
+		if !configured {
+			response.BadRequest(c, "Passkey sign-in requires a valid WebAuthn RP ID and allowed HTTPS origins in the deployment configuration")
+			return
+		}
 	}
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
@@ -1333,6 +1402,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		PasskeyEnabled:                   passkeyEnabled,
 		SessionBindingEnabled:            sessionBindingEnabled,
 		StepUpEnabled:                    stepUpEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
@@ -1715,6 +1785,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.TokenLeaderboardTierTooltip
 		}(),
+		ModelPlazaEnabled: func() bool {
+			if req.ModelPlazaEnabled != nil {
+				return *req.ModelPlazaEnabled
+			}
+			return previousSettings.ModelPlazaEnabled
+		}(),
+		ModelPlazaRequireAuth: func() bool {
+			if req.ModelPlazaRequireAuth != nil {
+				return *req.ModelPlazaRequireAuth
+			}
+			return previousSettings.ModelPlazaRequireAuth
+		}(),
+		ModelPlazaDescription: func() string {
+			if req.ModelPlazaDescription != nil {
+				return *req.ModelPlazaDescription
+			}
+			return previousSettings.ModelPlazaDescription
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1802,7 +1890,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		},
 		ForceEmailOnThirdPartySignup: boolValueOrDefault(req.ForceEmailOnThirdPartySignup, previousAuthSourceDefaults.ForceEmailOnThirdPartySignup),
 	}
-	if err := h.settingService.UpdateSettingsWithAuthSourceDefaults(c.Request.Context(), settings, authSourceDefaults); err != nil {
+	if err := h.settingService.UpdateSettingsWithAuthSourceDefaultsOmitting(c.Request.Context(), settings, authSourceDefaults, omitted); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1886,6 +1974,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if updatedPaymentCfg == nil {
 		updatedPaymentCfg = &service.PaymentConfig{}
 	}
+	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    updatedSettings.RegistrationEnabled,
@@ -1897,6 +1986,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  updatedSettings.InvitationCodeEnabled,
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		PasskeyEnabled:                                         updatedSettings.PasskeyEnabled,
+		PasskeyConfigured:                                      passkeyConfigured,
+		PasskeyRPID:                                            passkeyRPID,
+		PasskeyRPOrigins:                                       passkeyRPOrigins,
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
@@ -2110,6 +2203,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TokenLeaderboardUserVisible:   updatedSettings.TokenLeaderboardUserVisible,
 		TokenLeaderboardCommonGroupID: updatedSettings.TokenLeaderboardCommonGroupID,
 		TokenLeaderboardTierTooltip:   updatedSettings.TokenLeaderboardTierTooltip,
+
+		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

@@ -737,6 +737,7 @@ func ProvideConversationCaptureCleanupService(capture *ConversationCaptureServic
 var ProviderSet = wire.NewSet(
 	// Core services
 	NewAuthService,
+	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,

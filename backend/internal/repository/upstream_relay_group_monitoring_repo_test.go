@@ -518,17 +518,20 @@ func TestUpstreamRelayRepositoryUpsertsRecommendationPolicy(t *testing.T) {
 	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectExec("INSERT INTO upstream_relay_recommendation_policy").
-		WithArgs(60, 120, 15, 0.8, 5, false, 5, 5, sqlmock.AnyArg(), int64(88)).
+		WithArgs(60, 120, 15, 0.8, 5, false, 5, 5, sqlmock.AnyArg(), false, 0.0, false, 0, false, int64(88)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT snapshot_freshness_minutes").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"snapshot_freshness_minutes", "usage_delta_freshness_minutes", "probe_freshness_minutes",
 			"min_success_rate", "min_sample_size", "exclude_consecutive_failures",
-			"priority_start", "priority_step", "sort_fields", "updated_by", "created_at", "updated_at",
+			"priority_start", "priority_step", "sort_fields",
+			"pause_rate_gap_enabled", "pause_rate_gap_threshold",
+			"pause_consecutive_failures_enabled", "pause_consecutive_failures_threshold",
+			"pause_success_rate_enabled", "updated_by", "created_at", "updated_at",
 		}).AddRow(60, 120, 15, 0.8, 5, false, 5, 5, pq.Array([]string{
 			service.UpstreamRelaySortSuccessRateDesc,
 			service.UpstreamRelaySortRateAsc,
-		}), int64(88), now, now))
+		}), false, 0.0, false, 0.0, false, int64(88), now, now))
 
 	policy, err := repo.UpsertRecommendationPolicy(ctx, service.UpstreamRelayRecommendationPolicy{
 		SnapshotFreshnessMinutes:   60,
