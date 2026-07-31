@@ -9,7 +9,7 @@ const {
   getAdminTokenLeaderboardUserDetails,
   grantAdminTokenLeaderboardBalance,
   getSettings,
-  updateSettings,
+  updateTokenLeaderboardSettings,
   getAllIncludingInactive,
   getUserBalanceHistory,
   getUserById,
@@ -20,7 +20,7 @@ const {
   getAdminTokenLeaderboardUserDetails: vi.fn(),
   grantAdminTokenLeaderboardBalance: vi.fn(),
   getSettings: vi.fn(),
-  updateSettings: vi.fn(),
+  updateTokenLeaderboardSettings: vi.fn(),
   getAllIncludingInactive: vi.fn(),
   getUserBalanceHistory: vi.fn(),
   getUserById: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('@/api/admin', () => ({
     },
     settings: {
       getSettings,
-      updateSettings
+      updateTokenLeaderboardSettings
     },
     groups: {
       getAllIncludingInactive
@@ -142,7 +142,7 @@ describe('TokenLeaderboardView', () => {
     getAdminTokenLeaderboardUserDetails.mockReset()
     grantAdminTokenLeaderboardBalance.mockReset()
     getSettings.mockReset()
-    updateSettings.mockReset()
+    updateTokenLeaderboardSettings.mockReset()
     getUserBalanceHistory.mockReset()
     getUserById.mockReset()
     showSuccess.mockReset()
@@ -156,7 +156,7 @@ describe('TokenLeaderboardView', () => {
       token_leaderboard_common_group_id: 0,
       token_leaderboard_tier_tooltip: ''
     })
-    updateSettings.mockResolvedValue({
+    updateTokenLeaderboardSettings.mockResolvedValue({
       token_leaderboard_common_group_id: 4,
       token_leaderboard_tier_tooltip: '按最近用量匹配阶梯'
     })
@@ -384,7 +384,7 @@ describe('TokenLeaderboardView', () => {
     await saveButton.trigger('click')
     await flushPromises()
 
-    expect(updateSettings).toHaveBeenCalledWith({
+    expect(updateTokenLeaderboardSettings).toHaveBeenCalledWith({
       token_leaderboard_common_group_id: 3,
       token_leaderboard_tier_tooltip: ''
     })
@@ -413,7 +413,7 @@ describe('TokenLeaderboardView', () => {
     await saveButton.trigger('click')
     await flushPromises()
 
-    expect(updateSettings).toHaveBeenCalledWith({
+    expect(updateTokenLeaderboardSettings).toHaveBeenCalledWith({
       token_leaderboard_common_group_id: 0,
       token_leaderboard_tier_tooltip: '按最近用量匹配阶梯倍率'
     })
