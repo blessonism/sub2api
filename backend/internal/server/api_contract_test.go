@@ -389,6 +389,7 @@ func TestAPIContracts(t *testing.T) {
 						"video_rate_multiplier": 0,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
+						"allow_live": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,
@@ -724,6 +725,10 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
@@ -970,6 +975,9 @@ func TestAPIContracts(t *testing.T) {
 					"token_leaderboard_user_visible": false,
 					"token_leaderboard_common_group_id": 0,
 					"token_leaderboard_tier_tooltip": "",
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1044,6 +1052,10 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
@@ -1253,6 +1265,9 @@ func TestAPIContracts(t *testing.T) {
 					"token_leaderboard_user_visible": true,
 					"token_leaderboard_common_group_id": 0,
 					"token_leaderboard_tier_tooltip": "",
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1516,6 +1531,10 @@ func (r *stubUserRepo) Create(ctx context.Context, user *service.User) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	user, ok := r.users[id]
 	if !ok {
@@ -1545,7 +1564,7 @@ func (r *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 	return nil, service.ErrUserNotFound
 }
 
-func (r *stubUserRepo) Update(ctx context.Context, user *service.User) error {
+func (r *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
 	return errors.New("not implemented")
 }
 
@@ -1581,6 +1600,14 @@ func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
 func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	return errors.New("not implemented")
 }
@@ -1592,6 +1619,10 @@ func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (
 }
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
 }
 
@@ -2291,7 +2322,7 @@ func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*serv
 	return r.GetByKey(ctx, key)
 }
 
-func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
+func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey, _ service.APIKeyUpdateFields) error {
 	if key == nil {
 		return errors.New("nil key")
 	}

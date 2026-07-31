@@ -182,7 +182,6 @@ func TestCreateAdminUsageCalibrationTargetsRangeConsumptionAndUpdatesBalance(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-
 func TestCreateAdminUsageCalibrationAllowsConsumptionWithoutOriginalTokens(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &adminUsageCalibrationRepository{sql: db}
@@ -248,7 +247,6 @@ func TestAllocateBalanceDeltaOnDate(t *testing.T) {
 	require.Nil(t, allocateBalanceDeltaOnDate("", 1))
 	require.Nil(t, allocateBalanceDeltaOnDate("2026-07-24", 0))
 }
-
 
 func calibrationAuditRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
