@@ -164,6 +164,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
 		SettingKeyTotpEnabled,
+		SettingKeyPasskeyEnabled,
 		SettingKeyLoginAgreementEnabled,
 		SettingKeyLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt,
@@ -220,6 +221,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyModelPlazaEnabled,
+		SettingKeyModelPlazaRequireAuth,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -289,6 +292,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		PasskeyEnabled:                   s.passkeyConfigured() && s.passkeySettingEnabled(settings),
 		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true" && len(loginAgreementDocuments) > 0,
 		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
@@ -331,6 +335,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+
+		ModelPlazaEnabled:     settings[SettingKeyModelPlazaEnabled] == "true",
+		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -438,6 +445,33 @@ func (s *SettingService) GetTokenLeaderboardRuntime(ctx context.Context) TokenLe
 	}
 }
 
+// ModelPlazaRuntime is the lightweight view of the model-plaza feature consumed
+// by the public plaza handler.
+type ModelPlazaRuntime struct {
+	Enabled     bool
+	RequireAuth bool
+	Description string
+}
+
+// GetModelPlazaRuntime reads the model-plaza feature switches directly from the
+// settings store. Fail-closed: on error returns Enabled=false, matching the
+// opt-in default (unknown ↔ disabled).
+func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRuntime {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyModelPlazaEnabled,
+		SettingKeyModelPlazaRequireAuth,
+		SettingKeyModelPlazaDescription,
+	})
+	if err != nil {
+		return ModelPlazaRuntime{Enabled: false}
+	}
+	return ModelPlazaRuntime{
+		Enabled:     vals[SettingKeyModelPlazaEnabled] == "true",
+		RequireAuth: vals[SettingKeyModelPlazaRequireAuth] == "true",
+		Description: vals[SettingKeyModelPlazaDescription],
+	}
+}
+
 // IsUserErrorViewAllowed reads the user-facing error-requests visibility switch
 // directly from the settings store. Fail-closed: on error returns false (opt-in default).
 func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
@@ -470,6 +504,7 @@ type PublicSettingsInjectionPayload struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`
+	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
@@ -519,6 +554,8 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	TokenLeaderboardUserVisible          bool `json:"token_leaderboard_user_visible"`
+	ModelPlazaEnabled                    bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth                bool `json:"model_plaza_require_auth"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
@@ -540,6 +577,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		PasskeyEnabled:                   settings.PasskeyEnabled,
 		LoginAgreementEnabled:            settings.LoginAgreementEnabled,
 		LoginAgreementMode:               settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:          settings.LoginAgreementUpdatedAt,
@@ -585,6 +623,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		TokenLeaderboardUserVisible:          settings.TokenLeaderboardUserVisible,
+		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,

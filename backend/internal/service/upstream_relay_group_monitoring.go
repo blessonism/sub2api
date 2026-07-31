@@ -1792,7 +1792,7 @@ func (s *UpstreamRelayGroupMonitoringService) normalizeConnectorInput(ctx contex
 		}
 		return connector, updated, nil
 	}
-		explicitBearerToken := strings.TrimSpace(stringPointerValue(input.BearerToken)) != ""
+	explicitBearerToken := strings.TrimSpace(stringPointerValue(input.BearerToken)) != ""
 	if (baseURLChanged || previousAuthMode == UpstreamRelayAuthModePasswordLogin) && !explicitBearerToken {
 		return nil, false, ErrUpstreamRelayInvalidManualSession
 	}
