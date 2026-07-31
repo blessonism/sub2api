@@ -284,12 +284,12 @@ func TestConversationCaptureRepositoryListSessionsQualityStatusFilterUsesSession
 			"id", "session_id", "user_id", "api_key_id", "account_id", "provider", "model", "request_path", "status",
 			"turn_count", "source_request_count", "input_tokens", "output_tokens", "total_tokens", "actual_cost",
 			"quality_status", "quality_errors", "exportable", "duplicate_turn_count", "capture_status", "session_source", "retention_until",
-			"started_at", "ended_at", "created_at", "updated_at",
+			"started_at", "ended_at", "created_at", "updated_at", "user_email",
 		}).AddRow(
 			int64(1), "s1", int64(1), int64(2), nil, service.ConversationProviderOpenAI, "gpt-5", "/v1/chat/completions", "active",
 			1, 1, int64(1), int64(2), int64(3), float64(0.01),
 			service.ConversationQualityStatusClean, []byte(`[]`), true, int64(0), "captured", service.ConversationSessionSourceExplicit, now,
-			now, now, now, now,
+			now, now, now, now, "user@example.com",
 		))
 
 	items, total, err := repo.ListSessions(context.Background(), service.ConversationSessionFilters{

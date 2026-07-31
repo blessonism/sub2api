@@ -21,7 +21,7 @@ func TestBatchUpdateConcurrencyFloorTargetsAllUsers(t *testing.T) {
 		{ID: 2, Role: service.RoleUser, Status: service.StatusDisabled},
 		{ID: 3, Role: service.RoleAdmin, Status: service.StatusActive},
 	}
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -39,7 +39,7 @@ func TestBatchUpdateConcurrencyFloorTargetsAllUsers(t *testing.T) {
 func TestBatchUpdateConcurrencyFloorRejectsInvalidValue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

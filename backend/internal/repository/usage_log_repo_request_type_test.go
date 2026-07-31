@@ -386,10 +386,10 @@ func TestUsageLogRepositoryListWithFiltersSharedIPUsers(t *testing.T) {
 		SharedIPUsers: true,
 	}
 
-	mock.ExpectQuery("SELECT COUNT\(\*\) FROM usage_logs WHERE group_id = \$1 AND ip_address IN").
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE group_id = \\$1 AND ip_address IN").
 		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery("HAVING COUNT\(DISTINCT user_id\) > 1").
+	mock.ExpectQuery("HAVING COUNT\\(DISTINCT user_id\\) > 1").
 		WithArgs(int64(7), 20, 0).
 		WillReturnRows(sqlmock.NewRows(strings.Split(usageLogSelectColumns, ", ")))
 
@@ -407,14 +407,9 @@ func TestUsageLogRepositoryListWithFiltersRequestID(t *testing.T) {
 
 	filters := usagestats.UsageLogFilters{RequestID: " req-0123 "}
 
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE request_id = \$1 ORDER BY id DESC LIMIT \$2 OFFSET \$3").
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE request_id = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
 		WithArgs("req-0123", 21, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-
-	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
-	require.NoError(t, err)
-	require.Empty(t, logs)
-	require.NotNil(t, page)
 
 	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
 	require.NoError(t, err)
