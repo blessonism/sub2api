@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -20,11 +21,30 @@ func (fn gptIntelligenceRoundTripFunc) RoundTrip(req *http.Request) (*http.Respo
 }
 
 func TestGptIntelligenceServiceFetchSnapshot_UsesPublicJSONEndpoint(t *testing.T) {
-	var requestedURL string
+	var requestedURLs []string
 	service := &GptIntelligenceService{
 		client: &http.Client{Transport: gptIntelligenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			requestedURL = req.URL.String()
+			requestedURLs = append(requestedURLs, req.URL.String())
 			require.Equal(t, "application/json", req.Header.Get("Accept"))
+			if req.URL.String() == gptIntelligenceEfficiencyURL {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(strings.NewReader(`{
+  "source_updated_at":"2026-07-11T16:00:00+08:00",
+  "points":[
+    {"model":"gpt-5.6-sol","effort":"max","iq":101.78,"passed":76,"valid_tasks":112},
+    {"model":"deepseek-v4-flash","effort":"max","iq":87.05,"passed":65,"valid_tasks":112},
+    {"model":"deepseek-v4-flash","effort":"high","iq":65.62,"passed":49,"valid_tasks":112}
+  ],
+  "history":[
+    {"at":"2026-07-11T12:00:00+08:00","points":[
+      {"model":"deepseek-v4-flash","effort":"max","iq":75.0,"passed":54,"valid_tasks":108}
+    ]}
+  ]
+}`)),
+					Header: make(http.Header),
+				}, nil
+			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body: io.NopCloser(strings.NewReader(`{
@@ -41,8 +61,48 @@ func TestGptIntelligenceServiceFetchSnapshot_UsesPublicJSONEndpoint(t *testing.T
 	snapshot, err := service.fetchSnapshot(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, gptIntelligenceDataURL, requestedURL)
+	require.Equal(t, []string{gptIntelligenceDataURL, gptIntelligenceEfficiencyURL}, requestedURLs)
 	require.Equal(t, "gpt-5.6-sol", snapshot.Latest.Model)
+	require.Equal(t, "public_json_current+efficiency", snapshot.Metadata.Method)
+	require.Len(t, snapshot.Comparisons, 2)
+	require.Equal(t, "deepseek_v4_flash_high", snapshot.Comparisons[0].Key)
+	require.Equal(t, 65.62, *snapshot.Comparisons[0].Latest.Score)
+	require.Equal(t, 49.0, *snapshot.Comparisons[0].Latest.Passed)
+	require.Equal(t, "deepseek_v4_flash_max", snapshot.Comparisons[1].Key)
+	require.Equal(t, 87.05, *snapshot.Comparisons[1].Latest.Score)
+	require.Equal(t, "deepseek-v4-flash", snapshot.Comparisons[1].Latest.Model)
+	require.Equal(t, "max", snapshot.Comparisons[1].Latest.ReasoningEffort)
+}
+
+func TestGptIntelligenceServiceFetchSnapshot_KeepsBaseSnapshotWhenEfficiencyUnavailable(t *testing.T) {
+	service := &GptIntelligenceService{
+		client: &http.Client{Transport: gptIntelligenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == gptIntelligenceEfficiencyURL {
+				return &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Body:       io.NopCloser(strings.NewReader("boom")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+  "monitored_at":"2026-07-11T15:29:00+08:00",
+  "timezone":"Asia/Shanghai",
+  "model_iq":{"latest":{"date":"2026-07-11-pm","model":"gpt-5.6-sol","reasoning_effort":"max","score":135}}
+}`)),
+				Header: make(http.Header),
+			}, nil
+		})},
+		now: func() time.Time { return time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC) },
+	}
+
+	snapshot, err := service.fetchSnapshot(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", snapshot.Latest.Model)
+	require.Empty(t, snapshot.Comparisons)
+	require.Equal(t, "public_json_current", snapshot.Metadata.Method)
 }
 
 func TestParseGptIntelligenceJSON_ExtractsPublicModelIqSummary(t *testing.T) {
@@ -163,6 +223,77 @@ func TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers(t *testing.T) {
 	require.Equal(t, 80.0, *original.Comparisons[0].Latest.Score)
 	require.Equal(t, 80.0, *original.Comparisons[0].RecentDays[0].Score)
 	require.Equal(t, "原始标题", original.Templates[0].Title)
+}
+
+func TestMergeGptIntelligenceDeepSeekEfficiency_ExtractsDeepSeekSeries(t *testing.T) {
+	raw := []byte(`{
+  "source_updated_at":"2026-08-06T14:44:46+08:00",
+  "points":[
+    {"model":"gpt-5.6-sol","effort":"max","iq":101.78,"passed":76,"valid_tasks":112},
+    {"model":"deepseek-v4-flash","effort":"max","iq":87.05,"passed":65,"valid_tasks":112},
+    {"model":"deepseek-v4-flash","effort":"high","iq":65.62,"passed":49,"valid_tasks":112}
+  ],
+  "history":[
+    {"at":"2026-08-02T02:44:46+08:00","points":[
+      {"model":"deepseek-v4-flash","effort":"max","iq":75.0,"passed":54,"valid_tasks":108},
+      {"model":"deepseek-v4-flash","effort":"high","iq":51.92,"passed":36,"valid_tasks":104}
+    ]}
+  ]
+}`)
+	var efficiency gptIntelligenceEfficiencyPayload
+	require.NoError(t, json.Unmarshal(raw, &efficiency))
+	snapshot := &GptIntelligenceSnapshot{
+		Comparisons: []GptIntelligenceComparison{
+			{Key: "gpt_56_sol_max", Model: "gpt-5.6-sol", ReasoningEffort: "max"},
+		},
+	}
+
+	merged := mergeGptIntelligenceDeepSeekEfficiency(snapshot, &efficiency)
+
+	require.True(t, merged)
+	require.Len(t, snapshot.Comparisons, 3)
+	require.Equal(t, "deepseek_v4_flash_high", snapshot.Comparisons[0].Key)
+	require.Equal(t, "DeepSeek V4 Flash high", snapshot.Comparisons[0].Label)
+	require.Equal(t, "deepseek-v4-flash", snapshot.Comparisons[0].Model)
+	require.Equal(t, "high", snapshot.Comparisons[0].ReasoningEffort)
+	require.Equal(t, 65.62, *snapshot.Comparisons[0].Latest.Score)
+	require.Equal(t, 49.0, *snapshot.Comparisons[0].Latest.Passed)
+	require.Equal(t, 112.0, *snapshot.Comparisons[0].Latest.Tasks)
+	require.Len(t, snapshot.Comparisons[0].RecentDays, 2)
+	require.Equal(t, "deepseek_v4_flash_max", snapshot.Comparisons[1].Key)
+	require.Equal(t, 87.05, *snapshot.Comparisons[1].Latest.Score)
+	require.Len(t, snapshot.Comparisons[1].RecentDays, 2)
+	require.Equal(t, "gpt_56_sol_max", snapshot.Comparisons[2].Key)
+}
+
+func TestMergeGptIntelligenceDeepSeekEfficiency_SkipsExistingKeys(t *testing.T) {
+	raw := []byte(`{
+  "source_updated_at":"2026-08-06T14:44:46+08:00",
+  "points":[
+    {"model":"deepseek-v4-flash","effort":"max","iq":87.05,"passed":65,"valid_tasks":112},
+    {"model":"deepseek-v4-flash","effort":"high","iq":65.62,"passed":49,"valid_tasks":112}
+  ],
+  "history":[]
+}`)
+	var efficiency gptIntelligenceEfficiencyPayload
+	require.NoError(t, json.Unmarshal(raw, &efficiency))
+	snapshot := &GptIntelligenceSnapshot{
+		Comparisons: []GptIntelligenceComparison{
+			{Key: "deepseek_v4_flash_max", Model: "deepseek-v4-flash", ReasoningEffort: "max"},
+		},
+	}
+
+	merged := mergeGptIntelligenceDeepSeekEfficiency(snapshot, &efficiency)
+
+	require.True(t, merged)
+	require.Len(t, snapshot.Comparisons, 2)
+	require.Equal(t, "deepseek_v4_flash_high", snapshot.Comparisons[0].Key)
+	require.Equal(t, "deepseek_v4_flash_max", snapshot.Comparisons[1].Key)
+}
+
+func TestGptIntelligenceDeepSeekHelpers(t *testing.T) {
+	require.Equal(t, "deepseek_v4_flash_max", gptIntelligenceComparisonKey("deepseek-v4-flash", "max"))
+	require.Equal(t, "DeepSeek V4 Flash max", gptIntelligenceDeepSeekLabel("max"))
 }
 
 func TestEncodeGptIntelligencePromptTemplates_NormalizesKnownTemplates(t *testing.T) {

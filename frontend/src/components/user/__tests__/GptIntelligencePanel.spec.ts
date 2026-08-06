@@ -36,6 +36,9 @@ const messages: Record<string, string> = {
   'channelStatus.modelIq.trendSubtitle': 'Latest 12 available samples',
   'channelStatus.modelIq.overviewTrend': 'IQ Index Overview',
   'channelStatus.modelIq.overviewSubtitle': 'Recent samples aligned by model and reasoning effort',
+  'channelStatus.modelIq.sortLabel': 'Sort by',
+  'channelStatus.modelIq.sortByIq': 'IQ high to low',
+  'channelStatus.modelIq.sortBySeries': 'Group by series',
   'channelStatus.modelIq.intelligenceCheck.button': 'Intelligence check',
   'channelStatus.modelIq.intelligenceCheck.title': 'GPT intelligence check',
   'channelStatus.modelIq.intelligenceCheck.subtitle': 'Pick a prompt template',
@@ -335,6 +338,92 @@ describe('GptIntelligencePanel', () => {
 
     expect(overviewCards()).toHaveLength(5)
     expect(overviewGrid().classes()).toContain('xl:grid-cols-5')
+  })
+
+  it('sorts overview cards by IQ descending by default', () => {
+    const snapshotWithMoreSeries: GptIntelligenceSnapshot = {
+      ...snapshot,
+      comparisons: [
+        ...snapshot.comparisons,
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_54_high',
+          label: 'GPT-5.4 high',
+          model: 'gpt-5.4',
+          latest: { ...snapshot.comparisons[0].latest!, model: 'gpt-5.4', score: 130 },
+        },
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_53_high',
+          label: 'GPT-5.3 high',
+          model: 'gpt-5.3',
+          latest: { ...snapshot.comparisons[0].latest!, model: 'gpt-5.3', score: 110 },
+        },
+      ],
+    }
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot: snapshotWithMoreSeries,
+        loading: false,
+        error: null,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    const cardTitles = () => wrapper
+      .get('[data-test="gpt-intelligence-overview-cards"]')
+      .findAll('.rounded-xl.border.p-4')
+      .map((card) => card.get('div').text())
+
+    expect(cardTitles()).toEqual(['GPT-5.4-high', 'GPT-5.5-xhigh', 'GPT-5.3-high', 'GPT-5.5-high'])
+  })
+
+  it('groups overview cards by model series when selected', async () => {
+    const snapshotWithMoreSeries: GptIntelligenceSnapshot = {
+      ...snapshot,
+      comparisons: [
+        ...snapshot.comparisons,
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_54_high',
+          label: 'GPT-5.4 high',
+          model: 'gpt-5.4',
+          latest: { ...snapshot.comparisons[0].latest!, model: 'gpt-5.4', score: 130 },
+        },
+        {
+          ...snapshot.comparisons[0],
+          key: 'gpt_53_high',
+          label: 'GPT-5.3 high',
+          model: 'gpt-5.3',
+          latest: { ...snapshot.comparisons[0].latest!, model: 'gpt-5.3', score: 110 },
+        },
+      ],
+    }
+    const wrapper = mount(GptIntelligencePanel, {
+      props: {
+        snapshot: snapshotWithMoreSeries,
+        loading: false,
+        error: null,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-test="sort-by-series"]').trigger('click')
+
+    const cardTitles = () => wrapper
+      .get('[data-test="gpt-intelligence-overview-cards"]')
+      .findAll('.rounded-xl.border.p-4')
+      .map((card) => card.get('div').text())
+
+    expect(cardTitles()).toEqual(['GPT-5.5-high', 'GPT-5.5-xhigh', 'GPT-5.3-high', 'GPT-5.4-high'])
   })
 
   it('opens intelligence check templates as read-only for regular users', async () => {
