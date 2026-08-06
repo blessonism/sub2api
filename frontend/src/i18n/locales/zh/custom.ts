@@ -109,6 +109,9 @@ export default {
       "trendSubtitle": "近 12 个可用采样点",
       "overviewTrend": "智商指数总览",
       "overviewSubtitle": "按模型和推理强度对齐最近采样点",
+      "sortLabel": "排序方式",
+      "sortByIq": "IQ 从高到低",
+      "sortBySeries": "按系列分组",
       "intelligenceCheck": {
         "button": "智力检验",
         "title": "GPT 智力检验",

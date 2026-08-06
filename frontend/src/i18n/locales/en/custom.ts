@@ -109,6 +109,9 @@ export default {
       "trendSubtitle": "Latest 12 available samples",
       "overviewTrend": "IQ Index Overview",
       "overviewSubtitle": "Recent samples aligned by model and reasoning effort",
+      "sortLabel": "Sort by",
+      "sortByIq": "IQ high to low",
+      "sortBySeries": "Group by series",
       "intelligenceCheck": {
         "button": "Intelligence check",
         "title": "GPT intelligence check",
