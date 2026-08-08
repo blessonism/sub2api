@@ -1,6 +1,8 @@
 .PHONY: dev-up dev-down dev-status build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan upstream-sync-preflight upstream-sync-check
 
 FRONTEND_CRITICAL_VITEST := \
+	src/api/__tests__/client.spec.ts \
+	src/api/__tests__/tokenRefresh.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
 	src/views/auth/__tests__/WechatCallbackView.spec.ts \
 	src/views/user/__tests__/PaymentView.spec.ts \

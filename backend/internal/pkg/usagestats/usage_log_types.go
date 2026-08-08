@@ -159,6 +159,7 @@ type UserUsageTrendPoint struct {
 type UserSpendingRankingItem struct {
 	UserID     int64     `json:"user_id"`
 	Email      string    `json:"email"`
+	Username   string    `json:"username"`
 	ActualCost float64   `json:"actual_cost"` // 实际扣除
 	Requests   int64     `json:"requests"`
 	Tokens     int64     `json:"tokens"`
@@ -400,13 +401,14 @@ type UsageLogFilters struct {
 	RequestID string
 	Model     string
 	// ModelFilterSource controls how Model is matched. Empty preserves raw usage_logs.model semantics.
-	ModelFilterSource string
-	RequestType       *int16
-	Stream            *bool
-	BillingType       *int8
-	BillingMode       string
-	StartTime         *time.Time
-	EndTime           *time.Time
+	ModelFilterSource     string
+	RequestType           *int16
+	Stream                *bool
+	BillingType           *int8
+	BillingMode           string
+	UpstreamModelMismatch *bool
+	StartTime             *time.Time
+	EndTime               *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
 	// SharedIPUsers 将管理员使用记录限制为当前筛选条件下同一 IP 关联多个用户的记录。
