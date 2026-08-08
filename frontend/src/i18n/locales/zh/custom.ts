@@ -1100,7 +1100,9 @@ export default {
       "filterBillingType": "计费类型",
       "tiers": "档位",
       "addTier": "添加档位",
+      "conditionMode": "条件模式",
       "minTokens": "最低 Token",
+      "minActualCost": "最低实际消费额",
       "rateMultiplier": "专属倍率",
       "preview": "预览",
       "history": "历史",
@@ -1121,7 +1123,10 @@ export default {
       "noTiers": "暂无档位",
       "user": "用户",
       "tokenUsage": "Token 用量",
-      "tierMinTokens": "命中档位",
+      "actualCost": "实际消费额",
+      "tierConditionMode": "命中条件",
+      "tierMinTokens": "Token 阈值",
+      "tierMinActualCost": "消费额阈值",
       "oldRate": "原倍率",
       "newRate": "新倍率",
       "reason": "原因",
@@ -1155,12 +1160,17 @@ export default {
       "deleteFailed": "删除策略失败",
       "nameRequired": "请输入策略名称",
       "groupRequired": "请选择目标分组",
-      "tiersInvalid": "档位阈值必须不小于 0，倍率必须大于 0",
-      "tiersDuplicate": "档位阈值不能重复",
+      "tiersInvalid": "已启用条件的阈值必须为不小于 0 的有效数值，倍率必须大于 0",
+      "tiersDuplicate": "档位条件组合不能重复",
       "targetGroupMissing": "未选择目标分组",
       "allGroups": "全部分组",
       "allModels": "全部模型",
-      "tierSummaryLine": "达到 {tokens} Token 后应用 {rate}x",
+      "tierSummaryLine": "满足 {conditions} 后应用 {rate}x",
+      "tierConditions": {
+        "token": "{tokens} Token",
+        "actual_cost": "实际消费额 {cost}",
+        "both": "{tokens} Token 且实际消费额 {cost}"
+      },
       "windowDays": {
         "7": "最近 7 天",
         "30": "最近 30 天"
@@ -1168,6 +1178,11 @@ export default {
       "actionModes": {
         "rate_only": "仅设置专属倍率",
         "grant_group_and_rate": "授权分组并设置倍率"
+      },
+      "conditionModes": {
+        "token": "仅 Token",
+        "actual_cost": "仅实际消费额",
+        "both": "Token 和实际消费额"
       },
       "conflictModes": {
         "manual_priority": "手动设置优先",

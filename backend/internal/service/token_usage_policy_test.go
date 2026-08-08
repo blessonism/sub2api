@@ -29,8 +29,8 @@ func TestNormalizeTokenUsagePolicyInputDefaultsAndValidation(t *testing.T) {
 	require.Equal(t, TokenUsagePolicyActionRateOnly, policy.ActionMode)
 	require.Equal(t, TokenUsagePolicyConflictManualPriority, policy.ConflictMode)
 	require.Equal(t, TokenUsagePolicyFrequencyDaily, policy.ScheduleFrequency)
-	require.Equal(t, int64(0), tiers[0].MinTokens)
-	require.Equal(t, int64(1000), tiers[1].MinTokens)
+	require.Equal(t, int64(1000), tiers[0].MinTokens)
+	require.Equal(t, int64(0), tiers[1].MinTokens)
 
 	_, _, err = normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
 		Name:          "bad",
@@ -47,6 +47,49 @@ func TestNormalizeTokenUsagePolicyInputDefaultsAndValidation(t *testing.T) {
 			{MinTokens: 100, RateMultiplier: 1},
 			{MinTokens: 100, RateMultiplier: 0.8},
 		},
+	}, 0)
+	require.Error(t, err)
+}
+
+func TestSelectTokenUsageTierSupportsConfiguredConditions(t *testing.T) {
+	tiers := []TokenUsageAutoPolicyTier{
+		{ConditionMode: TokenUsagePolicyConditionToken, MinTokens: 100, RateMultiplier: 0.9},
+		{ConditionMode: TokenUsagePolicyConditionActualCost, MinActualCost: 2, RateMultiplier: 0.8},
+		{ConditionMode: TokenUsagePolicyConditionBoth, MinTokens: 1000, MinActualCost: 10, RateMultiplier: 0.7},
+	}
+
+	require.Equal(t, 0.9, selectTokenUsageTier(tiers, 100, 0).RateMultiplier)
+	require.Equal(t, 0.8, selectTokenUsageTier(tiers, 0, 2).RateMultiplier)
+	require.Equal(t, 0.7, selectTokenUsageTier(tiers, 1000, 10).RateMultiplier)
+	require.Nil(t, selectTokenUsageTier(tiers, 99, 1.99))
+}
+
+func TestNormalizeTokenUsagePolicyInputPreservesConditionOrderAndValidatesCost(t *testing.T) {
+	_, tiers, err := normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
+		Name:          "conditions",
+		TargetGroupID: 7,
+		Tiers: []TokenUsageAutoPolicyTier{
+			{ConditionMode: TokenUsagePolicyConditionActualCost, MinActualCost: 1.25, RateMultiplier: 0.9},
+			{ConditionMode: TokenUsagePolicyConditionBoth, MinTokens: 100, MinActualCost: 2.5, RateMultiplier: 0.8},
+		},
+	}, 0)
+	require.NoError(t, err)
+	require.Equal(t, TokenUsagePolicyConditionActualCost, tiers[0].ConditionMode)
+	require.Equal(t, 1, tiers[0].SortOrder)
+	require.Equal(t, TokenUsagePolicyConditionBoth, tiers[1].ConditionMode)
+	require.Equal(t, 2, tiers[1].SortOrder)
+
+	_, _, err = normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
+		Name:          "invalid cost",
+		TargetGroupID: 7,
+		Tiers:         []TokenUsageAutoPolicyTier{{ConditionMode: TokenUsagePolicyConditionActualCost, MinActualCost: -1, RateMultiplier: 1}},
+	}, 0)
+	require.Error(t, err)
+
+	_, _, err = normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
+		Name:          "invalid mode",
+		TargetGroupID: 7,
+		Tiers:         []TokenUsageAutoPolicyTier{{ConditionMode: "unknown", MinTokens: 1, RateMultiplier: 1}},
 	}, 0)
 	require.Error(t, err)
 }
