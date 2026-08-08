@@ -181,13 +181,21 @@
             </button>
           </div>
           <div class="mt-4 space-y-3">
-            <div v-for="(tier, index) in form.tiers" :key="index" class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-800 md:grid-cols-[auto_1fr_1fr_auto] md:items-end">
+            <div v-for="(tier, index) in form.tiers" :key="index" class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-800 md:grid-cols-[auto_1fr_1fr_1fr_1fr_auto] md:items-end">
               <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-gray-700 dark:bg-dark-700 dark:text-gray-200">
                 {{ index + 1 }}
               </div>
               <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.conditionMode') }}</span>
+                <Select v-model="tier.condition_mode" :options="conditionModeOptions" />
+              </label>
+              <label class="space-y-1">
                 <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minTokens') }}</span>
-                <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" />
+                <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" :disabled="tier.condition_mode === 'actual_cost'" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minActualCost') }}</span>
+                <input v-model.number="tier.min_actual_cost" class="input w-full" type="number" min="0" step="0.000001" :disabled="tier.condition_mode === 'token'" />
               </label>
               <label class="space-y-1">
                 <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.rateMultiplier') }}</span>
@@ -284,12 +292,15 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ group.changes.length }}</span>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[1080px] text-sm">
+            <table class="w-full min-w-[1320px] text-sm">
               <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.actualCost') }}</th>
+                  <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.tierConditionMode') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinActualCost') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
@@ -302,7 +313,10 @@
                     <div class="text-xs text-gray-500 dark:text-gray-400">ID {{ change.user_id }} · {{ change.user_email || '-' }}</div>
                   </td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.actual_cost) }}</td>
+                  <td class="px-4 py-3">{{ change.tier_condition_mode ? conditionModeLabel(change.tier_condition_mode) : '-' }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.tier_min_actual_cost) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
@@ -357,7 +371,7 @@
               <td class="px-4 py-3 text-red-600 dark:text-red-300">{{ run.error_message || '-' }}</td>
             </tr>
             <tr v-if="isRunExpanded(run.id)">
-              <td colspan="6" class="bg-gray-50 px-4 py-4 dark:bg-dark-800/60">
+              <td colspan="9" class="bg-gray-50 px-4 py-4 dark:bg-dark-800/60">
                 <div v-if="isRunDetailsLoading(run.id)" class="flex min-h-32 items-center justify-center">
                   <LoadingSpinner />
                 </div>
@@ -377,12 +391,15 @@
                       <span class="text-xs text-gray-500 dark:text-gray-400">{{ group.changes.length }}</span>
                     </div>
                     <div class="overflow-x-auto">
-                      <table class="w-full min-w-[1080px] text-sm">
+                      <table class="w-full min-w-[1320px] text-sm">
                         <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                           <tr>
                             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.actualCost') }}</th>
+                            <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.tierConditionMode') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinActualCost') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
                             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
@@ -395,7 +412,10 @@
                               <div class="text-xs text-gray-500 dark:text-gray-400">ID {{ change.user_id }} · {{ change.user_email || '-' }}</div>
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.actual_cost) }}</td>
+                            <td class="px-4 py-3">{{ change.tier_condition_mode ? conditionModeLabel(change.tier_condition_mode) : '-' }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.tier_min_actual_cost) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
@@ -440,6 +460,7 @@ import tokenUsagePoliciesAPI, {
   type TokenUsagePolicyActionMode,
   type TokenUsagePolicyChange,
   type TokenUsagePolicyChangeType,
+  type TokenUsagePolicyConditionMode,
   type TokenUsagePolicyConflictMode,
   type TokenUsagePolicyFilters,
   type TokenUsagePolicyInput,
@@ -451,6 +472,7 @@ import tokenUsagePoliciesAPI, {
   type TokenUsagePolicyTier
 } from '@/api/admin/tokenUsagePolicies'
 import type { AdminGroup, PaginatedResponse } from '@/types'
+import { formatCostFixed } from '@/utils/format'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -508,6 +530,11 @@ const conflictModeOptions = computed(() => [
   { value: 'manual_priority', label: t('admin.tokenUsagePolicies.conflictModes.manual_priority') },
   { value: 'auto_priority', label: t('admin.tokenUsagePolicies.conflictModes.auto_priority') }
 ])
+const conditionModeOptions = computed(() => [
+  { value: 'token', label: t('admin.tokenUsagePolicies.conditionModes.token') },
+  { value: 'actual_cost', label: t('admin.tokenUsagePolicies.conditionModes.actual_cost') },
+  { value: 'both', label: t('admin.tokenUsagePolicies.conditionModes.both') }
+])
 const frequencyOptions = computed(() => [
   { value: 'every_6h', label: t('admin.tokenUsagePolicies.frequencies.every_6h') },
   { value: 'daily', label: t('admin.tokenUsagePolicies.frequencies.daily') },
@@ -555,11 +582,9 @@ const formFilterSummary = computed(() => summarizeFilters(form.filters, filterMo
 const formTierSummaryLines = computed(() => {
   if (!form.tiers.length) return [t('admin.tokenUsagePolicies.noTiers')]
   return form.tiers
-    .slice()
-    .sort((a, b) => Number(a.min_tokens) - Number(b.min_tokens))
     .map((tier) =>
       t('admin.tokenUsagePolicies.tierSummaryLine', {
-        tokens: formatNumber(Number(tier.min_tokens) || 0),
+        conditions: tierConditionSummary(tier),
         rate: formatRate(Number(tier.rate_multiplier) || 0)
       })
     )
@@ -590,7 +615,7 @@ function defaultForm(): PolicyForm {
     conflict_mode: 'manual_priority',
     schedule_frequency: 'daily',
     filters: {},
-    tiers: [{ min_tokens: 0, rate_multiplier: 1 }]
+    tiers: [{ condition_mode: 'token', min_tokens: 0, min_actual_cost: 0, rate_multiplier: 1 }]
   }
 }
 
@@ -605,7 +630,12 @@ function resetForm(policy?: TokenUsagePolicy) {
         conflict_mode: policy.conflict_mode,
         schedule_frequency: policy.schedule_frequency,
         filters: { ...policy.filters },
-        tiers: policy.tiers.map((tier) => ({ min_tokens: tier.min_tokens, rate_multiplier: tier.rate_multiplier }))
+        tiers: policy.tiers.map((tier) => ({
+          condition_mode: tier.condition_mode,
+          min_tokens: tier.min_tokens,
+          min_actual_cost: tier.min_actual_cost,
+          rate_multiplier: tier.rate_multiplier
+        }))
       }
     : defaultForm()
   Object.assign(form, next)
@@ -675,14 +705,23 @@ function buildPayload(): TokenUsagePolicyInput | null {
     appStore.showWarning(t('admin.tokenUsagePolicies.groupRequired'))
     return null
   }
-  const tiers = [...form.tiers]
-    .map((tier) => ({ min_tokens: Number(tier.min_tokens), rate_multiplier: Number(tier.rate_multiplier) }))
-    .sort((a, b) => a.min_tokens - b.min_tokens)
-  if (tiers.length === 0 || tiers.some((tier) => tier.min_tokens < 0 || tier.rate_multiplier <= 0)) {
+  const tiers = form.tiers.map((tier) => ({
+    condition_mode: tier.condition_mode,
+    min_tokens: tier.condition_mode === 'actual_cost' ? 0 : Number(tier.min_tokens),
+    min_actual_cost: tier.condition_mode === 'token' ? 0 : Number(tier.min_actual_cost),
+    rate_multiplier: Number(tier.rate_multiplier)
+  }))
+  if (tiers.length === 0 || tiers.some((tier) => {
+    const usesTokens = tier.condition_mode !== 'actual_cost'
+    const usesActualCost = tier.condition_mode !== 'token'
+    return !Number.isFinite(tier.rate_multiplier) || tier.rate_multiplier <= 0
+      || (usesTokens && (!Number.isFinite(tier.min_tokens) || tier.min_tokens < 0))
+      || (usesActualCost && (!Number.isFinite(tier.min_actual_cost) || tier.min_actual_cost < 0))
+  })) {
     appStore.showWarning(t('admin.tokenUsagePolicies.tiersInvalid'))
     return null
   }
-  const thresholds = new Set(tiers.map((tier) => tier.min_tokens))
+  const thresholds = new Set(tiers.map((tier) => `${tier.condition_mode}:${tier.min_tokens}:${tier.min_actual_cost}`))
   if (thresholds.size !== tiers.length) {
     appStore.showWarning(t('admin.tokenUsagePolicies.tiersDuplicate'))
     return null
@@ -707,7 +746,7 @@ function buildPayload(): TokenUsagePolicyInput | null {
 
 function addTier() {
   const max = Math.max(0, ...form.tiers.map((tier) => Number(tier.min_tokens) || 0))
-  form.tiers.push({ min_tokens: max + 1000000, rate_multiplier: 1 })
+  form.tiers.push({ condition_mode: 'token', min_tokens: max + 1000000, min_actual_cost: 0, rate_multiplier: 1 })
 }
 
 function removeTier(index: number) {
@@ -926,6 +965,23 @@ function conflictModeLabel(value: TokenUsagePolicyConflictMode) {
   return t(`admin.tokenUsagePolicies.conflictModes.${value}`)
 }
 
+function conditionModeLabel(value: TokenUsagePolicyConditionMode) {
+  return t(`admin.tokenUsagePolicies.conditionModes.${value}`)
+}
+
+function tierConditionSummary(tier: TokenUsagePolicyTier) {
+  if (tier.condition_mode === 'actual_cost') {
+    return t('admin.tokenUsagePolicies.tierConditions.actual_cost', { cost: formatCost(tier.min_actual_cost) })
+  }
+  if (tier.condition_mode === 'both') {
+    return t('admin.tokenUsagePolicies.tierConditions.both', {
+      tokens: formatNumber(tier.min_tokens),
+      cost: formatCost(tier.min_actual_cost)
+    })
+  }
+  return t('admin.tokenUsagePolicies.tierConditions.token', { tokens: formatNumber(tier.min_tokens) })
+}
+
 function changeTypeLabel(value: TokenUsagePolicyChangeType) {
   return t(`admin.tokenUsagePolicies.changeTypes.${value}`)
 }
@@ -947,9 +1003,10 @@ function runStatusClass(status: TokenUsagePolicyRunStatus) {
 function tierSummary(policy: TokenUsagePolicy) {
   if (!policy.tiers?.length) return t('admin.tokenUsagePolicies.noTiers')
   return policy.tiers
-    .slice()
-    .sort((a, b) => a.min_tokens - b.min_tokens)
-    .map((tier) => `${formatNumber(tier.min_tokens)} -> ${formatRate(tier.rate_multiplier)}`)
+    .map((tier) => t('admin.tokenUsagePolicies.tierSummaryLine', {
+      conditions: tierConditionSummary(tier),
+      rate: formatRate(tier.rate_multiplier)
+    }))
     .join(' / ')
 }
 
@@ -961,6 +1018,12 @@ function formatNumber(value: number | null | undefined) {
 function formatRate(value: number | null | undefined) {
   if (value == null) return '-'
   return Number(value).toFixed(4)
+}
+
+function formatCost(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(Number(value))) return '-'
+  const amount = Number(value)
+  return `$${formatCostFixed(amount, amount > 0 && amount < 0.01 ? 6 : 4)}`
 }
 
 function formatDateTime(value?: string | null) {

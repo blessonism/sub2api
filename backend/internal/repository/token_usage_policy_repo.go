@@ -261,7 +261,8 @@ func (r *tokenUsagePolicyRepository) AggregatePolicyUsage(ctx context.Context, p
 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT ul.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
-		       COALESCE(SUM(COALESCE(ul.input_tokens, 0) + COALESCE(ul.output_tokens, 0) + COALESCE(ul.cache_creation_tokens, 0) + COALESCE(ul.cache_read_tokens, 0)), 0)::bigint AS token_usage
+		       COALESCE(SUM(COALESCE(ul.input_tokens, 0) + COALESCE(ul.output_tokens, 0) + COALESCE(ul.cache_creation_tokens, 0) + COALESCE(ul.cache_read_tokens, 0)), 0)::bigint AS token_usage,
+		       COALESCE(SUM(ul.actual_cost), 0)::double precision AS actual_cost
 		FROM usage_logs ul
 		JOIN users u ON u.id = ul.user_id
 		WHERE `+strings.Join(conditions, " AND ")+`
@@ -276,7 +277,7 @@ func (r *tokenUsagePolicyRepository) AggregatePolicyUsage(ctx context.Context, p
 	out := []service.TokenUsageAutoPolicyUsageRow{}
 	for rows.Next() {
 		var row service.TokenUsageAutoPolicyUsageRow
-		if err := rows.Scan(&row.UserID, &row.UserName, &row.UserEmail, &row.TokenUsage); err != nil {
+		if err := rows.Scan(&row.UserID, &row.UserName, &row.UserEmail, &row.TokenUsage, &row.ActualCost); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -327,7 +328,7 @@ func (r *tokenUsagePolicyRepository) ListPolicyStates(ctx context.Context, polic
 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id, a.policy_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
-		       a.target_group_id, a.tier_id, a.last_token_usage, a.last_rate_multiplier,
+		       a.target_group_id, a.tier_id, a.last_token_usage, a.last_actual_cost, a.last_rate_multiplier,
 		       a.group_granted_by_policy, a.previous_rate_multiplier, a.manual_takeover,
 		       COALESCE(a.manual_takeover_reason, ''), a.manual_takeover_at, a.last_applied_at,
 		       a.created_at, a.updated_at,
@@ -370,7 +371,7 @@ func (r *tokenUsagePolicyRepository) ListPolicyAssignmentStates(ctx context.Cont
 	result := map[int64]service.TokenUsageAutoPolicyState{}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT a.id, a.policy_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
-		       a.target_group_id, a.tier_id, a.last_token_usage, a.last_rate_multiplier,
+		       a.target_group_id, a.tier_id, a.last_token_usage, a.last_actual_cost, a.last_rate_multiplier,
 		       a.group_granted_by_policy, a.previous_rate_multiplier, a.manual_takeover,
 		       COALESCE(a.manual_takeover_reason, ''), a.manual_takeover_at, a.last_applied_at,
 		       a.created_at, a.updated_at,
@@ -481,16 +482,17 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 			}
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO token_usage_auto_assignments (
-					policy_id, user_id, target_group_id, tier_id, last_token_usage, last_rate_multiplier,
+					policy_id, user_id, target_group_id, tier_id, last_token_usage, last_actual_cost, last_rate_multiplier,
 					group_granted_by_policy, previous_rate_multiplier, manual_takeover, manual_takeover_reason,
 					manual_takeover_at, last_applied_at, created_at, updated_at
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,NULL,NULL,$9,NOW(),NOW())
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE,NULL,NULL,$10,NOW(),NOW())
 				ON CONFLICT (policy_id, user_id)
 				DO UPDATE SET
 					target_group_id = EXCLUDED.target_group_id,
 					tier_id = EXCLUDED.tier_id,
 					last_token_usage = EXCLUDED.last_token_usage,
+					last_actual_cost = EXCLUDED.last_actual_cost,
 					last_rate_multiplier = EXCLUDED.last_rate_multiplier,
 					group_granted_by_policy = token_usage_auto_assignments.group_granted_by_policy OR EXCLUDED.group_granted_by_policy,
 					previous_rate_multiplier = COALESCE(token_usage_auto_assignments.previous_rate_multiplier, EXCLUDED.previous_rate_multiplier),
@@ -499,7 +501,7 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 					manual_takeover_at = NULL,
 					last_applied_at = EXCLUDED.last_applied_at,
 					updated_at = NOW()
-			`, policy.ID, change.UserID, policy.TargetGroupID, *change.TierID, change.TokenUsage, *change.NewRateMultiplier, grantByPolicy, previousRate, now); err != nil {
+			`, policy.ID, change.UserID, policy.TargetGroupID, *change.TierID, change.TokenUsage, change.ActualCost, *change.NewRateMultiplier, grantByPolicy, previousRate, now); err != nil {
 				return err
 			}
 		case service.TokenUsagePolicyChangeClear:
@@ -510,26 +512,27 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 			clearPolicyGrantedGroupOwnership := shouldClearPolicyGrantedGroupOwnership(change)
 			if _, err := tx.ExecContext(ctx, `
 					INSERT INTO token_usage_auto_assignments (
-						policy_id, user_id, target_group_id, tier_id, last_token_usage, last_rate_multiplier,
+						policy_id, user_id, target_group_id, tier_id, last_token_usage, last_actual_cost, last_rate_multiplier,
 						group_granted_by_policy, previous_rate_multiplier, manual_takeover, manual_takeover_reason,
 						manual_takeover_at, last_applied_at, created_at, updated_at
 					)
-						VALUES ($1,$2,$3,$4,$5,NULL,FALSE,$6,TRUE,$7,NOW(),NULL,NOW(),NOW())
+						VALUES ($1,$2,$3,$4,$5,$6,NULL,FALSE,$7,TRUE,$8,NOW(),NULL,NOW(),NOW())
 						ON CONFLICT (policy_id, user_id)
 						DO UPDATE SET
 							target_group_id = EXCLUDED.target_group_id,
 							tier_id = EXCLUDED.tier_id,
 							last_token_usage = EXCLUDED.last_token_usage,
+							last_actual_cost = EXCLUDED.last_actual_cost,
 							previous_rate_multiplier = COALESCE(token_usage_auto_assignments.previous_rate_multiplier, EXCLUDED.previous_rate_multiplier),
 							group_granted_by_policy = CASE
-								WHEN $8 THEN FALSE
+							WHEN $9 THEN FALSE
 								ELSE token_usage_auto_assignments.group_granted_by_policy
 							END,
 						manual_takeover = TRUE,
 						manual_takeover_reason = EXCLUDED.manual_takeover_reason,
 						manual_takeover_at = COALESCE(token_usage_auto_assignments.manual_takeover_at, NOW()),
 						updated_at = NOW()
-				`, policy.ID, change.UserID, policy.TargetGroupID, change.TierID, change.TokenUsage, change.OldRateMultiplier, change.Reason, clearPolicyGrantedGroupOwnership); err != nil {
+				`, policy.ID, change.UserID, policy.TargetGroupID, change.TierID, change.TokenUsage, change.ActualCost, change.OldRateMultiplier, change.Reason, clearPolicyGrantedGroupOwnership); err != nil {
 				return err
 			}
 		}
@@ -788,8 +791,8 @@ func (r *tokenUsagePolicyRepository) ListPolicyRunChanges(ctx context.Context, p
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT run_id, change_type, user_id, COALESCE(user_name, ''), COALESCE(user_email, ''),
-		       token_usage, target_group_id, tier_id, tier_min_tokens,
+			SELECT run_id, change_type, user_id, COALESCE(user_name, ''), COALESCE(user_email, ''),
+			       token_usage, actual_cost, target_group_id, tier_id, tier_min_tokens, tier_condition_mode, tier_min_actual_cost,
 		       old_rate_multiplier, new_rate_multiplier, COALESCE(reason, ''),
 		       group_granted, manual_takeover
 		FROM token_usage_auto_run_changes
@@ -828,13 +831,13 @@ func insertTokenUsageRunChanges(ctx context.Context, exec sqlExecutor, runID, po
 	for _, change := range changes {
 		if _, err := exec.ExecContext(ctx, `
 			INSERT INTO token_usage_auto_run_changes (
-				run_id, policy_id, change_type, user_id, user_name, user_email, token_usage, target_group_id,
-				tier_id, tier_min_tokens, old_rate_multiplier, new_rate_multiplier, reason,
+				run_id, policy_id, change_type, user_id, user_name, user_email, token_usage, actual_cost, target_group_id,
+				tier_id, tier_min_tokens, tier_condition_mode, tier_min_actual_cost, old_rate_multiplier, new_rate_multiplier, reason,
 				group_granted, manual_takeover, created_at
 			)
-			VALUES ($1,$2,$3,$4,NULLIF($5, ''),NULLIF($6, ''),$7,$8,$9,$10,$11,$12,NULLIF($13, ''),$14,$15,NOW())
-		`, runID, policyID, change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID,
-			change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason,
+			VALUES ($1,$2,$3,$4,NULLIF($5, ''),NULLIF($6, ''),$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16, ''),$17,$18,NOW())
+		`, runID, policyID, change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.ActualCost, change.TargetGroupID,
+			change.TierID, change.TierMinTokens, change.TierConditionMode, change.TierMinActualCost, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason,
 			change.GroupGranted, change.ManualTakeover); err != nil {
 			return err
 		}
@@ -845,9 +848,9 @@ func insertTokenUsageRunChanges(ctx context.Context, exec sqlExecutor, runID, po
 func insertTokenUsagePolicyTiers(ctx context.Context, tx *sql.Tx, policyID int64, tiers []service.TokenUsageAutoPolicyTier) error {
 	for _, tier := range tiers {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO token_usage_auto_policy_tiers (policy_id, min_tokens, rate_multiplier, sort_order, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, NOW(), NOW())
-		`, policyID, tier.MinTokens, tier.RateMultiplier, tier.SortOrder); err != nil {
+			INSERT INTO token_usage_auto_policy_tiers (policy_id, condition_mode, min_tokens, min_actual_cost, rate_multiplier, sort_order, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		`, policyID, tier.ConditionMode, tier.MinTokens, tier.MinActualCost, tier.RateMultiplier, tier.SortOrder); err != nil {
 			return err
 		}
 	}
@@ -866,7 +869,7 @@ func (r *tokenUsagePolicyRepository) attachPolicyChildren(ctx context.Context, p
 		policies[i].Tiers = []service.TokenUsageAutoPolicyTier{}
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, policy_id, min_tokens, rate_multiplier, sort_order, created_at, updated_at
+		SELECT id, policy_id, condition_mode, min_tokens, min_actual_cost, rate_multiplier, sort_order, created_at, updated_at
 		FROM token_usage_auto_policy_tiers
 		WHERE policy_id = ANY($1)
 		ORDER BY policy_id, sort_order, min_tokens
@@ -876,7 +879,7 @@ func (r *tokenUsagePolicyRepository) attachPolicyChildren(ctx context.Context, p
 	}
 	for rows.Next() {
 		var tier service.TokenUsageAutoPolicyTier
-		if err := rows.Scan(&tier.ID, &tier.PolicyID, &tier.MinTokens, &tier.RateMultiplier, &tier.SortOrder, &tier.CreatedAt, &tier.UpdatedAt); err != nil {
+		if err := rows.Scan(&tier.ID, &tier.PolicyID, &tier.ConditionMode, &tier.MinTokens, &tier.MinActualCost, &tier.RateMultiplier, &tier.SortOrder, &tier.CreatedAt, &tier.UpdatedAt); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -965,7 +968,7 @@ func scanTokenUsageAssignmentState(rows *sql.Rows) (service.TokenUsageAutoAssign
 	var hasAllowed bool
 	if err := rows.Scan(
 		&a.ID, &a.PolicyID, &a.UserID, &a.UserName, &a.UserEmail, &a.TargetGroupID,
-		&tierID, &a.LastTokenUsage, &lastRate, &a.GroupGrantedByPolicy, &previousRate,
+		&tierID, &a.LastTokenUsage, &a.LastActualCost, &lastRate, &a.GroupGrantedByPolicy, &previousRate,
 		&a.ManualTakeover, &takeoverReason, &a.ManualTakeoverAt, &a.LastAppliedAt,
 		&a.CreatedAt, &a.UpdatedAt, &currentRate, &hasAllowed,
 	); err != nil {
@@ -1004,11 +1007,13 @@ func scanTokenUsageRunChange(rows *sql.Rows, runID *int64) (service.TokenUsageAu
 	var change service.TokenUsageAutoPolicyChange
 	var tierID sql.NullInt64
 	var tierMin sql.NullInt64
+	var tierConditionMode sql.NullString
+	var tierMinActualCost sql.NullFloat64
 	var oldRate sql.NullFloat64
 	var newRate sql.NullFloat64
 	if err := rows.Scan(
 		runID, &change.ChangeType, &change.UserID, &change.UserName, &change.UserEmail,
-		&change.TokenUsage, &change.TargetGroupID, &tierID, &tierMin,
+		&change.TokenUsage, &change.ActualCost, &change.TargetGroupID, &tierID, &tierMin, &tierConditionMode, &tierMinActualCost,
 		&oldRate, &newRate, &change.Reason, &change.GroupGranted, &change.ManualTakeover,
 	); err != nil {
 		return change, err
@@ -1020,6 +1025,13 @@ func scanTokenUsageRunChange(rows *sql.Rows, runID *int64) (service.TokenUsageAu
 	if tierMin.Valid {
 		v := tierMin.Int64
 		change.TierMinTokens = &v
+	}
+	if tierConditionMode.Valid {
+		change.TierConditionMode = tierConditionMode.String
+	}
+	if tierMinActualCost.Valid {
+		v := tierMinActualCost.Float64
+		change.TierMinActualCost = &v
 	}
 	if oldRate.Valid {
 		v := oldRate.Float64

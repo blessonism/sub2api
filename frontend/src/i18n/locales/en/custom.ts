@@ -109,6 +109,9 @@ export default {
       "trendSubtitle": "Latest 12 available samples",
       "overviewTrend": "IQ Index Overview",
       "overviewSubtitle": "Recent samples aligned by model and reasoning effort",
+      "sortLabel": "Sort by",
+      "sortByIq": "IQ high to low",
+      "sortBySeries": "Group by series",
       "intelligenceCheck": {
         "button": "Intelligence check",
         "title": "GPT intelligence check",
@@ -1097,7 +1100,9 @@ export default {
       "filterBillingType": "Billing Type",
       "tiers": "Tiers",
       "addTier": "Add Tier",
+      "conditionMode": "Condition Mode",
       "minTokens": "Min Tokens",
+      "minActualCost": "Min Actual Cost",
       "rateMultiplier": "Rate Multiplier",
       "preview": "Preview",
       "history": "History",
@@ -1118,7 +1123,10 @@ export default {
       "noTiers": "No tiers",
       "user": "User",
       "tokenUsage": "Token Usage",
-      "tierMinTokens": "Matched Tier",
+      "actualCost": "Actual Cost",
+      "tierConditionMode": "Matched Conditions",
+      "tierMinTokens": "Token Threshold",
+      "tierMinActualCost": "Actual Cost Threshold",
       "oldRate": "Old Rate",
       "newRate": "New Rate",
       "reason": "Reason",
@@ -1152,12 +1160,17 @@ export default {
       "deleteFailed": "Failed to delete policy",
       "nameRequired": "Enter a policy name",
       "groupRequired": "Select a target group",
-      "tiersInvalid": "Tier thresholds must be >= 0 and multipliers must be > 0",
-      "tiersDuplicate": "Tier thresholds must be unique",
+      "tiersInvalid": "Enabled thresholds must be finite numbers >= 0 and multipliers must be > 0",
+      "tiersDuplicate": "Tier condition combinations must be unique",
       "targetGroupMissing": "No target group selected",
       "allGroups": "All groups",
       "allModels": "All models",
-      "tierSummaryLine": "Apply {rate}x after {tokens} tokens",
+      "tierSummaryLine": "Apply {rate}x when {conditions}",
+      "tierConditions": {
+        "token": "{tokens} tokens",
+        "actual_cost": "actual cost reaches {cost}",
+        "both": "{tokens} tokens and actual cost reaches {cost}"
+      },
       "windowDays": {
         "7": "Last 7 days",
         "30": "Last 30 days"
@@ -1165,6 +1178,11 @@ export default {
       "actionModes": {
         "rate_only": "Set rate only",
         "grant_group_and_rate": "Grant group and set rate"
+      },
+      "conditionModes": {
+        "token": "Token only",
+        "actual_cost": "Actual cost only",
+        "both": "Token and actual cost"
       },
       "conflictModes": {
         "manual_priority": "Manual priority",
