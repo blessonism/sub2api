@@ -209,6 +209,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   billing_mode?: string
   shared_ip_users?: boolean
   shared_ip_summary_only?: boolean
+  upstream_model_mismatch?: boolean
   sort_by?: string
   sort_order?: 'asc' | 'desc'
   // 错误请求 tab 专属筛选(仅传给错误列表接口;共用同一 filters 对象)
@@ -254,6 +255,7 @@ export async function getStats(params: {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  upstream_model_mismatch?: boolean
   period?: string
   start_date?: string
   end_date?: string

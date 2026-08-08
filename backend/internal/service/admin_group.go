@@ -304,10 +304,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, errors.New("visible_rate_multiplier must be > 0")
 	}
 
-	platform := input.Platform
-	if platform == "" {
-		platform = PlatformAnthropic
-	}
+	platform := NormalizeGroupPlatform(input.Platform)
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -371,6 +368,30 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	timeRatePriority, timeRatePeriods, err := NormalizeAndValidateTimeRateStrategy(input.TimeRatePriority, input.TimeRatePeriods)
 	if err != nil {
+		return nil, err
+	}
+
+	peakRateMultiplier := 1.0
+	if input.PeakRateMultiplier != nil {
+		peakRateMultiplier = *input.PeakRateMultiplier
+	}
+	// 先归一化（非订阅分组清空高峰配置、清洗停用状态下的脏字段）再校验，与 UpdateGroup 同一收口。
+	peakRateEnabled, peakStart, peakEnd, peakRateMultiplier := NormalizePeakRateConfig(subscriptionType, input.PeakRateEnabled, input.PeakStart, input.PeakEnd, peakRateMultiplier)
+	if err := ValidatePeakRateConfig(subscriptionType, peakRateEnabled, peakStart, peakEnd, peakRateMultiplier); err != nil {
+		return nil, err
+	}
+
+	profitMinMargin := 0.0
+	if input.ProfitMinMargin != nil {
+		profitMinMargin = *input.ProfitMinMargin
+	}
+	profitSafetyBuffer := 0.0
+	if input.ProfitSafetyBuffer != nil {
+		profitSafetyBuffer = *input.ProfitSafetyBuffer
+	}
+	// 利润控制与高峰倍率同一收口顺序：先按平台归一化（不支持的平台重置），再校验。
+	profitControlEnabled, profitMinMargin, profitSafetyBuffer := NormalizeProfitControlConfig(platform, input.ProfitControlEnabled, profitMinMargin, profitSafetyBuffer)
+	if err := ValidateProfitControlConfig(platform, profitControlEnabled, profitMinMargin, profitSafetyBuffer); err != nil {
 		return nil, err
 	}
 
@@ -454,6 +475,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		VideoRateIndependent:            input.VideoRateIndependent,
 		VideoRateMultiplier:             videoRateMultiplier,
+		PeakRateEnabled:                 peakRateEnabled,
+		PeakStart:                       peakStart,
+		PeakEnd:                         peakEnd,
+		PeakRateMultiplier:              peakRateMultiplier,
+		ProfitControlEnabled:            profitControlEnabled,
+		ProfitMinMargin:                 profitMinMargin,
+		ProfitSafetyBuffer:              profitSafetyBuffer,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
@@ -714,6 +742,40 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.TimeRatePriority = priority
 		group.TimeRatePeriods = periods
+	}
+	if input.PeakRateEnabled != nil {
+		group.PeakRateEnabled = *input.PeakRateEnabled
+	}
+	if input.PeakStart != nil {
+		group.PeakStart = *input.PeakStart
+	}
+	if input.PeakEnd != nil {
+		group.PeakEnd = *input.PeakEnd
+	}
+	if input.PeakRateMultiplier != nil {
+		group.PeakRateMultiplier = *input.PeakRateMultiplier
+	}
+	// 先归一化（非订阅分组——含本次更新转为非订阅——静默清空高峰配置，清洗停用状态下的脏字段），
+	// 再收敛校验：Update 可能只传部分 peak 字段，需对合并后的最终配置统一校验，
+	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
+	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
+	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
+		return nil, err
+	}
+	if input.ProfitControlEnabled != nil {
+		group.ProfitControlEnabled = *input.ProfitControlEnabled
+	}
+	if input.ProfitMinMargin != nil {
+		group.ProfitMinMargin = *input.ProfitMinMargin
+	}
+	if input.ProfitSafetyBuffer != nil {
+		group.ProfitSafetyBuffer = *input.ProfitSafetyBuffer
+	}
+	// 利润控制与高峰同一收口：按合并后的最终平台归一化（转到不支持平台时静默重置），
+	// 再对合并后的最终配置统一校验，防止部分字段更新拼出非法组合入库。
+	group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer = NormalizeProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer)
+	if err := ValidateProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer); err != nil {
+		return nil, err
 	}
 	if input.ImagePrice1K != nil {
 		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)
