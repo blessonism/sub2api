@@ -235,7 +235,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesDoesNotMarkConflictedGroupG
 		WithArgs(int64(9), int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier"}).AddRow(nil))
 	mock.ExpectExec("INSERT INTO token_usage_auto_assignments").
-		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), newRate, false, oldRate, sqlmock.AnyArg()).
+		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), float64(0), newRate, false, oldRate, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_policies").
 		WithArgs(int64(9), sqlmock.AnyArg(), nil).
@@ -350,7 +350,7 @@ func TestTokenUsagePolicyRepositoryApplyClearMarksManualTakeoverWhenConditionalR
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
-			change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, &currentRate,
+			change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, &currentRate,
 			change.NewRateMultiplier, service.TokenUsagePolicyManualTakeoverPreservedReason, false, true,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -396,7 +396,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) 
 		WithArgs(int64(12)).
 		WillReturnRows(sqlmock.NewRows([]string{"policy_id"}).AddRow(int64(9)))
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
-		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_runs").
 		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
@@ -429,7 +429,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChang
 		WithArgs(int64(12)).
 		WillReturnRows(sqlmock.NewRows([]string{"policy_id"}).AddRow(int64(9)))
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
-		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
 		WillReturnError(insertErr)
 	mock.ExpectRollback()
 
@@ -469,13 +469,13 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAudit
 		WithArgs(int64(9), int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"previous_rate_multiplier"}).AddRow(nil))
 	mock.ExpectExec("INSERT INTO token_usage_auto_assignments").
-		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), newRate, false, oldRate, sqlmock.AnyArg()).
+		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), float64(0), newRate, false, oldRate, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_policies").
 		WithArgs(int64(9), sqlmock.AnyArg(), nil).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
-		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
 		WillReturnError(insertErr)
 	mock.ExpectRollback()
 
@@ -525,7 +525,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunPersistsHistory(t *test
 		WithArgs(int64(9), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
-		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
+		WithArgs(int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_runs").
 		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
@@ -569,7 +569,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunAuditsManualRateDetecte
 	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
-			change.TokenUsage, change.TargetGroupID, change.TierID, change.TierMinTokens, &currentManualRate,
+			change.TokenUsage, float64(0), change.TargetGroupID, change.TierID, change.TierMinTokens, "", nil, &currentManualRate,
 			change.NewRateMultiplier, service.TokenUsagePolicyManualTakeoverPreservedReason, false, true,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -654,12 +654,12 @@ func TestTokenUsagePolicyRepositoryListPolicyRunChangesReturnsScopedChanges(t *t
 		WithArgs(int64(9), int64(12), 20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"run_id", "change_type", "user_id", "user_name", "user_email",
-			"token_usage", "target_group_id", "tier_id", "tier_min_tokens",
+			"token_usage", "actual_cost", "target_group_id", "tier_id", "tier_min_tokens", "tier_condition_mode", "tier_min_actual_cost",
 			"old_rate_multiplier", "new_rate_multiplier", "reason",
 			"group_granted", "manual_takeover",
 		}).AddRow(
 			int64(12), service.TokenUsagePolicyChangeUpdate, int64(7), "u7", "u7@example.com",
-			int64(1500), int64(8), tierID, minTokens,
+			int64(1500), float64(2.5), int64(8), tierID, minTokens, service.TokenUsagePolicyConditionBoth, float64(2),
 			oldRate, newRate, "tier matched",
 			true, false,
 		))
@@ -697,7 +697,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesManualSkipUpdatesTargetGrou
 
 	mock.ExpectBegin()
 	mock.ExpectExec("target_group_id = EXCLUDED\\.target_group_id").
-		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), oldRate, "manual", false).
+		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), float64(0), oldRate, "manual", false).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_policies").
 		WithArgs(int64(9), sqlmock.AnyArg(), nil).
@@ -732,7 +732,7 @@ func TestTokenUsagePolicyRepositoryApplyManualSkipClearsRemovedGroupOwnership(t 
 
 	mock.ExpectBegin()
 	mock.ExpectExec("group_granted_by_policy = CASE").
-		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), oldRate, service.TokenUsagePolicyManualGroupRemovedReason, true).
+		WithArgs(int64(9), int64(7), int64(8), tierID, int64(1500), float64(0), oldRate, service.TokenUsagePolicyManualGroupRemovedReason, true).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE token_usage_auto_policies").
 		WithArgs(int64(9), sqlmock.AnyArg(), nil).
@@ -789,7 +789,7 @@ func tokenUsagePolicyRows() *sqlmock.Rows {
 func tokenUsageAssignmentStateRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "policy_id", "user_id", "username", "email",
-		"target_group_id", "tier_id", "last_token_usage", "last_rate_multiplier",
+		"target_group_id", "tier_id", "last_token_usage", "last_actual_cost", "last_rate_multiplier",
 		"group_granted_by_policy", "previous_rate_multiplier", "manual_takeover",
 		"manual_takeover_reason", "manual_takeover_at", "last_applied_at",
 		"created_at", "updated_at", "rate_multiplier", "has_allowed_group",

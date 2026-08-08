@@ -39,6 +39,10 @@ const (
 
 	TokenUsagePolicyManualGroupRemovedReason      = "policy-granted group access was removed manually"
 	TokenUsagePolicyManualTakeoverPreservedReason = "manual takeover preserved; policy ownership cleared"
+
+	TokenUsagePolicyConditionToken      = "token"
+	TokenUsagePolicyConditionActualCost = "actual_cost"
+	TokenUsagePolicyConditionBoth       = "both"
 )
 
 type TokenUsageAutoPolicy struct {
@@ -70,7 +74,9 @@ type TokenUsageAutoPolicyFilters struct {
 type TokenUsageAutoPolicyTier struct {
 	ID             int64     `json:"id"`
 	PolicyID       int64     `json:"policy_id,omitempty"`
+	ConditionMode  string    `json:"condition_mode"`
 	MinTokens      int64     `json:"min_tokens"`
+	MinActualCost  float64   `json:"min_actual_cost"`
 	RateMultiplier float64   `json:"rate_multiplier"`
 	SortOrder      int       `json:"sort_order"`
 	CreatedAt      time.Time `json:"created_at,omitempty"`
@@ -86,6 +92,7 @@ type TokenUsageAutoAssignment struct {
 	TargetGroupID          int64      `json:"target_group_id"`
 	TierID                 *int64     `json:"tier_id,omitempty"`
 	LastTokenUsage         int64      `json:"last_token_usage"`
+	LastActualCost         float64    `json:"last_actual_cost"`
 	LastRateMultiplier     *float64   `json:"last_rate_multiplier,omitempty"`
 	GroupGrantedByPolicy   bool       `json:"group_granted_by_policy"`
 	PreviousRateMultiplier *float64   `json:"previous_rate_multiplier,omitempty"`
@@ -129,9 +136,12 @@ type TokenUsageAutoPolicyChange struct {
 	UserName          string   `json:"user_name,omitempty"`
 	UserEmail         string   `json:"user_email,omitempty"`
 	TokenUsage        int64    `json:"token_usage"`
+	ActualCost        float64  `json:"actual_cost"`
 	TargetGroupID     int64    `json:"target_group_id"`
 	TierID            *int64   `json:"tier_id,omitempty"`
 	TierMinTokens     *int64   `json:"tier_min_tokens,omitempty"`
+	TierConditionMode string   `json:"tier_condition_mode,omitempty"`
+	TierMinActualCost *float64 `json:"tier_min_actual_cost,omitempty"`
 	OldRateMultiplier *float64 `json:"old_rate_multiplier,omitempty"`
 	NewRateMultiplier *float64 `json:"new_rate_multiplier,omitempty"`
 	Reason            string   `json:"reason,omitempty"`
@@ -167,6 +177,7 @@ type TokenUsageAutoPolicyUsageRow struct {
 	UserName   string
 	UserEmail  string
 	TokenUsage int64
+	ActualCost float64
 }
 
 type TokenUsageAutoPolicyState struct {
@@ -452,9 +463,9 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 	}
 	userIDs = uniqueSortedInt64(userIDs)
 
-	tierMinByID := make(map[int64]int64, len(policy.Tiers))
+	tierByID := make(map[int64]TokenUsageAutoPolicyTier, len(policy.Tiers))
 	for _, tier := range policy.Tiers {
-		tierMinByID[tier.ID] = tier.MinTokens
+		tierByID[tier.ID] = tier
 	}
 
 	changes := make([]TokenUsageAutoPolicyChange, 0, len(userIDs))
@@ -475,9 +486,15 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 		}
 
 		var tierMin *int64
+		var tierConditionMode string
+		var tierMinActualCost *float64
 		if assignment.TierID != nil {
-			if v, ok := tierMinByID[*assignment.TierID]; ok {
-				tierMin = &v
+			if tier, ok := tierByID[*assignment.TierID]; ok {
+				minTokens := tier.MinTokens
+				minActualCost := tier.MinActualCost
+				tierMin = &minTokens
+				tierConditionMode = tier.ConditionMode
+				tierMinActualCost = &minActualCost
 			}
 		}
 		reason := "policy cleared by admin"
@@ -490,9 +507,12 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 			UserName:          state.UserName,
 			UserEmail:         state.UserEmail,
 			TokenUsage:        assignment.LastTokenUsage,
+			ActualCost:        assignment.LastActualCost,
 			TargetGroupID:     targetGroupID,
 			TierID:            assignment.TierID,
 			TierMinTokens:     tierMin,
+			TierConditionMode: tierConditionMode,
+			TierMinActualCost: tierMinActualCost,
 			OldRateMultiplier: state.CurrentRate,
 			Reason:            reason,
 			GroupGranted:      assignment.GroupGrantedByPolicy,
@@ -544,9 +564,6 @@ func (s *TokenUsageAutoPolicyService) buildPolicyChanges(ctx context.Context, po
 	userIDs = uniqueSortedInt64(userIDs)
 
 	tiers := append([]TokenUsageAutoPolicyTier(nil), policy.Tiers...)
-	sort.Slice(tiers, func(i, j int) bool {
-		return tiers[i].MinTokens < tiers[j].MinTokens
-	})
 
 	changes := make([]TokenUsageAutoPolicyChange, 0, len(userIDs))
 	stats := TokenUsageAutoPolicyRunStats{TotalUsers: len(userIDs)}
@@ -565,8 +582,8 @@ func (s *TokenUsageAutoPolicyService) buildPolicyChanges(ctx context.Context, po
 			state.UserEmail = row.UserEmail
 		}
 
-		tier := selectTokenUsageTier(tiers, row.TokenUsage)
-		change := buildTokenUsagePolicyChange(policy, state, row.TokenUsage, tier, tiers)
+		tier := selectTokenUsageTier(tiers, row.TokenUsage, row.ActualCost)
+		change := buildTokenUsagePolicyChange(policy, state, row.TokenUsage, row.ActualCost, tier, tiers)
 		if change == nil {
 			continue
 		}
@@ -632,7 +649,7 @@ func invalidateUserGroupRateCacheForPolicyUpdate(existing, policy TokenUsageAuto
 	}
 }
 
-func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAutoPolicyState, tokenUsage int64, tier *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyChange {
+func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAutoPolicyState, tokenUsage int64, actualCost float64, tier *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyChange {
 	if state.Assignment != nil && state.Assignment.ManualTakeover && policy.ConflictMode == TokenUsagePolicyConflictManualPriority {
 		groupOwnershipRemoved := state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup
 		reason := state.Assignment.ManualTakeoverReason
@@ -645,6 +662,7 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 			UserName:       state.UserName,
 			UserEmail:      state.UserEmail,
 			TokenUsage:     tokenUsage,
+			ActualCost:     actualCost,
 			TargetGroupID:  policy.TargetGroupID,
 			Reason:         reason,
 			GroupGranted:   groupOwnershipRemoved,
@@ -661,6 +679,7 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				UserName:          state.UserName,
 				UserEmail:         state.UserEmail,
 				TokenUsage:        tokenUsage,
+				ActualCost:        actualCost,
 				TargetGroupID:     policy.TargetGroupID,
 				OldRateMultiplier: state.CurrentRate,
 				Reason:            reason,
@@ -675,6 +694,7 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				UserName:       state.UserName,
 				UserEmail:      state.UserEmail,
 				TokenUsage:     tokenUsage,
+				ActualCost:     actualCost,
 				TargetGroupID:  policy.TargetGroupID,
 				Reason:         TokenUsagePolicyManualGroupRemovedReason,
 				GroupGranted:   true,
@@ -693,6 +713,7 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 			UserName:          state.UserName,
 			UserEmail:         state.UserEmail,
 			TokenUsage:        tokenUsage,
+			ActualCost:        actualCost,
 			TargetGroupID:     policy.TargetGroupID,
 			OldRateMultiplier: state.CurrentRate,
 			Reason:            "usage below the lowest tier",
@@ -728,9 +749,12 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				UserName:          state.UserName,
 				UserEmail:         state.UserEmail,
 				TokenUsage:        tokenUsage,
+				ActualCost:        actualCost,
 				TargetGroupID:     policy.TargetGroupID,
 				TierID:            &tierID,
 				TierMinTokens:     &minTokens,
+				TierConditionMode: tier.ConditionMode,
+				TierMinActualCost: float64Ptr(tier.MinActualCost),
 				OldRateMultiplier: oldRate,
 				NewRateMultiplier: &newRate,
 				Reason:            reason,
@@ -748,9 +772,12 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 		UserName:          state.UserName,
 		UserEmail:         state.UserEmail,
 		TokenUsage:        tokenUsage,
+		ActualCost:        actualCost,
 		TargetGroupID:     policy.TargetGroupID,
 		TierID:            &tierID,
 		TierMinTokens:     &minTokens,
+		TierConditionMode: tier.ConditionMode,
+		TierMinActualCost: float64Ptr(tier.MinActualCost),
 		OldRateMultiplier: oldRate,
 		NewRateMultiplier: &newRate,
 		GroupGranted:      policy.ActionMode == TokenUsagePolicyActionGrantGroupAndRate && !state.HasAllowedGroup,
@@ -763,16 +790,29 @@ func isDowngradeTier(previousTierID *int64, current *TokenUsageAutoPolicyTier, t
 	}
 	for i := range tiers {
 		if tiers[i].ID == *previousTierID {
-			return current.MinTokens < tiers[i].MinTokens
+			previous := tiers[i]
+			if current.SortOrder > 0 && previous.SortOrder > 0 {
+				return current.SortOrder < previous.SortOrder
+			}
+			return current.MinTokens < previous.MinTokens
 		}
 	}
 	return false
 }
 
-func selectTokenUsageTier(tiers []TokenUsageAutoPolicyTier, usage int64) *TokenUsageAutoPolicyTier {
+func selectTokenUsageTier(tiers []TokenUsageAutoPolicyTier, tokenUsage int64, actualCost float64) *TokenUsageAutoPolicyTier {
 	var selected *TokenUsageAutoPolicyTier
 	for i := range tiers {
-		if usage >= tiers[i].MinTokens {
+		matches := false
+		switch tiers[i].ConditionMode {
+		case TokenUsagePolicyConditionActualCost:
+			matches = actualCost >= tiers[i].MinActualCost
+		case TokenUsagePolicyConditionBoth:
+			matches = tokenUsage >= tiers[i].MinTokens && actualCost >= tiers[i].MinActualCost
+		default:
+			matches = tokenUsage >= tiers[i].MinTokens
+		}
+		if matches {
 			selected = &tiers[i]
 		}
 	}
@@ -863,29 +903,44 @@ func normalizeTokenUsagePolicyInput(input TokenUsageAutoPolicyInput, id int64) (
 		return nil, nil, infraerrors.BadRequest("EMPTY_TIERS", "at least one tier is required")
 	}
 
-	seen := make(map[int64]struct{}, len(input.Tiers))
 	tiers := make([]TokenUsageAutoPolicyTier, 0, len(input.Tiers))
 	for _, tier := range input.Tiers {
+		conditionMode := tier.ConditionMode
+		if conditionMode == "" {
+			conditionMode = TokenUsagePolicyConditionToken
+		}
+		if !isValidTokenUsageConditionMode(conditionMode) {
+			return nil, nil, infraerrors.BadRequest("INVALID_TIER_CONDITION_MODE", "invalid tier condition_mode")
+		}
 		if tier.MinTokens < 0 {
 			return nil, nil, infraerrors.BadRequest("INVALID_TIER_MIN_TOKENS", "tier min_tokens must be non-negative")
+		}
+		if tier.MinActualCost < 0 || math.IsNaN(tier.MinActualCost) || math.IsInf(tier.MinActualCost, 0) {
+			return nil, nil, infraerrors.BadRequest("INVALID_TIER_MIN_ACTUAL_COST", "tier min_actual_cost must be finite and non-negative")
 		}
 		if tier.RateMultiplier <= 0 || math.IsNaN(tier.RateMultiplier) || math.IsInf(tier.RateMultiplier, 0) {
 			return nil, nil, infraerrors.BadRequest("INVALID_TIER_RATE", "tier rate_multiplier must be greater than 0")
 		}
-		if _, ok := seen[tier.MinTokens]; ok {
-			return nil, nil, infraerrors.BadRequest("DUPLICATE_TIER_THRESHOLD", "tier min_tokens must be unique")
+		minTokens := tier.MinTokens
+		minActualCost := tier.MinActualCost
+		if conditionMode == TokenUsagePolicyConditionActualCost {
+			minTokens = 0
 		}
-		seen[tier.MinTokens] = struct{}{}
+		if conditionMode == TokenUsagePolicyConditionToken {
+			minActualCost = 0
+		}
+		for _, existing := range tiers {
+			if existing.ConditionMode == conditionMode && existing.MinTokens == minTokens && existing.MinActualCost == minActualCost {
+				return nil, nil, infraerrors.BadRequest("DUPLICATE_TIER_THRESHOLD", "tier condition must be unique")
+			}
+		}
 		tiers = append(tiers, TokenUsageAutoPolicyTier{
-			MinTokens:      tier.MinTokens,
+			ConditionMode:  conditionMode,
+			MinTokens:      minTokens,
+			MinActualCost:  minActualCost,
 			RateMultiplier: tier.RateMultiplier,
+			SortOrder:      len(tiers) + 1,
 		})
-	}
-	sort.Slice(tiers, func(i, j int) bool {
-		return tiers[i].MinTokens < tiers[j].MinTokens
-	})
-	for i := range tiers {
-		tiers[i].SortOrder = i + 1
 	}
 
 	enabled := true
@@ -908,6 +963,10 @@ func normalizeTokenUsagePolicyInput(input TokenUsageAutoPolicyInput, id int64) (
 
 func isValidTokenUsageActionMode(value string) bool {
 	return value == TokenUsagePolicyActionRateOnly || value == TokenUsagePolicyActionGrantGroupAndRate
+}
+
+func isValidTokenUsageConditionMode(value string) bool {
+	return value == TokenUsagePolicyConditionToken || value == TokenUsagePolicyConditionActualCost || value == TokenUsagePolicyConditionBoth
 }
 
 func isValidTokenUsageConflictMode(value string) bool {

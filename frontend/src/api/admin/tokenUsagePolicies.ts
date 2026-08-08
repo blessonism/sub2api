@@ -2,6 +2,7 @@ import { apiClient } from '../client'
 import type { PaginatedResponse } from '@/types'
 
 export type TokenUsagePolicyActionMode = 'rate_only' | 'grant_group_and_rate'
+export type TokenUsagePolicyConditionMode = 'token' | 'actual_cost' | 'both'
 export type TokenUsagePolicyConflictMode = 'manual_priority' | 'auto_priority'
 export type TokenUsagePolicyScheduleFrequency = 'every_6h' | 'daily' | 'weekly'
 export type TokenUsagePolicyRunType = 'preview' | 'manual' | 'scheduled' | 'clear'
@@ -18,7 +19,9 @@ export interface TokenUsagePolicyFilters {
 export interface TokenUsagePolicyTier {
   id?: number
   policy_id?: number
+  condition_mode: TokenUsagePolicyConditionMode
   min_tokens: number
+  min_actual_cost: number
   rate_multiplier: number
   sort_order?: number
   created_at?: string
@@ -88,9 +91,12 @@ export interface TokenUsagePolicyChange {
   user_name?: string
   user_email?: string
   token_usage: number
+  actual_cost: number
   target_group_id: number
   tier_id?: number | null
   tier_min_tokens?: number | null
+  tier_condition_mode?: TokenUsagePolicyConditionMode | null
+  tier_min_actual_cost?: number | null
   old_rate_multiplier?: number | null
   new_rate_multiplier?: number | null
   reason?: string

@@ -64,6 +64,39 @@
     </div>
 
     <div v-else class="p-5">
+      <div
+        v-if="comparisonSeries.length"
+        class="mb-4 flex flex-wrap items-center justify-between gap-3"
+      >
+        <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
+          {{ t('channelStatus.modelIq.sortLabel') }}
+        </span>
+        <div class="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs font-medium dark:border-dark-600 dark:bg-dark-900/50">
+          <button
+            type="button"
+            data-test="sort-by-iq"
+            class="px-3 py-1.5 transition-colors"
+            :class="sortMode === 'iq'
+              ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="sortMode = 'iq'"
+          >
+            {{ t('channelStatus.modelIq.sortByIq') }}
+          </button>
+          <button
+            type="button"
+            data-test="sort-by-series"
+            class="border-l border-gray-200 px-3 py-1.5 transition-colors dark:border-dark-600"
+            :class="sortMode === 'series'
+              ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="sortMode = 'series'"
+          >
+            {{ t('channelStatus.modelIq.sortBySeries') }}
+          </button>
+        </div>
+      </div>
+
       <div v-if="comparisonSeries.length" data-test="gpt-intelligence-overview-cards" :class="overviewCardsGridClass">
         <div
           v-for="series in comparisonSeries"
@@ -473,6 +506,7 @@ interface PromptTemplateDraft {
 
 type FeedbackState = 'idle' | 'saved' | 'failed'
 type CopyState = 'idle' | 'copied' | 'failed'
+type GptIntelligenceSortMode = 'iq' | 'series'
 
 const SERIES_PALETTES: SeriesPalette[] = [
   {
@@ -577,6 +611,7 @@ const activePromptTemplateId = ref(DEFAULT_PROMPT_TEMPLATES[0].id)
 const promptTemplates = reactive<PromptTemplateDraft[]>(loadPromptTemplates())
 const draftState = ref<FeedbackState>('idle')
 const copyState = ref<CopyState>('idle')
+const sortMode = ref<GptIntelligenceSortMode>('iq')
 
 const latest = computed(() => props.snapshot?.latest ?? null)
 
@@ -660,7 +695,7 @@ const comparisonSeries = computed<PreparedSeries[]>(() => {
     })
   }
 
-  return sources.map((series, index) => {
+  return orderIntelligenceSeries(sources, sortMode.value).map((series, index) => {
     const palette = SERIES_PALETTES[index % SERIES_PALETTES.length]
     const latestRun = series.latest
     const sampledAt = latestRun?.date || findLatestRun(series.runs)?.date || t('monitorCommon.latencyEmpty')
@@ -1180,6 +1215,66 @@ function buildSeriesTitle(model: string, effort: string, fallback: string): stri
 
 function buildLegendLabel(title: string): string {
   return title.replace(/^GPT-/i, '')
+}
+
+const INTELLIGENCE_FAMILY_ORDER = [
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'gpt-5.5',
+  'deepseek-v4-flash',
+]
+
+const INTELLIGENCE_EFFORT_ORDER: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  xhigh: 3,
+  max: 4,
+  ultra: 5,
+}
+
+function orderIntelligenceSeries(sources: SeriesSource[], mode: GptIntelligenceSortMode): SeriesSource[] {
+  const ordered = [...sources]
+  if (mode === 'iq') {
+    ordered.sort((a, b) => {
+      const scoreA = a.latest?.score ?? null
+      const scoreB = b.latest?.score ?? null
+      if (scoreA === null && scoreB === null) return 0
+      if (scoreA === null) return 1
+      if (scoreB === null) return -1
+      return scoreB - scoreA
+    })
+    return ordered
+  }
+
+  ordered.sort((a, b) => {
+    const familyA = intelligenceSeriesFamily(a)
+    const familyB = intelligenceSeriesFamily(b)
+    const familyDiff = intelligenceFamilyOrder(familyA) - intelligenceFamilyOrder(familyB)
+    if (familyDiff !== 0) return familyDiff
+    const familyNameDiff = familyA.localeCompare(familyB)
+    if (familyNameDiff !== 0) return familyNameDiff
+    const effortA = intelligenceSeriesEffort(a)
+    const effortB = intelligenceSeriesEffort(b)
+    const effortDiff = (INTELLIGENCE_EFFORT_ORDER[effortA] ?? 99) - (INTELLIGENCE_EFFORT_ORDER[effortB] ?? 99)
+    if (effortDiff !== 0) return effortDiff
+    return a.key.localeCompare(b.key)
+  })
+  return ordered
+}
+
+function intelligenceSeriesFamily(series: SeriesSource): string {
+  return series.latest?.model || series.runs[0]?.model || series.key
+}
+
+function intelligenceSeriesEffort(series: SeriesSource): string {
+  return series.latest?.reasoning_effort || series.runs[0]?.reasoning_effort || ''
+}
+
+function intelligenceFamilyOrder(model: string): number {
+  const index = INTELLIGENCE_FAMILY_ORDER.indexOf(model)
+  return index >= 0 ? index : INTELLIGENCE_FAMILY_ORDER.length
 }
 
 function formatModelName(model: string): string {

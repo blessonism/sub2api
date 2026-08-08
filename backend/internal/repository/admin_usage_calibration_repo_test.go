@@ -238,6 +238,99 @@ func TestCreateAdminUsageCalibrationAllowsConsumptionWithoutOriginalTokens(t *te
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCreateAdminUsageCalibrationAllowsConsumptionDeltaWithoutOriginalTokens(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+	createdAt := time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC)
+	start := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	input := service.AdminUsageCalibrationCreateInput{
+		TargetUserID: 42,
+		AdminUserID:  1,
+		Consumption: &service.AdminUsageConsumptionCalibrationInput{
+			Mode:      service.AdminUsageCalibrationModeDelta,
+			Value:     -70,
+			StartDate: "2026-07-24",
+			EndDate:   "2026-07-24",
+			Timezone:  "UTC",
+		},
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT balance").WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(10.0))
+	mock.ExpectQuery("TO_CHAR\\(\\(created_at AT TIME ZONE").
+		WithArgs(int64(42), "2026-07-24", "2026-07-25", "UTC").
+		WillReturnRows(sqlmock.NewRows([]string{"allocation_date", "tokens"}))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(actual_cost\\), 0\\)").
+		WithArgs(int64(42), start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(0.0))
+	mock.ExpectQuery("(?s)WITH balance_deltas AS .*SUM\\(consumption_delta\\)").
+		WithArgs(int64(42), "2026-07-24", "2026-07-25", start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(70.0))
+	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibrations .*RETURNING").
+		WithArgs(int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil, "delta", 70.0, 10.0, 80.0, 70.0, "delta", -70.0, 70.0, 0.0, -70.0, "2026-07-24", "2026-07-24", "UTC").
+		WillReturnRows(calibrationAuditRows().AddRow(
+			int64(12), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
+			"delta", 70.0, 10.0, 80.0, 70.0, "delta", -70.0, 70.0, 0.0, -70.0,
+			"2026-07-24", "2026-07-24", "UTC", createdAt,
+		))
+	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibration_daily_allocations .*RETURNING").
+		WithArgs(int64(12), int64(42), "2026-07-24", int64(0), int64(0), 70.0).
+		WillReturnRows(calibrationAllocationRows().AddRow(int64(6), int64(12), int64(42), "2026-07-24", int64(0), int64(0), 70.0, createdAt))
+	mock.ExpectExec("UPDATE users").WithArgs(int64(42), 80.0).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	got, err := repo.CreateAdminUsageCalibration(context.Background(), input)
+
+	require.NoError(t, err)
+	require.InDelta(t, -70.0, *got.ConsumptionDelta, 1e-9)
+	require.InDelta(t, 70.0, *got.BalanceDelta, 1e-9)
+	require.Len(t, got.Allocations, 1)
+	require.Equal(t, "2026-07-24", got.Allocations[0].Date)
+	require.InDelta(t, 70.0, *got.Allocations[0].BalanceDelta, 1e-9)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateAdminUsageCalibrationRejectsNegativeBalanceWithoutOriginalTokens(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+	start := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	input := service.AdminUsageCalibrationCreateInput{
+		TargetUserID: 42,
+		AdminUserID:  1,
+		Consumption: &service.AdminUsageConsumptionCalibrationInput{
+			Mode:      service.AdminUsageCalibrationModeDelta,
+			Value:     5,
+			StartDate: "2026-07-24",
+			EndDate:   "2026-07-24",
+			Timezone:  "UTC",
+		},
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT balance").WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(3.0))
+	mock.ExpectQuery("TO_CHAR\\(\\(created_at AT TIME ZONE").
+		WithArgs(int64(42), "2026-07-24", "2026-07-25", "UTC").
+		WillReturnRows(sqlmock.NewRows([]string{"allocation_date", "tokens"}))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(actual_cost\\), 0\\)").
+		WithArgs(int64(42), start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(0.0))
+	mock.ExpectQuery("(?s)WITH balance_deltas AS .*SUM\\(consumption_delta\\)").
+		WithArgs(int64(42), "2026-07-24", "2026-07-25", start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(0.0))
+	mock.ExpectRollback()
+
+	got, err := repo.CreateAdminUsageCalibration(context.Background(), input)
+
+	require.Nil(t, got)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user balance negative")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestAllocateBalanceDeltaOnDate(t *testing.T) {
 	got := allocateBalanceDeltaOnDate("2026-07-24", 70)
 	require.Len(t, got, 1)
