@@ -64,6 +64,145 @@ func TestSelectTokenUsageTierSupportsConfiguredConditions(t *testing.T) {
 	require.Nil(t, selectTokenUsageTier(tiers, 99, 1.99))
 }
 
+func TestSelectTokenUsageTierSeparatesResidentAndWindow(t *testing.T) {
+	tiers := []TokenUsageAutoPolicyTier{
+		{ConditionMode: TokenUsagePolicyConditionToken, MinTokens: 100, RateMultiplier: 0.9},
+		{ConditionMode: TokenUsagePolicyConditionToken, MinTokens: 1000, RateMultiplier: 0.8},
+		{IsResident: true, ConditionMode: TokenUsagePolicyConditionToken, MinTokens: 50000, RateMultiplier: 0.7},
+	}
+
+	require.Nil(t, selectTokenUsageTier(tiers, 60000, 0), "滚动选择器必须忽略常驻档位")
+	require.Equal(t, 0.8, selectTokenUsageTier(tiers, 1500, 0).RateMultiplier)
+	require.Equal(t, 0.7, selectResidentTier(tiers, 60000, 0).RateMultiplier)
+	require.Nil(t, selectResidentTier(tiers, 1000, 0))
+
+	window := selectTokenUsageTier(tiers, 1500, 0)
+	resident := selectResidentTier(tiers, 60000, 0)
+	require.Equal(t, 0.7, selectEffectiveTokenUsageTier(window, resident).RateMultiplier, "两者命中时取更低倍率")
+	require.Equal(t, 0.8, selectEffectiveTokenUsageTier(window, nil).RateMultiplier)
+	require.Equal(t, 0.7, selectEffectiveTokenUsageTier(nil, resident).RateMultiplier)
+}
+
+func TestNormalizeTokenUsagePolicyInputSupportsResidentTiers(t *testing.T) {
+	_, tiers, err := normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
+		Name:          "resident",
+		TargetGroupID: 7,
+		Tiers: []TokenUsageAutoPolicyTier{
+			{MinTokens: 100, RateMultiplier: 0.9},
+			{IsResident: true, MinTokens: 50000, RateMultiplier: 0.7},
+			{MinTokens: 50000, RateMultiplier: 0.85},
+		},
+	}, 0)
+	require.NoError(t, err)
+	require.Len(t, tiers, 3)
+	require.False(t, tiers[0].IsResident)
+	require.True(t, tiers[1].IsResident)
+	require.False(t, tiers[2].IsResident)
+
+	_, _, err = normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
+		Name:          "duplicate resident",
+		TargetGroupID: 7,
+		Tiers: []TokenUsageAutoPolicyTier{
+			{IsResident: true, MinTokens: 100, RateMultiplier: 0.9},
+			{IsResident: true, MinTokens: 100, RateMultiplier: 0.8},
+		},
+	}, 0)
+	require.Error(t, err)
+}
+
+func TestTokenUsagePolicyBuildChangesResidentFloorBehavior(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	policy := baseTokenUsagePolicy()
+	policy.Tiers = []TokenUsageAutoPolicyTier{
+		{ID: 1, PolicyID: policy.ID, MinTokens: 0, RateMultiplier: 1.0},
+		{ID: 2, PolicyID: policy.ID, MinTokens: 1000, RateMultiplier: 0.8},
+		{ID: 3, PolicyID: policy.ID, IsResident: true, MinTokens: 50000, RateMultiplier: 0.85},
+	}
+	repo.policy = policy
+	svc := NewTokenUsageAutoPolicyService(repo)
+
+	t.Run("resident applies when window usage is low", func(t *testing.T) {
+		repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 1, TokenUsage: 100, TotalTokenUsage: 60000}}
+		repo.states = map[int64]TokenUsageAutoPolicyState{1: {UserID: 1}}
+
+		changes, stats, err := svc.buildPolicyChanges(context.Background(), policy)
+
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Equal(t, TokenUsagePolicyChangeCreate, changes[0].ChangeType)
+		require.InDelta(t, 0.85, *changes[0].NewRateMultiplier, 0.00001)
+		require.Equal(t, int64(3), *changes[0].TierID)
+		require.NotNil(t, changes[0].ResidentTierID)
+		require.Equal(t, int64(60000), changes[0].TotalTokenUsage)
+		require.Equal(t, 1, stats.CreateCount)
+	})
+
+	t.Run("window tier with lower rate wins over resident", func(t *testing.T) {
+		repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 1, TokenUsage: 5000, TotalTokenUsage: 60000}}
+		repo.states = map[int64]TokenUsageAutoPolicyState{1: {UserID: 1}}
+
+		changes, _, err := svc.buildPolicyChanges(context.Background(), policy)
+
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.InDelta(t, 0.8, *changes[0].NewRateMultiplier, 0.00001)
+		require.Equal(t, int64(2), *changes[0].TierID)
+		require.NotNil(t, changes[0].ResidentTierID)
+	})
+
+	t.Run("resident is retained instead of clear when window drops", func(t *testing.T) {
+		oldRate := 0.85
+		prevTier := int64(3)
+		repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 1, TokenUsage: 10, TotalTokenUsage: 60000}}
+		repo.states = map[int64]TokenUsageAutoPolicyState{
+			1: {
+				UserID:      1,
+				CurrentRate: &oldRate,
+				Assignment: &TokenUsageAutoAssignment{
+					UserID:             1,
+					TierID:             &prevTier,
+					LastRateMultiplier: &oldRate,
+				},
+			},
+		}
+
+		changes, stats, err := svc.buildPolicyChanges(context.Background(), policy)
+
+		require.NoError(t, err)
+		require.Empty(t, changes, "常驻倍率不变时不应产生变更")
+		require.Zero(t, stats.ClearCount)
+	})
+}
+
+func TestTokenUsagePolicyBuildChangesClearOnlyWhenBothDimensionsMiss(t *testing.T) {
+	repo := newTokenUsagePolicyFakeRepo()
+	policy := baseTokenUsagePolicy()
+	policy.Tiers = append(policy.Tiers, TokenUsageAutoPolicyTier{
+		ID: 3, PolicyID: policy.ID, IsResident: true, MinTokens: 50000, RateMultiplier: 0.7,
+	})
+	repo.policy = policy
+	svc := NewTokenUsageAutoPolicyService(repo)
+	oldRate := 0.8
+	repo.usageRows = []TokenUsageAutoPolicyUsageRow{{UserID: 1, TokenUsage: 10, TotalTokenUsage: 1000}}
+	repo.states = map[int64]TokenUsageAutoPolicyState{
+		1: {
+			UserID:      1,
+			CurrentRate: &oldRate,
+			Assignment: &TokenUsageAutoAssignment{
+				UserID:             1,
+				LastRateMultiplier: &oldRate,
+			},
+		},
+	}
+
+	changes, stats, err := svc.buildPolicyChanges(context.Background(), policy)
+
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	require.Equal(t, TokenUsagePolicyChangeClear, changes[0].ChangeType)
+	require.Equal(t, 1, stats.ClearCount)
+}
+
 func TestNormalizeTokenUsagePolicyInputPreservesConditionOrderAndValidatesCost(t *testing.T) {
 	_, tiers, err := normalizeTokenUsagePolicyInput(TokenUsageAutoPolicyInput{
 		Name:          "conditions",
@@ -692,6 +831,18 @@ func (r *tokenUsagePolicyFakeRepo) TryLockPolicy(context.Context, int64) (bool, 
 
 func (r *tokenUsagePolicyFakeRepo) AggregatePolicyUsage(context.Context, TokenUsageAutoPolicy, time.Time) ([]TokenUsageAutoPolicyUsageRow, error) {
 	return r.usageRows, nil
+}
+
+func (r *tokenUsagePolicyFakeRepo) RefreshUserUsageTotals(_ context.Context, _ []int64) (map[int64]TokenUsageAutoUserTotal, error) {
+	out := map[int64]TokenUsageAutoUserTotal{}
+	for _, row := range r.usageRows {
+		out[row.UserID] = TokenUsageAutoUserTotal{
+			UserID:          row.UserID,
+			TotalTokenUsage: row.TotalTokenUsage,
+			TotalActualCost: row.TotalActualCost,
+		}
+	}
+	return out, nil
 }
 
 func (r *tokenUsagePolicyFakeRepo) ListPolicyStates(context.Context, int64, int64, []int64) (map[int64]TokenUsageAutoPolicyState, error) {
