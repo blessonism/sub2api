@@ -162,7 +162,12 @@ type CreateGroupRequest struct {
 	VideoPrice480P                  *float64                      `json:"video_price_480p"`
 	VideoPrice720P                  *float64                      `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
+	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
+	SearchPricePer1k                *float64                      `json:"search_price_per_1k"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                      `json:"audio_stt_price_per_hour"`
 	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
@@ -227,7 +232,12 @@ type UpdateGroupRequest struct {
 	VideoPrice480P                  *float64                       `json:"video_price_480p"`
 	VideoPrice720P                  *float64                       `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                       `json:"video_price_1080p"`
+	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	WebSearchPricePerCall           *float64                       `json:"web_search_price_per_call"`
+	SearchPricePer1k                *float64                       `json:"search_price_per_1k"`
+	AudioRealtimePricePerMin        *float64                       `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                       `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                       `json:"audio_stt_price_per_hour"`
 	ClaudeCodeOnly                  *bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                         `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                         `json:"fallback_group_id_on_invalid_request"`
@@ -550,7 +560,12 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		SearchPricePer1k:                req.SearchPricePer1k,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -679,7 +694,12 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		SearchPricePer1k:                req.SearchPricePer1k,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

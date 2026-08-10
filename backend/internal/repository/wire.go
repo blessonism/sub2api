@@ -104,6 +104,7 @@ var ProviderSet = wire.NewSet(
 	NewConversationCaptureRepository,
 	NewChannelRepository,
 	NewChannelMonitorRepository,
+	NewChannelMonitorV2Repository,
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
