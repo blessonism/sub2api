@@ -633,15 +633,6 @@ func prepareGrokVideoCompletionBilling(
 	return &merged
 }
 
-func firstNonEmptyString(values ...string) string {
-	for _, v := range values {
-		if s := strings.TrimSpace(v); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
 func recordGrokMediaUsage(
 	c *gin.Context,
 	h *OpenAIGatewayHandler,

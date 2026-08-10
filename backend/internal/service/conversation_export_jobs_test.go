@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -459,6 +460,15 @@ func (s *conversationExportJobTestStore) Upload(context.Context, string, io.Read
 		return 0, s.uploadErr
 	}
 	return 123, nil
+}
+
+func (s *conversationExportJobTestStore) UploadFile(ctx context.Context, key string, filePath string, contentType string) (int64, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = file.Close() }()
+	return s.Upload(ctx, key, file, contentType)
 }
 
 func (s *conversationExportJobTestStore) Download(context.Context, string) (io.ReadCloser, error) {
