@@ -71,18 +71,12 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
 		idempotencyCleanupSvc,
-		nil, // tokenUsagePolicyRunner
-		nil, // lotteryCampaignRunner
 		&service.BatchImageCleanupService{},
 		nil, // batchImageWorker
 		pricingSvc,
 		emailQueueSvc,
-		nil, // announcementEmailWorker
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
-		nil, // conversationCaptureWorkerPool
-		nil, // conversationExportWorkerPool
-		nil, // conversationCaptureCleanup
 		&service.SubscriptionService{},
 		oauthSvc,
 		openAIOAuthSvc,
@@ -94,7 +88,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // backupSvc
 		nil, // paymentOrderExpiry
 		nil, // channelMonitorRunner
-		nil, // upstreamRelayMonitoringRunner
+		nil, // channelMonitorV2Aggregator
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
