@@ -532,7 +532,7 @@ repo.ListWithFilters(ctx, params, filters)
 #### 2. Signatures
 - Route prefix: `/api/v1/admin/token-usage-policies`.
 - Required endpoints: `GET /`, `POST /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, `POST /:id/preview`, `POST /:id/run`, `POST /:id/clear`, `GET /:id/runs`, `GET /:id/runs/:run_id/changes`.
-- DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`, `token_usage_auto_run_changes`.
+- DB tables: `token_usage_auto_policies`, `token_usage_auto_policy_tiers`, `token_usage_auto_assignments`, `token_usage_auto_runs`, `token_usage_auto_run_changes`, `token_usage_auto_user_totals`.
 - Rate write target: `user_group_rate_multipliers(user_id, group_id).rate_multiplier`; do not update `rpm_override`.
 - Group grant target: `user_allowed_groups(user_id, group_id)`; only write columns that exist in the schema (`user_id`, `group_id`, `created_at`).
 
@@ -550,12 +550,17 @@ repo.ListWithFilters(ctx, params, filters)
 - Explicit policy clearing must create a `run_type='clear'` run, persist `clear` run changes, and remove only this policy's assignment footprint. For manual takeover rows, clearing may remove the assignment record and this policy's own group grant, but must not overwrite the current manual `rate_multiplier`.
 - Manual takeover reason matters during clearing: a row whose only takeover reason is that the policy-granted group access was manually removed should still clear/restore the policy-owned rate footprint, while a real manual rate edit must preserve the current manual `rate_multiplier`.
 - Explicit policy clearing must disable the policy and clear `next_run_at` in the same transaction as apply/audit/summary, so the scheduler cannot automatically re-apply the policy after an admin clears it.
+- 常驻档位：`token_usage_auto_policy_tiers.is_resident = TRUE` 的档位按用户**全历史累计、全站口径**（忽略策略筛选）判断，复用 `condition_mode`（`token` / `actual_cost` / `both`）；非常驻档位继续按近 7/30 天窗口判断。
+- 生效倍率：同一用户分别选出滚动命中档位与常驻命中档位，取两者 `rate_multiplier` 更低者为生效档位（`tier_id`）；倍率相等时优先记常驻档位。仅常驻命中时保留常驻倍率，**两者都不命中才清除**。
+- 累计数据：`token_usage_auto_user_totals` 按用户保存全站累计值，`last_processed_id` 记录已纳入统计的最大 `usage_logs.id`；刷新 SQL 只处理 `ul.id > last_processed_id` 的增量，首见用户等价全历史计算，禁止按 `created_at` 做水位（异步落库会漏算）。
+- 累计刷新在事务内用 `pg_advisory_xact_lock` 串行化，水位读取与增量累加必须原子可见，防止不同策略并发执行时重复累加同一批日志。
+- 常驻档位同样遵循 `conflict_mode`（`manual_priority` 下不覆盖手动倍率）并受自动倍率封顶；assignment/run_changes 记录 `resident_tier_id` 与 `total_token_usage` / `total_actual_cost` 双口径审计字段。
 
 #### 4. Validation & Error Matrix
 - Invalid policy id -> `400 INVALID_POLICY_ID`.
 - `window_days` not in `7,30` -> `400 INVALID_WINDOW_DAYS`.
 - Empty tiers -> `400 EMPTY_TIERS`.
-- Duplicate tier threshold -> `400 DUPLICATE_TIER_THRESHOLD`.
+- Duplicate tier threshold（唯一键含 `is_resident`）-> `400 DUPLICATE_TIER_THRESHOLD`。
 - Tier multiplier `<= 0`, NaN, or infinity -> `400 INVALID_TIER_RATE`.
 - Duplicate enabled policy for a target group -> repository must surface the database unique constraint as an error/409-style conflict where applicable.
 - Policy already running -> `409 POLICY_ALREADY_RUNNING`.
@@ -564,6 +569,9 @@ repo.ListWithFilters(ctx, params, filters)
 
 #### 5. Good/Base/Bad Cases
 - Good: a user with 30-day usage above the highest threshold receives only the target group-specific rate multiplier, and preview shows the same change without writing any rows.
+- Good: a user with low window usage but all-time cumulative usage above the resident threshold keeps the resident rate; a lower rolling tier rate temporarily wins when window usage rises, then falls back to resident without clearing.
+- Base: a managed user whose window usage drops below every rolling tier but still matches the resident tier produces no clear and keeps the resident rate.
+- Bad: clearing a user when the rolling tier misses but the resident tier still matches, or letting `selectTokenUsageTier` see resident tiers and break window-only policies.
 - Good: run history renders summary counts first and fetches paginated user-level changes only when the admin expands one run.
 - Base: a user below the lowest tier and managed by the policy is cleared; `rpm_override` and unrelated groups remain untouched.
 - Base: an admin clears a policy that contains manual takeover records; the policy assignment is removed so deletion can proceed, while the manually edited multiplier remains unchanged.
@@ -573,6 +581,8 @@ repo.ListWithFilters(ctx, params, filters)
 
 #### 6. Tests Required
 - Service unit tests: defaults/validation, tier selection, downgrade, clear, explicit policy clearing, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
+- Service unit tests: resident/window selector separation, effective-rate min, resident floor retention, clear only when both dimensions miss, normalize uniqueness including `is_resident`.
+- Repository tests: `RefreshUserUsageTotals` upsert delta + read-back; new tier/assignment/run_changes columns survive SELECT/SCAN round-trip.
 - Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, deletion blocking ignores pure manual takeover rows, run summaries omit change details, run changes are paginated and scoped to the requested policy/run, successful runs persist apply/audit/summary atomically, and grant/clear preserves unrelated group and RPM state.
 - Handler/routes tests: all admin endpoints are registered under the prefix and use admin middleware.
 - Frontend checks: API types match backend JSON names, page defaults match product defaults, preview groups create/update/downgrade/clear/skip results, and `pnpm typecheck` passes.
