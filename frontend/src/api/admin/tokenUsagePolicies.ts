@@ -22,6 +22,7 @@ export interface TokenUsagePolicyTier {
   condition_mode: TokenUsagePolicyConditionMode
   min_tokens: number
   min_actual_cost: number
+  is_resident: boolean
   rate_multiplier: number
   sort_order?: number
   created_at?: string
@@ -92,11 +93,17 @@ export interface TokenUsagePolicyChange {
   user_email?: string
   token_usage: number
   actual_cost: number
+  total_token_usage: number
+  total_actual_cost: number
   target_group_id: number
   tier_id?: number | null
   tier_min_tokens?: number | null
   tier_condition_mode?: TokenUsagePolicyConditionMode | null
   tier_min_actual_cost?: number | null
+  resident_tier_id?: number | null
+  resident_tier_min_tokens?: number | null
+  resident_tier_condition_mode?: TokenUsagePolicyConditionMode | null
+  resident_tier_min_actual_cost?: number | null
   old_rate_multiplier?: number | null
   new_rate_multiplier?: number | null
   reason?: string

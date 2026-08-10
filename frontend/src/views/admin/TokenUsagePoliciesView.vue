@@ -181,30 +181,39 @@
             </button>
           </div>
           <div class="mt-4 space-y-3">
-            <div v-for="(tier, index) in form.tiers" :key="index" class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-800 md:grid-cols-[auto_1fr_1fr_1fr_1fr_auto] md:items-end">
-              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-gray-700 dark:bg-dark-700 dark:text-gray-200">
-                {{ index + 1 }}
+            <div v-for="(tier, index) in form.tiers" :key="index" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-[auto_auto_1fr_1fr_1fr_1fr_auto] md:items-end">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+                  {{ index + 1 }}
+                </div>
+                <label class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 md:h-10">
+                  <input v-model="tier.is_resident" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  {{ t('admin.tokenUsagePolicies.residentTier') }}
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.conditionMode') }}</span>
+                  <Select v-model="tier.condition_mode" :options="conditionModeOptions" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minTokens') }}</span>
+                  <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" :disabled="tier.condition_mode === 'actual_cost'" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minActualCost') }}</span>
+                  <input v-model.number="tier.min_actual_cost" class="input w-full" type="number" min="0" step="0.000001" :disabled="tier.condition_mode === 'token'" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.rateMultiplier') }}</span>
+                  <input v-model.number="tier.rate_multiplier" class="input w-full" type="number" min="0.0001" step="0.0001" />
+                </label>
+                <button class="btn btn-secondary px-3 py-2" type="button" :disabled="form.tiers.length === 1" @click="removeTier(index)">
+                  <Icon name="trash" size="xs" />
+                  {{ t('common.delete') }}
+                </button>
               </div>
-              <label class="space-y-1">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.conditionMode') }}</span>
-                <Select v-model="tier.condition_mode" :options="conditionModeOptions" />
-              </label>
-              <label class="space-y-1">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minTokens') }}</span>
-                <input v-model.number="tier.min_tokens" class="input w-full" type="number" min="0" step="1" :disabled="tier.condition_mode === 'actual_cost'" />
-              </label>
-              <label class="space-y-1">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.minActualCost') }}</span>
-                <input v-model.number="tier.min_actual_cost" class="input w-full" type="number" min="0" step="0.000001" :disabled="tier.condition_mode === 'token'" />
-              </label>
-              <label class="space-y-1">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.tokenUsagePolicies.rateMultiplier') }}</span>
-                <input v-model.number="tier.rate_multiplier" class="input w-full" type="number" min="0.0001" step="0.0001" />
-              </label>
-              <button class="btn btn-secondary px-3 py-2" type="button" :disabled="form.tiers.length === 1" @click="removeTier(index)">
-                <Icon name="trash" size="xs" />
-                {{ t('common.delete') }}
-              </button>
+              <p v-if="tier.is_resident" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.tokenUsagePolicies.residentTierHint') }}
+              </p>
             </div>
           </div>
         </section>
@@ -298,9 +307,12 @@
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.actualCost') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.totalTokenUsage') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.totalActualCost') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.tierConditionMode') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinActualCost') }}</th>
+                  <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.residentCondition') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
                   <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
@@ -314,9 +326,12 @@
                   </td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.actual_cost) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.total_token_usage) }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.total_actual_cost) }}</td>
                   <td class="px-4 py-3">{{ change.tier_condition_mode ? conditionModeLabel(change.tier_condition_mode) : '-' }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.tier_min_actual_cost) }}</td>
+                  <td class="px-4 py-3">{{ residentConditionSummary(change) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
@@ -397,9 +412,12 @@
                             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.user') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tokenUsage') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.actualCost') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.totalTokenUsage') }}</th>
+                            <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.totalActualCost') }}</th>
                             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.tierConditionMode') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinTokens') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.tierMinActualCost') }}</th>
+                            <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.residentCondition') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.oldRate') }}</th>
                             <th class="px-4 py-3 text-right">{{ t('admin.tokenUsagePolicies.newRate') }}</th>
                             <th class="px-4 py-3 text-left">{{ t('admin.tokenUsagePolicies.reason') }}</th>
@@ -413,9 +431,12 @@
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.token_usage) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.actual_cost) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.total_token_usage) }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.total_actual_cost) }}</td>
                             <td class="px-4 py-3">{{ change.tier_condition_mode ? conditionModeLabel(change.tier_condition_mode) : '-' }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(change.tier_min_tokens) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatCost(change.tier_min_actual_cost) }}</td>
+                            <td class="px-4 py-3">{{ residentConditionSummary(change) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.old_rate_multiplier) }}</td>
                             <td class="px-4 py-3 text-right tabular-nums">{{ formatRate(change.new_rate_multiplier) }}</td>
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ change.reason || '-' }}</td>
@@ -615,7 +636,7 @@ function defaultForm(): PolicyForm {
     conflict_mode: 'manual_priority',
     schedule_frequency: 'daily',
     filters: {},
-    tiers: [{ condition_mode: 'token', min_tokens: 0, min_actual_cost: 0, rate_multiplier: 1 }]
+    tiers: [{ condition_mode: 'token', min_tokens: 0, min_actual_cost: 0, is_resident: false, rate_multiplier: 1 }]
   }
 }
 
@@ -634,6 +655,7 @@ function resetForm(policy?: TokenUsagePolicy) {
           condition_mode: tier.condition_mode,
           min_tokens: tier.min_tokens,
           min_actual_cost: tier.min_actual_cost,
+          is_resident: tier.is_resident,
           rate_multiplier: tier.rate_multiplier
         }))
       }
@@ -709,6 +731,7 @@ function buildPayload(): TokenUsagePolicyInput | null {
     condition_mode: tier.condition_mode,
     min_tokens: tier.condition_mode === 'actual_cost' ? 0 : Number(tier.min_tokens),
     min_actual_cost: tier.condition_mode === 'token' ? 0 : Number(tier.min_actual_cost),
+    is_resident: !!tier.is_resident,
     rate_multiplier: Number(tier.rate_multiplier)
   }))
   if (tiers.length === 0 || tiers.some((tier) => {
@@ -721,7 +744,7 @@ function buildPayload(): TokenUsagePolicyInput | null {
     appStore.showWarning(t('admin.tokenUsagePolicies.tiersInvalid'))
     return null
   }
-  const thresholds = new Set(tiers.map((tier) => `${tier.condition_mode}:${tier.min_tokens}:${tier.min_actual_cost}`))
+  const thresholds = new Set(tiers.map((tier) => `${tier.is_resident}:${tier.condition_mode}:${tier.min_tokens}:${tier.min_actual_cost}`))
   if (thresholds.size !== tiers.length) {
     appStore.showWarning(t('admin.tokenUsagePolicies.tiersDuplicate'))
     return null
@@ -746,7 +769,7 @@ function buildPayload(): TokenUsagePolicyInput | null {
 
 function addTier() {
   const max = Math.max(0, ...form.tiers.map((tier) => Number(tier.min_tokens) || 0))
-  form.tiers.push({ condition_mode: 'token', min_tokens: max + 1000000, min_actual_cost: 0, rate_multiplier: 1 })
+  form.tiers.push({ condition_mode: 'token', min_tokens: max + 1000000, min_actual_cost: 0, is_resident: false, rate_multiplier: 1 })
 }
 
 function removeTier(index: number) {
@@ -970,16 +993,32 @@ function conditionModeLabel(value: TokenUsagePolicyConditionMode) {
 }
 
 function tierConditionSummary(tier: TokenUsagePolicyTier) {
+  const prefix = tier.is_resident ? `${t('admin.tokenUsagePolicies.residentTierPrefix')} · ` : ''
   if (tier.condition_mode === 'actual_cost') {
-    return t('admin.tokenUsagePolicies.tierConditions.actual_cost', { cost: formatCost(tier.min_actual_cost) })
+    return prefix + t('admin.tokenUsagePolicies.tierConditions.actual_cost', { cost: formatCost(tier.min_actual_cost) })
   }
   if (tier.condition_mode === 'both') {
-    return t('admin.tokenUsagePolicies.tierConditions.both', {
+    return prefix + t('admin.tokenUsagePolicies.tierConditions.both', {
       tokens: formatNumber(tier.min_tokens),
       cost: formatCost(tier.min_actual_cost)
     })
   }
-  return t('admin.tokenUsagePolicies.tierConditions.token', { tokens: formatNumber(tier.min_tokens) })
+  return prefix + t('admin.tokenUsagePolicies.tierConditions.token', { tokens: formatNumber(tier.min_tokens) })
+}
+
+function residentConditionSummary(change: TokenUsagePolicyChange) {
+  if (!change.resident_tier_condition_mode) return '-'
+  const prefix = t('admin.tokenUsagePolicies.residentTierPrefix')
+  if (change.resident_tier_condition_mode === 'actual_cost') {
+    return `${prefix} · ${t('admin.tokenUsagePolicies.tierConditions.actual_cost', { cost: formatCost(change.resident_tier_min_actual_cost) })}`
+  }
+  if (change.resident_tier_condition_mode === 'both') {
+    return `${prefix} · ${t('admin.tokenUsagePolicies.tierConditions.both', {
+      tokens: formatNumber(change.resident_tier_min_tokens),
+      cost: formatCost(change.resident_tier_min_actual_cost)
+    })}`
+  }
+  return `${prefix} · ${t('admin.tokenUsagePolicies.tierConditions.token', { tokens: formatNumber(change.resident_tier_min_tokens) })}`
 }
 
 function changeTypeLabel(value: TokenUsagePolicyChangeType) {
