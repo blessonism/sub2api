@@ -77,6 +77,7 @@ type TokenUsageAutoPolicyTier struct {
 	ConditionMode  string    `json:"condition_mode"`
 	MinTokens      int64     `json:"min_tokens"`
 	MinActualCost  float64   `json:"min_actual_cost"`
+	IsResident     bool      `json:"is_resident"`
 	RateMultiplier float64   `json:"rate_multiplier"`
 	SortOrder      int       `json:"sort_order"`
 	CreatedAt      time.Time `json:"created_at,omitempty"`
@@ -93,6 +94,9 @@ type TokenUsageAutoAssignment struct {
 	TierID                 *int64     `json:"tier_id,omitempty"`
 	LastTokenUsage         int64      `json:"last_token_usage"`
 	LastActualCost         float64    `json:"last_actual_cost"`
+	ResidentTierID         *int64     `json:"resident_tier_id,omitempty"`
+	LastTotalTokenUsage    int64      `json:"last_total_token_usage"`
+	LastTotalActualCost    float64    `json:"last_total_actual_cost"`
 	LastRateMultiplier     *float64   `json:"last_rate_multiplier,omitempty"`
 	GroupGrantedByPolicy   bool       `json:"group_granted_by_policy"`
 	PreviousRateMultiplier *float64   `json:"previous_rate_multiplier,omitempty"`
@@ -137,11 +141,17 @@ type TokenUsageAutoPolicyChange struct {
 	UserEmail         string   `json:"user_email,omitempty"`
 	TokenUsage        int64    `json:"token_usage"`
 	ActualCost        float64  `json:"actual_cost"`
+	TotalTokenUsage   int64    `json:"total_token_usage"`
+	TotalActualCost   float64  `json:"total_actual_cost"`
 	TargetGroupID     int64    `json:"target_group_id"`
 	TierID            *int64   `json:"tier_id,omitempty"`
 	TierMinTokens     *int64   `json:"tier_min_tokens,omitempty"`
 	TierConditionMode string   `json:"tier_condition_mode,omitempty"`
 	TierMinActualCost *float64 `json:"tier_min_actual_cost,omitempty"`
+	ResidentTierID            *int64   `json:"resident_tier_id,omitempty"`
+	ResidentTierMinTokens     *int64   `json:"resident_tier_min_tokens,omitempty"`
+	ResidentTierConditionMode string   `json:"resident_tier_condition_mode,omitempty"`
+	ResidentTierMinActualCost *float64 `json:"resident_tier_min_actual_cost,omitempty"`
 	OldRateMultiplier *float64 `json:"old_rate_multiplier,omitempty"`
 	NewRateMultiplier *float64 `json:"new_rate_multiplier,omitempty"`
 	Reason            string   `json:"reason,omitempty"`
@@ -178,6 +188,14 @@ type TokenUsageAutoPolicyUsageRow struct {
 	UserEmail  string
 	TokenUsage int64
 	ActualCost float64
+	TotalTokenUsage int64
+	TotalActualCost float64
+}
+
+type TokenUsageAutoUserTotal struct {
+	UserID          int64
+	TotalTokenUsage int64
+	TotalActualCost float64
 }
 
 type TokenUsageAutoPolicyState struct {
@@ -199,6 +217,7 @@ type TokenUsageAutoPolicyRepository interface {
 	ListDuePolicies(ctx context.Context, now time.Time, limit int) ([]TokenUsageAutoPolicy, error)
 	TryLockPolicy(ctx context.Context, policyID int64) (bool, error)
 	AggregatePolicyUsage(ctx context.Context, policy TokenUsageAutoPolicy, since time.Time) ([]TokenUsageAutoPolicyUsageRow, error)
+	RefreshUserUsageTotals(ctx context.Context, userIDs []int64) (map[int64]TokenUsageAutoUserTotal, error)
 	ListPolicyStates(ctx context.Context, policyID, targetGroupID int64, userIDs []int64) (map[int64]TokenUsageAutoPolicyState, error)
 	ListPolicyAssignmentStates(ctx context.Context, policyID int64) (map[int64]TokenUsageAutoPolicyState, error)
 	ApplyPolicyChanges(ctx context.Context, policy TokenUsageAutoPolicy, changes []TokenUsageAutoPolicyChange, nextRunAt *time.Time) error
@@ -488,6 +507,7 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 		var tierMin *int64
 		var tierConditionMode string
 		var tierMinActualCost *float64
+		var residentTier *TokenUsageAutoPolicyTier
 		if assignment.TierID != nil {
 			if tier, ok := tierByID[*assignment.TierID]; ok {
 				minTokens := tier.MinTokens
@@ -497,11 +517,16 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 				tierMinActualCost = &minActualCost
 			}
 		}
+		if assignment.ResidentTierID != nil {
+			if tier, ok := tierByID[*assignment.ResidentTierID]; ok {
+				residentTier = &tier
+			}
+		}
 		reason := "policy cleared by admin"
 		if manualRate {
 			reason = TokenUsagePolicyManualTakeoverPreservedReason
 		}
-		changes = append(changes, TokenUsageAutoPolicyChange{
+		change := TokenUsageAutoPolicyChange{
 			ChangeType:        TokenUsagePolicyChangeClear,
 			UserID:            state.UserID,
 			UserName:          state.UserName,
@@ -517,7 +542,12 @@ func (s *TokenUsageAutoPolicyService) buildPolicyClearChanges(ctx context.Contex
 			Reason:            reason,
 			GroupGranted:      assignment.GroupGrantedByPolicy,
 			ManualTakeover:    manualRate,
-		})
+		}
+		fillTokenUsagePolicyResidentInfo(&change, TokenUsageAutoPolicyUsageRow{
+			TotalTokenUsage: assignment.LastTotalTokenUsage,
+			TotalActualCost: assignment.LastTotalActualCost,
+		}, residentTier)
+		changes = append(changes, change)
 	}
 
 	stats := TokenUsageAutoPolicyRunStats{
@@ -565,10 +595,19 @@ func (s *TokenUsageAutoPolicyService) buildPolicyChanges(ctx context.Context, po
 
 	tiers := append([]TokenUsageAutoPolicyTier(nil), policy.Tiers...)
 
+	totals, err := s.repo.RefreshUserUsageTotals(ctx, userIDs)
+	if err != nil {
+		return nil, TokenUsageAutoPolicyRunStats{}, err
+	}
+
 	changes := make([]TokenUsageAutoPolicyChange, 0, len(userIDs))
 	stats := TokenUsageAutoPolicyRunStats{TotalUsers: len(userIDs)}
 	for _, userID := range userIDs {
 		row := usageByUser[userID]
+		if total, ok := totals[userID]; ok {
+			row.TotalTokenUsage = total.TotalTokenUsage
+			row.TotalActualCost = total.TotalActualCost
+		}
 		state := states[userID]
 		if state.UserID == 0 {
 			state.UserID = userID
@@ -582,8 +621,10 @@ func (s *TokenUsageAutoPolicyService) buildPolicyChanges(ctx context.Context, po
 			state.UserEmail = row.UserEmail
 		}
 
-		tier := selectTokenUsageTier(tiers, row.TokenUsage, row.ActualCost)
-		change := buildTokenUsagePolicyChange(policy, state, row.TokenUsage, row.ActualCost, tier, tiers)
+		windowTier := selectTokenUsageTier(tiers, row.TokenUsage, row.ActualCost)
+		residentTier := selectResidentTier(tiers, row.TotalTokenUsage, row.TotalActualCost)
+		tier := selectEffectiveTokenUsageTier(windowTier, residentTier)
+		change := buildTokenUsagePolicyChange(policy, state, row, windowTier, residentTier, tier, tiers)
 		if change == nil {
 			continue
 		}
@@ -649,57 +690,63 @@ func invalidateUserGroupRateCacheForPolicyUpdate(existing, policy TokenUsageAuto
 	}
 }
 
-func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAutoPolicyState, tokenUsage int64, actualCost float64, tier *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyChange {
+func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAutoPolicyState, row TokenUsageAutoPolicyUsageRow, windowTier, residentTier, tier *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyChange {
 	if state.Assignment != nil && state.Assignment.ManualTakeover && policy.ConflictMode == TokenUsagePolicyConflictManualPriority {
 		groupOwnershipRemoved := state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup
 		reason := state.Assignment.ManualTakeoverReason
 		if groupOwnershipRemoved {
 			reason = TokenUsagePolicyManualGroupRemovedReason
 		}
-		return &TokenUsageAutoPolicyChange{
+		change := &TokenUsageAutoPolicyChange{
 			ChangeType:     TokenUsagePolicyChangeSkipManual,
 			UserID:         state.UserID,
 			UserName:       state.UserName,
 			UserEmail:      state.UserEmail,
-			TokenUsage:     tokenUsage,
-			ActualCost:     actualCost,
+			TokenUsage:     row.TokenUsage,
+			ActualCost:     row.ActualCost,
 			TargetGroupID:  policy.TargetGroupID,
 			Reason:         reason,
 			GroupGranted:   groupOwnershipRemoved,
 			ManualTakeover: true,
 		}
+		fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+		return change
 	}
 
 	if policy.ConflictMode == TokenUsagePolicyConflictManualPriority && state.Assignment != nil {
 		if state.Assignment.LastRateMultiplier != nil && !sameFloatPtr(state.CurrentRate, state.Assignment.LastRateMultiplier) {
 			reason := "rate_multiplier was changed manually"
-			return &TokenUsageAutoPolicyChange{
+			change := &TokenUsageAutoPolicyChange{
 				ChangeType:        TokenUsagePolicyChangeSkipManual,
 				UserID:            state.UserID,
 				UserName:          state.UserName,
 				UserEmail:         state.UserEmail,
-				TokenUsage:        tokenUsage,
-				ActualCost:        actualCost,
+				TokenUsage:        row.TokenUsage,
+				ActualCost:        row.ActualCost,
 				TargetGroupID:     policy.TargetGroupID,
 				OldRateMultiplier: state.CurrentRate,
 				Reason:            reason,
 				GroupGranted:      state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup,
 				ManualTakeover:    true,
 			}
+			fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+			return change
 		}
 		if state.Assignment.GroupGrantedByPolicy && !state.HasAllowedGroup {
-			return &TokenUsageAutoPolicyChange{
+			change := &TokenUsageAutoPolicyChange{
 				ChangeType:     TokenUsagePolicyChangeSkipManual,
 				UserID:         state.UserID,
 				UserName:       state.UserName,
 				UserEmail:      state.UserEmail,
-				TokenUsage:     tokenUsage,
-				ActualCost:     actualCost,
+				TokenUsage:     row.TokenUsage,
+				ActualCost:     row.ActualCost,
 				TargetGroupID:  policy.TargetGroupID,
 				Reason:         TokenUsagePolicyManualGroupRemovedReason,
 				GroupGranted:   true,
 				ManualTakeover: true,
 			}
+			fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+			return change
 		}
 	}
 
@@ -707,18 +754,20 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 		if state.Assignment == nil {
 			return nil
 		}
-		return &TokenUsageAutoPolicyChange{
+		change := &TokenUsageAutoPolicyChange{
 			ChangeType:        TokenUsagePolicyChangeClear,
 			UserID:            state.UserID,
 			UserName:          state.UserName,
 			UserEmail:         state.UserEmail,
-			TokenUsage:        tokenUsage,
-			ActualCost:        actualCost,
+			TokenUsage:        row.TokenUsage,
+			ActualCost:        row.ActualCost,
 			TargetGroupID:     policy.TargetGroupID,
 			OldRateMultiplier: state.CurrentRate,
 			Reason:            "usage below the lowest tier",
 			GroupGranted:      state.Assignment.GroupGrantedByPolicy,
 		}
+		fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+		return change
 	}
 
 	newRate := tier.RateMultiplier
@@ -743,13 +792,13 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 			tierID := tier.ID
 			minTokens := tier.MinTokens
 			reason := "existing rate_multiplier is manual"
-			return &TokenUsageAutoPolicyChange{
+			change := &TokenUsageAutoPolicyChange{
 				ChangeType:        TokenUsagePolicyChangeSkipManual,
 				UserID:            state.UserID,
 				UserName:          state.UserName,
 				UserEmail:         state.UserEmail,
-				TokenUsage:        tokenUsage,
-				ActualCost:        actualCost,
+				TokenUsage:        row.TokenUsage,
+				ActualCost:        row.ActualCost,
 				TargetGroupID:     policy.TargetGroupID,
 				TierID:            &tierID,
 				TierMinTokens:     &minTokens,
@@ -760,19 +809,21 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 				Reason:            reason,
 				ManualTakeover:    true,
 			}
+			fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+			return change
 		}
 		changeType = TokenUsagePolicyChangeUpdate
 	}
 
 	tierID := tier.ID
 	minTokens := tier.MinTokens
-	return &TokenUsageAutoPolicyChange{
+	change := &TokenUsageAutoPolicyChange{
 		ChangeType:        changeType,
 		UserID:            state.UserID,
 		UserName:          state.UserName,
 		UserEmail:         state.UserEmail,
-		TokenUsage:        tokenUsage,
-		ActualCost:        actualCost,
+		TokenUsage:        row.TokenUsage,
+		ActualCost:        row.ActualCost,
 		TargetGroupID:     policy.TargetGroupID,
 		TierID:            &tierID,
 		TierMinTokens:     &minTokens,
@@ -782,6 +833,22 @@ func buildTokenUsagePolicyChange(policy TokenUsageAutoPolicy, state TokenUsageAu
 		NewRateMultiplier: &newRate,
 		GroupGranted:      policy.ActionMode == TokenUsagePolicyActionGrantGroupAndRate && !state.HasAllowedGroup,
 	}
+	fillTokenUsagePolicyResidentInfo(change, row, residentTier)
+	return change
+}
+
+func fillTokenUsagePolicyResidentInfo(change *TokenUsageAutoPolicyChange, row TokenUsageAutoPolicyUsageRow, residentTier *TokenUsageAutoPolicyTier) {
+	change.TotalTokenUsage = row.TotalTokenUsage
+	change.TotalActualCost = row.TotalActualCost
+	if residentTier == nil {
+		return
+	}
+	tierID := residentTier.ID
+	minTokens := residentTier.MinTokens
+	change.ResidentTierID = &tierID
+	change.ResidentTierMinTokens = &minTokens
+	change.ResidentTierConditionMode = residentTier.ConditionMode
+	change.ResidentTierMinActualCost = float64Ptr(residentTier.MinActualCost)
 }
 
 func isDowngradeTier(previousTierID *int64, current *TokenUsageAutoPolicyTier, tiers []TokenUsageAutoPolicyTier) bool {
@@ -803,20 +870,52 @@ func isDowngradeTier(previousTierID *int64, current *TokenUsageAutoPolicyTier, t
 func selectTokenUsageTier(tiers []TokenUsageAutoPolicyTier, tokenUsage int64, actualCost float64) *TokenUsageAutoPolicyTier {
 	var selected *TokenUsageAutoPolicyTier
 	for i := range tiers {
-		matches := false
-		switch tiers[i].ConditionMode {
-		case TokenUsagePolicyConditionActualCost:
-			matches = actualCost >= tiers[i].MinActualCost
-		case TokenUsagePolicyConditionBoth:
-			matches = tokenUsage >= tiers[i].MinTokens && actualCost >= tiers[i].MinActualCost
-		default:
-			matches = tokenUsage >= tiers[i].MinTokens
+		if tiers[i].IsResident {
+			continue
 		}
-		if matches {
+		if tokenUsageTierMatches(&tiers[i], tokenUsage, actualCost) {
 			selected = &tiers[i]
 		}
 	}
 	return selected
+}
+
+func selectResidentTier(tiers []TokenUsageAutoPolicyTier, totalTokenUsage int64, totalActualCost float64) *TokenUsageAutoPolicyTier {
+	var selected *TokenUsageAutoPolicyTier
+	for i := range tiers {
+		if !tiers[i].IsResident {
+			continue
+		}
+		if tokenUsageTierMatches(&tiers[i], totalTokenUsage, totalActualCost) {
+			selected = &tiers[i]
+		}
+	}
+	return selected
+}
+
+func tokenUsageTierMatches(tier *TokenUsageAutoPolicyTier, tokenUsage int64, actualCost float64) bool {
+	switch tier.ConditionMode {
+	case TokenUsagePolicyConditionActualCost:
+		return actualCost >= tier.MinActualCost
+	case TokenUsagePolicyConditionBoth:
+		return tokenUsage >= tier.MinTokens && actualCost >= tier.MinActualCost
+	default:
+		return tokenUsage >= tier.MinTokens
+	}
+}
+
+// selectEffectiveTokenUsageTier 取常驻与滚动档位中倍率更低者；倍率相同时以常驻档位为生效侧。
+func selectEffectiveTokenUsageTier(windowTier, residentTier *TokenUsageAutoPolicyTier) *TokenUsageAutoPolicyTier {
+	switch {
+	case windowTier == nil:
+		return residentTier
+	case residentTier == nil:
+		return windowTier
+	case residentTier.RateMultiplier <= windowTier.RateMultiplier:
+		return residentTier
+	default:
+		return windowTier
+	}
 }
 
 func sameFloatPtr(a, b *float64) bool {
@@ -906,6 +1005,7 @@ func normalizeTokenUsagePolicyInput(input TokenUsageAutoPolicyInput, id int64) (
 	tiers := make([]TokenUsageAutoPolicyTier, 0, len(input.Tiers))
 	for _, tier := range input.Tiers {
 		conditionMode := tier.ConditionMode
+		isResident := tier.IsResident
 		if conditionMode == "" {
 			conditionMode = TokenUsagePolicyConditionToken
 		}
@@ -930,7 +1030,7 @@ func normalizeTokenUsagePolicyInput(input TokenUsageAutoPolicyInput, id int64) (
 			minActualCost = 0
 		}
 		for _, existing := range tiers {
-			if existing.ConditionMode == conditionMode && existing.MinTokens == minTokens && existing.MinActualCost == minActualCost {
+			if existing.IsResident == isResident && existing.ConditionMode == conditionMode && existing.MinTokens == minTokens && existing.MinActualCost == minActualCost {
 				return nil, nil, infraerrors.BadRequest("DUPLICATE_TIER_THRESHOLD", "tier condition must be unique")
 			}
 		}
@@ -938,6 +1038,7 @@ func normalizeTokenUsagePolicyInput(input TokenUsageAutoPolicyInput, id int64) (
 			ConditionMode:  conditionMode,
 			MinTokens:      minTokens,
 			MinActualCost:  minActualCost,
+			IsResident:     isResident,
 			RateMultiplier: tier.RateMultiplier,
 			SortOrder:      len(tiers) + 1,
 		})
