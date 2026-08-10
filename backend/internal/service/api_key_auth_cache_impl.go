@@ -14,7 +14,10 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 19 // v19: group time-rate/reasoning/peak-rate/profit-control + search/audio/video_model_prices billing fields (force refresh of pre-fix snapshots)
+// v19 曾被上游与二开分别用于不同的字段集（time-rate/peak-rate/profit-control 与
+// search/audio/video_model_prices），合并后字段集为两者并集，必须推进版本号，
+// 避免旧缓存携带缺少任一侧字段的快照（见 spec: Versioned authentication cache snapshots）。
+const apiKeyAuthSnapshotVersion = 20
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
