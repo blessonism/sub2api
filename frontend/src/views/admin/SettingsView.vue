@@ -11477,6 +11477,9 @@ async function saveSettings() {
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
+      account_scheduling_thresholds: sanitizeAccountSchedulingThresholdsMap(
+        form.account_scheduling_thresholds,
+      ),
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
@@ -11512,9 +11515,6 @@ async function saveSettings() {
     }
 
     payload.default_platform_quotas = sanitizePlatformQuotasMap(form.default_platform_quotas);
-    payload.account_scheduling_thresholds = sanitizeAccountSchedulingThresholdsMap(
-      form.account_scheduling_thresholds,
-    );
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await settingsStepUp.run(() =>

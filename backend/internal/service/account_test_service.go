@@ -270,14 +270,15 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 
-	return s.TestAccountConnectionWithAccount(c, account, modelID, prompt, mode)
+	return s.TestAccountConnectionWithAccount(c, account, modelID, prompt, mode, testOpts)
 }
 
 // TestAccountConnectionWithAccount 使用已加载账号执行与账号管理测试相同的探测流程。
-func (s *AccountTestService) TestAccountConnectionWithAccount(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) TestAccountConnectionWithAccount(c *gin.Context, account *Account, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	if account == nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	testOpts := firstAccountTestOptions(opts)
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
 	// to an upstream provider.

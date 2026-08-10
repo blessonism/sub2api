@@ -963,6 +963,7 @@ func registerLotteryCampaignRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		lotteries.GET("/:id/draw-batches/:batch_id/winners", h.Admin.LotteryCampaign.ListWinners)
 		lotteries.GET("/:id/designations", h.Admin.LotteryCampaign.GetDesignations)
 		lotteries.PUT("/:id/designations", h.Admin.LotteryCampaign.ReplaceDesignations)
+	}
 }
 
 func registerChannelMonitorV2Routes(admin *gin.RouterGroup, h *handler.Handlers, settingService *service.SettingService) {
