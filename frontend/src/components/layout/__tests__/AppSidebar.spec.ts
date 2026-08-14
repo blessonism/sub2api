@@ -164,6 +164,7 @@ beforeEach(() => {
   sidebarTestState.authStore.isSimpleMode = false
   sidebarTestState.onboardingStore.isCurrentStep.mockReturnValue(false)
   sidebarTestState.onboardingStore.nextStep.mockReset()
+  sidebarTestState.adminSettingsStore.customMenuItems = []
   sidebarTestState.adminSettingsStore.fetch.mockReset()
   sidebarTestState.batchImageAccess.canUseBatchImage.value = false
   sidebarTestState.batchImageAccess.refreshBatchImageAccess.mockReset()
@@ -213,6 +214,91 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch).not.toBeNull()
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
+  })
+})
+
+describe('AppSidebar custom menu open mode', () => {
+  it('opens external custom menu items in a new tab like buy plan', () => {
+    sidebarTestState.appStore.cachedPublicSettings = {
+      custom_menu_items: [
+        {
+          id: 'canvas',
+          label: '无限画布',
+          icon_svg: '',
+          url: 'https://canvas.example/app',
+          visibility: 'user',
+          sort_order: 0,
+          open_mode: 'external',
+        },
+        {
+          id: 'help',
+          label: '帮助中心',
+          icon_svg: '',
+          url: 'https://help.example/docs',
+          visibility: 'user',
+          sort_order: 1,
+        },
+      ],
+      purchase_subscription_enabled: false,
+      purchase_subscription_url: '',
+    }
+
+    const wrapper = mountSidebar()
+    const canvas = sidebarLinkByLabel(wrapper, '无限画布')
+    const help = sidebarLinkByLabel(wrapper, '帮助中心')
+
+    expect(canvas.attributes('href')).toBe('https://canvas.example/app')
+    expect(canvas.attributes('target')).toBe('_blank')
+    expect(canvas.attributes('rel')).toContain('noopener')
+    expect(canvas.attributes('data-router-link-to')).toBeUndefined()
+    expect(help.attributes('data-router-link-to')).toBe('/custom/help')
+  })
+
+  it('treats uppercase http(s) schemes as external sidebar links', () => {
+    sidebarTestState.appStore.cachedPublicSettings = {
+      custom_menu_items: [
+        {
+          id: 'canvas',
+          label: '无限画布',
+          icon_svg: '',
+          url: 'HTTPS://canvas.example/app',
+          visibility: 'user',
+          sort_order: 0,
+          open_mode: 'external',
+        },
+      ],
+      purchase_subscription_enabled: false,
+      purchase_subscription_url: '',
+    }
+
+    const wrapper = mountSidebar()
+    const canvas = sidebarLinkByLabel(wrapper, '无限画布')
+
+    expect(canvas.attributes('href')).toBe('https://canvas.example/app')
+    expect(canvas.attributes('target')).toBe('_blank')
+    expect(canvas.attributes('data-router-link-to')).toBeUndefined()
+  })
+
+  it('opens admin-visible external custom menu items from the admin sidebar', () => {
+    sidebarTestState.authStore.isAdmin = true
+    sidebarTestState.adminSettingsStore.customMenuItems = [
+      {
+        id: 'ops-board',
+        label: '运维画布',
+        icon_svg: '',
+        url: 'https://ops.example/board',
+        visibility: 'admin',
+        sort_order: 0,
+        open_mode: 'external',
+      },
+    ]
+
+    const wrapper = mountSidebar()
+    const link = sidebarLinkByLabel(wrapper, '运维画布')
+
+    expect(link.attributes('href')).toBe('https://ops.example/board')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('data-router-link-to')).toBeUndefined()
   })
 })
 

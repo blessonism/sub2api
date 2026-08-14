@@ -76,6 +76,35 @@
           ></div>
         </div>
 
+        <div
+          v-else-if="isExternalOpenMode"
+          class="flex h-full items-center justify-center p-10 text-center"
+        >
+          <div class="max-w-md">
+            <div
+              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
+            >
+              <Icon name="externalLink" size="lg" class="text-gray-400" />
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('customPage.externalTitle') }}
+            </h3>
+            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+              {{ t('customPage.externalDesc') }}
+            </p>
+            <a
+              v-if="externalUrl"
+              :href="externalUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-primary mt-6 inline-flex items-center"
+            >
+              <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
+              {{ t('customPage.openInNewTab') }}
+            </a>
+          </div>
+        </div>
+
         <!-- URL not configured -->
         <div v-else-if="!isValidUrl" class="flex h-full items-center justify-center p-10 text-center">
           <div class="max-w-md">
@@ -126,6 +155,8 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import { isExternalCustomMenuItem } from '@/utils/customMenu'
+import { sanitizeUrl } from '@/utils/url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -172,6 +203,16 @@ const markdownSlug = computed(() => {
 })
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
+
+const isExternalOpenMode = computed(() => {
+  const item = menuItem.value
+  return !!item && isExternalCustomMenuItem(item)
+})
+
+const externalUrl = computed(() => {
+  if (!isExternalOpenMode.value || !menuItem.value) return ''
+  return sanitizeUrl(menuItem.value.url)
+})
 
 const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''

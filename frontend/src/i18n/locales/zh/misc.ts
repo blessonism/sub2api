@@ -77,6 +77,8 @@ export default {
     notFoundDesc: '该自定义页面不存在或已被删除。',
     notConfiguredTitle: '页面链接未配置',
     notConfiguredDesc: '该自定义页面的 URL 未正确配置。',
+    externalTitle: '外部跳转',
+    externalDesc: '该菜单项已设置为新标签直跳，不会在本站内嵌打开。',
     tableOfContents: '目录',
     copyCode: '复制',
     copiedCode: '已复制',

@@ -79,6 +79,8 @@ export default {
     notFoundDesc: 'This custom page does not exist or has been removed.',
     notConfiguredTitle: 'Page URL not configured',
     notConfiguredDesc: 'The URL for this custom page has not been properly configured.',
+    externalTitle: 'External link',
+    externalDesc: 'This menu item is configured to open in a new tab instead of embedding here.',
     tableOfContents: 'Contents',
     copyCode: 'Copy',
     copiedCode: 'Copied',

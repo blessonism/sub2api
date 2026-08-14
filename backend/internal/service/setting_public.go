@@ -828,16 +828,22 @@ func parseCustomMenuItemURLs(raw string) []string {
 		return nil
 	}
 	var items []struct {
-		URL string `json:"url"`
+		URL      string `json:"url"`
+		OpenMode string `json:"open_mode"`
 	}
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return nil
 	}
 	urls := make([]string, 0, len(items))
 	for _, item := range items {
-		if item.URL != "" {
-			urls = append(urls, item.URL)
+		if strings.TrimSpace(item.OpenMode) == "external" {
+			continue
 		}
+		urlTrimmed := strings.TrimSpace(item.URL)
+		if urlTrimmed == "" || strings.HasPrefix(urlTrimmed, "md:") {
+			continue
+		}
+		urls = append(urls, urlTrimmed)
 	}
 	return urls
 }

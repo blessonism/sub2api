@@ -2,9 +2,20 @@ package dto
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+)
+
+const (
+	CustomMenuOpenModeEmbed    = "embed"
+	CustomMenuOpenModeExternal = "external"
+)
+
+var (
+	errInvalidCustomMenuOpenMode  = errors.New("Custom menu item open_mode must be 'embed' or 'external'")
+	errExternalCustomMenuMarkdown = errors.New("Custom menu item open_mode 'external' cannot use md:<slug> URLs")
 )
 
 // CustomMenuItem represents a user-configured custom menu entry.
@@ -16,6 +27,7 @@ type CustomMenuItem struct {
 	PageSlug   string `json:"page_slug,omitempty"`
 	Visibility string `json:"visibility"` // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
+	OpenMode   string `json:"open_mode,omitempty"` // "embed" (default) or "external"
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -575,6 +587,26 @@ type PreviewEmailTemplateRequest struct {
 type EmailTemplatePreviewResponse struct {
 	Subject string `json:"subject"`
 	HTML    string `json:"html"`
+}
+
+// NormalizeCustomMenuOpenMode maps missing/blank values to embed.
+func NormalizeCustomMenuOpenMode(mode string) (string, error) {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return CustomMenuOpenModeEmbed, nil
+	}
+	if mode == CustomMenuOpenModeEmbed || mode == CustomMenuOpenModeExternal {
+		return mode, nil
+	}
+	return "", errInvalidCustomMenuOpenMode
+}
+
+// ValidateCustomMenuOpenModeWithURL rejects new-tab items that point at markdown pages.
+func ValidateCustomMenuOpenModeWithURL(mode, rawURL string) error {
+	if mode == CustomMenuOpenModeExternal && strings.HasPrefix(strings.TrimSpace(rawURL), "md:") {
+		return errExternalCustomMenuMarkdown
+	}
+	return nil
 }
 
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.
