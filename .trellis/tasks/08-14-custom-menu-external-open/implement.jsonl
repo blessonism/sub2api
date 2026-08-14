@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与上游同步规则"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "open_mode 需跨 DTO、公开设置、侧栏与 CSP 保持一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端校验与测试约定"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前后端 CustomMenuItem 类型对齐"}

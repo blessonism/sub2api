@@ -1109,6 +1109,45 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("submits custom menu open mode with the settings payload", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      custom_menu_items: [
+        {
+          id: "canvas",
+          label: "无限画布",
+          icon_svg: "",
+          url: "https://canvas.example/app",
+          visibility: "user",
+          sort_order: 0,
+          open_mode: "embed",
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const select = wrapper.get('[data-testid="custom-menu-open-mode"]');
+    expect((select.element as HTMLSelectElement).value).toBe("embed");
+    await select.setValue("external");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        custom_menu_items: [
+          expect.objectContaining({
+            id: "canvas",
+            label: "无限画布",
+            url: "https://canvas.example/app",
+            open_mode: "external",
+          }),
+        ],
+      }),
+    );
+  });
+
   it("submits the admin recharge affiliate rebate setting", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

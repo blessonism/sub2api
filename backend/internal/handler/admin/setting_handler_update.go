@@ -1372,6 +1372,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
+			openMode, err := dto.NormalizeCustomMenuOpenMode(item.OpenMode)
+			if err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			if err := dto.ValidateCustomMenuOpenModeWithURL(openMode, urlTrimmed); err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			items[i].OpenMode = openMode
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
