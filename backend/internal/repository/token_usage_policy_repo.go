@@ -927,11 +927,11 @@ func insertTokenUsageRunChanges(ctx context.Context, exec sqlExecutor, runID, po
 				old_rate_multiplier, new_rate_multiplier, reason,
 				group_granted, manual_takeover, created_at
 			)
-			VALUES ($1,$2,$3,$4,NULLIF($5, ''),NULLIF($6, ''),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NULLIF($22, ''),$23,$24,NOW())
+			VALUES ($1,$2,$3,$4,NULLIF($5, ''),NULLIF($6, ''),$7,$8,$9,$10,$11,$12,$13,NULLIF($14, ''),$15,$16,$17,NULLIF($18, ''),$19,$20,$21,NULLIF($22, ''),$23,$24,NOW())
 		`, runID, policyID, change.ChangeType, change.UserID, change.UserName, change.UserEmail, change.TokenUsage, change.ActualCost,
 			change.TotalTokenUsage, change.TotalActualCost, change.TargetGroupID,
-			change.TierID, change.TierMinTokens, change.TierConditionMode, change.TierMinActualCost,
-			change.ResidentTierID, change.ResidentTierMinTokens, change.ResidentTierConditionMode, change.ResidentTierMinActualCost,
+			change.TierID, change.TierMinTokens, nullIfEmpty(change.TierConditionMode), change.TierMinActualCost,
+			change.ResidentTierID, change.ResidentTierMinTokens, nullIfEmpty(change.ResidentTierConditionMode), change.ResidentTierMinActualCost,
 			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason,
 			change.GroupGranted, change.ManualTakeover); err != nil {
 			return err
@@ -1210,6 +1210,13 @@ func uniquePositiveInt64(values []int64) []int64 {
 
 func tokenUsagePolicyNotFoundError(cause error) error {
 	return infraerrors.BadRequest("INVALID_POLICY_ID", "invalid policy id").WithCause(cause)
+}
+
+func nullIfEmpty(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func duplicateEnabledTokenUsagePolicyError(cause error) error {

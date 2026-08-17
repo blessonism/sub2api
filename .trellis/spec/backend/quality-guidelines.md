@@ -555,6 +555,7 @@ repo.ListWithFilters(ctx, params, filters)
 - 累计数据：`token_usage_auto_user_totals` 按用户保存全站累计值，`last_processed_id` 记录已纳入统计的最大 `usage_logs.id`；刷新 SQL 只处理 `ul.id > last_processed_id` 的增量，首见用户等价全历史计算，禁止按 `created_at` 做水位（异步落库会漏算）。
 - 累计刷新在事务内用 `pg_advisory_xact_lock` 串行化，水位读取与增量累加必须原子可见，防止不同策略并发执行时重复累加同一批日志。
 - 常驻档位同样遵循 `conflict_mode`（`manual_priority` 下不覆盖手动倍率）并受自动倍率封顶；assignment/run_changes 记录 `resident_tier_id` 与 `total_token_usage` / `total_actual_cost` 双口径审计字段。
+- `token_usage_auto_run_changes.tier_condition_mode` / `resident_tier_condition_mode` 未命中时必须写 `NULL`，禁止写空串：CHECK 只允许 `NULL` 或 `'token'/'actual_cost'/'both'`，空串会让整次策略执行事务回滚。
 
 #### 4. Validation & Error Matrix
 - Invalid policy id -> `400 INVALID_POLICY_ID`.
@@ -578,11 +579,13 @@ repo.ListWithFilters(ctx, params, filters)
 - Bad: a first-time policy run overwrites an existing manual group rate under `manual_priority`.
 - Bad: inserting into `user_allowed_groups(updated_at)` when the join table does not define that column.
 - Bad: returning every run's `changes` from `GET /:id/runs` or linking run-change `target_group_id` to `groups(id) ON DELETE CASCADE`.
+- Bad: 把未命中档位的 `tier_condition_mode` / `resident_tier_condition_mode` 写成空串；PostgreSQL CHECK 会拒绝该行并回滚整次策略执行。
 
 #### 6. Tests Required
 - Service unit tests: defaults/validation, tier selection, downgrade, clear, explicit policy clearing, preview no-write, manual-priority skip for existing assignments, and manual-priority skip before first assignment.
 - Service unit tests: resident/window selector separation, effective-rate min, resident floor retention, clear only when both dimensions miss, normalize uniqueness including `is_resident`.
 - Repository tests: `RefreshUserUsageTotals` upsert delta + read-back; new tier/assignment/run_changes columns survive SELECT/SCAN round-trip.
+- Repository tests: 未命中档位时 `tier_condition_mode` / `resident_tier_condition_mode` 绑定 `NULL`；命中时绑定 `token` / `actual_cost` / `both`。
 - Repository or integration tests: token aggregation uses the four-token sum, `actual_cost > 0` filtering, filter predicates, one-running-run constraint, deletion blocking ignores pure manual takeover rows, run summaries omit change details, run changes are paginated and scoped to the requested policy/run, successful runs persist apply/audit/summary atomically, and grant/clear preserves unrelated group and RPM state.
 - Handler/routes tests: all admin endpoints are registered under the prefix and use admin middleware.
 - Frontend checks: API types match backend JSON names, page defaults match product defaults, preview groups create/update/downgrade/clear/skip results, and `pnpm typecheck` passes.
@@ -609,6 +612,18 @@ INSERT INTO user_allowed_groups (user_id, group_id, created_at, updated_at) VALU
 Correct:
 ```sql
 INSERT INTO user_allowed_groups (user_id, group_id, created_at) VALUES (...)
+```
+
+Wrong:
+```go
+// 未命中常驻档位时把 Go 空串直接写入 CHECK 列。
+change.ResidentTierConditionMode // ""
+```
+
+Correct:
+```sql
+NULLIF($18, '')  -- resident_tier_condition_mode
+NULLIF($14, '')  -- tier_condition_mode
 ```
 
 ---
