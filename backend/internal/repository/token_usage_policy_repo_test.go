@@ -351,7 +351,7 @@ func TestTokenUsagePolicyRepositoryApplyClearMarksManualTakeoverWhenConditionalR
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil, &currentRate,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil, &currentRate,
 			change.NewRateMultiplier, service.TokenUsagePolicyManualTakeoverPreservedReason, false, true,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -400,7 +400,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) 
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil,
 			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -413,6 +413,70 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) 
 
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsConditionModes(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := NewTokenUsageAutoPolicyRepository(db)
+
+	tierID := int64(3)
+	residentTierID := int64(5)
+	minTokens := int64(1000)
+	residentMinTokens := int64(50000)
+	tierCost := 12.5
+	residentCost := 80.0
+	newRate := 0.6
+	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, CreateCount: 1}
+	change := service.TokenUsageAutoPolicyChange{
+		ChangeType:                service.TokenUsagePolicyChangeCreate,
+		UserID:                    7,
+		TokenUsage:                1500,
+		ActualCost:                12.5,
+		TotalTokenUsage:           60000,
+		TotalActualCost:           80,
+		TargetGroupID:             8,
+		TierID:                    &tierID,
+		TierMinTokens:             &minTokens,
+		TierConditionMode:         "both",
+		TierMinActualCost:         &tierCost,
+		ResidentTierID:            &residentTierID,
+		ResidentTierMinTokens:     &residentMinTokens,
+		ResidentTierConditionMode: "actual_cost",
+		ResidentTierMinActualCost: &residentCost,
+		NewRateMultiplier:         &newRate,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_id FROM token_usage_auto_runs").
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"policy_id"}).AddRow(int64(9)))
+	mock.ExpectExec("INSERT INTO token_usage_auto_run_changes").
+		WithArgs(
+			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
+			change.TokenUsage, change.ActualCost, change.TotalTokenUsage, change.TotalActualCost, change.TargetGroupID,
+			change.TierID, change.TierMinTokens, "both", change.TierMinActualCost,
+			change.ResidentTierID, change.ResidentTierMinTokens, "actual_cost", change.ResidentTierMinActualCost,
+			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE token_usage_auto_runs").
+		WithArgs(int64(12), service.TokenUsagePolicyRunStatusSuccess, stats.TotalUsers, stats.CreateCount, stats.UpdateCount, stats.DowngradeCount, stats.ClearCount, stats.SkipCount, "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = repo.FinishPolicyRun(context.Background(), 12, service.TokenUsagePolicyRunStatusSuccess, stats, []service.TokenUsageAutoPolicyChange{change}, "")
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestNullIfEmpty(t *testing.T) {
+	require.Nil(t, nullIfEmpty(""))
+	require.Equal(t, "token", nullIfEmpty("token"))
+	require.Equal(t, "actual_cost", nullIfEmpty("actual_cost"))
+	require.Equal(t, "both", nullIfEmpty("both"))
 }
 
 func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChangesFails(t *testing.T) {
@@ -438,7 +502,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChang
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil,
 			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover,
 		).
 		WillReturnError(insertErr)
@@ -489,7 +553,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAudit
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil,
 			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover,
 		).
 		WillReturnError(insertErr)
@@ -544,7 +608,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunPersistsHistory(t *test
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil,
 			change.OldRateMultiplier, change.NewRateMultiplier, change.Reason, change.GroupGranted, change.ManualTakeover,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -591,7 +655,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunAuditsManualRateDetecte
 		WithArgs(
 			int64(12), int64(9), change.ChangeType, change.UserID, change.UserName, change.UserEmail,
 			change.TokenUsage, float64(0), int64(0), float64(0), change.TargetGroupID,
-			change.TierID, change.TierMinTokens, "", nil, nil, nil, "", nil, &currentManualRate,
+			change.TierID, change.TierMinTokens, nil, nil, nil, nil, nil, nil, &currentManualRate,
 			change.NewRateMultiplier, service.TokenUsagePolicyManualTakeoverPreservedReason, false, true,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
