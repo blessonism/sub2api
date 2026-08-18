@@ -356,7 +356,7 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
-	}
+	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID)
 	if err != nil {
 		return nil, fmt.Errorf("query latest per model: %w", err)
