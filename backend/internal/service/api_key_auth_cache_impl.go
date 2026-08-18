@@ -14,10 +14,9 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// v19 曾被上游与二开分别用于不同的字段集（time-rate/peak-rate/profit-control 与
-// search/audio/video_model_prices）。v20 起同时携带该并集以及分组长上下文/
-// 逐模型定价字段，避免旧缓存缺少任一侧字段。
-const apiKeyAuthSnapshotVersion = 20
+// v21：分组长上下文 / 逐模型定价进入认证快照。v20 已在二开主线发布且不含这两字段，
+// 不升版本会让旧 L2 命中按零值计费。
+const apiKeyAuthSnapshotVersion = 21
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

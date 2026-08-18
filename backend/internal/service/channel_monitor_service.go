@@ -891,9 +891,6 @@ func (s *ChannelMonitorService) decryptInPlace(m *ChannelMonitor) {
 
 // applyMonitorUpdate 把 update params 中非 nil 的字段应用到 existing 上。
 // APIKey 字段在调用方单独处理（涉及加密）。
-//
-// 行数稍超过 30：这是逐字段平铺的 dispatcher，每个 if 都是 1-3 行的"非 nil 则覆盖"模式，
-// 拆分反而会增加跳转噪音、影响可读性，故保留为单函数。
 func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) error {
 	providerChanged := false
 	if p.Name != nil {

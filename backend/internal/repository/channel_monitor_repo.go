@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -375,7 +376,7 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		assignNullString(&l.OverrideStatus, override)
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
-		l.Quota = scanMonitorQuota(quota)
+		l.Quota = scanMonitorQuota(quota, monitorID, l.Model)
 		out = append(out, l)
 	}
 	return out, rows.Err()
@@ -400,14 +401,15 @@ func assignNullString(dst **string, n sql.NullString) {
 }
 
 // scanMonitorQuota 把裸 SQL 读出的 JSONB quota 列解包为配额快照。
-// NULL（探活模式旧行）返回 nil；解析失败也返回 nil 并由调用方日志感知，
-// 不阻断列表渲染（与聚合层"失败仅日志"的原则一致）。
-func scanMonitorQuota(data []byte) *domain.MonitorQuotaSnapshot {
+// NULL（探活模式旧行）与解析失败都返回 nil，避免单行坏数据阻断列表。
+func scanMonitorQuota(data []byte, monitorID int64, model string) *domain.MonitorQuotaSnapshot {
 	if len(data) == 0 {
 		return nil
 	}
 	snapshot := &domain.MonitorQuotaSnapshot{}
 	if err := json.Unmarshal(data, snapshot); err != nil {
+		slog.Warn("channel_monitor: decode quota snapshot failed",
+			"monitor_id", monitorID, "model", model, "error", err)
 		return nil
 	}
 	return snapshot
@@ -516,7 +518,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		assignNullString(&l.OverrideStatus, override)
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
-		l.Quota = scanMonitorQuota(quota)
+		l.Quota = scanMonitorQuota(quota, monitorID, l.Model)
 		out[monitorID] = append(out[monitorID], l)
 	}
 	if err := rows.Err(); err != nil {
