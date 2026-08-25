@@ -41,6 +41,7 @@ import campaignsAPI from './campaigns'
 import lotteryCampaignsAPI from './lotteryCampaigns'
 import accountCollectionsAPI from './accountCollections'
 import auditAPI from './audit'
+import pluginsAPI from './plugins'
 
 /**
  * Unified admin API object for convenient access
@@ -83,7 +84,8 @@ export const adminAPI = {
   campaigns: campaignsAPI,
   lotteryCampaigns: lotteryCampaignsAPI,
   accountCollections: accountCollectionsAPI,
-  audit: auditAPI
+  audit: auditAPI,
+  plugins: pluginsAPI
 }
 
 export {
@@ -124,7 +126,8 @@ export {
   campaignsAPI,
   lotteryCampaignsAPI,
   accountCollectionsAPI,
-  auditAPI
+  auditAPI,
+  pluginsAPI
 }
 
 export default adminAPI
@@ -153,3 +156,9 @@ export type {
 } from './upstreamRelayGroupMonitors'
 export type { LotteryCampaign, LotteryPrizeTier, LotteryWinner } from './lotteryCampaigns'
 export type { AccountCollection } from './accountCollections'
+export type {
+  PluginInstallation,
+  PluginCompatibility,
+  PluginUISession,
+  PluginTestResult
+} from './plugins'
