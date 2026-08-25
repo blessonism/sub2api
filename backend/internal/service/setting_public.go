@@ -233,6 +233,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyTokenLeaderboardUserVisible,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
@@ -360,6 +361,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorShowQuota:              settings[SettingKeyChannelMonitorShowQuota] == "true",
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+
+		TokenLeaderboardUserVisible: !isFalseSettingValue(settings[SettingKeyTokenLeaderboardUserVisible]),
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",

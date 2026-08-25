@@ -152,6 +152,50 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingService_GetPublicSettings_ExposesTokenLeaderboardUserVisible(t *testing.T) {
+	missing, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).
+		GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, missing.TokenLeaderboardUserVisible)
+
+	missingInjection, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).
+		GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+	payload, ok := missingInjection.(*PublicSettingsInjectionPayload)
+	require.True(t, ok)
+	require.True(t, payload.TokenLeaderboardUserVisible)
+
+	for _, value := range []string{"false", "0", "off", "disabled"} {
+		settings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyTokenLeaderboardUserVisible: value,
+		}}, &config.Config{}).GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.False(t, settings.TokenLeaderboardUserVisible, "value=%q", value)
+
+		injection, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyTokenLeaderboardUserVisible: value,
+		}}, &config.Config{}).GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		injected, ok := injection.(*PublicSettingsInjectionPayload)
+		require.True(t, ok)
+		require.False(t, injected.TokenLeaderboardUserVisible, "value=%q", value)
+	}
+
+	visible, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyTokenLeaderboardUserVisible: "true",
+	}}, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, visible.TokenLeaderboardUserVisible)
+
+	visibleInjection, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyTokenLeaderboardUserVisible: "true",
+	}}, &config.Config{}).GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+	visiblePayload, ok := visibleInjection.(*PublicSettingsInjectionPayload)
+	require.True(t, ok)
+	require.True(t, visiblePayload.TokenLeaderboardUserVisible)
+}
+
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

@@ -87,6 +87,7 @@ vi.mock('@/utils/featureFlags', () => ({
     payment: {},
     affiliate: {},
     riskControl: {},
+    tokenLeaderboard: {},
   },
   makeSidebarFlag: () => () => true,
 }))
@@ -340,7 +341,8 @@ describe('AppSidebar admin balance redemption entry', () => {
 
 describe('AppSidebar leaderboard entry', () => {
   it('adds leaderboard to the shared user and admin personal navigation declaration', () => {
-    expect(componentSource).toContain("{ path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon }")
+    expect(componentSource).toContain("{ path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon, featureFlag: flagTokenLeaderboard }")
+    expect(componentSource).toContain('const flagTokenLeaderboard = makeSidebarFlag(FeatureFlags.tokenLeaderboard)')
     expect(componentSource).toContain('const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))')
     expect(componentSource).toContain('const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))')
   })
