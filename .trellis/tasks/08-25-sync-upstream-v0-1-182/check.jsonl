@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/spec/tools/upstream-sync-fast-path.md", "reason": "核对同步检查命令与退出码"}
