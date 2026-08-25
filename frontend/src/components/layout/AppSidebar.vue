@@ -821,6 +821,7 @@ const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
+const flagTokenLeaderboard = makeSidebarFlag(FeatureFlags.tokenLeaderboard)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
@@ -838,7 +839,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: UsageIcon, hideInSimpleMode: true },
-    { path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon },
+    { path: '/leaderboard', label: t('nav.leaderboard'), icon: LeaderboardIcon, featureFlag: flagTokenLeaderboard },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: AvailableChannelsIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: StatusPulseIcon, featureFlag: flagChannelMonitor },
