@@ -219,7 +219,7 @@ describe('admin AccountsView scheduler score column', () => {
   })
 
   it('keeps scheduler score hidden for old saved column settings until the admin opts in again', async () => {
-    localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
+    localStorage.setItem('account-hidden-columns', JSON.stringify([]))
 
     mountView()
     await flushPromises()
@@ -231,8 +231,8 @@ describe('admin AccountsView scheduler score column', () => {
   })
 
   it('requests scheduler scores when the migrated column settings explicitly show the column', async () => {
-    localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
-    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-hidden-by-default')
+    localStorage.setItem('account-hidden-columns', JSON.stringify([]))
+    localStorage.setItem('account-hidden-columns-version', 'today-stats-visible-by-default')
 
     mountView()
     await flushPromises()

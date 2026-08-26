@@ -1331,6 +1331,9 @@ export interface AccountSchedulerGroupScore {
 // Account Usage types
 export interface WindowStats {
   requests: number
+  input_tokens?: number
+  cache_creation_tokens?: number
+  cache_read_tokens?: number
   tokens: number
   cost: number // Account cost (account multiplier)
   standard_cost?: number

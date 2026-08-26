@@ -461,6 +461,9 @@ export default {
         "addTo": "加入编组",
         "removeFrom": "移出编组",
         "batchSuccess": "账号编组已更新"
+      },
+      "stats": {
+        "cacheHit": "缓存命中"
       }
     },
     "activities": {

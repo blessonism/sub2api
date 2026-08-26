@@ -461,6 +461,9 @@ export default {
         "addTo": "Add to collections",
         "removeFrom": "Remove from collections",
         "batchSuccess": "Account collections updated"
+      },
+      "stats": {
+        "cacheHit": "Cache hit"
       }
     },
     "activities": {

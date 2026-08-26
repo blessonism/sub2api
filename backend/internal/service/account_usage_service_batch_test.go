@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/stretchr/testify/require"
 )
 
 // Minimal UsageLogRepository stub for batch usage tests (HEAD lacks geminiUsageLogRepoStub).
@@ -134,6 +135,22 @@ func (r *usageBatchLogRepoStub) GetModelStatsAggregated(context.Context, string,
 }
 func (r *usageBatchLogRepoStub) GetDailyStatsAggregated(context.Context, int64, time.Time, time.Time) ([]map[string]any, error) {
 	return nil, nil
+}
+
+func TestWindowStatsFromAccountStatsPreservesCacheBreakdown(t *testing.T) {
+	stats := windowStatsFromAccountStats(&usagestats.AccountStats{
+		Requests:            2,
+		InputTokens:         200,
+		CacheCreationTokens: 300,
+		CacheReadTokens:     500,
+		Tokens:              1200,
+		Cost:                1.2,
+	})
+
+	require.Equal(t, int64(200), stats.InputTokens)
+	require.Equal(t, int64(300), stats.CacheCreationTokens)
+	require.Equal(t, int64(500), stats.CacheReadTokens)
+	require.Equal(t, int64(1200), stats.Tokens)
 }
 
 func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {

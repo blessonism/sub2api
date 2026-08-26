@@ -519,6 +519,8 @@ func (s *UsageLogRepoSuite) TestGetByID_ReturnsAccountRateMultiplier() {
 		Model:                 "claude-3",
 		InputTokens:           10,
 		OutputTokens:          20,
+		CacheCreationTokens:   30,
+		CacheReadTokens:       40,
 		TotalCost:             1.0,
 		ActualCost:            2.0,
 		AccountRateMultiplier: &m,
@@ -1065,6 +1067,8 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 		Model:                 "claude-3",
 		InputTokens:           5,
 		OutputTokens:          5,
+		CacheCreationTokens:   6,
+		CacheReadTokens:       7,
 		TotalCost:             0.5,
 		ActualCost:            1.0,
 		AccountRateMultiplier: &m2,
@@ -1075,7 +1079,10 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	stats, err := s.repo.GetAccountTodayStats(s.ctx, account.ID)
 	s.Require().NoError(err, "GetAccountTodayStats")
 	s.Require().Equal(int64(2), stats.Requests)
-	s.Require().Equal(int64(40), stats.Tokens)
+	s.Require().Equal(int64(123), stats.Tokens)
+	s.Require().Equal(int64(15), stats.InputTokens)
+	s.Require().Equal(int64(36), stats.CacheCreationTokens)
+	s.Require().Equal(int64(47), stats.CacheReadTokens)
 	// account cost = SUM(total_cost * account_rate_multiplier)
 	s.Require().InEpsilon(1.5, stats.Cost, 0.0001)
 	// standard cost = SUM(total_cost)

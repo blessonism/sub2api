@@ -4,6 +4,7 @@
     <div v-if="props.loading && !props.stats" class="space-y-0.5">
       <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+      <div class="h-3 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
     </div>
 
@@ -32,6 +33,16 @@
           formatTokens(props.stats.tokens)
         }}</span>
       </div>
+      <!-- 缓存命中 Token 与命中率 -->
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.cacheHit') }}:</span
+        >
+        <span class="font-medium text-sky-600 dark:text-sky-400">{{
+          formatTokens(props.stats.cache_read_tokens || 0)
+        }}</span>
+        <span class="text-gray-400 dark:text-gray-500">({{ cacheHitRate }})</span>
+      </div>
       <!-- Cost (Account) -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">{{ t('usage.accountBilled') }}:</span>
@@ -54,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatNumber, formatCurrency } from '@/utils/format'
@@ -82,4 +94,13 @@ const formatTokens = (tokens: number): string => {
   }
   return tokens.toString()
 }
+
+const cacheHitRate = computed(() => {
+  if (!props.stats) return '-'
+  const inputTokens = props.stats.input_tokens || 0
+  const cacheCreationTokens = props.stats.cache_creation_tokens || 0
+  const cacheReadTokens = props.stats.cache_read_tokens || 0
+  const totalInputTokens = inputTokens + cacheCreationTokens + cacheReadTokens
+  return totalInputTokens > 0 ? `${((cacheReadTokens / totalInputTokens) * 100).toFixed(1)}%` : '-'
+})
 </script>

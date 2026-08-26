@@ -139,11 +139,14 @@ func NewUsageCache() *UsageCache {
 // standard_cost: 标准费用（total_cost，不含倍率）
 // user_cost: 用户/API Key 口径费用（actual_cost，受分组倍率影响）
 type WindowStats struct {
-	Requests     int64   `json:"requests"`
-	Tokens       int64   `json:"tokens"`
-	Cost         float64 `json:"cost"`
-	StandardCost float64 `json:"standard_cost"`
-	UserCost     float64 `json:"user_cost"`
+	Requests            int64   `json:"requests"`
+	InputTokens         int64   `json:"input_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	Tokens              int64   `json:"tokens"`
+	Cost                float64 `json:"cost"`
+	StandardCost        float64 `json:"standard_cost"`
+	UserCost            float64 `json:"user_cost"`
 }
 
 // UsageProgress 使用量进度
@@ -1402,11 +1405,14 @@ func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64
 	}
 
 	return &WindowStats{
-		Requests:     stats.Requests,
-		Tokens:       stats.Tokens,
-		Cost:         stats.Cost,
-		StandardCost: stats.StandardCost,
-		UserCost:     stats.UserCost,
+		Requests:            stats.Requests,
+		InputTokens:         stats.InputTokens,
+		CacheCreationTokens: stats.CacheCreationTokens,
+		CacheReadTokens:     stats.CacheReadTokens,
+		Tokens:              stats.Tokens,
+		Cost:                stats.Cost,
+		StandardCost:        stats.StandardCost,
+		UserCost:            stats.UserCost,
 	}, nil
 }
 
@@ -1474,11 +1480,14 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 		return &WindowStats{}
 	}
 	return &WindowStats{
-		Requests:     stats.Requests,
-		Tokens:       stats.Tokens,
-		Cost:         stats.Cost,
-		StandardCost: stats.StandardCost,
-		UserCost:     stats.UserCost,
+		Requests:            stats.Requests,
+		InputTokens:         stats.InputTokens,
+		CacheCreationTokens: stats.CacheCreationTokens,
+		CacheReadTokens:     stats.CacheReadTokens,
+		Tokens:              stats.Tokens,
+		Cost:                stats.Cost,
+		StandardCost:        stats.StandardCost,
+		UserCost:            stats.UserCost,
 	}
 }
 
