@@ -136,3 +136,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 同步最新上游 main
+
+**Date**: 2026-08-26
+**Task**: 同步最新上游 main
+**Branch**: `sync/upstream-20260826`
+
+### Summary
+
+在隔离分支 sync/upstream-20260826 合入 upstream/main@6ca1e15b0ad2；custom/main 保持不变，完成定向门禁与自动合并复核。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c08b38738` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

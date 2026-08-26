@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~138 | Active |
+| `journal-1.md` | ~171 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-08-26 | 同步最新上游 main | `c08b38738` | `sync/upstream-20260826` |
 | 4 | 2026-08-26 | 账号管理当天缓存命中展示 | `636495b9b` | `custom/main` |
 | 3 | 2026-07-24 | 修复余额校准账期与范围消费校准 | `1f4fc659d` | `fix/balance-calibration-time` |
 | 2 | 2026-07-14 | 管理员一键调整用户并发 | `3bbbce55f` | `feature/admin-user-concurrency-adjustment` |
