@@ -103,3 +103,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 账号管理当天缓存命中展示
+
+**Date**: 2026-08-26
+**Task**: 账号管理当天缓存命中展示
+**Branch**: `custom/main`
+
+### Summary
+
+扩展账号今日统计返回输入与缓存拆分 Token，在账号管理默认显示缓存命中 Token 和命中率；增加前后端定向测试并合并到 custom/main。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `636495b9b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
