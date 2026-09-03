@@ -2024,6 +2024,23 @@ func (a *Account) IsOveragesEnabled() bool {
 	return false
 }
 
+// TrustRequestedServiceTier 返回 OpenAI 账号是否信任请求侧 service_tier。
+//
+// 新字段：accounts.extra.openai_trust_requested_service_tier。
+// 字段缺失或类型不正确时，按 false（关闭）处理。
+//
+// 适用场景：上游本身是中转站（如另一 sub2api 实例）。其响应里的档位声明
+// 只反映它所代理的凭据视角（典型如 Codex OAuth 后端在 Fast 实际生效时也
+// 报 default），本站无法自动识别上游背后的凭据类型，因此由管理员对这类
+// 账号显式开启，跳过"响应声明只降不升"的降级逻辑。
+func (a *Account) TrustRequestedServiceTier() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_trust_requested_service_tier"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用"自动透传（仅替换认证）"。
 //
 // 新字段：accounts.extra.openai_passthrough。

@@ -566,6 +566,9 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        trustRequestedTier: 'Trust requested tier (relay upstream)',
+        trustRequestedTierDesc:
+          'Disabled by default. When the upstream is itself a relay (e.g. another sub2api), its declared response tier is untrustworthy (typically a Codex OAuth backend reporting default even when Fast was served). Enable to record and bill the requested tier (fast/priority) instead of downgrading on the response declaration; leave off for the standard response-tier contract.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',

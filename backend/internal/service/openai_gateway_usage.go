@@ -174,7 +174,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
-	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(billingAccount, result))
+	// 主账号(影子账号场景下与凭据账号不同)显式开启的"信任请求侧档位"同样生效:
+	// 管理员意图跟随其配置的账号,TrustRequestedServiceTier 对 nil 安全。
+	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID,
+		ApplyOpenAIServiceTierBillingResolution(billingAccount, result, account.TrustRequestedServiceTier()))
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。

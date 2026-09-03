@@ -62,8 +62,23 @@ func serviceTierCostRank(tier string) (rank int, known bool) {
 // selected credential. Public OpenAI API responses declare the actual tier and
 // may lower billing. The private ChatGPT Codex endpoint does not: it commonly
 // reports default for effective Fast turns, so OAuth-like credentials retain
-// the final outbound tier while still exposing the observed value.
-func ResolveOpenAIServiceTierBilling(account *Account, requested, observed string) ServiceTierBillingResolution {
+// the final outbound tier while still exposing the observed value. Accounts
+// with TrustRequestedServiceTier enabled are billed on the requested tier
+// regardless of the declaration: the admin has asserted the upstream is
+// itself a relay whose response tier cannot be trusted for this credential.
+//
+// trustRequestedOverride carries the flag from the scheduled account when it
+// differs from the credential account (shadow accounts): the admin's intent
+// follows the account they configured, so either side enabling it opts out of
+// response-based downgrades.
+func ResolveOpenAIServiceTierBilling(account *Account, requested, observed string, trustRequestedOverride bool) ServiceTierBillingResolution {
+	if trustRequestedOverride || (account != nil && account.TrustRequestedServiceTier()) {
+		return ServiceTierBillingResolution{
+			Requested: normalizeBillingServiceTier(requested),
+			Observed:  normalizeBillingServiceTier(observed),
+			Billing:   normalizeBillingServiceTier(requested),
+		}
+	}
 	if account != nil && account.IsOpenAIOAuthLike() && codexOAuthResponseTierIsNonAuthoritative(observed) {
 		return ServiceTierBillingResolution{
 			Requested: normalizeBillingServiceTier(requested),
@@ -84,12 +99,13 @@ func codexOAuthResponseTierIsNonAuthoritative(observed string) bool {
 }
 
 // ApplyOpenAIServiceTierBillingResolution lowers result.ServiceTier only when
-// the selected credential's upstream response tier is authoritative.
-func ApplyOpenAIServiceTierBillingResolution(account *Account, result *OpenAIForwardResult) ServiceTierBillingResolution {
+// the selected credential's upstream response tier is authoritative. See
+// ResolveOpenAIServiceTierBilling for the trustRequestedOverride semantics.
+func ApplyOpenAIServiceTierBillingResolution(account *Account, result *OpenAIForwardResult, trustRequestedOverride bool) ServiceTierBillingResolution {
 	if result == nil {
 		return ServiceTierBillingResolution{}
 	}
-	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier)
+	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier, trustRequestedOverride)
 	if resolution.Downgraded {
 		billing := resolution.Billing
 		result.ServiceTier = &billing
