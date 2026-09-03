@@ -43,9 +43,9 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	RestrictPublicGroups bool `json:"restrict_public_groups"`
+	Notes                string     `json:"notes"`
+	LastUsedAt           *time.Time `json:"last_used_at"`
+	RestrictPublicGroups bool       `json:"restrict_public_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates           map[int64]float64                 `json:"group_rates,omitempty"`
@@ -112,25 +112,25 @@ type Group struct {
 	LongContextPricingEnabled bool     `json:"long_context_pricing_enabled"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration         bool     `json:"allow_image_generation"`
-	AllowBatchImageGeneration    bool     `json:"allow_batch_image_generation"`
-	ImageRateIndependent         bool     `json:"image_rate_independent"`
-	ImageRateMultiplier          float64  `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier float64  `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier     float64  `json:"batch_image_hold_multiplier"`
-	VideoRateIndependent         bool     `json:"video_rate_independent"`
-	VideoRateMultiplier          float64  `json:"video_rate_multiplier"`
+	AllowImageGeneration         bool    `json:"allow_image_generation"`
+	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageRateIndependent         bool    `json:"image_rate_independent"`
+	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent         bool    `json:"video_rate_independent"`
+	VideoRateMultiplier          float64 `json:"video_rate_multiplier"`
 	// 高峰时段倍率配置
 	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
 	PeakStart          string   `json:"peak_start"`
 	PeakEnd            string   `json:"peak_end"`
 	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	ImagePrice1K                 *float64 `json:"image_price_1k"`
-	ImagePrice2K                 *float64 `json:"image_price_2k"`
-	ImagePrice4K                 *float64 `json:"image_price_4k"`
-	VideoPrice480P               *float64 `json:"video_price_480p"`
-	VideoPrice720P               *float64 `json:"video_price_720p"`
-	VideoPrice1080P              *float64 `json:"video_price_1080p"`
+	ImagePrice1K       *float64 `json:"image_price_1k"`
+	ImagePrice2K       *float64 `json:"image_price_2k"`
+	ImagePrice4K       *float64 `json:"image_price_4k"`
+	VideoPrice480P     *float64 `json:"video_price_480p"`
+	VideoPrice720P     *float64 `json:"video_price_720p"`
+	VideoPrice1080P    *float64 `json:"video_price_1080p"`
 	// VideoModelPrices 可选按模型族×分辨率覆盖视频每秒单价 (USD/s)。
 	VideoModelPrices map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	// Codex alpha/search 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
@@ -150,8 +150,6 @@ type Group struct {
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
 	// OpenAI Live 接口开关
 	AllowLive bool `json:"allow_live"`
-	ForceOpenAIFast bool `json:"force_openai_fast"`
-	FreeOpenAIFast bool `json:"free_openai_fast"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -171,6 +169,10 @@ type Group struct {
 // AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
+	// ForceOpenAIFast 是管理端请求策略，用户侧分组 DTO 无需暴露。
+	ForceOpenAIFast bool `json:"force_openai_fast"`
+	// FreeOpenAIFast 是管理端计费策略，用户侧分组 DTO 无需暴露。
+	FreeOpenAIFast bool `json:"free_openai_fast"`
 	Group
 	TimeRatePriority string                       `json:"time_rate_priority"`
 	TimeRatePeriods  []domain.GroupTimeRatePeriod `json:"time_rate_periods"`
@@ -531,8 +533,11 @@ type UsageLog struct {
 	RequestType  string `json:"request_type"`
 	Stream       bool   `json:"stream"`
 	OpenAIWSMode bool   `json:"openai_ws_mode"`
-	DurationMs   *int   `json:"duration_ms"`
-	FirstTokenMs *int   `json:"first_token_ms"`
+	// NativeCompactionV2 is true only for requests positively identified at
+	// runtime as the native OpenAI remote compaction v2 wire.
+	NativeCompactionV2 bool `json:"native_compaction_v2"`
+	DurationMs         *int `json:"duration_ms"`
+	FirstTokenMs       *int `json:"first_token_ms"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`

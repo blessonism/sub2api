@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ type ConversationExportJob struct {
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Filters holds the value of the "filters" field.
-	Filters map[string]json.RawMessage `json:"filters,omitempty"`
+	Filters map[string]jsontext.Value `json:"filters,omitempty"`
 	// Format holds the value of the "format" field.
 	Format string `json:"format,omitempty"`
 	// Encoding holds the value of the "encoding" field.

@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -38,7 +38,7 @@ func (_c *ConversationExportJobCreate) SetNillableStatus(v *string) *Conversatio
 }
 
 // SetFilters sets the "filters" field.
-func (_c *ConversationExportJobCreate) SetFilters(v map[string]json.RawMessage) *ConversationExportJobCreate {
+func (_c *ConversationExportJobCreate) SetFilters(v map[string]jsontext.Value) *ConversationExportJobCreate {
 	_c.mutation.SetFilters(v)
 	return _c
 }
@@ -505,7 +505,7 @@ func (u *ConversationExportJobUpsert) UpdateStatus() *ConversationExportJobUpser
 }
 
 // SetFilters sets the "filters" field.
-func (u *ConversationExportJobUpsert) SetFilters(v map[string]json.RawMessage) *ConversationExportJobUpsert {
+func (u *ConversationExportJobUpsert) SetFilters(v map[string]jsontext.Value) *ConversationExportJobUpsert {
 	u.Set(conversationexportjob.FieldFilters, v)
 	return u
 }
@@ -799,7 +799,7 @@ func (u *ConversationExportJobUpsertOne) UpdateStatus() *ConversationExportJobUp
 }
 
 // SetFilters sets the "filters" field.
-func (u *ConversationExportJobUpsertOne) SetFilters(v map[string]json.RawMessage) *ConversationExportJobUpsertOne {
+func (u *ConversationExportJobUpsertOne) SetFilters(v map[string]jsontext.Value) *ConversationExportJobUpsertOne {
 	return u.Update(func(s *ConversationExportJobUpsert) {
 		s.SetFilters(v)
 	})
@@ -1297,7 +1297,7 @@ func (u *ConversationExportJobUpsertBulk) UpdateStatus() *ConversationExportJobU
 }
 
 // SetFilters sets the "filters" field.
-func (u *ConversationExportJobUpsertBulk) SetFilters(v map[string]json.RawMessage) *ConversationExportJobUpsertBulk {
+func (u *ConversationExportJobUpsertBulk) SetFilters(v map[string]jsontext.Value) *ConversationExportJobUpsertBulk {
 	return u.Update(func(s *ConversationExportJobUpsert) {
 		s.SetFilters(v)
 	})

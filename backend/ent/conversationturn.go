@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -35,11 +36,11 @@ type ConversationTurn struct {
 	// RequestPath holds the value of the "request_path" field.
 	RequestPath string `json:"request_path,omitempty"`
 	// RequestMessages holds the value of the "request_messages" field.
-	RequestMessages []json.RawMessage `json:"request_messages,omitempty"`
+	RequestMessages []jsontext.Value `json:"request_messages,omitempty"`
 	// ResponseMessages holds the value of the "response_messages" field.
-	ResponseMessages []json.RawMessage `json:"response_messages,omitempty"`
+	ResponseMessages []jsontext.Value `json:"response_messages,omitempty"`
 	// Tools holds the value of the "tools" field.
-	Tools []json.RawMessage `json:"tools,omitempty"`
+	Tools []jsontext.Value `json:"tools,omitempty"`
 	// Usage holds the value of the "usage" field.
 	Usage map[string]interface{} `json:"usage,omitempty"`
 	// Meta holds the value of the "meta" field.
@@ -61,7 +62,7 @@ type ConversationTurn struct {
 	// QualityStatus holds the value of the "quality_status" field.
 	QualityStatus string `json:"quality_status,omitempty"`
 	// QualityErrors holds the value of the "quality_errors" field.
-	QualityErrors []json.RawMessage `json:"quality_errors,omitempty"`
+	QualityErrors []jsontext.Value `json:"quality_errors,omitempty"`
 	// Exportable holds the value of the "exportable" field.
 	Exportable bool `json:"exportable,omitempty"`
 	// ParseStatus holds the value of the "parse_status" field.

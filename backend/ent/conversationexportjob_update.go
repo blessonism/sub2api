@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -44,7 +44,7 @@ func (_u *ConversationExportJobUpdate) SetNillableStatus(v *string) *Conversatio
 }
 
 // SetFilters sets the "filters" field.
-func (_u *ConversationExportJobUpdate) SetFilters(v map[string]json.RawMessage) *ConversationExportJobUpdate {
+func (_u *ConversationExportJobUpdate) SetFilters(v map[string]jsontext.Value) *ConversationExportJobUpdate {
 	_u.mutation.SetFilters(v)
 	return _u
 }
@@ -497,7 +497,7 @@ func (_u *ConversationExportJobUpdateOne) SetNillableStatus(v *string) *Conversa
 }
 
 // SetFilters sets the "filters" field.
-func (_u *ConversationExportJobUpdateOne) SetFilters(v map[string]json.RawMessage) *ConversationExportJobUpdateOne {
+func (_u *ConversationExportJobUpdateOne) SetFilters(v map[string]jsontext.Value) *ConversationExportJobUpdateOne {
 	_u.mutation.SetFilters(v)
 	return _u
 }

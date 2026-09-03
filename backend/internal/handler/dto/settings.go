@@ -463,6 +463,11 @@ type LoginAgreementDocument struct {
 	ContentMD string `json:"content_md"`
 }
 
+// OpenAIImagesOAuthUnavailableCooldownSettings 图片 OAuth 不可用冷却配置 DTO。
+type OpenAIImagesOAuthUnavailableCooldownSettings struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
+}
+
 // OverloadCooldownSettings 529过载冷却配置 DTO
 type OverloadCooldownSettings struct {
 	Enabled         bool `json:"enabled"`

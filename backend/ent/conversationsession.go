@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -51,7 +52,7 @@ type ConversationSession struct {
 	// QualityStatus holds the value of the "quality_status" field.
 	QualityStatus string `json:"quality_status,omitempty"`
 	// QualityErrors holds the value of the "quality_errors" field.
-	QualityErrors []json.RawMessage `json:"quality_errors,omitempty"`
+	QualityErrors []jsontext.Value `json:"quality_errors,omitempty"`
 	// Exportable holds the value of the "exportable" field.
 	Exportable bool `json:"exportable,omitempty"`
 	// CaptureStatus holds the value of the "capture_status" field.

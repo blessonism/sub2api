@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -162,13 +162,13 @@ func (_u *ConversationTurnUpdate) SetNillableRequestPath(v *string) *Conversatio
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (_u *ConversationTurnUpdate) SetRequestMessages(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) SetRequestMessages(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.SetRequestMessages(v)
 	return _u
 }
 
 // AppendRequestMessages appends value to the "request_messages" field.
-func (_u *ConversationTurnUpdate) AppendRequestMessages(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) AppendRequestMessages(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.AppendRequestMessages(v)
 	return _u
 }
@@ -180,13 +180,13 @@ func (_u *ConversationTurnUpdate) ClearRequestMessages() *ConversationTurnUpdate
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (_u *ConversationTurnUpdate) SetResponseMessages(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) SetResponseMessages(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.SetResponseMessages(v)
 	return _u
 }
 
 // AppendResponseMessages appends value to the "response_messages" field.
-func (_u *ConversationTurnUpdate) AppendResponseMessages(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) AppendResponseMessages(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.AppendResponseMessages(v)
 	return _u
 }
@@ -198,13 +198,13 @@ func (_u *ConversationTurnUpdate) ClearResponseMessages() *ConversationTurnUpdat
 }
 
 // SetTools sets the "tools" field.
-func (_u *ConversationTurnUpdate) SetTools(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) SetTools(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.SetTools(v)
 	return _u
 }
 
 // AppendTools appends value to the "tools" field.
-func (_u *ConversationTurnUpdate) AppendTools(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) AppendTools(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.AppendTools(v)
 	return _u
 }
@@ -380,13 +380,13 @@ func (_u *ConversationTurnUpdate) SetNillableQualityStatus(v *string) *Conversat
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_u *ConversationTurnUpdate) SetQualityErrors(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) SetQualityErrors(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.SetQualityErrors(v)
 	return _u
 }
 
 // AppendQualityErrors appends value to the "quality_errors" field.
-func (_u *ConversationTurnUpdate) AppendQualityErrors(v []json.RawMessage) *ConversationTurnUpdate {
+func (_u *ConversationTurnUpdate) AppendQualityErrors(v []jsontext.Value) *ConversationTurnUpdate {
 	_u.mutation.AppendQualityErrors(v)
 	return _u
 }
@@ -964,13 +964,13 @@ func (_u *ConversationTurnUpdateOne) SetNillableRequestPath(v *string) *Conversa
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (_u *ConversationTurnUpdateOne) SetRequestMessages(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) SetRequestMessages(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.SetRequestMessages(v)
 	return _u
 }
 
 // AppendRequestMessages appends value to the "request_messages" field.
-func (_u *ConversationTurnUpdateOne) AppendRequestMessages(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) AppendRequestMessages(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.AppendRequestMessages(v)
 	return _u
 }
@@ -982,13 +982,13 @@ func (_u *ConversationTurnUpdateOne) ClearRequestMessages() *ConversationTurnUpd
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (_u *ConversationTurnUpdateOne) SetResponseMessages(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) SetResponseMessages(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.SetResponseMessages(v)
 	return _u
 }
 
 // AppendResponseMessages appends value to the "response_messages" field.
-func (_u *ConversationTurnUpdateOne) AppendResponseMessages(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) AppendResponseMessages(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.AppendResponseMessages(v)
 	return _u
 }
@@ -1000,13 +1000,13 @@ func (_u *ConversationTurnUpdateOne) ClearResponseMessages() *ConversationTurnUp
 }
 
 // SetTools sets the "tools" field.
-func (_u *ConversationTurnUpdateOne) SetTools(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) SetTools(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.SetTools(v)
 	return _u
 }
 
 // AppendTools appends value to the "tools" field.
-func (_u *ConversationTurnUpdateOne) AppendTools(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) AppendTools(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.AppendTools(v)
 	return _u
 }
@@ -1182,13 +1182,13 @@ func (_u *ConversationTurnUpdateOne) SetNillableQualityStatus(v *string) *Conver
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_u *ConversationTurnUpdateOne) SetQualityErrors(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) SetQualityErrors(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.SetQualityErrors(v)
 	return _u
 }
 
 // AppendQualityErrors appends value to the "quality_errors" field.
-func (_u *ConversationTurnUpdateOne) AppendQualityErrors(v []json.RawMessage) *ConversationTurnUpdateOne {
+func (_u *ConversationTurnUpdateOne) AppendQualityErrors(v []jsontext.Value) *ConversationTurnUpdateOne {
 	_u.mutation.AppendQualityErrors(v)
 	return _u
 }

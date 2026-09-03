@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -208,7 +208,7 @@ func (_c *ConversationSessionCreate) SetNillableQualityStatus(v *string) *Conver
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_c *ConversationSessionCreate) SetQualityErrors(v []json.RawMessage) *ConversationSessionCreate {
+func (_c *ConversationSessionCreate) SetQualityErrors(v []jsontext.Value) *ConversationSessionCreate {
 	_c.mutation.SetQualityErrors(v)
 	return _c
 }
@@ -945,7 +945,7 @@ func (u *ConversationSessionUpsert) UpdateQualityStatus() *ConversationSessionUp
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationSessionUpsert) SetQualityErrors(v []json.RawMessage) *ConversationSessionUpsert {
+func (u *ConversationSessionUpsert) SetQualityErrors(v []jsontext.Value) *ConversationSessionUpsert {
 	u.Set(conversationsession.FieldQualityErrors, v)
 	return u
 }
@@ -1400,7 +1400,7 @@ func (u *ConversationSessionUpsertOne) UpdateQualityStatus() *ConversationSessio
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationSessionUpsertOne) SetQualityErrors(v []json.RawMessage) *ConversationSessionUpsertOne {
+func (u *ConversationSessionUpsertOne) SetQualityErrors(v []jsontext.Value) *ConversationSessionUpsertOne {
 	return u.Update(func(s *ConversationSessionUpsert) {
 		s.SetQualityErrors(v)
 	})
@@ -2038,7 +2038,7 @@ func (u *ConversationSessionUpsertBulk) UpdateQualityStatus() *ConversationSessi
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationSessionUpsertBulk) SetQualityErrors(v []json.RawMessage) *ConversationSessionUpsertBulk {
+func (u *ConversationSessionUpsertBulk) SetQualityErrors(v []jsontext.Value) *ConversationSessionUpsertBulk {
 	return u.Update(func(s *ConversationSessionUpsert) {
 		s.SetQualityErrors(v)
 	})

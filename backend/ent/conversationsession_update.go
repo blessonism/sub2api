@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -330,13 +330,13 @@ func (_u *ConversationSessionUpdate) SetNillableQualityStatus(v *string) *Conver
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_u *ConversationSessionUpdate) SetQualityErrors(v []json.RawMessage) *ConversationSessionUpdate {
+func (_u *ConversationSessionUpdate) SetQualityErrors(v []jsontext.Value) *ConversationSessionUpdate {
 	_u.mutation.SetQualityErrors(v)
 	return _u
 }
 
 // AppendQualityErrors appends value to the "quality_errors" field.
-func (_u *ConversationSessionUpdate) AppendQualityErrors(v []json.RawMessage) *ConversationSessionUpdate {
+func (_u *ConversationSessionUpdate) AppendQualityErrors(v []jsontext.Value) *ConversationSessionUpdate {
 	_u.mutation.AppendQualityErrors(v)
 	return _u
 }
@@ -990,13 +990,13 @@ func (_u *ConversationSessionUpdateOne) SetNillableQualityStatus(v *string) *Con
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_u *ConversationSessionUpdateOne) SetQualityErrors(v []json.RawMessage) *ConversationSessionUpdateOne {
+func (_u *ConversationSessionUpdateOne) SetQualityErrors(v []jsontext.Value) *ConversationSessionUpdateOne {
 	_u.mutation.SetQualityErrors(v)
 	return _u
 }
 
 // AppendQualityErrors appends value to the "quality_errors" field.
-func (_u *ConversationSessionUpdateOne) AppendQualityErrors(v []json.RawMessage) *ConversationSessionUpdateOne {
+func (_u *ConversationSessionUpdateOne) AppendQualityErrors(v []jsontext.Value) *ConversationSessionUpdateOne {
 	_u.mutation.AppendQualityErrors(v)
 	return _u
 }

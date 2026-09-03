@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -96,19 +96,19 @@ func (_c *ConversationTurnCreate) SetRequestPath(v string) *ConversationTurnCrea
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (_c *ConversationTurnCreate) SetRequestMessages(v []json.RawMessage) *ConversationTurnCreate {
+func (_c *ConversationTurnCreate) SetRequestMessages(v []jsontext.Value) *ConversationTurnCreate {
 	_c.mutation.SetRequestMessages(v)
 	return _c
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (_c *ConversationTurnCreate) SetResponseMessages(v []json.RawMessage) *ConversationTurnCreate {
+func (_c *ConversationTurnCreate) SetResponseMessages(v []jsontext.Value) *ConversationTurnCreate {
 	_c.mutation.SetResponseMessages(v)
 	return _c
 }
 
 // SetTools sets the "tools" field.
-func (_c *ConversationTurnCreate) SetTools(v []json.RawMessage) *ConversationTurnCreate {
+func (_c *ConversationTurnCreate) SetTools(v []jsontext.Value) *ConversationTurnCreate {
 	_c.mutation.SetTools(v)
 	return _c
 }
@@ -238,7 +238,7 @@ func (_c *ConversationTurnCreate) SetNillableQualityStatus(v *string) *Conversat
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (_c *ConversationTurnCreate) SetQualityErrors(v []json.RawMessage) *ConversationTurnCreate {
+func (_c *ConversationTurnCreate) SetQualityErrors(v []jsontext.Value) *ConversationTurnCreate {
 	_c.mutation.SetQualityErrors(v)
 	return _c
 }
@@ -867,7 +867,7 @@ func (u *ConversationTurnUpsert) UpdateRequestPath() *ConversationTurnUpsert {
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (u *ConversationTurnUpsert) SetRequestMessages(v []json.RawMessage) *ConversationTurnUpsert {
+func (u *ConversationTurnUpsert) SetRequestMessages(v []jsontext.Value) *ConversationTurnUpsert {
 	u.Set(conversationturn.FieldRequestMessages, v)
 	return u
 }
@@ -885,7 +885,7 @@ func (u *ConversationTurnUpsert) ClearRequestMessages() *ConversationTurnUpsert 
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (u *ConversationTurnUpsert) SetResponseMessages(v []json.RawMessage) *ConversationTurnUpsert {
+func (u *ConversationTurnUpsert) SetResponseMessages(v []jsontext.Value) *ConversationTurnUpsert {
 	u.Set(conversationturn.FieldResponseMessages, v)
 	return u
 }
@@ -903,7 +903,7 @@ func (u *ConversationTurnUpsert) ClearResponseMessages() *ConversationTurnUpsert
 }
 
 // SetTools sets the "tools" field.
-func (u *ConversationTurnUpsert) SetTools(v []json.RawMessage) *ConversationTurnUpsert {
+func (u *ConversationTurnUpsert) SetTools(v []jsontext.Value) *ConversationTurnUpsert {
 	u.Set(conversationturn.FieldTools, v)
 	return u
 }
@@ -1077,7 +1077,7 @@ func (u *ConversationTurnUpsert) UpdateQualityStatus() *ConversationTurnUpsert {
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationTurnUpsert) SetQualityErrors(v []json.RawMessage) *ConversationTurnUpsert {
+func (u *ConversationTurnUpsert) SetQualityErrors(v []jsontext.Value) *ConversationTurnUpsert {
 	u.Set(conversationturn.FieldQualityErrors, v)
 	return u
 }
@@ -1400,7 +1400,7 @@ func (u *ConversationTurnUpsertOne) UpdateRequestPath() *ConversationTurnUpsertO
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (u *ConversationTurnUpsertOne) SetRequestMessages(v []json.RawMessage) *ConversationTurnUpsertOne {
+func (u *ConversationTurnUpsertOne) SetRequestMessages(v []jsontext.Value) *ConversationTurnUpsertOne {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetRequestMessages(v)
 	})
@@ -1421,7 +1421,7 @@ func (u *ConversationTurnUpsertOne) ClearRequestMessages() *ConversationTurnUpse
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (u *ConversationTurnUpsertOne) SetResponseMessages(v []json.RawMessage) *ConversationTurnUpsertOne {
+func (u *ConversationTurnUpsertOne) SetResponseMessages(v []jsontext.Value) *ConversationTurnUpsertOne {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetResponseMessages(v)
 	})
@@ -1442,7 +1442,7 @@ func (u *ConversationTurnUpsertOne) ClearResponseMessages() *ConversationTurnUps
 }
 
 // SetTools sets the "tools" field.
-func (u *ConversationTurnUpsertOne) SetTools(v []json.RawMessage) *ConversationTurnUpsertOne {
+func (u *ConversationTurnUpsertOne) SetTools(v []jsontext.Value) *ConversationTurnUpsertOne {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetTools(v)
 	})
@@ -1645,7 +1645,7 @@ func (u *ConversationTurnUpsertOne) UpdateQualityStatus() *ConversationTurnUpser
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationTurnUpsertOne) SetQualityErrors(v []json.RawMessage) *ConversationTurnUpsertOne {
+func (u *ConversationTurnUpsertOne) SetQualityErrors(v []jsontext.Value) *ConversationTurnUpsertOne {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetQualityErrors(v)
 	})
@@ -2157,7 +2157,7 @@ func (u *ConversationTurnUpsertBulk) UpdateRequestPath() *ConversationTurnUpsert
 }
 
 // SetRequestMessages sets the "request_messages" field.
-func (u *ConversationTurnUpsertBulk) SetRequestMessages(v []json.RawMessage) *ConversationTurnUpsertBulk {
+func (u *ConversationTurnUpsertBulk) SetRequestMessages(v []jsontext.Value) *ConversationTurnUpsertBulk {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetRequestMessages(v)
 	})
@@ -2178,7 +2178,7 @@ func (u *ConversationTurnUpsertBulk) ClearRequestMessages() *ConversationTurnUps
 }
 
 // SetResponseMessages sets the "response_messages" field.
-func (u *ConversationTurnUpsertBulk) SetResponseMessages(v []json.RawMessage) *ConversationTurnUpsertBulk {
+func (u *ConversationTurnUpsertBulk) SetResponseMessages(v []jsontext.Value) *ConversationTurnUpsertBulk {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetResponseMessages(v)
 	})
@@ -2199,7 +2199,7 @@ func (u *ConversationTurnUpsertBulk) ClearResponseMessages() *ConversationTurnUp
 }
 
 // SetTools sets the "tools" field.
-func (u *ConversationTurnUpsertBulk) SetTools(v []json.RawMessage) *ConversationTurnUpsertBulk {
+func (u *ConversationTurnUpsertBulk) SetTools(v []jsontext.Value) *ConversationTurnUpsertBulk {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetTools(v)
 	})
@@ -2402,7 +2402,7 @@ func (u *ConversationTurnUpsertBulk) UpdateQualityStatus() *ConversationTurnUpse
 }
 
 // SetQualityErrors sets the "quality_errors" field.
-func (u *ConversationTurnUpsertBulk) SetQualityErrors(v []json.RawMessage) *ConversationTurnUpsertBulk {
+func (u *ConversationTurnUpsertBulk) SetQualityErrors(v []jsontext.Value) *ConversationTurnUpsertBulk {
 	return u.Update(func(s *ConversationTurnUpsert) {
 		s.SetQualityErrors(v)
 	})
