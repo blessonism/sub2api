@@ -71,7 +71,9 @@ func TestSelectTokenUsageTierSeparatesResidentAndWindow(t *testing.T) {
 		{IsResident: true, ConditionMode: TokenUsagePolicyConditionToken, MinTokens: 50000, RateMultiplier: 0.7},
 	}
 
-	require.Nil(t, selectTokenUsageTier(tiers, 60000, 0), "滚动选择器必须忽略常驻档位")
+	// 滚动选择器只跳过 IsResident 档位本身；60000 ≥ 1000 仍命中 0.8 滚动档，
+	// 进入常驻区间后的让位由 selectEffectiveTokenUsageTier 取更低倍率兜底。
+	require.Equal(t, 0.8, selectTokenUsageTier(tiers, 60000, 0).RateMultiplier)
 	require.Equal(t, 0.8, selectTokenUsageTier(tiers, 1500, 0).RateMultiplier)
 	require.Equal(t, 0.7, selectResidentTier(tiers, 60000, 0).RateMultiplier)
 	require.Nil(t, selectResidentTier(tiers, 1000, 0))
@@ -79,6 +81,10 @@ func TestSelectTokenUsageTierSeparatesResidentAndWindow(t *testing.T) {
 	window := selectTokenUsageTier(tiers, 1500, 0)
 	resident := selectResidentTier(tiers, 60000, 0)
 	require.Equal(t, 0.7, selectEffectiveTokenUsageTier(window, resident).RateMultiplier, "两者命中时取更低倍率")
+	require.Equal(t, 0.7, selectEffectiveTokenUsageTier(
+		selectTokenUsageTier(tiers, 60000, 0),
+		selectResidentTier(tiers, 60000, 0),
+	).RateMultiplier, "进入常驻区间后生效档位仍取更低倍率")
 	require.Equal(t, 0.8, selectEffectiveTokenUsageTier(window, nil).RateMultiplier)
 	require.Equal(t, 0.7, selectEffectiveTokenUsageTier(nil, resident).RateMultiplier)
 }
