@@ -209,6 +209,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   billing_mode?: string
   shared_ip_users?: boolean
   shared_ip_summary_only?: boolean
+  native_compaction_v2?: boolean | null
   upstream_model_mismatch?: boolean
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -255,6 +256,7 @@ export async function getStats(params: {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  native_compaction_v2?: boolean | null
   upstream_model_mismatch?: boolean
   period?: string
   start_date?: string

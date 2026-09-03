@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -94,6 +95,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		User:                 *base,
 		Notes:                u.Notes,
 		LastUsedAt:           u.LastUsedAt,
+		RestrictPublicGroups: u.RestrictPublicGroups,
 		GroupRates:           u.GroupRates,
 		VisibleGroupRates:    u.VisibleGroupRates,
 		GroupAccountBindings: bindings,
@@ -194,6 +196,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		Group:                       groupFromServiceBase(g),
 		TimeRatePriority:            g.TimeRatePriority,
 		TimeRatePeriods:             g.TimeRatePeriods,
+		ForceOpenAIFast:             g.ForceOpenAIFast,
+		FreeOpenAIFast:              g.FreeOpenAIFast,
 		ProfitControlEnabled:        g.ProfitControlEnabled,
 		ProfitMinMargin:             g.ProfitMinMargin,
 		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,
@@ -778,6 +782,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usage.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
 		UsageLog:              usage,
+		UpstreamReasoningEffort: adminUpstreamReasoningEffort(l),
 		VisibleRateMultiplier: l.VisibleRateMultiplier,
 		UpstreamModel:         l.UpstreamModel,
 		UpstreamResponseModel: l.UpstreamResponseModel,
@@ -790,6 +795,18 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		IPAddress:             l.IPAddress,
 		Account:               AccountSummaryFromService(l.Account),
 	}
+}
+
+func adminUpstreamReasoningEffort(l *service.UsageLog) *string {
+	if l == nil || l.RequestedReasoningEffort == nil || l.ReasoningEffort == nil {
+		return nil
+	}
+	requested := strings.TrimSpace(*l.RequestedReasoningEffort)
+	forwarded := strings.TrimSpace(*l.ReasoningEffort)
+	if requested == "" || forwarded == "" || service.NormalizeMaxReasoningEffort(requested) == service.NormalizeMaxReasoningEffort(forwarded) {
+		return nil
+	}
+	return &forwarded
 }
 
 func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTask {

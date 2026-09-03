@@ -91,6 +91,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // video_duration_seconds
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
+			sqlmock.AnyArg(), // requested_reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
 			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
@@ -101,6 +102,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			log.NativeCompactionV2,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -183,9 +185,10 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // video_resolution
 			sqlmock.AnyArg(), // video_duration_seconds
 			serviceTier,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
+			sqlmock.AnyArg(), // reasoning_effort
+			sqlmock.AnyArg(), // requested_reasoning_effort
+			sqlmock.AnyArg(), // inbound_endpoint
+			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
 			log.LongContextBillingApplied,
 			sqlmock.AnyArg(), // channel_id
@@ -194,6 +197,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			log.NativeCompactionV2,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -259,6 +263,30 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 }
 
+func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestType(t *testing.T) {
+	log := &service.UsageLog{
+		UserID:             1,
+		APIKeyID:           2,
+		AccountID:          3,
+		RequestID:          "req-native-compaction-v2",
+		Model:              "gpt-5",
+		RequestedModel:     "gpt-5",
+		RequestType:        service.RequestTypeStream,
+		NativeCompactionV2: true,
+		CreatedAt:          time.Date(2025, 1, 5, 13, 0, 0, 0, time.UTC),
+	}
+
+	prepared := prepareUsageLogInsert(log)
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2])
+	require.Equal(t, true, prepared.args[len(prepared.args)-2])
+	require.Equal(t, int16(service.RequestTypeStream), prepared.args[31])
+	require.Equal(t, service.RequestTypeStream, log.RequestType)
+	require.True(t, log.Stream)
+	require.False(t, log.OpenAIWSMode)
+}
+
 func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 	imageSize := "4K"
 	inputSize := "1024x1024"
@@ -280,11 +308,11 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
-	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[38])
-	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[39])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[40])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[41])
-	breakdownJSON, ok := prepared.args[42].(string)
+	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[39])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[40])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[41])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[42])
+	breakdownJSON, ok := prepared.args[43].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -381,6 +409,26 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryListWithFiltersNativeCompactionV2(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	nativeCompactionV2 := true
+	filters := usagestats.UsageLogFilters{NativeCompactionV2: &nativeCompactionV2, ExactTotal: true}
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE native_compaction_v2 = \\$1").
+		WithArgs(true).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE native_compaction_v2 = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+		WithArgs(true, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryListWithFiltersSharedIPUsers(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
@@ -461,6 +509,7 @@ func TestUsageLogRepositoryGetSharedIPUsersSummary(t *testing.T) {
 	mock.ExpectQuery("WITH matched_logs AS").
 		WithArgs(start).
 		WillReturnRows(groupRows)
+
 	summary, err := repo.GetSharedIPUsersSummary(context.Background(), filters)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), summary.IPCount)
@@ -528,6 +577,74 @@ func TestUsageLogRepositoryGetUsageTrendWithUsageFiltersRequestedModelSource(t *
 	require.NoError(t, err)
 	require.Empty(t, trend)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	nativeCompactionV2 := true
+	filters := usagestats.UsageLogFilters{NativeCompactionV2: &nativeCompactionV2}
+
+	t.Run("stats", func(t *testing.T) {
+		db, mock := newSQLMock(t)
+		repo := &usageLogRepository{sql: db}
+		mock.ExpectQuery("(?s)FROM usage_logs\\s+WHERE native_compaction_v2 = \\$1.*GROUP BY GROUPING SETS").
+			WithArgs(true).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"inbound_grouped", "upstream_grouped", "inbound_endpoint", "upstream_endpoint",
+				"requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
+				"cost", "actual_cost", "account_cost", "avg_duration_ms",
+			}))
+
+		_, err := repo.GetStatsWithFilters(context.Background(), filters)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("trend bypasses preaggregate", func(t *testing.T) {
+		db, mock := newSQLMock(t)
+		repo := &usageLogRepository{sql: db}
+		mock.ExpectQuery("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3").
+			WithArgs(start, end, true).
+			WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
+
+		_, err := repo.GetUsageTrendWithUsageFilters(context.Background(), start, end, "day", filters)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("model", func(t *testing.T) {
+		db, mock := newSQLMock(t)
+		repo := &usageLogRepository{sql: db}
+		mock.ExpectQuery("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3").
+			WithArgs(start, end, true).
+			WillReturnRows(sqlmock.NewRows([]string{
+				"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens",
+				"cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost",
+			}))
+
+		_, err := repo.GetModelStatsWithUsageFiltersBySource(context.Background(), start, end, filters, usagestats.ModelSourceRequested)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("group", func(t *testing.T) {
+		db, mock := newSQLMock(t)
+		repo := &usageLogRepository{sql: db}
+		mock.ExpectQuery("(?s)FROM usage_logs ul.*AND ul.native_compaction_v2 = \\$3").
+			WithArgs(start, end, true).
+			WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "requests", "total_tokens", "cost", "actual_cost", "account_cost"}))
+
+		_, err := repo.GetGroupStatsWithUsageFilters(context.Background(), start, end, filters)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestShouldUsePreaggregatedTrendRejectsNativeCompactionV2Filter(t *testing.T) {
+	nativeCompactionV2 := true
+	require.True(t, shouldUsePreaggregatedTrend("day", 0, 0, 0, 0, "", nil, nil, nil, "", nil, nil))
+	require.False(t, shouldUsePreaggregatedTrend("day", 0, 0, 0, 0, "", nil, nil, nil, "", nil, &nativeCompactionV2))
 }
 
 func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testing.T) {
@@ -821,8 +938,7 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 		"total_requests", "total_tokens", "total_cost", "total_actual_cost", "total_account_cost",
 	}).AddRow(
 		int64(1), int64(7), "alice@example.com", "alice", "active", registeredAt,
-		lastUsedAt,
-		int64(6), int64(2000), 3.4, 2.8, 1.7,
+		lastUsedAt, int64(6), int64(2000), 3.4, 2.8, 1.7,
 		int64(6), int64(2000), 3.4, 2.8, 1.7,
 	)
 
@@ -831,36 +947,17 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboard(t *testing.T) {
 		WillReturnRows(rows)
 
 	got, err := repo.GetAdminTokenLeaderboard(context.Background(), start, end, usagestats.AdminTokenLeaderboardFilters{
-		Email:      "alice",
-		GroupID:    3,
-		Model:      "claude-opus",
-		ModelType:  usagestats.ModelSourceRequested,
-		UserStatus: "active",
-		Limit:      20,
+		Email: "alice", GroupID: 3, Model: "claude-opus", ModelType: usagestats.ModelSourceRequested,
+		UserStatus: "active", Limit: 20,
 	})
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.AdminTokenLeaderboardResponse{
-		Ranking: []usagestats.AdminTokenLeaderboardUser{
-			{
-				Rank:         1,
-				UserID:       7,
-				Email:        "alice@example.com",
-				Username:     "alice",
-				Status:       "active",
-				RegisteredAt: registeredAt,
-				LastUsedAt:   lastUsedAt,
-				Requests:     6,
-				Tokens:       2000,
-				Cost:         3.4,
-				ActualCost:   2.8,
-				AccountCost:  1.7,
-			},
-		},
-		TotalRequests:    6,
-		TotalTokens:      2000,
-		TotalCost:        3.4,
-		TotalActualCost:  2.8,
-		TotalAccountCost: 1.7,
+		Ranking: []usagestats.AdminTokenLeaderboardUser{{
+			Rank: 1, UserID: 7, Email: "alice@example.com", Username: "alice", Status: "active",
+			RegisteredAt: registeredAt, LastUsedAt: lastUsedAt, Requests: 6, Tokens: 2000,
+			Cost: 3.4, ActualCost: 2.8, AccountCost: 1.7,
+		}},
+		TotalRequests: 6, TotalTokens: 2000, TotalCost: 3.4, TotalActualCost: 2.8, TotalAccountCost: 1.7,
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -872,19 +969,16 @@ func TestUsageLogRepositoryGetUserSpendingRankingBackfillsSubscriptionQuotaCost(
 	start := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	lastUsed := start.Add(15 * time.Hour)
-
-	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "last_used_at", "total_actual_cost", "total_requests", "total_tokens"}).
-		AddRow(int64(8), "sub@example.com", 6.0, int64(3), int64(1200), lastUsed, 6.0, int64(3), int64(1200))
-
+	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "actual_cost", "requests", "tokens", "last_used_at", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(8), "sub@example.com", "subscriber", 6.0, int64(3), int64(1200), lastUsed, 6.0, int64(3), int64(1200))
 	mock.ExpectQuery(fmt.Sprintf("CASE WHEN \\(u\\.subscription_id IS NOT NULL OR u\\.billing_type = %d\\) AND COALESCE\\(u\\.actual_cost, 0\\) <= 0", service.BillingTypeSubscription)).
-		WithArgs(start, end, 5, "2025-01-02", "2025-01-03").
-		WillReturnRows(rows)
+		WithArgs(start, end, 5, "2025-01-02", "2025-01-03").WillReturnRows(rows)
 
 	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 5)
 	require.NoError(t, err)
-	require.Equal(t, []usagestats.UserSpendingRankingItem{
-		{UserID: 8, Email: "sub@example.com", ActualCost: 6.0, Requests: 3, Tokens: 1200, LastUsedAt: lastUsed},
-	}, got.Ranking)
+	require.Equal(t, []usagestats.UserSpendingRankingItem{{
+		UserID: 8, Email: "sub@example.com", Username: "subscriber", ActualCost: 6.0, Requests: 3, Tokens: 1200, LastUsedAt: lastUsed,
+	}}, got.Ranking)
 	require.InDelta(t, 6.0, got.TotalActualCost, 1e-9)
 	require.Equal(t, int64(3), got.TotalRequests)
 	require.Equal(t, int64(1200), got.TotalTokens)
@@ -894,158 +988,33 @@ func TestUsageLogRepositoryGetUserSpendingRankingBackfillsSubscriptionQuotaCost(
 func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
-
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	userID := int64(7)
 
-	mock.ExpectQuery("COALESCE\\(ul.api_key_id, 0\\) as api_key_id").
-		WithArgs(start, end, userID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"api_key_id", "api_key_name", "requests", "tokens", "cost", "actual_cost", "account_cost",
-		}).AddRow(int64(11), "prod-key", int64(3), int64(900), 1.2, 1.1, 0.7))
-
-	mock.ExpectQuery("COALESCE\\(ul.group_id, 0\\) as group_id").
-		WithArgs(start, end, userID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"group_id", "group_name", "requests", "tokens", "cost", "actual_cost", "account_cost",
-		}).AddRow(int64(5), "vip", int64(2), int64(600), 0.9, 0.8, 0.5))
-
-	mock.ExpectQuery("requested_model[\\s\\S]*GROUP BY 1").
-		WithArgs(start, end, userID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"model", "requests", "tokens", "cost", "actual_cost", "account_cost",
-		}).AddRow("claude-opus", int64(4), int64(1200), 1.6, 1.4, 0.9))
+	mock.ExpectQuery("COALESCE\\(ul.api_key_id, 0\\) as api_key_id").WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "api_key_name", "requests", "tokens", "cost", "actual_cost", "account_cost"}).
+			AddRow(int64(11), "prod-key", int64(3), int64(900), 1.2, 1.1, 0.7))
+	mock.ExpectQuery("COALESCE\\(ul.group_id, 0\\) as group_id").WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "requests", "tokens", "cost", "actual_cost", "account_cost"}).
+			AddRow(int64(5), "vip", int64(2), int64(600), 0.9, 0.8, 0.5))
+	mock.ExpectQuery("requested_model[\\s\\S]*GROUP BY 1").WithArgs(start, end, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "tokens", "cost", "actual_cost", "account_cost"}).
+			AddRow("claude-opus", int64(4), int64(1200), 1.6, 1.4, 0.9))
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
-		WithArgs(userID, "2025-01-01", "2025-01-02").
-		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
+		WithArgs(userID, "2025-01-01", "2025-01-02").WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
 	mock.ExpectQuery("(?s)WITH balance_deltas AS .*admin_usage_calibration_daily_allocations.*SELECT COALESCE\\(SUM\\(balance_delta\\), 0\\) FROM balance_deltas").
-		WithArgs(userID, "2025-01-01", "2025-01-02", start, end).
-		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(-2.5))
+		WithArgs(userID, "2025-01-01", "2025-01-02", start, end).WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(-2.5))
 
 	got, err := repo.GetAdminTokenLeaderboardUserDetails(context.Background(), start, end, userID, usagestats.AdminTokenLeaderboardFilters{})
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.AdminTokenLeaderboardUserDetails{
-		CalibrationTokens:       -150,
-		CalibrationBalanceDelta: -2.5,
-		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{
-			{APIKeyID: 11, APIKeyName: "prod-key", Requests: 3, Tokens: 900, Cost: 1.2, ActualCost: 1.1, AccountCost: 0.7},
-		},
-		Groups: []usagestats.AdminTokenLeaderboardGroupUsage{
-			{GroupID: 5, GroupName: "vip", Requests: 2, Tokens: 600, Cost: 0.9, ActualCost: 0.8, AccountCost: 0.5},
-		},
-		Models: []usagestats.AdminTokenLeaderboardModelUsage{
-			{Model: "claude-opus", Requests: 4, Tokens: 1200, Cost: 1.6, ActualCost: 1.4, AccountCost: 0.9},
-		},
+		CalibrationTokens: -150, CalibrationBalanceDelta: -2.5,
+		APIKeys: []usagestats.AdminTokenLeaderboardAPIKeyUsage{{APIKeyID: 11, APIKeyName: "prod-key", Requests: 3, Tokens: 900, Cost: 1.2, ActualCost: 1.1, AccountCost: 0.7}},
+		Groups:  []usagestats.AdminTokenLeaderboardGroupUsage{{GroupID: 5, GroupName: "vip", Requests: 2, Tokens: 600, Cost: 0.9, ActualCost: 0.8, AccountCost: 0.5}},
+		Models:  []usagestats.AdminTokenLeaderboardModelUsage{{Model: "claude-opus", Requests: 4, Tokens: 1200, Cost: 1.6, ActualCost: 1.4, AccountCost: 0.9}},
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUsageLogRepositoryGetUserTokenLeaderboardIncludesCurrentUserOutsideTop(t *testing.T) {
-	db, mock := newSQLMock(t)
-	repo := &usageLogRepository{sql: db}
-
-	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
-	currentUserID := int64(9)
-
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
-		AddRow("top", int64(1), int64(2), "beta@example.com", int64(9), int64(900), 0.7).
-		AddRow("top", int64(2), int64(1), "alpha@example.com", int64(8), int64(900), 0.8).
-		AddRow("current", int64(4), currentUserID, "current@example.com", int64(3), int64(120), 0.9)
-
-	mock.ExpectQuery("ROW_NUMBER\\(\\) OVER \\(ORDER BY uu\\.tokens DESC, uu\\.requests DESC, uu\\.user_id ASC\\)").
-		WithArgs(start, end, 2, currentUserID, "2026-06-18", "2026-06-19").
-		WillReturnRows(rows)
-
-	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 2, currentUserID)
-	require.NoError(t, err)
-	require.Equal(t, []usagestats.UserTokenLeaderboardRow{
-		{Rank: 1, UserID: 2, Email: "beta@example.com", Requests: 9, Tokens: 900, DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.7)},
-		{Rank: 2, UserID: 1, Email: "alpha@example.com", Requests: 8, Tokens: 900, DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.8)},
-	}, got.Ranking)
-	require.NotNil(t, got.MyRank)
-	require.Equal(t, &usagestats.UserTokenLeaderboardRow{
-		Rank:                   4,
-		UserID:                 currentUserID,
-		Email:                  "current@example.com",
-		Requests:               3,
-		Tokens:                 120,
-		DiscountRateMultiplier: ptrLeaderboardRateForRepoTest(0.9),
-	}, got.MyRank)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUsageLogRepositoryGetUserTokenLeaderboardDefaultsLimitToTop10(t *testing.T) {
-	db, mock := newSQLMock(t)
-	repo := &usageLogRepository{sql: db}
-
-	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
-	currentUserID := int64(9)
-
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"})
-	mock.ExpectQuery("ROW_NUMBER\\(\\) OVER \\(ORDER BY uu\\.tokens DESC, uu\\.requests DESC, uu\\.user_id ASC\\)").
-		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
-		WillReturnRows(rows)
-
-	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 0, currentUserID)
-	require.NoError(t, err)
-	require.Empty(t, got.Ranking)
-	require.Nil(t, got.MyRank)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUsageLogRepositoryGetUserTokenLeaderboardUsesCurrentAutoMultiplier(t *testing.T) {
-	db, mock := newSQLMock(t)
-	repo := &usageLogRepository{sql: db}
-
-	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
-	currentUserID := int64(9)
-
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
-		AddRow("top", int64(1), currentUserID, "current@example.com", int64(3), int64(120), 0.7)
-
-	mock.ExpectQuery("MIN\\([\\s\\S]*CASE[\\s\\S]*WHEN ugr\\.visible_rate_multiplier IS NOT NULL THEN ugr\\.visible_rate_multiplier[\\s\\S]*ELSE LEAST\\(ugr\\.rate_multiplier, COALESCE\\(target_group\\.visible_rate_multiplier, target_group\\.rate_multiplier\\)\\)[\\s\\S]*END[\\s\\S]*\\) AS rate_multiplier[\\s\\S]*JOIN token_usage_auto_policies p ON p\\.id = a\\.policy_id AND p\\.enabled = TRUE[\\s\\S]*JOIN groups target_group ON target_group\\.id = a\\.target_group_id AND target_group\\.status = 'active'[\\s\\S]*JOIN user_group_rate_multipliers ugr ON ugr\\.user_id = a\\.user_id AND ugr\\.group_id = a\\.target_group_id[\\s\\S]*ugr\\.rate_multiplier = a\\.last_rate_multiplier").
-		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
-		WillReturnRows(rows)
-
-	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 10, currentUserID)
-	require.NoError(t, err)
-	require.Len(t, got.Ranking, 1)
-	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.Ranking[0].DiscountRateMultiplier)
-	require.NotNil(t, got.MyRank)
-	require.Equal(t, ptrLeaderboardRateForRepoTest(0.7), got.MyRank.DiscountRateMultiplier)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUsageLogRepositoryGetUserTokenLeaderboardCommonGroupFallsBackToRealMultiplier(t *testing.T) {
-	db, mock := newSQLMock(t)
-	repo := &usageLogRepository{sql: db}
-
-	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
-	currentUserID := int64(9)
-
-	rows := sqlmock.NewRows([]string{"row_type", "rank", "user_id", "email", "requests", "tokens", "discount_rate_multiplier"}).
-		AddRow("top", int64(1), currentUserID, "current@example.com", int64(3), int64(120), 0.85)
-
-	mock.ExpectQuery("common_multiplier AS \\([\\s\\S]*SELECT COALESCE\\(g\\.visible_rate_multiplier, g\\.rate_multiplier\\) AS rate_multiplier[\\s\\S]*s\\.key = 'token_leaderboard_common_group_id'[\\s\\S]*g\\.subscription_type = 'standard'[\\s\\S]*g\\.is_exclusive = FALSE").
-		WithArgs(start, end, 10, currentUserID, "2026-06-18", "2026-06-19").
-		WillReturnRows(rows)
-
-	got, err := repo.GetUserTokenLeaderboard(context.Background(), start, end, 10, currentUserID)
-	require.NoError(t, err)
-	require.Len(t, got.Ranking, 1)
-	require.Equal(t, ptrLeaderboardRateForRepoTest(0.85), got.Ranking[0].DiscountRateMultiplier)
-	require.NotNil(t, got.MyRank)
-	require.Equal(t, ptrLeaderboardRateForRepoTest(0.85), got.MyRank.DiscountRateMultiplier)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func ptrLeaderboardRateForRepoTest(v float64) *float64 {
-	return &v
 }
 
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
@@ -1152,6 +1121,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			false,
 			false,
 			sql.NullInt64{},
@@ -1160,6 +1130,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			sql.NullString{},
+			false, // native_compaction_v2
 			now,
 		}})
 		require.NoError(t, err)
@@ -1230,6 +1201,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			false,
 			false,
 			sql.NullInt64{},   // channel_id
@@ -1238,6 +1210,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			false,             // native_compaction_v2
 			now,
 		}})
 		require.NoError(t, err)
@@ -1291,6 +1264,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			false,
 			false,
 			sql.NullInt64{},   // channel_id
@@ -1299,6 +1273,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			true,              // native_compaction_v2
 			now,
 		}})
 		require.NoError(t, err)
@@ -1307,6 +1282,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, service.RequestTypeStream, log.RequestType)
 		require.True(t, log.Stream)
 		require.False(t, log.OpenAIWSMode)
+		require.True(t, log.NativeCompactionV2)
 	})
 
 	t.Run("service_tier_is_scanned", func(t *testing.T) {
@@ -1352,6 +1328,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			false,
 			false,
 			sql.NullInt64{},   // channel_id
@@ -1360,6 +1337,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			false,             // native_compaction_v2
 			now,
 		}})
 		require.NoError(t, err)

@@ -358,6 +358,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		RPMLimit:             req.RPMLimit,
 		Status:               req.Status,
 		AllowedGroups:        req.AllowedGroups,
+		RestrictPublicGroups: req.RestrictPublicGroups,
 		GroupRates:           req.GroupRates,
 		VisibleGroupRates:    req.VisibleGroupRates,
 		GroupAccountBindings: req.GroupAccountBindings,
