@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -67,12 +68,18 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
+	respText, rawBody, statusCode, firstOutputMs, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
 
 	if err != nil {
+		var streamErr *monitorResponsesStreamError
+		if errors.As(err, &streamErr) && streamErr.allowPartial && statusCode >= 200 && statusCode < 300 && validateChallenge(respText, challenge.Expected) {
+			res.Status = MonitorStatusDegraded
+			res.Message = truncateMessage(formatResponsesStreamPartialMessage(streamErr, firstOutputMs, latencyMs))
+			return res
+		}
 		res.Status = MonitorStatusError
 		res.Message = truncateMessage(sanitizeErrorMessage(err.Error()))
 		return res
@@ -95,7 +102,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 			res.Message = truncateMessage("replace-mode: upstream returned 2xx with empty text")
 			return res
 		}
-		return finalizeOperationalOrDegraded(res, latency, latencyMs)
+		return finalizeOperationalOrDegraded(res, latency, latencyMs, firstOutputMs)
 	}
 
 	if !validateChallenge(respText, challenge.Expected) {
@@ -104,19 +111,34 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		return res
 	}
 
-	return finalizeOperationalOrDegraded(res, latency, latencyMs)
+	return finalizeOperationalOrDegraded(res, latency, latencyMs, firstOutputMs)
 }
 
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。
 // 拆出来是为了让 runCheckForModel 不超过 30 行。
-func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int) *CheckResult {
+func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int, firstOutputMs *int) *CheckResult {
 	if latency >= monitorDegradedThreshold {
 		res.Status = MonitorStatusDegraded
-		res.Message = truncateMessage(fmt.Sprintf("slow response: %dms", latencyMs))
+		message := fmt.Sprintf("slow response: total=%dms", latencyMs)
+		if firstOutputMs != nil {
+			message += fmt.Sprintf(" first_output=%dms", *firstOutputMs)
+		}
+		res.Message = truncateMessage(message)
 		return res
 	}
 	res.Status = MonitorStatusOperational
 	return res
+}
+
+func formatResponsesStreamPartialMessage(streamErr *monitorResponsesStreamError, firstOutputMs *int, latencyMs int) string {
+	message := fmt.Sprintf("responses stream read timeout: total=%dms", latencyMs)
+	if firstOutputMs != nil {
+		message += fmt.Sprintf(" first_output=%dms", *firstOutputMs)
+	}
+	if streamErr != nil && streamErr.Error() != "" {
+		message += ": " + sanitizeErrorMessage(streamErr.Error())
+	}
+	return message
 }
 
 // bodyOverrideMode 归一取 opts.BodyOverrideMode，nil opts / 空串都视为 off。
@@ -253,7 +275,7 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 			"instructions":      "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly.",
 			"input":             prompt,
 			"max_output_tokens": monitorChallengeMaxTokens,
-			"stream":            false,
+			"stream":            true,
 		})
 	},
 	buildHeaders: func(apiKey string) map[string]string {
@@ -276,32 +298,237 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 //
 // 返回值：
 //   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
-//   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
+//   - rawBody: 已读取的响应体/流片段（被 monitorResponseMaxBytes 限制），用于错误路径保留诊断信息
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
-func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
+func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, firstOutputMs *int, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
-		return "", "", 0, err
+		return "", "", 0, nil, err
 	}
 	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
 	if !ok {
-		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
+		return "", "", 0, nil, fmt.Errorf("unsupported provider %q", provider)
 	}
 	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
 	if err != nil {
-		return "", "", 0, err
+		return "", "", 0, nil, err
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
+	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
+		return postOpenAIResponsesStream(ctx, full, body, headers)
+	}
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
-		return "", "", status, err
+		return "", "", status, nil, err
 	}
-	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
-		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
+	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil, nil
+}
+
+// monitorResponsesStreamError 标记 Responses 流在 HTTP 2xx 后的读取状态。
+// allowPartial 仅用于“已有可验证文本、但没有正常终态”的降级路径；显式失败、总超时和超限都必须保持 error。
+type monitorResponsesStreamError struct {
+	cause        error
+	allowPartial bool
+}
+
+func (e *monitorResponsesStreamError) Error() string {
+	if e == nil || e.cause == nil {
+		return "responses stream read failed"
 	}
-	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
+	return e.cause.Error()
+}
+
+func (e *monitorResponsesStreamError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+// postOpenAIResponsesStream 发送 Responses 流式请求，并在收到终态前增量读取 SSE。
+// 兼容少数忽略 stream=true 的网关：若 2xx body 不是 SSE，则在 EOF 时按普通 Responses JSON 提取文本。
+func postOpenAIResponsesStream(ctx context.Context, fullURL string, payload []byte, headers map[string]string) (string, string, int, *int, error) {
+	req, err := newMonitorPOSTRequest(ctx, fullURL, payload, headers, "text/event-stream")
+	if err != nil {
+		return "", "", 0, nil, err
+	}
+	resp, err := monitorHTTPClient.Do(req)
+	if err != nil {
+		return "", "", 0, nil, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+		if readErr != nil {
+			return "", string(body), resp.StatusCode, nil, fmt.Errorf("read body: %w", readErr)
+		}
+		return "", string(body), resp.StatusCode, nil, nil
+	}
+
+	text, rawBody, firstOutputMs, streamErr := readOpenAIResponsesStream(ctx, resp.Body)
+	if streamErr != nil {
+		return text, rawBody, resp.StatusCode, firstOutputMs, streamErr
+	}
+	return text, rawBody, resp.StatusCode, firstOutputMs, nil
+}
+
+func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBody string, firstOutputMs *int, err error) {
+	if body == nil {
+		return "", "", nil, &monitorResponsesStreamError{cause: errors.New("responses stream body is nil")}
+	}
+
+	limited := &io.LimitedReader{R: body, N: int64(monitorResponseMaxBytes) + 1}
+	scanner := bufio.NewScanner(limited)
+	scanner.Buffer(make([]byte, 1024), monitorResponseMaxBytes+1)
+
+	var raw bytes.Buffer
+	var output strings.Builder
+	var parser openAICompatSSEFrameParser
+	seenSSE := false
+	seenTerminal := false
+	streamStart := time.Now()
+
+	appendRaw := func(line string) {
+		if raw.Len() >= monitorResponseMaxBytes {
+			return
+		}
+		if raw.Len() > 0 {
+			raw.WriteByte('\n')
+		}
+		remaining := monitorResponseMaxBytes - raw.Len()
+		if len(line) > remaining {
+			line = line[:remaining]
+		}
+		raw.WriteString(line)
+	}
+	setOutput := func(value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		output.Reset()
+		output.WriteString(value)
+		if firstOutputMs == nil {
+			ms := int(time.Since(streamStart) / time.Millisecond)
+			firstOutputMs = &ms
+		}
+	}
+	appendOutput := func(value string) {
+		if value != "" {
+			if firstOutputMs == nil {
+				ms := int(time.Since(streamStart) / time.Millisecond)
+				firstOutputMs = &ms
+			}
+			output.WriteString(value)
+		}
+	}
+	processFrame := func(frame openAICompatSSEFrame) error {
+		payload := strings.TrimSpace(frame.Data)
+		if payload == "" {
+			return nil
+		}
+		seenSSE = true
+		if payload == "[DONE]" {
+			seenTerminal = true
+			return nil
+		}
+
+		payloadBytes := []byte(openAICompatPayloadWithEventType(payload, frame.EventType))
+		eventType := effectiveOpenAISSEEventType(payloadBytes, frame.EventType)
+		switch eventType {
+		case "response.output_text.delta":
+			appendOutput(gjson.GetBytes(payloadBytes, "delta").String())
+		case "response.output_text.done":
+			setOutput(gjson.GetBytes(payloadBytes, "text").String())
+		case "response.output_item.added", "response.output_item.done":
+			if item := gjson.GetBytes(payloadBytes, "item"); item.Exists() {
+				setOutput(extractOpenAIResponsesText([]byte(`{"output":[` + item.Raw + `]}`)))
+			}
+		case "response.completed", "response.done":
+			if response := gjson.GetBytes(payloadBytes, "response"); response.Exists() {
+				setOutput(extractOpenAIResponsesText([]byte(response.Raw)))
+			}
+			seenTerminal = true
+		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
+			message := extractOpenAISSEErrorMessage(payloadBytes)
+			if message == "" {
+				message = "upstream response failed"
+			}
+			return &monitorResponsesStreamError{
+				cause: errors.New("responses stream " + eventType + ": " + message),
+			}
+		}
+		return nil
+	}
+
+	for scanner.Scan() {
+		if limited.N <= 0 {
+			return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes)}
+		}
+		line := scanner.Text()
+		appendRaw(line)
+		frame, ok := parser.AddLine(line)
+		if !ok {
+			continue
+		}
+		if err := processFrame(frame); err != nil {
+			return output.String(), raw.String(), firstOutputMs, err
+		}
+		if seenTerminal {
+			return output.String(), raw.String(), firstOutputMs, nil
+		}
+	}
+
+	if limited.N <= 0 {
+		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes)}
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{
+			cause:        fmt.Errorf("responses stream read: %w", scanErr),
+			allowPartial: errors.Is(scanErr, context.DeadlineExceeded) && ctx.Err() == nil,
+		}
+	}
+	if frame, ok := parser.Finish(); ok {
+		if err := processFrame(frame); err != nil {
+			return output.String(), raw.String(), firstOutputMs, err
+		}
+		if seenTerminal {
+			return output.String(), raw.String(), firstOutputMs, nil
+		}
+	}
+
+	if !seenSSE {
+		if rawText := strings.TrimSpace(raw.String()); rawText != "" {
+			rawBytes := []byte(rawText)
+			text := extractOpenAIResponsesText(rawBytes)
+			if strings.TrimSpace(text) == "" {
+				if response := gjson.GetBytes(rawBytes, "response"); response.Exists() {
+					text = extractOpenAIResponsesText([]byte(response.Raw))
+				}
+			}
+			return text, raw.String(), firstOutputMs, nil
+		}
+		return "", raw.String(), firstOutputMs, nil
+	}
+	return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{
+		cause:        errors.New("responses stream ended before terminal event"),
+		allowPartial: false,
+	}
+}
+
+func newMonitorPOSTRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string, accept string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", accept)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return req, nil
 }
 
 func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
@@ -528,14 +755,9 @@ func hasNonEmptyBodyValue(v any) bool {
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
 func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	req, err := newMonitorPOSTRequest(ctx, fullURL, payload, headers, "application/json")
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
+		return nil, 0, err
 	}
 
 	resp, err := monitorHTTPClient.Do(req)

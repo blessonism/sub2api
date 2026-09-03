@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -17,9 +18,13 @@ import (
 // swapMonitorHTTPClient 临时替换 monitorHTTPClient 为不带 SSRF 校验的普通 client，
 // 让 httptest (127.0.0.1) 能连通。测试结束后恢复。
 func swapMonitorHTTPClient(t *testing.T) {
+	swapMonitorHTTPClientWithTimeout(t, 5*time.Second)
+}
+
+func swapMonitorHTTPClientWithTimeout(t *testing.T, timeout time.Duration) {
 	t.Helper()
 	orig := monitorHTTPClient
-	monitorHTTPClient = &http.Client{Timeout: 5 * time.Second}
+	monitorHTTPClient = &http.Client{Timeout: timeout}
 	t.Cleanup(func() { monitorHTTPClient = orig })
 }
 
@@ -66,6 +71,7 @@ type openAICaptureHandler struct {
 	status                    int
 	rawResponse               string
 	responsesLeadingReasoning bool
+	responsesStream           func(http.ResponseWriter, string)
 }
 
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +85,12 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	if h.status == 0 {
 		h.status = http.StatusOK
 	}
-	w.Header().Set("Content-Type", "application/json")
+	isResponsesStream := h.lastPath == providerOpenAIResponsesPath && h.lastBody["stream"] == true && h.rawResponse == ""
+	if isResponsesStream {
+		w.Header().Set("Content-Type", "text/event-stream")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+	}
 	w.WriteHeader(h.status)
 	if h.rawResponse != "" {
 		_, _ = w.Write([]byte(h.rawResponse))
@@ -88,6 +99,36 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 	answer := answerFromOpenAIRequest(parsed)
 	if h.lastPath == providerOpenAIResponsesPath {
+		if h.responsesStream != nil {
+			h.responsesStream(w, answer)
+			return
+		}
+		if isResponsesStream {
+			if h.responsesLeadingReasoning {
+				writeResponsesSSEEvent(w, "response.output_item.added", map[string]any{
+					"type": "response.output_item.added",
+					"item": map[string]any{"type": "reasoning", "summary": []any{}},
+				})
+			}
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			writeResponsesSSEEvent(w, "response.output_text.done", map[string]any{
+				"type": "response.output_text.done",
+				"text": answer,
+			})
+			writeResponsesSSEEvent(w, "response.completed", map[string]any{
+				"type": "response.completed",
+				"response": map[string]any{
+					"output": []map[string]any{{
+						"type":    "message",
+						"content": []map[string]any{{"type": "output_text", "text": answer}},
+					}},
+				},
+			})
+			return
+		}
 		output := []map[string]any{}
 		if h.responsesLeadingReasoning {
 			output = append(output, map[string]any{
@@ -111,6 +152,16 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"choices": []map[string]any{{"message": map[string]any{"content": answer}}},
 	})
+}
+
+func writeResponsesSSEEvent(w http.ResponseWriter, eventType string, payload map[string]any) {
+	data, _ := json.Marshal(payload)
+	_, _ = w.Write([]byte("event: " + eventType + "\ndata: "))
+	_, _ = w.Write(data)
+	_, _ = w.Write([]byte("\n\n"))
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
@@ -307,8 +358,8 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	if _, ok := h.lastBody["messages"]; ok {
 		t.Error("responses body must not contain chat messages")
 	}
-	if h.lastBody["stream"] != false {
-		t.Errorf("responses body should set stream=false, got %v", h.lastBody["stream"])
+	if h.lastBody["stream"] != true {
+		t.Errorf("responses body should set stream=true, got %v", h.lastBody["stream"])
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
@@ -328,6 +379,187 @@ func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T
 	}
 	if h.lastPath != providerOpenAIResponsesPath {
 		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_SlowCompletionAfterValidOutputIsDegraded(t *testing.T) {
+	swapMonitorHTTPClientWithTimeout(t, 10*time.Second)
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			time.Sleep(monitorDegradedThreshold + 100*time.Millisecond)
+			writeResponsesSSEEvent(w, "response.completed", map[string]any{
+				"type": "response.completed",
+				"response": map[string]any{
+					"output": []map[string]any{{
+						"type":    "message",
+						"content": []map[string]any{{"type": "output_text", "text": answer}},
+					}},
+				},
+			})
+		},
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, srv.URL, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusDegraded {
+		t.Fatalf("slow completed Responses stream should be degraded, got status=%s message=%q", res.Status, res.Message)
+	}
+	if res.LatencyMs == nil || *res.LatencyMs < int(monitorDegradedThreshold/time.Millisecond) {
+		t.Fatalf("slow completed Responses stream should retain total latency, got %v", res.LatencyMs)
+	}
+	if !strings.Contains(res.Message, "total=") || !strings.Contains(res.Message, "first_output=") {
+		t.Fatalf("slow Responses diagnostic should include total and first output latency, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_FailedEventRemainsError(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			writeResponsesSSEEvent(w, "response.failed", map[string]any{
+				"type": "response.failed",
+				"response": map[string]any{
+					"status": "failed",
+					"error":  map[string]any{"message": "upstream overloaded"},
+				},
+			})
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("response.failed must remain error even after output, got status=%s message=%q", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "response.failed") {
+		t.Fatalf("failed Responses event should be diagnosable, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_ValidOutputWithoutTerminalIsError(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("valid output without terminal should be error, got status=%s message=%q", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "terminal event") {
+		t.Fatalf("incomplete Responses stream should be diagnosable, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_ContextTimeoutAfterOutputRemainsError(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			time.Sleep(200 * time.Millisecond)
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+
+	res := runCheckForModel(ctx, MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("context timeout must remain error even after output, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_ClientReadTimeoutAfterOutputIsDegraded(t *testing.T) {
+	swapMonitorHTTPClientWithTimeout(t, 50*time.Millisecond)
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			time.Sleep(150 * time.Millisecond)
+		},
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, srv.URL, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusDegraded {
+		t.Fatalf("client read timeout after valid output should be degraded, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestReadOpenAIResponsesStream_OverLimitRemainsError(t *testing.T) {
+	body := strings.NewReader("data: " + strings.Repeat("x", monitorResponseMaxBytes) + "\n\n")
+	_, _, _, err := readOpenAIResponsesStream(context.Background(), body)
+	if err == nil {
+		t.Fatal("oversized Responses stream should return an error")
+	}
+	var streamErr *monitorResponsesStreamError
+	if !errors.As(err, &streamErr) || streamErr.allowPartial {
+		t.Fatalf("oversized Responses stream must not allow partial success, got %T %+v", err, streamErr)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_EmptyCompletedIsFailed(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, _ string) {
+			writeResponsesSSEEvent(w, "response.completed", map[string]any{
+				"type":     "response.completed",
+				"response": map[string]any{"output": []any{}},
+			})
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusFailed {
+		t.Fatalf("empty completed Responses stream should be failed, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestChannelMonitorTimeoutsCoverResponsesHeaderWait(t *testing.T) {
+	if monitorResponseHeaderTimeout != 60*time.Second {
+		t.Fatalf("Responses header timeout = %s, want 60s", monitorResponseHeaderTimeout)
+	}
+	if monitorRequestTimeout < monitorResponseHeaderTimeout {
+		t.Fatalf("request timeout %s must cover header timeout %s", monitorRequestTimeout, monitorResponseHeaderTimeout)
+	}
+	if monitorRequestTimeout+monitorPingTimeout+monitorRunOneBuffer < monitorResponseHeaderTimeout {
+		t.Fatalf("runner timeout must cover Responses header timeout")
 	}
 }
 
