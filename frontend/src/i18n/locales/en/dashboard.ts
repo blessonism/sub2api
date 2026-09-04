@@ -455,7 +455,11 @@ export default {
       degraded: 'Degraded',
       failed: 'Failed',
       error: 'Error',
+      rate_limited: 'Rate limited',
       unknown: '-'
+    },
+    targetKind: {
+      gateway_group: 'Group'
     },
     providers: {
       openai: 'OpenAI',

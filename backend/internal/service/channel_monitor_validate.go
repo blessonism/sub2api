@@ -74,6 +74,24 @@ func monitorCheckModeUsesQuota(checkMode string) bool {
 	return checkMode == MonitorCheckModeQuota || checkMode == MonitorCheckModeQuotaProbe
 }
 
+// defaultTargetKind 空串归一为 endpoint，保证存量数据与旧客户端兼容。
+func defaultTargetKind(targetKind string) string {
+	if strings.TrimSpace(targetKind) == "" {
+		return MonitorTargetKindEndpoint
+	}
+	return strings.TrimSpace(targetKind)
+}
+
+// validateTargetKind 校验 target_kind 取值。纯展示标注，无 provider 组合约束。
+func validateTargetKind(targetKind string) error {
+	switch defaultTargetKind(targetKind) {
+	case MonitorTargetKindEndpoint, MonitorTargetKindGatewayGroup:
+		return nil
+	default:
+		return ErrChannelMonitorInvalidTargetKind
+	}
+}
+
 // validateCheckMode 校验 check_mode 与 provider 的组合矩阵：
 //
 //	provider                | probe | quota | quota_probe

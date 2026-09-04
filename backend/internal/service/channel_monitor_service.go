@@ -160,6 +160,9 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		return nil, err
 	}
 	checkMode := defaultCheckMode(p.CheckMode)
+	if err := validateTargetKind(p.TargetKind); err != nil {
+		return nil, err
+	}
 	encrypted, err := s.encryptor.Encrypt(p.APIKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt api key: %w", err)
@@ -183,6 +186,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		BodyOverride:     p.BodyOverride,
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
+		TargetKind:       defaultTargetKind(p.TargetKind),
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -250,6 +254,7 @@ func (s *ChannelMonitorService) Duplicate(
 		BodyOverride:         bodyOverride,
 		CheckMode:            defaultCheckMode(source.CheckMode),
 		AccountID:            cloneInt64Pointer(source.AccountID),
+		TargetKind:           defaultTargetKind(source.TargetKind),
 		DuplicateOperationID: operationID,
 	}
 	if err := s.repo.Create(ctx, duplicate); err != nil {
@@ -702,6 +707,7 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 			Message:       r.Message,
 			CheckedAt:     r.CheckedAt,
 			Quota:         r.Quota,
+			ErrorCategory: r.ErrorCategory,
 		})
 	}
 	if err := s.repo.InsertHistoryBatch(ctx, rows); err != nil {
@@ -915,6 +921,12 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 	}
 	if p.CheckMode != nil {
 		existing.CheckMode = defaultCheckMode(*p.CheckMode)
+	}
+	if p.TargetKind != nil {
+		if err := validateTargetKind(*p.TargetKind); err != nil {
+			return err
+		}
+		existing.TargetKind = defaultTargetKind(*p.TargetKind)
 	}
 	// provider 与 check_mode 任一变化后统一复核组合矩阵：provider-only 更新
 	// （如把 probe 监控的 provider 改成 antigravity）也不得落库非法组合，否则

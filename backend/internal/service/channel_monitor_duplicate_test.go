@@ -134,6 +134,7 @@ func TestDuplicateChannelMonitorCopiesConfigurationAndResetsRuntimeState(t *test
 		BodyOverride: map[string]any{
 			"metadata": map[string]any{"source": "original"},
 		},
+		TargetKind: MonitorTargetKindGatewayGroup,
 	}
 	repo := &duplicateChannelMonitorRepoStub{source: source}
 	service := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
@@ -159,6 +160,8 @@ func TestDuplicateChannelMonitorCopiesConfigurationAndResetsRuntimeState(t *test
 	require.Equal(t, source.ExtraHeaders, duplicate.ExtraHeaders)
 	require.Equal(t, source.BodyOverrideMode, duplicate.BodyOverrideMode)
 	require.Equal(t, source.BodyOverride, duplicate.BodyOverride)
+	require.Equal(t, MonitorTargetKindGatewayGroup, duplicate.TargetKind)
+	require.Equal(t, source.TargetKind, stored.TargetKind)
 	require.False(t, duplicate.Enabled)
 	require.Nil(t, duplicate.LastCheckedAt)
 	require.Equal(t, int64(77), duplicate.CreatedBy)

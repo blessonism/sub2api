@@ -79,6 +79,19 @@ const (
 	MonitorCheckModeQuota      = "quota"
 	MonitorCheckModeQuotaProbe = "quota_probe"
 
+	// MonitorTargetKind 探测目标形态（channel_monitors.target_kind，纯展示标注，
+	// 探测引擎行为一致）。
+	//   endpoint      - 直连外部上游（默认，原有行为）
+	//   gateway_group - 指向本站网关入口（绑定分组的 API key）：探测请求经网关
+	//                   完整选号 + failover，探测成功 ⇔ 分组内任一上游可用，
+	//                   结果即分组级可用性；前端展示"分组"徽标。
+	MonitorTargetKindEndpoint     = "endpoint"
+	MonitorTargetKindGatewayGroup = "gateway_group"
+
+	// MonitorErrorCategoryRateOrCapacity 复用 v2 taxonomy 的限流/容量类别。
+	// 探测命中该类别时前端以"限流/拥挤"警示区分于真故障；可用率计算不变。
+	MonitorErrorCategoryRateOrCapacity = "rate_or_capacity"
+
 	// MonitorDefaultQuotaModel 是 quota 模式监控未显式指定模型时占位的虚拟模型名
 	// （primary_model 列 NotEmpty，用 "quota" 让历史行/时间线机制无需特判）。
 	MonitorDefaultQuotaModel = "quota"
@@ -156,6 +169,9 @@ var (
 	)
 	ErrChannelMonitorInvalidCheckMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_CHECK_MODE", "check_mode must be one of probe/quota/quota_probe; antigravity only supports quota",
+	)
+	ErrChannelMonitorInvalidTargetKind = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TARGET_KIND", "target_kind must be endpoint or gateway_group",
 	)
 	ErrChannelMonitorAccountRequired = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ACCOUNT_REQUIRED", "account_id is required for quota-based check_mode",

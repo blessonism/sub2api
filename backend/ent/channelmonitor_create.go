@@ -79,6 +79,20 @@ func (_c *ChannelMonitorCreate) SetNillableCheckMode(v *string) *ChannelMonitorC
 	return _c
 }
 
+// SetTargetKind sets the "target_kind" field.
+func (_c *ChannelMonitorCreate) SetTargetKind(v string) *ChannelMonitorCreate {
+	_c.mutation.SetTargetKind(v)
+	return _c
+}
+
+// SetNillableTargetKind sets the "target_kind" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableTargetKind(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetTargetKind(*v)
+	}
+	return _c
+}
+
 // SetAccountID sets the "account_id" field.
 func (_c *ChannelMonitorCreate) SetAccountID(v int64) *ChannelMonitorCreate {
 	_c.mutation.SetAccountID(v)
@@ -335,6 +349,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultCheckMode
 		_c.mutation.SetCheckMode(v)
 	}
+	if _, ok := _c.mutation.TargetKind(); !ok {
+		v := channelmonitor.DefaultTargetKind
+		_c.mutation.SetTargetKind(v)
+	}
 	if _, ok := _c.mutation.APIMode(); !ok {
 		v := channelmonitor.DefaultAPIMode
 		_c.mutation.SetAPIMode(v)
@@ -395,6 +413,14 @@ func (_c *ChannelMonitorCreate) check() error {
 	if v, ok := _c.mutation.CheckMode(); ok {
 		if err := channelmonitor.CheckModeValidator(v); err != nil {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.TargetKind(); !ok {
+		return &ValidationError{Name: "target_kind", err: errors.New(`ent: missing required field "ChannelMonitor.target_kind"`)}
+	}
+	if v, ok := _c.mutation.TargetKind(); ok {
+		if err := channelmonitor.TargetKindValidator(v); err != nil {
+			return &ValidationError{Name: "target_kind", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.target_kind": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.APIMode(); !ok {
@@ -516,6 +542,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
 		_node.CheckMode = value
+	}
+	if value, ok := _c.mutation.TargetKind(); ok {
+		_spec.SetField(channelmonitor.FieldTargetKind, field.TypeString, value)
+		_node.TargetKind = value
 	}
 	if value, ok := _c.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)
@@ -723,6 +753,18 @@ func (u *ChannelMonitorUpsert) SetCheckMode(v string) *ChannelMonitorUpsert {
 // UpdateCheckMode sets the "check_mode" field to the value that was provided on create.
 func (u *ChannelMonitorUpsert) UpdateCheckMode() *ChannelMonitorUpsert {
 	u.SetExcluded(channelmonitor.FieldCheckMode)
+	return u
+}
+
+// SetTargetKind sets the "target_kind" field.
+func (u *ChannelMonitorUpsert) SetTargetKind(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldTargetKind, v)
+	return u
+}
+
+// UpdateTargetKind sets the "target_kind" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateTargetKind() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldTargetKind)
 	return u
 }
 
@@ -1070,6 +1112,20 @@ func (u *ChannelMonitorUpsertOne) SetCheckMode(v string) *ChannelMonitorUpsertOn
 func (u *ChannelMonitorUpsertOne) UpdateCheckMode() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCheckMode()
+	})
+}
+
+// SetTargetKind sets the "target_kind" field.
+func (u *ChannelMonitorUpsertOne) SetTargetKind(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetTargetKind(v)
+	})
+}
+
+// UpdateTargetKind sets the "target_kind" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateTargetKind() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateTargetKind()
 	})
 }
 
@@ -1624,6 +1680,20 @@ func (u *ChannelMonitorUpsertBulk) SetCheckMode(v string) *ChannelMonitorUpsertB
 func (u *ChannelMonitorUpsertBulk) UpdateCheckMode() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCheckMode()
+	})
+}
+
+// SetTargetKind sets the "target_kind" field.
+func (u *ChannelMonitorUpsertBulk) SetTargetKind(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetTargetKind(v)
+	})
+}
+
+// UpdateTargetKind sets the "target_kind" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateTargetKind() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateTargetKind()
 	})
 }
 

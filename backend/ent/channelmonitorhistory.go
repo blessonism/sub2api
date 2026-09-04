@@ -34,6 +34,8 @@ type ChannelMonitorHistory struct {
 	PingLatencyMs *int `json:"ping_latency_ms,omitempty"`
 	// Message holds the value of the "message" field.
 	Message string `json:"message,omitempty"`
+	// ErrorCategory holds the value of the "error_category" field.
+	ErrorCategory string `json:"error_category,omitempty"`
 	// Quota holds the value of the "quota" field.
 	Quota *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
 	// CheckedAt holds the value of the "checked_at" field.
@@ -73,7 +75,7 @@ func (*ChannelMonitorHistory) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case channelmonitorhistory.FieldID, channelmonitorhistory.FieldMonitorID, channelmonitorhistory.FieldLatencyMs, channelmonitorhistory.FieldPingLatencyMs:
 			values[i] = new(sql.NullInt64)
-		case channelmonitorhistory.FieldModel, channelmonitorhistory.FieldStatus, channelmonitorhistory.FieldOverrideStatus, channelmonitorhistory.FieldMessage:
+		case channelmonitorhistory.FieldModel, channelmonitorhistory.FieldStatus, channelmonitorhistory.FieldOverrideStatus, channelmonitorhistory.FieldMessage, channelmonitorhistory.FieldErrorCategory:
 			values[i] = new(sql.NullString)
 		case channelmonitorhistory.FieldCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -142,6 +144,12 @@ func (_m *ChannelMonitorHistory) assignValues(columns []string, values []any) er
 				return fmt.Errorf("unexpected type %T for field message", values[i])
 			} else if value.Valid {
 				_m.Message = value.String
+			}
+		case channelmonitorhistory.FieldErrorCategory:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field error_category", values[i])
+			} else if value.Valid {
+				_m.ErrorCategory = value.String
 			}
 		case channelmonitorhistory.FieldQuota:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -224,6 +232,9 @@ func (_m *ChannelMonitorHistory) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("message=")
 	builder.WriteString(_m.Message)
+	builder.WriteString(", ")
+	builder.WriteString("error_category=")
+	builder.WriteString(_m.ErrorCategory)
 	builder.WriteString(", ")
 	builder.WriteString("quota=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Quota))

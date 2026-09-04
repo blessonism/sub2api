@@ -16727,6 +16727,7 @@ type ChannelMonitorMutation struct {
 	name                    *string
 	provider                *channelmonitor.Provider
 	check_mode              *string
+	target_kind             *string
 	account_id              *int64
 	addaccount_id           *int64
 	api_mode                *string
@@ -17037,6 +17038,42 @@ func (m *ChannelMonitorMutation) OldCheckMode(ctx context.Context) (v string, er
 // ResetCheckMode resets all changes to the "check_mode" field.
 func (m *ChannelMonitorMutation) ResetCheckMode() {
 	m.check_mode = nil
+}
+
+// SetTargetKind sets the "target_kind" field.
+func (m *ChannelMonitorMutation) SetTargetKind(s string) {
+	m.target_kind = &s
+}
+
+// TargetKind returns the value of the "target_kind" field in the mutation.
+func (m *ChannelMonitorMutation) TargetKind() (r string, exists bool) {
+	v := m.target_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetKind returns the old "target_kind" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldTargetKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetKind: %w", err)
+	}
+	return oldValue.TargetKind, nil
+}
+
+// ResetTargetKind resets all changes to the "target_kind" field.
+func (m *ChannelMonitorMutation) ResetTargetKind() {
+	m.target_kind = nil
 }
 
 // SetAccountID sets the "account_id" field.
@@ -17958,7 +17995,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -17973,6 +18010,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.check_mode != nil {
 		fields = append(fields, channelmonitor.FieldCheckMode)
+	}
+	if m.target_kind != nil {
+		fields = append(fields, channelmonitor.FieldTargetKind)
 	}
 	if m.account_id != nil {
 		fields = append(fields, channelmonitor.FieldAccountID)
@@ -18040,6 +18080,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.Provider()
 	case channelmonitor.FieldCheckMode:
 		return m.CheckMode()
+	case channelmonitor.FieldTargetKind:
+		return m.TargetKind()
 	case channelmonitor.FieldAccountID:
 		return m.AccountID()
 	case channelmonitor.FieldAPIMode:
@@ -18091,6 +18133,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldProvider(ctx)
 	case channelmonitor.FieldCheckMode:
 		return m.OldCheckMode(ctx)
+	case channelmonitor.FieldTargetKind:
+		return m.OldTargetKind(ctx)
 	case channelmonitor.FieldAccountID:
 		return m.OldAccountID(ctx)
 	case channelmonitor.FieldAPIMode:
@@ -18166,6 +18210,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCheckMode(v)
+		return nil
+	case channelmonitor.FieldTargetKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetKind(v)
 		return nil
 	case channelmonitor.FieldAccountID:
 		v, ok := value.(int64)
@@ -18426,6 +18477,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldCheckMode:
 		m.ResetCheckMode()
+		return nil
+	case channelmonitor.FieldTargetKind:
+		m.ResetTargetKind()
 		return nil
 	case channelmonitor.FieldAccountID:
 		m.ResetAccountID()
@@ -20036,6 +20090,7 @@ type ChannelMonitorHistoryMutation struct {
 	ping_latency_ms    *int
 	addping_latency_ms *int
 	message            *string
+	error_category     *string
 	quota              **domain.MonitorQuotaSnapshot
 	checked_at         *time.Time
 	clearedFields      map[string]struct{}
@@ -20490,6 +20545,55 @@ func (m *ChannelMonitorHistoryMutation) ResetMessage() {
 	delete(m.clearedFields, channelmonitorhistory.FieldMessage)
 }
 
+// SetErrorCategory sets the "error_category" field.
+func (m *ChannelMonitorHistoryMutation) SetErrorCategory(s string) {
+	m.error_category = &s
+}
+
+// ErrorCategory returns the value of the "error_category" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) ErrorCategory() (r string, exists bool) {
+	v := m.error_category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCategory returns the old "error_category" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldErrorCategory(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCategory: %w", err)
+	}
+	return oldValue.ErrorCategory, nil
+}
+
+// ClearErrorCategory clears the value of the "error_category" field.
+func (m *ChannelMonitorHistoryMutation) ClearErrorCategory() {
+	m.error_category = nil
+	m.clearedFields[channelmonitorhistory.FieldErrorCategory] = struct{}{}
+}
+
+// ErrorCategoryCleared returns if the "error_category" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) ErrorCategoryCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldErrorCategory]
+	return ok
+}
+
+// ResetErrorCategory resets all changes to the "error_category" field.
+func (m *ChannelMonitorHistoryMutation) ResetErrorCategory() {
+	m.error_category = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldErrorCategory)
+}
+
 // SetQuota sets the "quota" field.
 func (m *ChannelMonitorHistoryMutation) SetQuota(dqs *domain.MonitorQuotaSnapshot) {
 	m.quota = &dqs
@@ -20636,7 +20740,7 @@ func (m *ChannelMonitorHistoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorHistoryMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.monitor != nil {
 		fields = append(fields, channelmonitorhistory.FieldMonitorID)
 	}
@@ -20657,6 +20761,9 @@ func (m *ChannelMonitorHistoryMutation) Fields() []string {
 	}
 	if m.message != nil {
 		fields = append(fields, channelmonitorhistory.FieldMessage)
+	}
+	if m.error_category != nil {
+		fields = append(fields, channelmonitorhistory.FieldErrorCategory)
 	}
 	if m.quota != nil {
 		fields = append(fields, channelmonitorhistory.FieldQuota)
@@ -20686,6 +20793,8 @@ func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 		return m.PingLatencyMs()
 	case channelmonitorhistory.FieldMessage:
 		return m.Message()
+	case channelmonitorhistory.FieldErrorCategory:
+		return m.ErrorCategory()
 	case channelmonitorhistory.FieldQuota:
 		return m.Quota()
 	case channelmonitorhistory.FieldCheckedAt:
@@ -20713,6 +20822,8 @@ func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name strin
 		return m.OldPingLatencyMs(ctx)
 	case channelmonitorhistory.FieldMessage:
 		return m.OldMessage(ctx)
+	case channelmonitorhistory.FieldErrorCategory:
+		return m.OldErrorCategory(ctx)
 	case channelmonitorhistory.FieldQuota:
 		return m.OldQuota(ctx)
 	case channelmonitorhistory.FieldCheckedAt:
@@ -20774,6 +20885,13 @@ func (m *ChannelMonitorHistoryMutation) SetField(name string, value ent.Value) e
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMessage(v)
+		return nil
+	case channelmonitorhistory.FieldErrorCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCategory(v)
 		return nil
 	case channelmonitorhistory.FieldQuota:
 		v, ok := value.(*domain.MonitorQuotaSnapshot)
@@ -20858,6 +20976,9 @@ func (m *ChannelMonitorHistoryMutation) ClearedFields() []string {
 	if m.FieldCleared(channelmonitorhistory.FieldMessage) {
 		fields = append(fields, channelmonitorhistory.FieldMessage)
 	}
+	if m.FieldCleared(channelmonitorhistory.FieldErrorCategory) {
+		fields = append(fields, channelmonitorhistory.FieldErrorCategory)
+	}
 	if m.FieldCleared(channelmonitorhistory.FieldQuota) {
 		fields = append(fields, channelmonitorhistory.FieldQuota)
 	}
@@ -20886,6 +21007,9 @@ func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 		return nil
 	case channelmonitorhistory.FieldMessage:
 		m.ClearMessage()
+		return nil
+	case channelmonitorhistory.FieldErrorCategory:
+		m.ClearErrorCategory()
 		return nil
 	case channelmonitorhistory.FieldQuota:
 		m.ClearQuota()
@@ -20918,6 +21042,9 @@ func (m *ChannelMonitorHistoryMutation) ResetField(name string) error {
 		return nil
 	case channelmonitorhistory.FieldMessage:
 		m.ResetMessage()
+		return nil
+	case channelmonitorhistory.FieldErrorCategory:
+		m.ResetErrorCategory()
 		return nil
 	case channelmonitorhistory.FieldQuota:
 		m.ResetQuota()

@@ -27,6 +27,13 @@
           <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
             {{ formatMonitorModel(item.primary_model) }}
           </span>
+          <!-- 分组探测：该卡片代表经网关 failover 的分组级状态，而非单一上游 -->
+          <span
+            v-if="isGatewayGroup"
+            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-primary-50 text-primary-600 dark:bg-primary-500/15 dark:text-primary-300 flex-shrink-0"
+          >
+            {{ t('monitorCommon.targetKind.gateway_group') }}
+          </span>
           <span
             v-if="item.group_name"
             class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
@@ -37,9 +44,9 @@
       </div>
       <span
         class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
-        :class="statusBadgeClass(item.primary_status)"
+        :class="statusBadgeClass(item.primary_status, item.primary_error_category)"
       >
-        {{ statusLabel(item.primary_status) }}
+        {{ statusLabel(item.primary_status, item.primary_error_category) }}
       </span>
     </div>
 
@@ -123,6 +130,8 @@ const {
   formatLatency,
   formatMonitorModel,
 } = useChannelMonitorFormat()
+
+const isGatewayGroup = computed(() => props.item.target_kind === 'gateway_group')
 
 const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'

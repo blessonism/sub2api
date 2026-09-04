@@ -80,6 +80,20 @@ func (_u *ChannelMonitorUpdate) SetNillableCheckMode(v *string) *ChannelMonitorU
 	return _u
 }
 
+// SetTargetKind sets the "target_kind" field.
+func (_u *ChannelMonitorUpdate) SetTargetKind(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetTargetKind(v)
+	return _u
+}
+
+// SetNillableTargetKind sets the "target_kind" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableTargetKind(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetTargetKind(*v)
+	}
+	return _u
+}
+
 // SetAccountID sets the "account_id" field.
 func (_u *ChannelMonitorUpdate) SetAccountID(v int64) *ChannelMonitorUpdate {
 	_u.mutation.ResetAccountID()
@@ -499,6 +513,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TargetKind(); ok {
+		if err := channelmonitor.TargetKindValidator(v); err != nil {
+			return &ValidationError{Name: "target_kind", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.target_kind": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIMode(); ok {
 		if err := channelmonitor.APIModeValidator(v); err != nil {
 			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
@@ -565,6 +584,9 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TargetKind(); ok {
+		_spec.SetField(channelmonitor.FieldTargetKind, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)
@@ -823,6 +845,20 @@ func (_u *ChannelMonitorUpdateOne) SetCheckMode(v string) *ChannelMonitorUpdateO
 func (_u *ChannelMonitorUpdateOne) SetNillableCheckMode(v *string) *ChannelMonitorUpdateOne {
 	if v != nil {
 		_u.SetCheckMode(*v)
+	}
+	return _u
+}
+
+// SetTargetKind sets the "target_kind" field.
+func (_u *ChannelMonitorUpdateOne) SetTargetKind(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetTargetKind(v)
+	return _u
+}
+
+// SetNillableTargetKind sets the "target_kind" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableTargetKind(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetTargetKind(*v)
 	}
 	return _u
 }
@@ -1259,6 +1295,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TargetKind(); ok {
+		if err := channelmonitor.TargetKindValidator(v); err != nil {
+			return &ValidationError{Name: "target_kind", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.target_kind": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIMode(); ok {
 		if err := channelmonitor.APIModeValidator(v); err != nil {
 			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
@@ -1342,6 +1383,9 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if value, ok := _u.mutation.CheckMode(); ok {
 		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TargetKind(); ok {
+		_spec.SetField(channelmonitor.FieldTargetKind, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.AccountID(); ok {
 		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)

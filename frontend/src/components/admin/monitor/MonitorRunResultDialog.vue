@@ -19,9 +19,9 @@
         <div class="flex items-center gap-2">
           <span
             class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
-            :class="statusBadgeClass(r.status)"
+            :class="statusBadgeClass(r.status, r.error_category)"
           >
-            {{ statusLabel(r.status) }}
+            {{ statusLabel(r.status, r.error_category) }}
           </span>
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatLatency(r.latency_ms) }} ms</span>
         </div>

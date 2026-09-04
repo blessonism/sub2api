@@ -60,6 +60,9 @@ type channelMonitorCreateRequest struct {
 	CheckMode string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	// AccountID: 配额模式关联的账号 ID。
 	AccountID *int64 `json:"account_id"`
+	// TargetKind: 探测目标形态。endpoint=直连外部上游（默认）；
+	// gateway_group=指向本站网关入口（绑定分组 API key），探测结果即分组级可用性。
+	TargetKind string `json:"target_kind" binding:"omitempty,oneof=endpoint gateway_group"`
 }
 
 type channelMonitorUpdateRequest struct {
@@ -83,6 +86,8 @@ type channelMonitorUpdateRequest struct {
 	// CheckMode/AccountID：nil = 不更新；AccountID 指向 0 = 清空关联。
 	CheckMode *string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	AccountID *int64  `json:"account_id"`
+	// TargetKind: nil = 不更新。
+	TargetKind *string `json:"target_kind" binding:"omitempty,oneof=endpoint gateway_group"`
 }
 
 type channelMonitorHistoryOverrideRequest struct {
@@ -122,6 +127,12 @@ type channelMonitorResponse struct {
 	CheckMode   string                       `json:"check_mode"`
 	AccountID   *int64                       `json:"account_id"`
 	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
+
+	// TargetKind: 探测目标形态（gateway_group 时前端展示"分组"徽标）。
+	TargetKind string `json:"target_kind"`
+	// PrimaryErrorCategory: 主模型最近一次 error 的归类（rate_or_capacity 等），
+	// 由 List handler 批量聚合后填充；空串表示最近状态非 error 或未归类。
+	PrimaryErrorCategory string `json:"primary_error_category"`
 }
 
 type channelMonitorCheckResultResponse struct {
@@ -132,6 +143,7 @@ type channelMonitorCheckResultResponse struct {
 	Message       string                       `json:"message"`
 	CheckedAt     string                       `json:"checked_at"`
 	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+	ErrorCategory string                       `json:"error_category,omitempty"`
 }
 
 type channelMonitorHistoryItemResponse struct {
@@ -145,6 +157,7 @@ type channelMonitorHistoryItemResponse struct {
 	Message         string                       `json:"message"`
 	CheckedAt       string                       `json:"checked_at"`
 	Quota           *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+	ErrorCategory   string                       `json:"error_category,omitempty"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -190,6 +203,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		BodyOverride:        m.BodyOverride,
 		CheckMode:           m.CheckMode,
 		AccountID:           m.AccountID,
+		TargetKind:          normalizeTargetKindResponse(m.TargetKind),
 		// PrimaryStatus / PrimaryLatencyMs / Availability7d / LatestQuota
 		// 由 List handler 在批量聚合后填充。
 	}
@@ -209,6 +223,7 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 		Message:       r.Message,
 		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
 		Quota:         r.Quota,
+		ErrorCategory: r.ErrorCategory,
 	}
 }
 
@@ -224,6 +239,7 @@ func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonito
 		Message:         e.Message,
 		CheckedAt:       e.CheckedAt.UTC().Format(time.RFC3339),
 		Quota:           e.Quota,
+		ErrorCategory:   e.ErrorCategory,
 	}
 }
 
@@ -232,6 +248,14 @@ func effectiveHistoryStatus(e *service.ChannelMonitorHistoryEntry) string {
 		return e.EffectiveStatus
 	}
 	return e.Status
+}
+
+// normalizeTargetKindResponse 空串归一为 endpoint（存量行/旧客户端兼容）。
+func normalizeTargetKindResponse(targetKind string) string {
+	if strings.TrimSpace(targetKind) == "" {
+		return service.MonitorTargetKindEndpoint
+	}
+	return strings.TrimSpace(targetKind)
 }
 
 // ParseChannelMonitorID 提取并校验路径参数 :id（admin 与 user handler 共享）。
@@ -319,12 +343,14 @@ func buildListItemResponse(m *service.ChannelMonitor, summary service.MonitorSta
 	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
 	resp.Availability7d = summary.Availability7d
 	resp.LatestQuota = summary.LatestQuota
+	resp.PrimaryErrorCategory = summary.PrimaryErrorCategory
 	resp.ExtraModelsStatus = make([]dto.ChannelMonitorExtraModelStatus, 0, len(summary.ExtraModels))
 	for _, e := range summary.ExtraModels {
 		resp.ExtraModelsStatus = append(resp.ExtraModelsStatus, dto.ChannelMonitorExtraModelStatus{
-			Model:     e.Model,
-			Status:    e.Status,
-			LatencyMs: e.LatencyMs,
+			Model:         e.Model,
+			Status:        e.Status,
+			LatencyMs:     e.LatencyMs,
+			ErrorCategory: e.ErrorCategory,
 		})
 	}
 	return resp
@@ -378,6 +404,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		TargetKind:       req.TargetKind,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -474,6 +501,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		TargetKind:       req.TargetKind,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

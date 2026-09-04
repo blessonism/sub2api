@@ -82,6 +82,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		}
 		res.Status = MonitorStatusError
 		res.Message = truncateMessage(sanitizeErrorMessage(err.Error()))
+		res.ErrorCategory = classifyMonitorErrorCategory(statusCode, err.Error())
 		return res
 	}
 	if statusCode < 200 || statusCode >= 300 {
@@ -90,6 +91,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		res.Status = MonitorStatusError
 		bodySnippet := truncateForErrorBody(rawBody)
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
+		res.ErrorCategory = classifyMonitorErrorCategory(statusCode, bodySnippet)
 		return res
 	}
 
@@ -112,6 +114,31 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	}
 
 	return finalizeOperationalOrDegraded(res, latency, latencyMs, firstOutputMs)
+}
+
+// classifyMonitorErrorCategory 把探测错误归到 v2 taxonomy 类别（本期消费
+// rate_or_capacity，用于前端区分"限流/拥挤"与真故障）。
+// 复用 ClassifyChannelMonitorV2Error；另补充网关流内限流形态——HTTP 200 +
+// SSE response.failed 的错误没有顶层 429 状态码，且 v2 关键词表未覆盖
+// "pending requests" 文案（如 "Too many pending requests, please retry later"）。
+func classifyMonitorErrorCategory(statusCode int, message string) string {
+	category := ClassifyChannelMonitorV2Error(ChannelMonitorV2ErrorInput{
+		// 探针直接面对上游：同一状态码同时视为本侧与上游侧，
+		// 让 5xx 走 upstream_5xx（而非 v2 网关视角的 internal）。
+		StatusCode:         statusCode,
+		UpstreamStatusCode: statusCode,
+		Message:            message,
+	})
+	if category == MonitorErrorCategoryRateOrCapacity {
+		return category
+	}
+	// 只匹配网关 WaitQueueFullError 的完整文案。不匹配裸 "pending requests" /
+	// "too many requests"：前者会误伤 "error processing pending requests"，
+	// 后者已由 v2 taxonomy 的 429 状态码覆盖。
+	if strings.Contains(strings.ToLower(message), "too many pending requests") {
+		return MonitorErrorCategoryRateOrCapacity
+	}
+	return category
 }
 
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。

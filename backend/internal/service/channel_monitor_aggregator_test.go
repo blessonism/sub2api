@@ -45,6 +45,64 @@ func TestBuildStatusSummaryUsesEffectiveStatus(t *testing.T) {
 	}
 }
 
+func TestBuildStatusSummaryCopiesErrorCategory(t *testing.T) {
+	latest := map[string]*ChannelMonitorLatest{
+		"primary": {
+			Model:           "primary",
+			Status:          MonitorStatusError,
+			EffectiveStatus: MonitorStatusError,
+			ErrorCategory:   MonitorErrorCategoryRateOrCapacity,
+		},
+		"extra": {
+			Model:           "extra",
+			Status:          MonitorStatusError,
+			EffectiveStatus: MonitorStatusError,
+			ErrorCategory:   MonitorErrorCategoryRateOrCapacity,
+		},
+	}
+
+	summary := buildStatusSummary(latest, nil, "primary", []string{"extra"})
+
+	if summary.PrimaryErrorCategory != MonitorErrorCategoryRateOrCapacity {
+		t.Fatalf("expected primary error category, got %q", summary.PrimaryErrorCategory)
+	}
+	if len(summary.ExtraModels) != 1 || summary.ExtraModels[0].ErrorCategory != MonitorErrorCategoryRateOrCapacity {
+		t.Fatalf("expected extra model error category, got %#v", summary.ExtraModels)
+	}
+}
+
+func TestBuildUserViewFromSummaryCopiesTargetKindAndErrorCategory(t *testing.T) {
+	view := buildUserViewFromSummary(
+		&ChannelMonitor{
+			ID:           7,
+			Name:         "pro",
+			Provider:     MonitorProviderOpenAI,
+			PrimaryModel: "gpt-5.6",
+			TargetKind:   MonitorTargetKindGatewayGroup,
+		},
+		MonitorStatusSummary{
+			PrimaryStatus:        MonitorStatusError,
+			PrimaryErrorCategory: MonitorErrorCategoryRateOrCapacity,
+		},
+		nil,
+		[]*ChannelMonitorHistoryEntry{{
+			EffectiveStatus: MonitorStatusError,
+			ErrorCategory:   MonitorErrorCategoryRateOrCapacity,
+			CheckedAt:       time.Now(),
+		}},
+	)
+
+	if view.TargetKind != MonitorTargetKindGatewayGroup {
+		t.Fatalf("expected gateway_group target kind, got %q", view.TargetKind)
+	}
+	if view.PrimaryErrorCategory != MonitorErrorCategoryRateOrCapacity {
+		t.Fatalf("expected primary error category, got %q", view.PrimaryErrorCategory)
+	}
+	if len(view.Timeline) != 1 || view.Timeline[0].ErrorCategory != MonitorErrorCategoryRateOrCapacity {
+		t.Fatalf("expected timeline error category, got %#v", view.Timeline)
+	}
+}
+
 func TestBuildTimelinePointsUsesEffectiveStatus(t *testing.T) {
 	points := buildTimelinePoints([]*ChannelMonitorHistoryEntry{
 		{
@@ -60,6 +118,9 @@ func TestBuildTimelinePointsUsesEffectiveStatus(t *testing.T) {
 	}
 	if points[0].Status != MonitorStatusOperational {
 		t.Fatalf("expected timeline to use effective status, got %q", points[0].Status)
+	}
+	if points[0].ErrorCategory != "" {
+		t.Fatalf("operational override should not inherit error category unless present, got %q", points[0].ErrorCategory)
 	}
 }
 

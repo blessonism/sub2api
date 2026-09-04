@@ -80,18 +80,18 @@
                 <td class="px-3 py-2">
                   <span
                     class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                    :class="statusBadgeClass(item.status)"
+                    :class="statusBadgeClass(item.status, item.error_category)"
                   >
-                    {{ statusLabel(item.status) }}
+                    {{ statusLabel(item.status, item.error_category) }}
                   </span>
                 </td>
                 <td class="px-3 py-2">
                   <div class="flex items-center gap-2">
                     <span
                       class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                      :class="statusBadgeClass(item.effective_status)"
+                      :class="statusBadgeClass(item.effective_status, item.error_category)"
                     >
-                      {{ statusLabel(item.effective_status) }}
+                      {{ statusLabel(item.effective_status, item.error_category) }}
                     </span>
                     <span
                       v-if="item.override_status"

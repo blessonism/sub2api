@@ -7,4 +7,6 @@ type ChannelMonitorExtraModelStatus struct {
 	Model     string `json:"model"`
 	Status    string `json:"status"`
 	LatencyMs *int   `json:"latency_ms"`
+	// ErrorCategory 最近一次 error 的归类（rate_or_capacity 等）；空 = 未归类。
+	ErrorCategory string `json:"error_category,omitempty"`
 }

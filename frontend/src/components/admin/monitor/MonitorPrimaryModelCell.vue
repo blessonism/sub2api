@@ -7,9 +7,9 @@
       <template #trigger>
         <span
           class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-          :class="statusBadgeClass(row.primary_status)"
+          :class="statusBadgeClass(row.primary_status, row.primary_error_category)"
         >
-          {{ statusLabel(row.primary_status) }}
+          {{ statusLabel(row.primary_status, row.primary_error_category) }}
         </span>
       </template>
       <div class="space-y-2">
@@ -17,9 +17,9 @@
           {{ formatMonitorModel(row.primary_model) }}
           <span
             class="ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-            :class="statusBadgeClass(row.primary_status)"
+            :class="statusBadgeClass(row.primary_status, row.primary_error_category)"
           >
-            {{ statusLabel(row.primary_status) }}
+            {{ statusLabel(row.primary_status, row.primary_error_category) }}
           </span>
         </div>
         <div v-if="(row.extra_models?.length ?? 0) === 0" class="text-[11px] text-gray-300">
@@ -43,9 +43,9 @@
                 <td class="py-0.5 pr-2">
                   <span
                     class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px]"
-                    :class="statusBadgeClass(m.status)"
+                    :class="statusBadgeClass(m.status, m.error_category)"
                   >
-                    {{ statusLabel(m.status) }}
+                    {{ statusLabel(m.status, m.error_category) }}
                   </span>
                 </td>
                 <td class="py-0.5 text-gray-100">{{ formatLatency(m.latency_ms) }}</td>

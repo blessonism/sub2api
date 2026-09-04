@@ -25,6 +25,8 @@ const (
 	FieldProvider = "provider"
 	// FieldCheckMode holds the string denoting the check_mode field in the database.
 	FieldCheckMode = "check_mode"
+	// FieldTargetKind holds the string denoting the target_kind field in the database.
+	FieldTargetKind = "target_kind"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
 	// FieldAPIMode holds the string denoting the api_mode field in the database.
@@ -96,6 +98,7 @@ var Columns = []string{
 	FieldName,
 	FieldProvider,
 	FieldCheckMode,
+	FieldTargetKind,
 	FieldAccountID,
 	FieldAPIMode,
 	FieldEndpoint,
@@ -137,6 +140,10 @@ var (
 	DefaultCheckMode string
 	// CheckModeValidator is a validator for the "check_mode" field. It is called by the builders before save.
 	CheckModeValidator func(string) error
+	// DefaultTargetKind holds the default value on creation for the "target_kind" field.
+	DefaultTargetKind string
+	// TargetKindValidator is a validator for the "target_kind" field. It is called by the builders before save.
+	TargetKindValidator func(string) error
 	// DefaultAPIMode holds the default value on creation for the "api_mode" field.
 	DefaultAPIMode string
 	// APIModeValidator is a validator for the "api_mode" field. It is called by the builders before save.
@@ -229,6 +236,11 @@ func ByProvider(opts ...sql.OrderTermOption) OrderOption {
 // ByCheckMode orders the results by the check_mode field.
 func ByCheckMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCheckMode, opts...).ToFunc()
+}
+
+// ByTargetKind orders the results by the target_kind field.
+func ByTargetKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTargetKind, opts...).ToFunc()
 }
 
 // ByAccountID orders the results by the account_id field.

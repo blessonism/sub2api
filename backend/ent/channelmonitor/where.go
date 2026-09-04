@@ -75,6 +75,11 @@ func CheckMode(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCheckMode, v))
 }
 
+// TargetKind applies equality check predicate on the "target_kind" field. It's identical to TargetKindEQ.
+func TargetKind(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldTargetKind, v))
+}
+
 // AccountID applies equality check predicate on the "account_id" field. It's identical to AccountIDEQ.
 func AccountID(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldAccountID, v))
@@ -368,6 +373,71 @@ func CheckModeEqualFold(v string) predicate.ChannelMonitor {
 // CheckModeContainsFold applies the ContainsFold predicate on the "check_mode" field.
 func CheckModeContainsFold(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldCheckMode, v))
+}
+
+// TargetKindEQ applies the EQ predicate on the "target_kind" field.
+func TargetKindEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldTargetKind, v))
+}
+
+// TargetKindNEQ applies the NEQ predicate on the "target_kind" field.
+func TargetKindNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldTargetKind, v))
+}
+
+// TargetKindIn applies the In predicate on the "target_kind" field.
+func TargetKindIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldTargetKind, vs...))
+}
+
+// TargetKindNotIn applies the NotIn predicate on the "target_kind" field.
+func TargetKindNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldTargetKind, vs...))
+}
+
+// TargetKindGT applies the GT predicate on the "target_kind" field.
+func TargetKindGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldTargetKind, v))
+}
+
+// TargetKindGTE applies the GTE predicate on the "target_kind" field.
+func TargetKindGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldTargetKind, v))
+}
+
+// TargetKindLT applies the LT predicate on the "target_kind" field.
+func TargetKindLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldTargetKind, v))
+}
+
+// TargetKindLTE applies the LTE predicate on the "target_kind" field.
+func TargetKindLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldTargetKind, v))
+}
+
+// TargetKindContains applies the Contains predicate on the "target_kind" field.
+func TargetKindContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldTargetKind, v))
+}
+
+// TargetKindHasPrefix applies the HasPrefix predicate on the "target_kind" field.
+func TargetKindHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldTargetKind, v))
+}
+
+// TargetKindHasSuffix applies the HasSuffix predicate on the "target_kind" field.
+func TargetKindHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldTargetKind, v))
+}
+
+// TargetKindEqualFold applies the EqualFold predicate on the "target_kind" field.
+func TargetKindEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldTargetKind, v))
+}
+
+// TargetKindContainsFold applies the ContainsFold predicate on the "target_kind" field.
+func TargetKindContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldTargetKind, v))
 }
 
 // AccountIDEQ applies the EQ predicate on the "account_id" field.

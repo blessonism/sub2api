@@ -80,6 +80,11 @@ func Message(v string) predicate.ChannelMonitorHistory {
 	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldMessage, v))
 }
 
+// ErrorCategory applies equality check predicate on the "error_category" field. It's identical to ErrorCategoryEQ.
+func ErrorCategory(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldErrorCategory, v))
+}
+
 // CheckedAt applies equality check predicate on the "checked_at" field. It's identical to CheckedAtEQ.
 func CheckedAt(v time.Time) predicate.ChannelMonitorHistory {
 	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldCheckedAt, v))
@@ -393,6 +398,81 @@ func MessageEqualFold(v string) predicate.ChannelMonitorHistory {
 // MessageContainsFold applies the ContainsFold predicate on the "message" field.
 func MessageContainsFold(v string) predicate.ChannelMonitorHistory {
 	return predicate.ChannelMonitorHistory(sql.FieldContainsFold(FieldMessage, v))
+}
+
+// ErrorCategoryEQ applies the EQ predicate on the "error_category" field.
+func ErrorCategoryEQ(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldEQ(FieldErrorCategory, v))
+}
+
+// ErrorCategoryNEQ applies the NEQ predicate on the "error_category" field.
+func ErrorCategoryNEQ(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNEQ(FieldErrorCategory, v))
+}
+
+// ErrorCategoryIn applies the In predicate on the "error_category" field.
+func ErrorCategoryIn(vs ...string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldIn(FieldErrorCategory, vs...))
+}
+
+// ErrorCategoryNotIn applies the NotIn predicate on the "error_category" field.
+func ErrorCategoryNotIn(vs ...string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNotIn(FieldErrorCategory, vs...))
+}
+
+// ErrorCategoryGT applies the GT predicate on the "error_category" field.
+func ErrorCategoryGT(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldGT(FieldErrorCategory, v))
+}
+
+// ErrorCategoryGTE applies the GTE predicate on the "error_category" field.
+func ErrorCategoryGTE(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldGTE(FieldErrorCategory, v))
+}
+
+// ErrorCategoryLT applies the LT predicate on the "error_category" field.
+func ErrorCategoryLT(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldLT(FieldErrorCategory, v))
+}
+
+// ErrorCategoryLTE applies the LTE predicate on the "error_category" field.
+func ErrorCategoryLTE(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldLTE(FieldErrorCategory, v))
+}
+
+// ErrorCategoryContains applies the Contains predicate on the "error_category" field.
+func ErrorCategoryContains(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldContains(FieldErrorCategory, v))
+}
+
+// ErrorCategoryHasPrefix applies the HasPrefix predicate on the "error_category" field.
+func ErrorCategoryHasPrefix(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldHasPrefix(FieldErrorCategory, v))
+}
+
+// ErrorCategoryHasSuffix applies the HasSuffix predicate on the "error_category" field.
+func ErrorCategoryHasSuffix(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldHasSuffix(FieldErrorCategory, v))
+}
+
+// ErrorCategoryIsNil applies the IsNil predicate on the "error_category" field.
+func ErrorCategoryIsNil() predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldIsNull(FieldErrorCategory))
+}
+
+// ErrorCategoryNotNil applies the NotNil predicate on the "error_category" field.
+func ErrorCategoryNotNil() predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldNotNull(FieldErrorCategory))
+}
+
+// ErrorCategoryEqualFold applies the EqualFold predicate on the "error_category" field.
+func ErrorCategoryEqualFold(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldEqualFold(FieldErrorCategory, v))
+}
+
+// ErrorCategoryContainsFold applies the ContainsFold predicate on the "error_category" field.
+func ErrorCategoryContainsFold(v string) predicate.ChannelMonitorHistory {
+	return predicate.ChannelMonitorHistory(sql.FieldContainsFold(FieldErrorCategory, v))
 }
 
 // QuotaIsNil applies the IsNil predicate on the "quota" field.

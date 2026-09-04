@@ -11,7 +11,12 @@
  */
 
 import { useI18n } from 'vue-i18n'
-import type { CheckMode, MonitorStatus, Provider } from '@/api/admin/channelMonitor'
+import type {
+  CheckMode,
+  MonitorStatus,
+  MonitorErrorCategory,
+  Provider,
+} from '@/api/admin/channelMonitor'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
@@ -46,12 +51,29 @@ export interface AvailabilityRow {
 export function useChannelMonitorFormat() {
   const { t } = useI18n()
 
-  function statusLabel(s: MonitorStatus | ''): string {
+  /**
+   * 限流/容量类错误（error_category=rate_or_capacity）是"挤不进去"，
+   * 不是渠道故障：展示为黄色"限流/拥挤"而非红色/灰色故障样式。
+   */
+  function isRateLimited(
+    s: MonitorStatus | '',
+    errorCategory?: MonitorErrorCategory | '' | null
+  ): boolean {
+    return s === STATUS_ERROR && errorCategory === 'rate_or_capacity'
+  }
+
+  function statusLabel(s: MonitorStatus | '', errorCategory?: MonitorErrorCategory | '' | null): string {
+    if (isRateLimited(s, errorCategory)) {
+      return t('monitorCommon.status.rate_limited')
+    }
     if (!s) return t('monitorCommon.status.unknown')
     return t(`monitorCommon.status.${s}`)
   }
 
-  function statusBadgeClass(s: MonitorStatus | ''): string {
+  function statusBadgeClass(s: MonitorStatus | '', errorCategory?: MonitorErrorCategory | '' | null): string {
+    if (isRateLimited(s, errorCategory)) {
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    }
     switch (s) {
       case STATUS_OPERATIONAL:
         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
@@ -213,6 +235,7 @@ export function useChannelMonitorFormat() {
   return {
     statusLabel,
     statusBadgeClass,
+    isRateLimited,
     providerLabel,
     checkModeLabel,
     formatMonitorModel,

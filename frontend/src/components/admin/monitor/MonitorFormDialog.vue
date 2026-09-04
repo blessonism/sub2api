@@ -97,6 +97,35 @@
       </div>
 
       <div v-if="usesProbePart">
+        <label class="input-label">{{ t('admin.channelMonitor.form.targetKind') }}</label>
+        <div class="grid gap-3 sm:grid-cols-2" data-testid="monitor-target-kind">
+          <button
+            type="button"
+            :aria-pressed="form.target_kind === TARGET_KIND_ENDPOINT"
+            class="rounded-lg border-2 px-3 py-2 text-left transition-colors"
+            :class="targetKindButtonClass(TARGET_KIND_ENDPOINT)"
+            @click="form.target_kind = TARGET_KIND_ENDPOINT"
+          >
+            <span class="block text-sm font-semibold">{{ t('admin.channelMonitor.form.targetKindEndpoint') }}</span>
+            <span class="mt-0.5 block text-xs opacity-80">{{ t('admin.channelMonitor.form.targetKindEndpointHint') }}</span>
+          </button>
+          <button
+            type="button"
+            :aria-pressed="form.target_kind === TARGET_KIND_GATEWAY_GROUP"
+            class="rounded-lg border-2 px-3 py-2 text-left transition-colors"
+            :class="targetKindButtonClass(TARGET_KIND_GATEWAY_GROUP)"
+            @click="form.target_kind = TARGET_KIND_GATEWAY_GROUP"
+          >
+            <span class="block text-sm font-semibold">{{ t('admin.channelMonitor.form.targetKindGatewayGroup') }}</span>
+            <span class="mt-0.5 block text-xs opacity-80">{{ t('admin.channelMonitor.form.targetKindGatewayGroupHint') }}</span>
+          </button>
+        </div>
+        <p v-if="form.target_kind === TARGET_KIND_GATEWAY_GROUP" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.channelMonitor.form.targetKindGatewayGroupGuide') }}
+        </p>
+      </div>
+
+      <div v-if="usesProbePart">
         <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
         <div class="flex gap-2">
           <input v-model="form.endpoint" data-testid="monitor-endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
@@ -247,6 +276,7 @@ import type {
   APIMode,
   CheckMode,
   Provider,
+  TargetKind,
   UpdateParams,
 } from '@/api/admin/channelMonitor'
 import type { ChannelMonitorTemplate } from '@/api/admin/channelMonitorTemplate'
@@ -274,6 +304,8 @@ import {
   CHECK_MODE_PROBE,
   CHECK_MODE_QUOTA,
   CHECK_MODE_QUOTA_PROBE,
+  TARGET_KIND_ENDPOINT,
+  TARGET_KIND_GATEWAY_GROUP,
   DEFAULT_GROK_ENDPOINT,
   DEFAULT_GROK_MODEL,
   DEFAULT_KIMI_ENDPOINT,
@@ -320,6 +352,7 @@ interface MonitorForm {
   api_mode: APIMode
   check_mode: CheckMode
   account_id: number | null
+  target_kind: TargetKind
   endpoint: string
   api_key: string
   primary_model: string
@@ -341,6 +374,7 @@ const form = reactive<MonitorForm>({
   api_mode: API_MODE_CHAT_COMPLETIONS,
   check_mode: CHECK_MODE_PROBE,
   account_id: null,
+  target_kind: TARGET_KIND_ENDPOINT,
   endpoint: '',
   api_key: '',
   primary_model: '',
@@ -514,6 +548,14 @@ const checkModeOptions = computed<CheckModeOption[]>(() => [
 
 function checkModeButtonClass(mode: CheckMode): string {
   const active = form.check_mode === mode
+  if (active) {
+    return 'border-primary-500 bg-white text-primary-700 shadow-sm dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
+  }
+  return 'border-blue-100 bg-white/70 text-gray-600 hover:border-primary-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
+}
+
+function targetKindButtonClass(kind: TargetKind): string {
+  const active = form.target_kind === kind
   if (active) {
     return 'border-primary-500 bg-white text-primary-700 shadow-sm dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
   }
@@ -722,6 +764,7 @@ function resetForm() {
   form.api_mode = API_MODE_CHAT_COMPLETIONS
   form.check_mode = CHECK_MODE_PROBE
   form.account_id = null
+  form.target_kind = TARGET_KIND_ENDPOINT
   pinnedAccount.value = null
   accountHydrationFailed.value = false
   form.endpoint = ''
@@ -746,6 +789,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.api_mode = normalizeAPIMode(m.api_mode)
   form.check_mode = m.check_mode || CHECK_MODE_PROBE
   form.account_id = m.account_id ?? null
+  form.target_kind = m.target_kind || TARGET_KIND_ENDPOINT
   form.endpoint = m.endpoint
   form.api_key = ''
   form.primary_model = m.primary_model
@@ -814,6 +858,7 @@ function buildPayload(): CreateParams {
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
     account_id: usesQuotaMode.value ? form.account_id : null,
+    target_kind: usesProbePart.value ? form.target_kind : TARGET_KIND_ENDPOINT,
     endpoint: usesProbePart.value ? form.endpoint.trim() : '',
     api_key: usesProbePart.value ? form.api_key.trim() : '',
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',

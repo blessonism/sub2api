@@ -29,6 +29,8 @@ type ChannelMonitor struct {
 	Provider channelmonitor.Provider `json:"provider,omitempty"`
 	// probe = LLM probe (default); quota = account usage only; quota_probe = both
 	CheckMode string `json:"check_mode,omitempty"`
+	// endpoint = direct upstream (default); gateway_group = local gateway entrance backed by a group
+	TargetKind string `json:"target_kind,omitempty"`
 	// AccountID holds the value of the "account_id" field.
 	AccountID *int64 `json:"account_id,omitempty"`
 	// OpenAI request protocol: chat_completions or responses; non-OpenAI uses chat_completions
@@ -120,7 +122,7 @@ func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case channelmonitor.FieldID, channelmonitor.FieldAccountID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
 			values[i] = new(sql.NullInt64)
-		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldCheckMode, channelmonitor.FieldAPIMode, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
+		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldCheckMode, channelmonitor.FieldTargetKind, channelmonitor.FieldAPIMode, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
 		case channelmonitor.FieldCreatedAt, channelmonitor.FieldUpdatedAt, channelmonitor.FieldLastCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -174,6 +176,12 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field check_mode", values[i])
 			} else if value.Valid {
 				_m.CheckMode = value.String
+			}
+		case channelmonitor.FieldTargetKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field target_kind", values[i])
+			} else if value.Valid {
+				_m.TargetKind = value.String
 			}
 		case channelmonitor.FieldAccountID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -345,6 +353,9 @@ func (_m *ChannelMonitor) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("check_mode=")
 	builder.WriteString(_m.CheckMode)
+	builder.WriteString(", ")
+	builder.WriteString("target_kind=")
+	builder.WriteString(_m.TargetKind)
 	builder.WriteString(", ")
 	if v := _m.AccountID; v != nil {
 		builder.WriteString("account_id=")

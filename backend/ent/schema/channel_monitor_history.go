@@ -50,6 +50,12 @@ func (ChannelMonitorHistory) Fields() []ent.Field {
 			Optional().
 			Default("").
 			MaxLen(500),
+		// error_category: 探测错误归类（复用 v2 taxonomy 类别名，如 rate_or_capacity）。
+		// 空串表示未归类；仅 status=error 的行会有值。前端据此区分"限流/拥挤"与真故障。
+		field.String("error_category").
+			Optional().
+			Default("").
+			MaxLen(40),
 		// quota: 配额模式（check_mode = quota / quota_probe）检测时附带的
 		// 归一化配额快照（domain.MonitorQuotaSnapshot，JSONB）；探活模式为 NULL。
 		field.JSON("quota", &domain.MonitorQuotaSnapshot{}).

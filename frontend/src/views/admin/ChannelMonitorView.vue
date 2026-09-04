@@ -82,6 +82,13 @@
             <span class="ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
               {{ checkModeLabel(row.check_mode) }}
             </span>
+            <!-- 分组探测标注：结果语义为分组级可用性（经网关 failover） -->
+            <span
+              v-if="row.target_kind === 'gateway_group'"
+              class="ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-primary-50 text-primary-600 dark:bg-primary-500/15 dark:text-primary-300"
+            >
+              {{ t('monitorCommon.targetKind.gateway_group') }}
+            </span>
           </template>
 
           <template #cell-primary_model="{ row }">

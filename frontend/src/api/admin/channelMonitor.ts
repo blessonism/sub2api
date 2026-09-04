@@ -24,6 +24,33 @@ export type APIMode = 'chat_completions' | 'responses'
  */
 export type CheckMode = 'probe' | 'quota' | 'quota_probe'
 
+/**
+ * 探测目标形态（纯展示标注，探测引擎行为一致）。
+ * endpoint = 直连外部上游（默认）；gateway_group = 指向本站网关入口
+ * （绑定分组 API key），探测请求经网关选号 + failover，结果即分组级可用性。
+ */
+export type TargetKind = 'endpoint' | 'gateway_group'
+
+/** 探测错误归类（复用 v2 taxonomy 类别名；空串 = 未归类）。本期消费 rate_or_capacity。 */
+export type MonitorErrorCategory =
+  | 'content_policy'
+  | 'authentication'
+  | 'context_limit'
+  | 'invalid_request'
+  | 'model_unsupported'
+  | 'group_access'
+  | 'quota_or_balance'
+  | 'account_pool_unavailable'
+  | 'rate_or_capacity'
+  | 'timeout'
+  | 'transport_or_stream'
+  | 'upstream_forbidden'
+  | 'not_found'
+  | 'client_cancelled'
+  | 'upstream_5xx'
+  | 'internal'
+  | 'other'
+
 /** 配额快照中的单个用量窗口（与后端 domain.MonitorQuotaTier 一致）。 */
 export interface MonitorQuotaTier {
   /** 5h | 7d | 7d-sonnet | 7d-fable | 30d | daily | weekly | total */
@@ -101,12 +128,18 @@ export interface ChannelMonitor {
   account_id: number | null
   /** 主模型最近一次配额快照（配额模式；无历史时为 null） */
   latest_quota?: MonitorQuotaSnapshot | null
+  /** 探测目标形态（gateway_group 时管理端与用户卡片显示"分组"徽标） */
+  target_kind: TargetKind
+  /** 主模型最近一次 error 的归类（rate_or_capacity 等；空 = 非 error 或未归类） */
+  primary_error_category?: MonitorErrorCategory | ''
 }
 
 export interface ExtraModelStatus {
   model: string
   status: MonitorStatus | ''
   latency_ms: number | null
+  /** 最近一次 error 的归类（rate_or_capacity 等；空 = 未归类） */
+  error_category?: MonitorErrorCategory | ''
 }
 
 export interface ListParams {
@@ -139,6 +172,8 @@ export interface CreateParams {
    * update 语义：>0=换绑，0=解绑（切回 probe 模式时前端发 0 清空存量关联）；
    * create 绝不发 0——后端会把 0 存成 &0 触发外键违约。 */
   account_id?: number | null
+  /** 探测目标形态；缺省 endpoint */
+  target_kind?: TargetKind
   primary_model: string
   extra_models?: string[]
   group_name?: string
@@ -166,6 +201,8 @@ export interface CheckResult {
   checked_at: string
   /** 配额模式（quota / quota_probe 主模型行）附带的配额快照 */
   quota?: MonitorQuotaSnapshot | null
+  /** 错误归类（rate_or_capacity 等；空 = 未归类） */
+  error_category?: MonitorErrorCategory | ''
 }
 
 export interface RunNowResponse {
@@ -184,6 +221,8 @@ export interface HistoryItem {
   checked_at: string
   /** 配额快照（配额模式行；探活行为空） */
   quota?: MonitorQuotaSnapshot | null
+  /** 错误归类（rate_or_capacity 等；空 = 未归类） */
+  error_category?: MonitorErrorCategory | ''
 }
 
 export interface HistoryParams {

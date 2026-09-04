@@ -46,6 +46,14 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Default("probe").
 			MaxLen(32).
 			Comment("probe = LLM probe (default); quota = account usage only; quota_probe = both"),
+		// target_kind: 探测目标形态（纯展示标注，探测引擎行为一致）。
+		//   endpoint      - 直连外部上游（默认，原有行为）
+		//   gateway_group - 指向本站网关入口（绑定分组的 API key），
+		//                   探测请求经网关选号 + failover，结果即分组级可用性。
+		field.String("target_kind").
+			Default("endpoint").
+			MaxLen(20).
+			Comment("endpoint = direct upstream (default); gateway_group = local gateway entrance backed by a group"),
 		// account_id: 配额模式的数据源账号（复用账号侧用量服务，不直接对接上游）。
 		// 普通字段而非 edge（FK 由 SQL 迁移管理）；账号删除时数据库置空，
 		// 监控保留并报「账号未关联」。

@@ -13,6 +13,7 @@ import type {
   Provider,
   MonitorStatus,
   ManualOverrideStatus,
+  TargetKind,
 } from '@/api/admin/channelMonitor'
 
 export const PROVIDER_OPENAI: Provider = 'openai'
@@ -35,6 +36,10 @@ export const DEFAULT_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com'
 export const CHECK_MODE_PROBE: CheckMode = 'probe'
 export const CHECK_MODE_QUOTA: CheckMode = 'quota'
 export const CHECK_MODE_QUOTA_PROBE: CheckMode = 'quota_probe'
+
+/** 探测目标形态：endpoint=直连外部上游（默认）；gateway_group=本站网关入口（分组级探测）。 */
+export const TARGET_KIND_ENDPOINT: TargetKind = 'endpoint'
+export const TARGET_KIND_GATEWAY_GROUP: TargetKind = 'gateway_group'
 
 export const API_MODE_CHAT_COMPLETIONS: APIMode = 'chat_completions'
 export const API_MODE_RESPONSES: APIMode = 'responses'

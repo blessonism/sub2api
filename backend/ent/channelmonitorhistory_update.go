@@ -166,6 +166,26 @@ func (_u *ChannelMonitorHistoryUpdate) ClearMessage() *ChannelMonitorHistoryUpda
 	return _u
 }
 
+// SetErrorCategory sets the "error_category" field.
+func (_u *ChannelMonitorHistoryUpdate) SetErrorCategory(v string) *ChannelMonitorHistoryUpdate {
+	_u.mutation.SetErrorCategory(v)
+	return _u
+}
+
+// SetNillableErrorCategory sets the "error_category" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableErrorCategory(v *string) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetErrorCategory(*v)
+	}
+	return _u
+}
+
+// ClearErrorCategory clears the value of the "error_category" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearErrorCategory() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearErrorCategory()
+	return _u
+}
+
 // SetQuota sets the "quota" field.
 func (_u *ChannelMonitorHistoryUpdate) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryUpdate {
 	_u.mutation.SetQuota(v)
@@ -257,6 +277,11 @@ func (_u *ChannelMonitorHistoryUpdate) check() error {
 			return &ValidationError{Name: "message", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.message": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ErrorCategory(); ok {
+		if err := channelmonitorhistory.ErrorCategoryValidator(v); err != nil {
+			return &ValidationError{Name: "error_category", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.error_category": %w`, err)}
+		}
+	}
 	if _u.mutation.MonitorCleared() && len(_u.mutation.MonitorIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ChannelMonitorHistory.monitor"`)
 	}
@@ -310,6 +335,12 @@ func (_u *ChannelMonitorHistoryUpdate) sqlSave(ctx context.Context) (_node int, 
 	}
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.ErrorCategory(); ok {
+		_spec.SetField(channelmonitorhistory.FieldErrorCategory, field.TypeString, value)
+	}
+	if _u.mutation.ErrorCategoryCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldErrorCategory, field.TypeString)
 	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)
@@ -505,6 +536,26 @@ func (_u *ChannelMonitorHistoryUpdateOne) ClearMessage() *ChannelMonitorHistoryU
 	return _u
 }
 
+// SetErrorCategory sets the "error_category" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetErrorCategory(v string) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.SetErrorCategory(v)
+	return _u
+}
+
+// SetNillableErrorCategory sets the "error_category" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableErrorCategory(v *string) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetErrorCategory(*v)
+	}
+	return _u
+}
+
+// ClearErrorCategory clears the value of the "error_category" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearErrorCategory() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearErrorCategory()
+	return _u
+}
+
 // SetQuota sets the "quota" field.
 func (_u *ChannelMonitorHistoryUpdateOne) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryUpdateOne {
 	_u.mutation.SetQuota(v)
@@ -609,6 +660,11 @@ func (_u *ChannelMonitorHistoryUpdateOne) check() error {
 			return &ValidationError{Name: "message", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.message": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ErrorCategory(); ok {
+		if err := channelmonitorhistory.ErrorCategoryValidator(v); err != nil {
+			return &ValidationError{Name: "error_category", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitorHistory.error_category": %w`, err)}
+		}
+	}
 	if _u.mutation.MonitorCleared() && len(_u.mutation.MonitorIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ChannelMonitorHistory.monitor"`)
 	}
@@ -679,6 +735,12 @@ func (_u *ChannelMonitorHistoryUpdateOne) sqlSave(ctx context.Context) (_node *C
 	}
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.ErrorCategory(); ok {
+		_spec.SetField(channelmonitorhistory.FieldErrorCategory, field.TypeString, value)
+	}
+	if _u.mutation.ErrorCategoryCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldErrorCategory, field.TypeString)
 	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)

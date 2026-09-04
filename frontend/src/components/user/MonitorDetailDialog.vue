@@ -34,9 +34,9 @@
             <td class="py-2 pr-3">
               <span
                 class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
-                :class="statusBadgeClass(m.latest_status)"
+                :class="statusBadgeClass(m.latest_status, m.latest_error_category)"
               >
-                {{ statusLabel(m.latest_status) }}
+                {{ statusLabel(m.latest_status, m.latest_error_category) }}
               </span>
             </td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.latest_latency_ms) }}</td>

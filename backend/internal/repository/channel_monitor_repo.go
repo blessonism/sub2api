@@ -55,7 +55,8 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetCreatedBy(m.CreatedBy).
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
-		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode)).
+		SetTargetKind(defaultTargetKindRepo(m.TargetKind))
 	if m.TemplateID != nil {
 		builder = builder.SetTemplateID(*m.TemplateID)
 	}
@@ -126,7 +127,8 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetJitterSeconds(m.JitterSeconds).
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
-		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode)).
+		SetTargetKind(defaultTargetKindRepo(m.TargetKind))
 	if m.TemplateID != nil {
 		updater = updater.SetTemplateID(*m.TemplateID)
 	} else {
@@ -253,6 +255,9 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 		if row.Quota != nil {
 			c = c.SetQuota(row.Quota)
 		}
+		if row.ErrorCategory != "" {
+			c = c.SetErrorCategory(row.ErrorCategory)
+		}
 		bulk = append(bulk, c)
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
@@ -303,6 +308,7 @@ func historyEntToService(row *dbent.ChannelMonitorHistory) *service.ChannelMonit
 		Message:        row.Message,
 		CheckedAt:      row.CheckedAt,
 		Quota:          row.Quota,
+		ErrorCategory:  row.ErrorCategory,
 	}
 	entry.EffectiveStatus = effectiveMonitorStatus(entry.Status, entry.OverrideStatus)
 	return entry
@@ -353,7 +359,8 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		    latency_ms,
 		    ping_latency_ms,
 		    checked_at,
-		    quota
+		    quota,
+		    error_category
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
@@ -370,7 +377,7 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		var latency, ping sql.NullInt64
 		var override sql.NullString
 		var quota []byte
-		if err := rows.Scan(&l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt, &quota); err != nil {
+		if err := rows.Scan(&l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt, &quota, &l.ErrorCategory); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
 		}
 		assignNullString(&l.OverrideStatus, override)
@@ -495,7 +502,8 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		    latency_ms,
 		    ping_latency_ms,
 		    checked_at,
-		    quota
+		    quota,
+		    error_category
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
 		ORDER BY monitor_id, model, checked_at DESC
@@ -512,7 +520,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		var latency, ping sql.NullInt64
 		var override sql.NullString
 		var quota []byte
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt, &quota); err != nil {
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &override, &l.EffectiveStatus, &latency, &ping, &l.CheckedAt, &quota, &l.ErrorCategory); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
 		assignNullString(&l.OverrideStatus, override)
@@ -560,12 +568,13 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		           h.latency_ms,
 		           h.ping_latency_ms,
 		           h.checked_at,
+		           h.error_category,
 		           ROW_NUMBER() OVER (PARTITION BY h.monitor_id ORDER BY h.checked_at DESC) AS rn
 		    FROM channel_monitor_histories h
 		    JOIN targets t
 		      ON t.monitor_id = h.monitor_id AND t.model = h.model
 		)
-		SELECT monitor_id, status, override_status, effective_status, latency_ms, ping_latency_ms, checked_at
+		SELECT monitor_id, status, override_status, effective_status, latency_ms, ping_latency_ms, checked_at, error_category
 		FROM ranked
 		WHERE rn <= $3
 		ORDER BY monitor_id, checked_at DESC
@@ -581,7 +590,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		entry := &service.ChannelMonitorHistoryEntry{}
 		var latency, ping sql.NullInt64
 		var override sql.NullString
-		if err := rows.Scan(&monitorID, &entry.Status, &override, &entry.EffectiveStatus, &latency, &ping, &entry.CheckedAt); err != nil {
+		if err := rows.Scan(&monitorID, &entry.Status, &override, &entry.EffectiveStatus, &latency, &ping, &entry.CheckedAt, &entry.ErrorCategory); err != nil {
 			return nil, fmt.Errorf("scan recent history row: %w", err)
 		}
 		assignNullString(&entry.OverrideStatus, override)
@@ -865,6 +874,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		BodyOverrideMode:     row.BodyOverrideMode,
 		BodyOverride:         row.BodyOverride,
 		CheckMode:            defaultCheckModeRepo(row.CheckMode),
+		TargetKind:           defaultTargetKindRepo(row.TargetKind),
 		DuplicateOperationID: duplicateOperationID,
 	}
 	if row.TemplateID != nil {
@@ -925,6 +935,14 @@ func defaultCheckModeRepo(checkMode string) string {
 		return "probe"
 	}
 	return checkMode
+}
+
+// defaultTargetKindRepo 空串归一为 endpoint（存量行有列默认值，这里兜底防御）。
+func defaultTargetKindRepo(targetKind string) string {
+	if targetKind == "" {
+		return service.MonitorTargetKindEndpoint
+	}
+	return targetKind
 }
 
 func emptySliceIfNil(in []string) []string {

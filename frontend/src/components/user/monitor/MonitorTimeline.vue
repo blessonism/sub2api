@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
-const { statusLabel, formatLatency, formatRelativeTime } = useChannelMonitorFormat()
+const { statusLabel, isRateLimited, formatLatency, formatRelativeTime } = useChannelMonitorFormat()
 
 interface Bar {
   colorClass: string
@@ -77,6 +77,9 @@ const STATUS_COLOR: Record<string, string> = {
   empty: 'bg-gray-300 dark:bg-dark-600',
 }
 
+// 限流/容量错误与降级同用黄色：它是"挤不进去"而非渠道故障。
+const RATE_LIMIT_COLOR = 'bg-amber-400'
+
 const displayBars = computed<Bar[]>(() => {
   // Real points come newest-first; convert to oldest-first so the rightmost
   // bar represents "now". Pad the left with empty placeholders to keep the
@@ -98,11 +101,12 @@ const displayBars = computed<Bar[]>(() => {
 
   for (const point of real) {
     const status = point.status as keyof typeof STATUS_HEIGHT
-    const colorClass = STATUS_COLOR[status] ?? STATUS_COLOR.empty
+    const rateLimited = isRateLimited(point.status, point.error_category)
+    const colorClass = rateLimited ? RATE_LIMIT_COLOR : (STATUS_COLOR[status] ?? STATUS_COLOR.empty)
     const heightPct = STATUS_HEIGHT[status] ?? STATUS_HEIGHT.empty
     const latency = formatTimelineLatency(point.latency_ms)
     const relative = formatRelativeTime(point.checked_at)
-    const label = statusLabel(point.status)
+    const label = statusLabel(point.status, point.error_category)
     bars.push({
       colorClass,
       heightPct,

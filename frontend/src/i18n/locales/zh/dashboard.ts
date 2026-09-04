@@ -460,7 +460,11 @@ export default {
       degraded: '降级',
       failed: '失败',
       error: '错误',
+      rate_limited: '限流',
       unknown: '-'
+    },
+    targetKind: {
+      gateway_group: '分组'
     },
     providers: {
       openai: 'OpenAI',

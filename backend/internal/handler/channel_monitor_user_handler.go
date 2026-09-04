@@ -69,6 +69,12 @@ type channelMonitorUserListItem struct {
 	Availability7d       float64                              `json:"availability_7d"`
 	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
 	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
+	// TargetKind: gateway_group 时前端卡片显示"分组"徽标（该卡片代表
+	// 经网关 failover 的分组级状态，而非单一上游）。
+	TargetKind string `json:"target_kind"`
+	// PrimaryErrorCategory 主模型最近一次 error 的归类（rate_or_capacity 等），
+	// 前端据此把"限流/拥挤"与真故障区分展示。
+	PrimaryErrorCategory string `json:"primary_error_category"`
 	// LatestQuota 主模型最近配额快照；channel_monitor_show_quota=false 时
 	// 由 userMonitorViewToItem 的调用方传入 false 剥离（服务端脱敏，非仅前端隐藏）。
 	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
@@ -81,6 +87,8 @@ type channelMonitorUserTimelinePoint struct {
 	LatencyMs     *int   `json:"latency_ms"`
 	PingLatencyMs *int   `json:"ping_latency_ms"`
 	CheckedAt     string `json:"checked_at"`
+	// ErrorCategory 错误归类（rate_or_capacity 等）；空串表示未归类。
+	ErrorCategory string `json:"error_category,omitempty"`
 }
 
 type channelMonitorUserDetailResponse struct {
@@ -99,15 +107,18 @@ type channelMonitorUserModelStat struct {
 	Availability15d float64 `json:"availability_15d"`
 	Availability30d float64 `json:"availability_30d"`
 	AvgLatency7dMs  *int    `json:"avg_latency_7d_ms"`
+	// LatestErrorCategory 最近一次 error 的归类（rate_or_capacity 等）。
+	LatestErrorCategory string `json:"latest_error_category,omitempty"`
 }
 
 func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channelMonitorUserListItem {
 	extras := make([]dto.ChannelMonitorExtraModelStatus, 0, len(v.ExtraModels))
 	for _, e := range v.ExtraModels {
 		extras = append(extras, dto.ChannelMonitorExtraModelStatus{
-			Model:     e.Model,
-			Status:    e.Status,
-			LatencyMs: e.LatencyMs,
+			Model:         e.Model,
+			Status:        e.Status,
+			LatencyMs:     e.LatencyMs,
+			ErrorCategory: e.ErrorCategory,
 		})
 	}
 	timeline := make([]channelMonitorUserTimelinePoint, 0, len(v.Timeline))
@@ -117,6 +128,7 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 			LatencyMs:     p.LatencyMs,
 			PingLatencyMs: p.PingLatencyMs,
 			CheckedAt:     p.CheckedAt.UTC().Format(time.RFC3339),
+			ErrorCategory: p.ErrorCategory,
 		})
 	}
 	item := channelMonitorUserListItem{
@@ -131,6 +143,8 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		Availability7d:       v.Availability7d,
 		ExtraModels:          extras,
 		Timeline:             timeline,
+		TargetKind:           v.TargetKind,
+		PrimaryErrorCategory: v.PrimaryErrorCategory,
 	}
 	if includeQuota {
 		item.LatestQuota = v.LatestQuota
@@ -142,13 +156,14 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 	models := make([]channelMonitorUserModelStat, 0, len(d.Models))
 	for _, m := range d.Models {
 		models = append(models, channelMonitorUserModelStat{
-			Model:           m.Model,
-			LatestStatus:    m.LatestStatus,
-			LatestLatencyMs: m.LatestLatencyMs,
-			Availability7d:  m.Availability7d,
-			Availability15d: m.Availability15d,
-			Availability30d: m.Availability30d,
-			AvgLatency7dMs:  m.AvgLatency7dMs,
+			Model:               m.Model,
+			LatestStatus:        m.LatestStatus,
+			LatestLatencyMs:     m.LatestLatencyMs,
+			Availability7d:      m.Availability7d,
+			Availability15d:     m.Availability15d,
+			Availability30d:     m.Availability30d,
+			AvgLatency7dMs:      m.AvgLatency7dMs,
+			LatestErrorCategory: m.LatestErrorCategory,
 		})
 	}
 	return &channelMonitorUserDetailResponse{

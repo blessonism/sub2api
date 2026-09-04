@@ -29,6 +29,8 @@ const (
 	FieldPingLatencyMs = "ping_latency_ms"
 	// FieldMessage holds the string denoting the message field in the database.
 	FieldMessage = "message"
+	// FieldErrorCategory holds the string denoting the error_category field in the database.
+	FieldErrorCategory = "error_category"
 	// FieldQuota holds the string denoting the quota field in the database.
 	FieldQuota = "quota"
 	// FieldCheckedAt holds the string denoting the checked_at field in the database.
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldLatencyMs,
 	FieldPingLatencyMs,
 	FieldMessage,
+	FieldErrorCategory,
 	FieldQuota,
 	FieldCheckedAt,
 }
@@ -77,6 +80,10 @@ var (
 	DefaultMessage string
 	// MessageValidator is a validator for the "message" field. It is called by the builders before save.
 	MessageValidator func(string) error
+	// DefaultErrorCategory holds the default value on creation for the "error_category" field.
+	DefaultErrorCategory string
+	// ErrorCategoryValidator is a validator for the "error_category" field. It is called by the builders before save.
+	ErrorCategoryValidator func(string) error
 	// DefaultCheckedAt holds the default value on creation for the "checked_at" field.
 	DefaultCheckedAt func() time.Time
 )
@@ -171,6 +178,11 @@ func ByPingLatencyMs(opts ...sql.OrderTermOption) OrderOption {
 // ByMessage orders the results by the message field.
 func ByMessage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMessage, opts...).ToFunc()
+}
+
+// ByErrorCategory orders the results by the error_category field.
+func ByErrorCategory(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldErrorCategory, opts...).ToFunc()
 }
 
 // ByCheckedAt orders the results by the checked_at field.
