@@ -417,6 +417,23 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			}
 		}
 		if selection != nil && selection.Account != nil {
+			if req.PreviousResponseCanMove && selection.Account.IsOpenAIApiKey() {
+				escapeCfg := s.service.openAIStickyEscapeConfig(ctx, req.GroupID)
+				if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(selection.Account.ID, escapeCfg); shouldEscape {
+					slog.Info("previous_response_escape_triggered",
+						"account_id", selection.Account.ID,
+						"reason", reason,
+						"error_rate", errorRate,
+						"ttft", ttft,
+					)
+					if selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+					}
+					selection = nil
+				}
+			}
+		}
+		if selection != nil && selection.Account != nil {
 			decision.Layer = openAIAccountScheduleLayerPreviousResponse
 			decision.StickyPreviousHit = true
 			decision.SelectedAccountID = selection.Account.ID
@@ -552,7 +569,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	escapeCfg := s.service.openAIStickyEscapeConfig()
+	escapeCfg := s.service.openAIStickyEscapeConfig(ctx, req.GroupID)
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape {
 		slog.Info("sticky_escape_triggered",
 			"account_id", accountID,
@@ -884,6 +901,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		}
 	}
 
+	candidates = filterOpenAICandidatesByTTFTMaxRatio(candidates, s.service.openAITTFTMaxRatioForRequest(ctx, req.GroupID))
 	plan := openAIAccountLoadPlan{
 		allCandidates:             allCandidates,
 		candidates:                candidates,
@@ -932,7 +950,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	}
 	plan.loadSkew = calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, len(candidates))
 
-	weights := s.service.openAIWSSchedulerWeightsForRequest(ctx)
+	weights := s.service.openAIWSSchedulerWeightsForRequest(ctx, req.GroupID)
 	now := time.Now()
 	upstreamCostFactors := map[int64]float64(nil)
 	if req.UseUpstreamTokenCost && weights.UpstreamCost > 0 {
@@ -1027,7 +1045,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	}
 	plan.candidates = candidates
 
-	plan.topK = s.service.openAIWSLBTopKForRequest(ctx)
+	plan.topK = s.service.openAIWSLBTopKForRequest(ctx, req.GroupID)
 	if plan.topK > len(candidates) {
 		plan.topK = len(candidates)
 	}
@@ -2515,7 +2533,7 @@ func (s *OpenAIGatewayService) openAIWSLBTopK() int {
 	return 7
 }
 
-func (s *OpenAIGatewayService) openAIWSLBTopKForRequest(ctx context.Context) int {
+func (s *OpenAIGatewayService) openAIWSLBTopKForRequest(ctx context.Context, groupID *int64) int {
 	base := s.openAIWSLBTopK()
 	settings := s.openAIAdvancedSchedulerRuntimeSettings(ctx)
 	// DB 覆盖值与 stickyWeighted/subscriptionPriority 一样受总开关门控：
@@ -2524,40 +2542,66 @@ func (s *OpenAIGatewayService) openAIWSLBTopKForRequest(ctx context.Context) int
 		return base
 	}
 	if settings.lbTopKOverride > 0 {
-		return settings.lbTopKOverride
+		base = settings.lbTopKOverride
+	}
+	overrides := s.loadOpenAIGroupSchedulerOverrides(ctx, groupID)
+	if overrides.LBTopK != nil && *overrides.LBTopK > 0 {
+		base = *overrides.LBTopK
+		if base == 1 {
+			slog.Warn("openai_scheduler_lb_top_k_raised",
+				"configured", 1,
+				"applied", 2,
+				"group_id", derefGroupID(groupID),
+			)
+			return 2
+		}
+	}
+	if base <= 0 {
+		return 1
 	}
 	return base
 }
 
-func (s *OpenAIGatewayService) openAIStickyEscapeConfig() openAIStickyEscapeConfig {
+func (s *OpenAIGatewayService) openAIStickyEscapeConfig(ctx context.Context, groupID *int64) openAIStickyEscapeConfig {
+	cfg := openAIStickyEscapeConfig{
+		enabled:   true,
+		ttftMs:    15000,
+		errorRate: 0.5,
+	}
 	if s != nil && s.cfg != nil {
-		cfg := s.cfg.Gateway.OpenAIScheduler
-		enabled := cfg.StickyEscapeEnabled
-		if !enabled && cfg.StickyEscapeTTFTMs == 0 && cfg.StickyEscapeErrorRate == 0 {
+		sched := s.cfg.Gateway.OpenAIScheduler
+		enabled := sched.StickyEscapeEnabled
+		if !enabled && sched.StickyEscapeTTFTMs == 0 && sched.StickyEscapeErrorRate == 0 {
 			enabled = true
 		}
-		ttftMs := float64(cfg.StickyEscapeTTFTMs)
+		ttftMs := float64(sched.StickyEscapeTTFTMs)
 		if ttftMs <= 0 {
 			ttftMs = 15000
 		}
-		errorRate := cfg.StickyEscapeErrorRate
+		errorRate := sched.StickyEscapeErrorRate
 		if errorRate < 0 || errorRate > 1 {
 			errorRate = 0.5
 		}
-		if errorRate == 0 && cfg.StickyEscapeTTFTMs == 0 && cfg.StickyEscapeErrorRate == 0 {
+		if errorRate == 0 && sched.StickyEscapeTTFTMs == 0 && sched.StickyEscapeErrorRate == 0 {
 			errorRate = 0.5
 		}
-		return openAIStickyEscapeConfig{
+		cfg = openAIStickyEscapeConfig{
 			enabled:   enabled,
 			ttftMs:    ttftMs,
 			errorRate: errorRate,
 		}
 	}
-	return openAIStickyEscapeConfig{
-		enabled:   true,
-		ttftMs:    15000,
-		errorRate: 0.5,
+	overrides := s.loadOpenAIGroupSchedulerOverrides(ctx, groupID)
+	if overrides.StickyEscapeTTFTMs != nil && *overrides.StickyEscapeTTFTMs > 0 {
+		cfg.ttftMs = float64(*overrides.StickyEscapeTTFTMs)
 	}
+	if overrides.StickyEscapeErrorRate != nil {
+		rate := *overrides.StickyEscapeErrorRate
+		if rate >= 0 && rate <= 1 {
+			cfg.errorRate = rate
+		}
+	}
+	return cfg
 }
 
 func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedulerScoreWeightsView {
@@ -2589,7 +2633,7 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 	}
 }
 
-func (s *OpenAIGatewayService) openAIWSSchedulerWeightsForRequest(ctx context.Context) GatewayOpenAIWSSchedulerScoreWeightsView {
+func (s *OpenAIGatewayService) openAIWSSchedulerWeightsForRequest(ctx context.Context, groupID *int64) GatewayOpenAIWSSchedulerScoreWeightsView {
 	weights := s.openAIWSSchedulerWeights()
 	settings := s.openAIAdvancedSchedulerRuntimeSettings(ctx)
 	// 同 openAIWSLBTopKForRequest：总开关关闭时不应用 DB 覆盖值。
@@ -2597,10 +2641,86 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeightsForRequest(ctx context.Co
 		return weights
 	}
 	overridden := applyOpenAIAdvancedSchedulerWeightOverrides(weights, settings.weightOverrides)
+	groupOverrides := s.loadOpenAIGroupSchedulerOverrides(ctx, groupID)
+	overridden = applyOpenAIGroupSchedulerWeightOverrides(overridden, groupOverrides)
 	if !overridden.configWeights().IsValid() {
+		slog.Warn("openai_scheduler_group_weight_override_invalid",
+			"group_id", derefGroupID(groupID),
+		)
 		return weights
 	}
 	return overridden
+}
+
+func (s *OpenAIGatewayService) openAITTFTMaxRatioForRequest(ctx context.Context, groupID *int64) float64 {
+	settings := s.openAIAdvancedSchedulerRuntimeSettings(ctx)
+	if !settings.enabled {
+		return 0
+	}
+	overrides := s.loadOpenAIGroupSchedulerOverrides(ctx, groupID)
+	if overrides.TTFTMaxRatio == nil || *overrides.TTFTMaxRatio <= 1 {
+		return 0
+	}
+	return *overrides.TTFTMaxRatio
+}
+
+func (s *OpenAIGatewayService) loadOpenAIGroupSchedulerOverrides(ctx context.Context, groupID *int64) GroupOpenAISchedulerOverrides {
+	if s == nil || groupID == nil || *groupID <= 0 || s.schedulerSnapshot == nil {
+		return GroupOpenAISchedulerOverrides{}
+	}
+	group, err := s.schedulerSnapshot.GetGroupByIDLite(ctx, *groupID)
+	if err != nil || group == nil {
+		return GroupOpenAISchedulerOverrides{}
+	}
+	return group.OpenAISchedulerOverrides
+}
+
+func applyOpenAIGroupSchedulerWeightOverrides(
+	weights GatewayOpenAIWSSchedulerScoreWeightsView,
+	overrides GroupOpenAISchedulerOverrides,
+) GatewayOpenAIWSSchedulerScoreWeightsView {
+	if overrides.WeightLoad != nil {
+		weights.Load = *overrides.WeightLoad
+	}
+	if overrides.WeightErrorRate != nil {
+		weights.ErrorRate = *overrides.WeightErrorRate
+	}
+	if overrides.WeightTTFT != nil {
+		weights.TTFT = *overrides.WeightTTFT
+	}
+	return weights
+}
+
+func filterOpenAICandidatesByTTFTMaxRatio(candidates []openAIAccountCandidateScore, ratio float64) []openAIAccountCandidateScore {
+	if ratio <= 1 || len(candidates) <= 1 {
+		return candidates
+	}
+	minTTFT := 0.0
+	hasSample := false
+	for _, candidate := range candidates {
+		if !candidate.hasTTFT || candidate.ttft <= 0 {
+			continue
+		}
+		if !hasSample || candidate.ttft < minTTFT {
+			minTTFT = candidate.ttft
+			hasSample = true
+		}
+	}
+	if !hasSample || minTTFT <= 0 {
+		return candidates
+	}
+	threshold := minTTFT * ratio
+	filtered := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.hasTTFT && candidate.ttft > threshold {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+	if len(filtered) == 0 {
+		return candidates
+	}
+	return filtered
 }
 
 func applyOpenAIAdvancedSchedulerWeightOverrides(
@@ -2682,7 +2802,7 @@ func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
 	return buildOpenAIAccountSchedulerScoreSnapshot(
 		accounts,
 		loadMap,
-		gateway.openAIWSSchedulerWeightsForRequest(ctx),
+		gateway.openAIWSSchedulerWeightsForRequest(ctx, nil),
 		gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx),
 		gateway.openAIOAuthSchedulingRateMultiplier(ctx),
 	)

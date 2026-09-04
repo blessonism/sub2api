@@ -468,6 +468,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	httpToolCoverage := service.AnalyzeToolCallOutputContextCoverageBytes(body)
+	previousResponseCanMove := !httpToolCoverage.HasFunctionCallOutput || httpToolCoverage.ContextCoversAllCallIDs
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
@@ -637,7 +639,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			service.OpenAIUpstreamTransportAny,
 			requiredCapability,
 			requireCompact,
-			false,
+			previousResponseCanMove,
 			!imageIntent,
 			requestPlatform,
 		)
@@ -718,6 +720,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if previousResponseID != "" && previousResponseCanMove && !scheduleDecision.StickyPreviousHit {
+			stripped := service.RemovePreviousResponseIDFromBody(body)
+			if len(stripped) > 0 {
+				body = stripped
+				forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				previousResponseID = ""
+				reqLog.Debug("openai.http_previous_response_id_stripped_on_escape",
+					zap.Int64("account_id", account.ID),
+					zap.String("schedule_layer", scheduleDecision.Layer),
+				)
+			}
+		}
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {

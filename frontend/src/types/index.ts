@@ -705,9 +705,20 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig
+  openai_scheduler_overrides?: GroupOpenAISchedulerOverrides
 
   // 分组排序
   sort_order: number
+}
+
+export interface GroupOpenAISchedulerOverrides {
+  lb_top_k?: number | null
+  weight_ttft?: number | null
+  weight_error_rate?: number | null
+  weight_load?: number | null
+  ttft_max_ratio?: number | null
+  sticky_escape_ttft_ms?: number | null
+  sticky_escape_error_rate?: number | null
 }
 
 export interface ModelsListConfig {

@@ -30289,6 +30289,7 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	models_list_config                      *domain.GroupModelsListConfig
+	openai_scheduler_overrides              *domain.GroupOpenAISchedulerOverrides
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	max_reasoning_effort                    *string
@@ -33480,6 +33481,42 @@ func (m *GroupMutation) ResetModelsListConfig() {
 	m.models_list_config = nil
 }
 
+// SetOpenaiSchedulerOverrides sets the "openai_scheduler_overrides" field.
+func (m *GroupMutation) SetOpenaiSchedulerOverrides(doaso domain.GroupOpenAISchedulerOverrides) {
+	m.openai_scheduler_overrides = &doaso
+}
+
+// OpenaiSchedulerOverrides returns the value of the "openai_scheduler_overrides" field in the mutation.
+func (m *GroupMutation) OpenaiSchedulerOverrides() (r domain.GroupOpenAISchedulerOverrides, exists bool) {
+	v := m.openai_scheduler_overrides
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenaiSchedulerOverrides returns the old "openai_scheduler_overrides" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldOpenaiSchedulerOverrides(ctx context.Context) (v domain.GroupOpenAISchedulerOverrides, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenaiSchedulerOverrides is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenaiSchedulerOverrides requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenaiSchedulerOverrides: %w", err)
+	}
+	return oldValue.OpenaiSchedulerOverrides, nil
+}
+
+// ResetOpenaiSchedulerOverrides resets all changes to the "openai_scheduler_overrides" field.
+func (m *GroupMutation) ResetOpenaiSchedulerOverrides() {
+	m.openai_scheduler_overrides = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -34165,7 +34202,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 69)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -34349,6 +34386,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.models_list_config != nil {
 		fields = append(fields, group.FieldModelsListConfig)
 	}
+	if m.openai_scheduler_overrides != nil {
+		fields = append(fields, group.FieldOpenaiSchedulerOverrides)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -34500,6 +34540,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldModelsListConfig:
 		return m.ModelsListConfig()
+	case group.FieldOpenaiSchedulerOverrides:
+		return m.OpenaiSchedulerOverrides()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	case group.FieldMaxReasoningEffort:
@@ -34645,6 +34687,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldModelsListConfig:
 		return m.OldModelsListConfig(ctx)
+	case group.FieldOpenaiSchedulerOverrides:
+		return m.OldOpenaiSchedulerOverrides(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	case group.FieldMaxReasoningEffort:
@@ -35094,6 +35138,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelsListConfig(v)
+		return nil
+	case group.FieldOpenaiSchedulerOverrides:
+		v, ok := value.(domain.GroupOpenAISchedulerOverrides)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenaiSchedulerOverrides(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -35855,6 +35906,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelsListConfig:
 		m.ResetModelsListConfig()
+		return nil
+	case group.FieldOpenaiSchedulerOverrides:
+		m.ResetOpenaiSchedulerOverrides()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

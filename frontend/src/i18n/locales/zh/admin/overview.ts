@@ -1178,6 +1178,17 @@ export default {
         free: '免费 Fast',
         freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },
+      openaiScheduler: {
+        title: 'OpenAI/Codex 调度画像',
+        hint: '仅覆盖本分组的高级调度。留空继承全局。top_k=1 会被服务端升为 2。需要全局高级调度开关开启后才生效。',
+        lbTopK: '负载均衡 top-K',
+        weightTtft: 'TTFT 权重',
+        weightErrorRate: '错误率权重',
+        weightLoad: '负载权重',
+        ttftMaxRatio: 'TTFT 相对淘汰倍数',
+        stickyEscapeTtftMs: '粘性/续链逃逸 TTFT（毫秒）',
+        stickyEscapeErrorRate: '粘性/续链逃逸错误率'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

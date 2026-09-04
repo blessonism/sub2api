@@ -1180,6 +1180,17 @@ export default {
         free: 'Free Fast',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },
+      openaiScheduler: {
+        title: 'OpenAI/Codex scheduling profile',
+        hint: 'Overrides advanced scheduler settings for this group only. Leave blank to inherit globals. top_k=1 is raised to 2 server-side. Requires the global advanced scheduler switch.',
+        lbTopK: 'Load-balance top-K',
+        weightTtft: 'TTFT weight',
+        weightErrorRate: 'Error-rate weight',
+        weightLoad: 'Load weight',
+        ttftMaxRatio: 'TTFT relative-eviction ratio',
+        stickyEscapeTtftMs: 'Sticky/continuation escape TTFT (ms)',
+        stickyEscapeErrorRate: 'Sticky/continuation escape error rate'
+      },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',

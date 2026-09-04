@@ -352,14 +352,154 @@ func TestOpenAIGatewayService_OpenAIAdvancedSchedulerRuntimeSettings_DBOverrides
 	}
 
 	ctx := context.Background()
-	require.Equal(t, 3, svc.openAIWSLBTopKForRequest(ctx))
-	weights := svc.openAIWSSchedulerWeightsForRequest(ctx)
+	require.Equal(t, 3, svc.openAIWSLBTopKForRequest(ctx, nil))
+	weights := svc.openAIWSSchedulerWeightsForRequest(ctx, nil)
 	require.Equal(t, 2.5, weights.Priority)
 	require.Equal(t, 2.0, weights.Load)
 	require.Equal(t, 8.0, weights.UpstreamCost)
 	require.Equal(t, 0.25, weights.Reset)
 	require.Equal(t, 12.0, weights.Previous)
 	require.Equal(t, 10.0, weights.SessionSticky)
+}
+
+type schedulerGroupRepoStub struct {
+	GroupRepository
+	groups map[int64]*Group
+}
+
+func (r schedulerGroupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	if r.groups == nil {
+		return nil, nil
+	}
+	group := r.groups[id]
+	if group == nil {
+		return nil, nil
+	}
+	cloned := *group
+	return &cloned, nil
+}
+
+func TestOpenAIGatewayService_GroupSchedulerOverridesTakePrecedence(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 11
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights = config.GatewayOpenAIWSSchedulerScoreWeights{
+		Priority: 1, Load: 1, Queue: 0.7, ErrorRate: 0.8, TTFT: 0.5,
+		PreviousResponse: 5, SessionSticky: 3,
+	}
+	repo := &openAIAdvancedSchedulerSettingRepoStub{
+		values: map[string]string{
+			openAIAdvancedSchedulerSettingKey:       "true",
+			SettingKeyOpenAIAdvancedSchedulerLBTopK: "7",
+		},
+	}
+	groupID := int64(42)
+	topK := 2
+	ttftWeight := 4.0
+	errorWeight := 1.2
+	loadWeight := 1.0
+	ratio := 3.0
+	escapeMs := 2500
+	escapeRate := 0.25
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		rateLimitService: &RateLimitService{settingService: NewSettingService(repo, cfg)},
+		schedulerSnapshot: &SchedulerSnapshotService{
+			groupRepo: schedulerGroupRepoStub{
+				groups: map[int64]*Group{
+					groupID: {
+						ID: groupID,
+						OpenAISchedulerOverrides: GroupOpenAISchedulerOverrides{
+							LBTopK:                &topK,
+							WeightTTFT:            &ttftWeight,
+							WeightErrorRate:       &errorWeight,
+							WeightLoad:            &loadWeight,
+							TTFTMaxRatio:          &ratio,
+							StickyEscapeTTFTMs:    &escapeMs,
+							StickyEscapeErrorRate: &escapeRate,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	require.Equal(t, 2, svc.openAIWSLBTopKForRequest(ctx, &groupID))
+	require.Equal(t, 7, svc.openAIWSLBTopKForRequest(ctx, nil))
+	weights := svc.openAIWSSchedulerWeightsForRequest(ctx, &groupID)
+	require.Equal(t, 4.0, weights.TTFT)
+	require.Equal(t, 1.2, weights.ErrorRate)
+	require.Equal(t, 1.0, weights.Load)
+	require.Equal(t, 3.0, svc.openAITTFTMaxRatioForRequest(ctx, &groupID))
+	escape := svc.openAIStickyEscapeConfig(ctx, &groupID)
+	require.Equal(t, 2500.0, escape.ttftMs)
+	require.Equal(t, 0.25, escape.errorRate)
+}
+
+func TestOpenAIGatewayService_GroupSchedulerTopKOneRaisedToTwo(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	one := 1
+	groupID := int64(7)
+	repo := &openAIAdvancedSchedulerSettingRepoStub{
+		values: map[string]string{openAIAdvancedSchedulerSettingKey: "true"},
+	}
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{settingService: NewSettingService(repo, &config.Config{})},
+		schedulerSnapshot: &SchedulerSnapshotService{
+			groupRepo: schedulerGroupRepoStub{
+				groups: map[int64]*Group{
+					groupID: {ID: groupID, OpenAISchedulerOverrides: GroupOpenAISchedulerOverrides{LBTopK: &one}},
+				},
+			},
+		},
+	}
+	require.Equal(t, 2, svc.openAIWSLBTopKForRequest(context.Background(), &groupID))
+}
+
+func TestOpenAIGatewayService_GroupSchedulerOverridesIgnoredWhenDisabled(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 11
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.5
+	topK := 2
+	ttftWeight := 4.0
+	groupID := int64(9)
+	repo := &openAIAdvancedSchedulerSettingRepoStub{
+		values: map[string]string{openAIAdvancedSchedulerSettingKey: "false"},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		rateLimitService: &RateLimitService{settingService: NewSettingService(repo, cfg)},
+		schedulerSnapshot: &SchedulerSnapshotService{
+			groupRepo: schedulerGroupRepoStub{
+				groups: map[int64]*Group{
+					groupID: {ID: groupID, OpenAISchedulerOverrides: GroupOpenAISchedulerOverrides{LBTopK: &topK, WeightTTFT: &ttftWeight}},
+				},
+			},
+		},
+	}
+	require.Equal(t, 11, svc.openAIWSLBTopKForRequest(context.Background(), &groupID))
+	require.Equal(t, 0.5, svc.openAIWSSchedulerWeightsForRequest(context.Background(), &groupID).TTFT)
+	require.Equal(t, 0.0, svc.openAITTFTMaxRatioForRequest(context.Background(), &groupID))
+}
+
+func TestFilterOpenAICandidatesByTTFTMaxRatio(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{account: &Account{ID: 1}, ttft: 200, hasTTFT: true},
+		{account: &Account{ID: 2}, ttft: 500, hasTTFT: true},
+		{account: &Account{ID: 3}, ttft: 8000, hasTTFT: true},
+		{account: &Account{ID: 4}, hasTTFT: false},
+	}
+	filtered := filterOpenAICandidatesByTTFTMaxRatio(candidates, 3)
+	require.Equal(t, []int64{1, 2, 4}, []int64{filtered[0].account.ID, filtered[1].account.ID, filtered[2].account.ID})
+	require.Equal(t, candidates, filterOpenAICandidatesByTTFTMaxRatio(candidates, 0))
 }
 
 func TestOpenAIGatewayService_OpenAIAdvancedSchedulerRuntimeSettings_InvalidWeightSumsFallBackToConfig(t *testing.T) {
@@ -404,7 +544,7 @@ func TestOpenAIGatewayService_OpenAIAdvancedSchedulerRuntimeSettings_InvalidWeig
 			repo := &openAIAdvancedSchedulerSettingRepoStub{values: tt.values}
 			svc := &OpenAIGatewayService{cfg: cfg, rateLimitService: &RateLimitService{settingService: NewSettingService(repo, cfg)}}
 
-			require.Equal(t, (&OpenAIGatewayService{cfg: cfg}).openAIWSSchedulerWeights(), svc.openAIWSSchedulerWeightsForRequest(context.Background()))
+			require.Equal(t, (&OpenAIGatewayService{cfg: cfg}).openAIWSSchedulerWeights(), svc.openAIWSSchedulerWeightsForRequest(context.Background(), nil))
 		})
 	}
 }
@@ -2235,6 +2375,80 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
 	require.True(t, decision.StickyPreviousHit)
 	require.Equal(t, account.ID, cache.sessionBindings["openai:session_hash_001"])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseEscapesSlowAPIKey(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	ctx := context.Background()
+	groupID := int64(91)
+	slow := Account{
+		ID:          9101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    50,
+		GroupIDs:    []int64{groupID},
+	}
+	fast := Account{
+		ID:          9102,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		GroupIDs:    []int64{groupID},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights = config.GatewayOpenAIWSSchedulerScoreWeights{
+		Priority: 1, Load: 1, Queue: 0.7, ErrorRate: 0.8, TTFT: 4,
+	}
+	cfg.Gateway.OpenAIWS.StickyResponseIDTTLSeconds = 3600
+	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
+	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 2500
+	stats := newOpenAIAccountRuntimeStats()
+	slowTTFT := 8000
+	fastTTFT := 200
+	stats.report(slow.ID, true, &slowTTFT)
+	stats.report(fast.ID, true, &fastTTFT)
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{slow, fast}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiAccountStats: stats,
+	}
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_slow_001", slow.ID, time.Hour))
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx,
+		&groupID,
+		"resp_slow_001",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapability(""),
+		false,
+		true,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, fast.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickyPreviousHit)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
