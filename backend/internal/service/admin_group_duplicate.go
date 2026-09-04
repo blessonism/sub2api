@@ -56,6 +56,18 @@ func cloneGroupValuePointer[T any](value *T) *T {
 	return &cloned
 }
 
+func cloneGroupOpenAISchedulerOverrides(value GroupOpenAISchedulerOverrides) GroupOpenAISchedulerOverrides {
+	return GroupOpenAISchedulerOverrides{
+		LBTopK:                cloneGroupValuePointer(value.LBTopK),
+		WeightTTFT:            cloneGroupValuePointer(value.WeightTTFT),
+		WeightErrorRate:       cloneGroupValuePointer(value.WeightErrorRate),
+		WeightLoad:            cloneGroupValuePointer(value.WeightLoad),
+		TTFTMaxRatio:          cloneGroupValuePointer(value.TTFTMaxRatio),
+		StickyEscapeTTFTMs:    cloneGroupValuePointer(value.StickyEscapeTTFTMs),
+		StickyEscapeErrorRate: cloneGroupValuePointer(value.StickyEscapeErrorRate),
+	}
+}
+
 func cloneGroupModelRouting(value map[string][]int64) map[string][]int64 {
 	if value == nil {
 		return nil
@@ -154,6 +166,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelsListConfig.Enabled,
 			Models:  append([]string(nil), source.ModelsListConfig.Models...),
 		},
+		OpenAISchedulerOverrides:    cloneGroupOpenAISchedulerOverrides(source.OpenAISchedulerOverrides),
 		RPMLimit:                    source.RPMLimit,
 		MaxReasoningEffort:          source.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit: source.MaxReasoningEffortOverLimit,

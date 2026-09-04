@@ -1140,6 +1140,20 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetOpenaiSchedulerOverrides sets the "openai_scheduler_overrides" field.
+func (_u *GroupUpdate) SetOpenaiSchedulerOverrides(v domain.GroupOpenAISchedulerOverrides) *GroupUpdate {
+	_u.mutation.SetOpenaiSchedulerOverrides(v)
+	return _u
+}
+
+// SetNillableOpenaiSchedulerOverrides sets the "openai_scheduler_overrides" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableOpenaiSchedulerOverrides(v *domain.GroupOpenAISchedulerOverrides) *GroupUpdate {
+	if v != nil {
+		_u.SetOpenaiSchedulerOverrides(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1942,6 +1956,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.OpenaiSchedulerOverrides(); ok {
+		_spec.SetField(group.FieldOpenaiSchedulerOverrides, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3395,6 +3412,20 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetOpenaiSchedulerOverrides sets the "openai_scheduler_overrides" field.
+func (_u *GroupUpdateOne) SetOpenaiSchedulerOverrides(v domain.GroupOpenAISchedulerOverrides) *GroupUpdateOne {
+	_u.mutation.SetOpenaiSchedulerOverrides(v)
+	return _u
+}
+
+// SetNillableOpenaiSchedulerOverrides sets the "openai_scheduler_overrides" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableOpenaiSchedulerOverrides(v *domain.GroupOpenAISchedulerOverrides) *GroupUpdateOne {
+	if v != nil {
+		_u.SetOpenaiSchedulerOverrides(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -4227,6 +4258,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.OpenaiSchedulerOverrides(); ok {
+		_spec.SetField(group.FieldOpenaiSchedulerOverrides, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

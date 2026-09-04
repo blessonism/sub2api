@@ -1678,6 +1678,47 @@
             {{ t("admin.groups.openaiFast.freeHint") }}
           </p>
         </div>
+        <div
+          v-if="supportsGroupOpenAIFast(createForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiScheduler.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.openaiScheduler.hint") }}
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.lbTopK") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.lb_top_k" type="number" min="2" step="1" class="input" data-testid="create-scheduler-lb-top-k" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightTtft") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.weight_ttft" type="number" min="0" step="0.1" class="input" data-testid="create-scheduler-weight-ttft" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightErrorRate") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.weight_error_rate" type="number" min="0" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightLoad") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.weight_load" type="number" min="0" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.ttftMaxRatio") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.ttft_max_ratio" type="number" min="1" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.stickyEscapeTtftMs") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.sticky_escape_ttft_ms" type="number" min="1" step="100" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.stickyEscapeErrorRate") }}</label>
+              <input v-model.number="createForm.openai_scheduler_overrides.sticky_escape_error_rate" type="number" min="0" max="1" step="0.05" class="input" />
+            </div>
+          </div>
+        </div>
 
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
@@ -3489,6 +3530,47 @@
             {{ t("admin.groups.openaiFast.freeHint") }}
           </p>
         </div>
+        <div
+          v-if="supportsGroupOpenAIFast(editForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiScheduler.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.openaiScheduler.hint") }}
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.lbTopK") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.lb_top_k" type="number" min="2" step="1" class="input" data-testid="edit-scheduler-lb-top-k" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightTtft") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.weight_ttft" type="number" min="0" step="0.1" class="input" data-testid="edit-scheduler-weight-ttft" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightErrorRate") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.weight_error_rate" type="number" min="0" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.weightLoad") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.weight_load" type="number" min="0" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.ttftMaxRatio") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.ttft_max_ratio" type="number" min="1" step="0.1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.stickyEscapeTtftMs") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.sticky_escape_ttft_ms" type="number" min="1" step="100" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.openaiScheduler.stickyEscapeErrorRate") }}</label>
+              <input v-model.number="editForm.openai_scheduler_overrides.sticky_escape_error_rate" type="number" min="0" max="1" step="0.05" class="input" />
+            </div>
+          </div>
+        </div>
 
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
@@ -4619,6 +4701,7 @@ import type {
   CompositeRouteDecision,
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
+  GroupOpenAISchedulerOverrides,
   GroupPlatform,
   SubscriptionType,
 } from "@/types";
@@ -5163,6 +5246,46 @@ const sortState = reactive({
   sort_order: "asc" as "asc" | "desc",
 });
 
+const emptyOpenAISchedulerOverrides = (): GroupOpenAISchedulerOverrides => ({
+  lb_top_k: null,
+  weight_ttft: null,
+  weight_error_rate: null,
+  weight_load: null,
+  ttft_max_ratio: null,
+  sticky_escape_ttft_ms: null,
+  sticky_escape_error_rate: null,
+});
+
+const normalizeOpenAISchedulerOverrides = (
+  value?: GroupOpenAISchedulerOverrides | null,
+): GroupOpenAISchedulerOverrides => ({
+  ...emptyOpenAISchedulerOverrides(),
+  ...(value ?? {}),
+});
+
+const serializeOpenAISchedulerOverrides = (
+  value?: GroupOpenAISchedulerOverrides | null,
+): GroupOpenAISchedulerOverrides => {
+  const source = value ?? emptyOpenAISchedulerOverrides();
+  const out: GroupOpenAISchedulerOverrides = {};
+  const assignNumber = (
+    key: keyof GroupOpenAISchedulerOverrides,
+    raw: number | null | undefined,
+  ) => {
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      out[key] = raw;
+    }
+  };
+  assignNumber("lb_top_k", source.lb_top_k);
+  assignNumber("weight_ttft", source.weight_ttft);
+  assignNumber("weight_error_rate", source.weight_error_rate);
+  assignNumber("weight_load", source.weight_load);
+  assignNumber("ttft_max_ratio", source.ttft_max_ratio);
+  assignNumber("sticky_escape_ttft_ms", source.sticky_escape_ttft_ms);
+  assignNumber("sticky_escape_error_rate", source.sticky_escape_error_rate);
+  return out;
+};
+
 let abortController: AbortController | null = null;
 
 const showCreateModal = ref(false);
@@ -5316,6 +5439,7 @@ const createForm = reactive({
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  openai_scheduler_overrides: emptyOpenAISchedulerOverrides(),
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -5682,6 +5806,7 @@ const editForm = reactive({
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  openai_scheduler_overrides: emptyOpenAISchedulerOverrides(),
 });
 
 type ImagePricingFormState = {
@@ -6206,6 +6331,9 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      openai_scheduler_overrides: serializeOpenAISchedulerOverrides(
+        createForm.openai_scheduler_overrides,
+      ),
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_fast,
@@ -6341,6 +6469,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.openai_scheduler_overrides = normalizeOpenAISchedulerOverrides(
+    group.openai_scheduler_overrides,
+  );
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -6453,6 +6584,7 @@ const closeEditModal = () => {
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
+  editForm.openai_scheduler_overrides = emptyOpenAISchedulerOverrides();
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -6487,6 +6619,9 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      openai_scheduler_overrides: serializeOpenAISchedulerOverrides(
+        editForm.openai_scheduler_overrides,
+      ),
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_fast,
