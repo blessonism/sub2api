@@ -601,6 +601,36 @@ func (h *UsageHandler) ListCalibrations(c *gin.Context) {
 	response.Paginated(c, items, result.Total, page, pageSize)
 }
 
+// RevokeCalibration revokes an admin-only calibration and restores its balance impact.
+// POST /api/v1/admin/usage/calibrations/:id/revoke
+func (h *UsageHandler) RevokeCalibration(c *gin.Context) {
+	if h.calibrationService == nil {
+		response.InternalError(c, "Usage calibration service unavailable")
+		return
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+	calibrationID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || calibrationID <= 0 {
+		response.BadRequest(c, "Invalid calibration id")
+		return
+	}
+	record, err := h.calibrationService.Revoke(c.Request.Context(), calibrationID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	clearAdminDashboardUsageSnapshotCaches()
+	clearAdminUsageStatsCache()
+	if h.dashboardService != nil {
+		h.dashboardService.InvalidateDashboardStatsCache()
+	}
+	response.Success(c, record)
+}
+
 func (h *UsageHandler) parseUserViewUsageFilters(c *gin.Context, targetUserID int64) (usagestats.UsageLogFilters, bool) {
 	apiKeyID, ok := h.parseUserViewAPIKeyID(c, targetUserID)
 	if !ok {

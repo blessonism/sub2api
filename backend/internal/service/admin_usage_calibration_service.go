@@ -18,6 +18,8 @@ const (
 
 var (
 	ErrAdminUsageCalibrationInvalidInput = infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_INVALID_INPUT", "invalid calibration input")
+	ErrAdminUsageCalibrationNotFound    = infraerrors.NotFound("ADMIN_USAGE_CALIBRATION_NOT_FOUND", "usage calibration not found")
+	ErrAdminUsageCalibrationRevoked     = infraerrors.Conflict("ADMIN_USAGE_CALIBRATION_ALREADY_REVOKED", "usage calibration has already been revoked")
 )
 
 type AdminUsageTokenCalibrationInput struct {
@@ -88,6 +90,8 @@ type AdminUsageCalibration struct {
 	ConsumptionEndDate        *string                                `json:"consumption_end_date,omitempty"`
 	ConsumptionTimezone       *string                                `json:"consumption_timezone,omitempty"`
 	CreatedAt                 time.Time                              `json:"created_at"`
+	RevokedAt                 *time.Time                             `json:"revoked_at,omitempty"`
+	RevokedBy                 *int64                                 `json:"revoked_by,omitempty"`
 	Allocations               []AdminUsageCalibrationDailyAllocation `json:"allocations,omitempty"`
 }
 
@@ -97,6 +101,7 @@ type AdminUsageCalibrationListFilters struct {
 
 type AdminUsageCalibrationRepository interface {
 	CreateAdminUsageCalibration(ctx context.Context, input AdminUsageCalibrationCreateInput) (*AdminUsageCalibration, error)
+	RevokeAdminUsageCalibration(ctx context.Context, calibrationID, adminUserID int64) (*AdminUsageCalibration, error)
 	ListAdminUsageCalibrations(ctx context.Context, filters AdminUsageCalibrationListFilters, params pagination.PaginationParams) ([]AdminUsageCalibration, *pagination.PaginationResult, error)
 	SumTokenAllocations(ctx context.Context, userID int64, startDate, endDateExclusive string) (int64, error)
 	SumAllTokenAllocations(ctx context.Context, startDate, endDateExclusive string) (int64, error)
@@ -145,6 +150,23 @@ func (s *AdminUsageCalibrationService) List(ctx context.Context, filters AdminUs
 		return nil, nil, ErrAdminUsageCalibrationInvalidInput.WithMetadata(map[string]string{"field": "user_id"})
 	}
 	return s.repo.ListAdminUsageCalibrations(ctx, filters, params)
+}
+
+func (s *AdminUsageCalibrationService) Revoke(ctx context.Context, calibrationID, adminUserID int64) (*AdminUsageCalibration, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.New(503, "ADMIN_USAGE_CALIBRATION_UNAVAILABLE", "usage calibration service unavailable")
+	}
+	if calibrationID <= 0 || adminUserID <= 0 {
+		return nil, ErrAdminUsageCalibrationInvalidInput
+	}
+	record, err := s.repo.RevokeAdminUsageCalibration(ctx, calibrationID, adminUserID)
+	if err != nil {
+		return nil, err
+	}
+	if record != nil && record.BalanceDelta != nil && *record.BalanceDelta != 0 {
+		s.invalidateBalanceCaches(ctx, record.TargetUserID)
+	}
+	return record, nil
 }
 
 func (s *AdminUsageCalibrationService) invalidateBalanceCaches(ctx context.Context, userID int64) {

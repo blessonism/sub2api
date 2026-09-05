@@ -613,7 +613,20 @@
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="font-medium">{{ formatCalibrationSummary(item) }}</span>
-              <span class="text-gray-500 dark:text-dark-400">{{ formatDateTime(item.created_at) }}</span>
+              <div class="flex items-center gap-2 text-gray-500 dark:text-dark-400">
+                <span v-if="item.revoked_at" class="text-rose-600 dark:text-rose-400">
+                  {{ t('usage.adminCalibrationRevoked') }} · {{ formatDateTime(item.revoked_at) }}
+                </span>
+                <span v-else>{{ formatDateTime(item.created_at) }}</span>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="Boolean(item.revoked_at) || revokingCalibrationID === item.id"
+                  @click="revokeCalibration(item)"
+                >
+                  {{ item.revoked_at ? t('usage.adminCalibrationRevoked') : revokingCalibrationID === item.id ? t('usage.adminCalibrationRevoking') : t('usage.adminCalibrationRevoke') }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -943,6 +956,7 @@ const loadingAdminUsers = ref(false)
 const calibrationDialogVisible = ref(false)
 const submittingCalibration = ref(false)
 const loadingCalibrations = ref(false)
+const revokingCalibrationID = ref<number | null>(null)
 const calibrationHistory = ref<AdminUsageCalibration[]>([])
 const calibrationTokenCurrentTotal = ref(0)
 const calibrationConsumptionCurrentTotal = ref(0)
@@ -1665,6 +1679,26 @@ const submitCalibration = async () => {
     appStore.showError(extractApiErrorMessage(error, t('usage.adminCalibrationFailed')))
   } finally {
     submittingCalibration.value = false
+  }
+}
+
+const revokeCalibration = async (item: AdminUsageCalibration) => {
+  if (item.revoked_at || revokingCalibrationID.value !== null) return
+  if (!window.confirm(t('usage.adminCalibrationRevokeConfirm'))) return
+  revokingCalibrationID.value = item.id
+  try {
+    await adminUsageAPI.revokeCalibration(item.id)
+    appStore.showSuccess(t('usage.adminCalibrationRevokeSuccess'))
+    await Promise.all([
+      loadCalibrationHistory(),
+      loadUsageStats(),
+      loadSelectedAdminUserDetail(item.target_user_id)
+    ])
+  } catch (error) {
+    console.error('Failed to revoke calibration:', error)
+    appStore.showError(extractApiErrorMessage(error, t('usage.adminCalibrationRevokeFailed')))
+  } finally {
+    revokingCalibrationID.value = null
   }
 }
 

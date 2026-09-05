@@ -160,11 +160,12 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		),
 		calibration_usage AS (
 			SELECT
-				target_user_id AS user_id,
-				COALESCE(SUM(token_delta), 0) AS token_delta
-			FROM admin_usage_calibration_daily_allocations
-			WHERE allocation_date >= $4::date AND allocation_date < $5::date
-			GROUP BY target_user_id
+				acu.target_user_id AS user_id,
+				COALESCE(SUM(acu.token_delta), 0) AS token_delta
+			FROM admin_usage_calibration_daily_allocations acu
+			JOIN admin_usage_calibrations c ON c.id = acu.calibration_id AND c.revoked_at IS NULL
+			WHERE acu.allocation_date >= $4::date AND acu.allocation_date < $5::date
+			GROUP BY acu.target_user_id
 		),
 		user_spend AS (
 			SELECT

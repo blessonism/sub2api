@@ -1001,7 +1001,7 @@ func TestUsageLogRepositoryGetAdminTokenLeaderboardUserDetails(t *testing.T) {
 	mock.ExpectQuery("requested_model[\\s\\S]*GROUP BY 1").WithArgs(start, end, userID).
 		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "tokens", "cost", "actual_cost", "account_cost"}).
 			AddRow("claude-opus", int64(4), int64(1200), 1.6, 1.4, 0.9))
-	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(a.token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations a").
 		WithArgs(userID, "2025-01-01", "2025-01-02").WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(-150)))
 	mock.ExpectQuery("(?s)WITH balance_deltas AS .*admin_usage_calibration_daily_allocations.*SELECT COALESCE\\(SUM\\(balance_delta\\), 0\\) FROM balance_deltas").
 		WithArgs(userID, "2025-01-01", "2025-01-02", start, end).WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(-2.5))

@@ -81,6 +81,12 @@ export default {
     "adminCalibrationSubmitting": "Submitting...",
     "adminCalibrationSuccess": "Calibration submitted",
     "adminCalibrationFailed": "Failed to submit calibration",
+    "adminCalibrationRevoke": "Revoke",
+    "adminCalibrationRevoking": "Revoking...",
+    "adminCalibrationRevoked": "Revoked",
+    "adminCalibrationRevokeConfirm": "Revoke this calibration? Its balance impact will be restored and removed from statistics.",
+    "adminCalibrationRevokeSuccess": "Calibration revoked",
+    "adminCalibrationRevokeFailed": "Failed to revoke calibration",
     "adminConsumptionNoTokenAllocationHint": "When the range has no original token usage, the whole spend delta is booked on the start date."
   },
   "channelStatus": {

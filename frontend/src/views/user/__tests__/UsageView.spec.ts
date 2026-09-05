@@ -14,6 +14,7 @@ const {
   adminSearchUsers,
   adminCreateCalibration,
   adminListCalibrations,
+  adminRevokeCalibration,
   adminUsersGetById,
   showError,
   showWarning,
@@ -30,6 +31,7 @@ const {
   adminSearchUsers: vi.fn(),
   adminCreateCalibration: vi.fn(),
   adminListCalibrations: vi.fn(),
+  adminRevokeCalibration: vi.fn(),
   adminUsersGetById: vi.fn(),
   showError: vi.fn(),
   showWarning: vi.fn(),
@@ -67,6 +69,12 @@ const messages: Record<string, string> = {
   'usage.adminSelectUserFirst': 'Select a target user first',
   'usage.adminDeletedUserCannotCalibrate': 'Deleted users cannot be calibrated',
   'usage.adminCalibrationFailed': 'Failed to submit calibration',
+  'usage.adminCalibrationRevoke': 'Revoke',
+  'usage.adminCalibrationRevoking': 'Revoking...',
+  'usage.adminCalibrationRevoked': 'Revoked',
+  'usage.adminCalibrationRevokeConfirm': 'Revoke this calibration?',
+  'usage.adminCalibrationRevokeSuccess': 'Calibration revoked',
+  'usage.adminCalibrationRevokeFailed': 'Failed to revoke calibration',
   'usage.model': 'Model',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
@@ -119,6 +127,7 @@ vi.mock('@/api/admin/usage', () => ({
     searchUsers: adminSearchUsers,
     createCalibration: adminCreateCalibration,
     listCalibrations: adminListCalibrations,
+    revokeCalibration: adminRevokeCalibration,
   },
 }))
 
@@ -176,6 +185,7 @@ describe('user UsageView tooltip', () => {
     adminSearchUsers.mockReset()
     adminCreateCalibration.mockReset()
     adminListCalibrations.mockReset()
+    adminRevokeCalibration.mockReset()
     adminUsersGetById.mockReset()
     showError.mockReset()
     showWarning.mockReset()
@@ -193,6 +203,7 @@ describe('user UsageView tooltip', () => {
     adminSearchApiKeys.mockResolvedValue([])
     adminSearchUsers.mockResolvedValue([])
     adminListCalibrations.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    adminRevokeCalibration.mockResolvedValue({})
     adminUsersGetById.mockResolvedValue({
       id: 7,
       email: 'user@example.com',
@@ -897,5 +908,50 @@ describe('user UsageView tooltip', () => {
     expect(setupState.calibrationDialogVisible).toBe(false)
     expect(adminUsersGetById).not.toHaveBeenCalled()
     expect(adminListCalibrations).not.toHaveBeenCalled()
+  })
+
+  it('revokes an active calibration and refreshes usage data', async () => {
+    authState.isAdmin = true
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStatsByDateRange.mockResolvedValue({ total_requests: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0 })
+    list.mockResolvedValue({ items: [] })
+    adminListCalibrations.mockResolvedValue({
+      items: [{ id: 9, target_user_id: 7, token_delta: 100, created_at: '2026-07-24T08:00:00Z' }],
+      total: 1,
+      pages: 1,
+    })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          BaseDialog: true,
+          UserErrorRequestsTable: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.adminSelectedUserValue = 7
+    setupState.selectedAdminUser = { id: 7, email: 'user@example.com', deleted: false }
+    setupState.calibrationHistory = [{ id: 9, target_user_id: 7, token_delta: 100, created_at: '2026-07-24T08:00:00Z' }]
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    await setupState.revokeCalibration(setupState.calibrationHistory[0])
+
+    expect(adminRevokeCalibration).toHaveBeenCalledWith(9)
+    expect(showSuccess).toHaveBeenCalledWith('Calibration revoked')
+    expect(adminListCalibrations).toHaveBeenCalled()
+    confirmSpy.mockRestore()
+    wrapper.unmount()
   })
 })

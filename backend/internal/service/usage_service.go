@@ -599,11 +599,6 @@ func (s *UsageService) applyCalibrationToUsageStats(ctx context.Context, userID 
 		}
 		addTokenDeltaToUsageStats(stats, delta)
 	}
-	balanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, startTime, endTime)
-	if err != nil {
-		return fmt.Errorf("sum balance calibrations: %w", err)
-	}
-	stats.TotalActualCost += balanceSpent
 	return nil
 }
 
@@ -625,16 +620,6 @@ func (s *UsageService) applyCalibrationToUserDashboardStats(ctx context.Context,
 	}
 	stats.TodayCalibrationTokens += todayDelta
 	stats.TodayTokens += todayDelta
-	totalBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, time.Time{}, time.Time{})
-	if err != nil {
-		return fmt.Errorf("sum total balance calibrations: %w", err)
-	}
-	stats.TotalActualCost += totalBalanceSpent
-	todayBalanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, userID, today, today.AddDate(0, 0, 1))
-	if err != nil {
-		return fmt.Errorf("sum today balance calibrations: %w", err)
-	}
-	stats.TodayActualCost += todayBalanceSpent
 	return nil
 }
 
@@ -712,11 +697,6 @@ func (s *UsageService) applyCalibrationToFilteredStats(ctx context.Context, filt
 		stats.CalibrationTokens += delta
 		stats.TotalTokens += delta
 	}
-	balanceSpent, err := s.calibrationRepo.SumBalanceSpent(ctx, filters.UserID, start, end)
-	if err != nil {
-		return fmt.Errorf("sum balance calibrations for filtered stats: %w", err)
-	}
-	stats.TotalActualCost += balanceSpent
 	return nil
 }
 

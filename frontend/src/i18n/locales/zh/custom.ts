@@ -81,6 +81,12 @@ export default {
     "adminCalibrationSubmitting": "提交中...",
     "adminCalibrationSuccess": "校准已提交",
     "adminCalibrationFailed": "校准提交失败",
+    "adminCalibrationRevoke": "撤销",
+    "adminCalibrationRevoking": "撤销中...",
+    "adminCalibrationRevoked": "已撤销",
+    "adminCalibrationRevokeConfirm": "确认撤销这次校准？撤销后会恢复余额影响并从统计中移除。",
+    "adminCalibrationRevokeSuccess": "校准已撤销",
+    "adminCalibrationRevokeFailed": "校准撤销失败",
     "adminConsumptionNoTokenAllocationHint": "当前范围没有原始 Token 用量时，消费差额将整笔记入开始日期。"
   },
   "channelStatus": {

@@ -904,52 +904,7 @@ func userUsageCostOrder(sortBy, sortOrder string) []func(*entsql.Selector) {
 			platformFilter,
 		)
 
-		// 全局用量列展示来自 DashboardService.GetBatchUserUsageStats，
-		// 除 usage_logs.actual_cost 外还会叠加管理员余额校准支出；平台拆分没有校准归属，保持 usage_logs 口径。
-		costExpr := usageLogCostExpr
-		if platform == "" {
-			calibrationNow := timezone.Now()
-			calibrationFilter := "auc.created_at >= NOW() - INTERVAL '30 days' AND auc.created_at < NOW()"
-			allocationFilter := fmt.Sprintf(
-				"a.allocation_date >= '%s'::date AND a.allocation_date < '%s'::date",
-				calibrationNow.AddDate(0, 0, -30).Format("2006-01-02"),
-				calibrationNow.AddDate(0, 0, 1).Format("2006-01-02"),
-			)
-			if metric == "today" {
-				today := timezone.Today()
-				calibrationFilter = fmt.Sprintf("auc.created_at >= '%s'::timestamptz", today.UTC().Format(time.RFC3339Nano))
-				allocationFilter = fmt.Sprintf("a.allocation_date >= '%s'::date", today.Format("2006-01-02"))
-			}
-			calibrationCostExpr := fmt.Sprintf(
-				`(SELECT COALESCE(SUM(spent), 0)
-				 FROM (
-					 SELECT -a.balance_delta AS spent
-					 FROM admin_usage_calibration_daily_allocations a
-					 JOIN admin_usage_calibrations daily_calibration ON daily_calibration.id = a.calibration_id
-					 WHERE a.target_user_id = %s
-					   AND a.balance_delta IS NOT NULL
-					   AND (daily_calibration.consumption_delta IS NOT NULL OR a.balance_delta < 0)
-					   AND %s
-					 UNION ALL
-					 SELECT COALESCE(auc.consumption_delta, -auc.balance_delta) AS spent
-					 FROM admin_usage_calibrations auc
-					 WHERE auc.target_user_id = %s
-					   AND (auc.consumption_delta IS NOT NULL OR auc.balance_delta < 0)
-					   AND %s
-					   AND NOT EXISTS (
-						 SELECT 1 FROM admin_usage_calibration_daily_allocations a
-						 WHERE a.calibration_id = auc.id AND a.balance_delta IS NOT NULL
-					   )
-				 ) balance_calibrations)`,
-				s.C(dbuser.FieldID),
-				allocationFilter,
-				s.C(dbuser.FieldID),
-				calibrationFilter,
-			)
-			costExpr = fmt.Sprintf("(%s + %s)", usageLogCostExpr, calibrationCostExpr)
-		}
-
-		s.OrderExpr(entsql.Expr(costExpr + " " + direction))
+		s.OrderExpr(entsql.Expr(usageLogCostExpr + " " + direction))
 		s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
 	}}
 }

@@ -435,7 +435,7 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
 }
 
-func TestDashboardServiceGetBatchUserUsageStatsIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+func TestDashboardServiceGetBatchUserUsageStatsExcludesBalanceCalibrationFromSpend(t *testing.T) {
 	start := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	repo := &usageRepoStub{
@@ -457,8 +457,8 @@ func TestDashboardServiceGetBatchUserUsageStatsIncludesNegativeBalanceCalibratio
 	got, err := svc.GetBatchUserUsageStats(context.Background(), []int64{7}, start, end)
 
 	require.NoError(t, err)
-	require.InDelta(t, 12.5, got[7].TotalActualCost, 1e-9)
-	require.InDelta(t, 1.75, got[7].TodayActualCost, 1e-9)
+	require.InDelta(t, 10, got[7].TotalActualCost, 1e-9)
+	require.InDelta(t, 1, got[7].TodayActualCost, 1e-9)
 	require.Equal(t, []int64{7}, repo.batchUserIDs)
 	require.Equal(t, start, repo.batchStart)
 	require.Equal(t, end, repo.batchEnd)

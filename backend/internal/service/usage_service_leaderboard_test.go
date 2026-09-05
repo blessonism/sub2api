@@ -164,7 +164,7 @@ func TestMaskUserTokenLeaderboardEmail(t *testing.T) {
 	}
 }
 
-func TestUsageServiceGetStatsByUserIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+func TestUsageServiceGetStatsByUserExcludesBalanceCalibrationFromSpend(t *testing.T) {
 	start := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
 	end := start.Add(time.Hour)
 	repo := &usageStatsRepoStub{
@@ -183,10 +183,10 @@ func TestUsageServiceGetStatsByUserIncludesNegativeBalanceCalibrationAsSpend(t *
 
 	require.NoError(t, err)
 	require.Equal(t, int64(100), got.TotalTokens)
-	require.InDelta(t, 3.75, got.TotalActualCost, 1e-9)
+	require.InDelta(t, 1.25, got.TotalActualCost, 1e-9)
 }
 
-func TestUsageServiceGetUserDashboardStatsIncludesNegativeBalanceCalibrationAsSpend(t *testing.T) {
+func TestUsageServiceGetUserDashboardStatsExcludesBalanceCalibrationFromSpend(t *testing.T) {
 	repo := &usageStatsRepoStub{
 		dashboardStats: &usagestats.UserDashboardStats{
 			TotalActualCost: 10,
@@ -205,8 +205,8 @@ func TestUsageServiceGetUserDashboardStatsIncludesNegativeBalanceCalibrationAsSp
 	got, err := svc.GetUserDashboardStats(context.Background(), 7)
 
 	require.NoError(t, err)
-	require.InDelta(t, 13.25, got.TotalActualCost, 1e-9)
-	require.InDelta(t, 1.75, got.TodayActualCost, 1e-9)
+	require.InDelta(t, 10, got.TotalActualCost, 1e-9)
+	require.InDelta(t, 1, got.TodayActualCost, 1e-9)
 }
 
 func TestUsageServiceGetUserTokenLeaderboardReturnsZeroRankWhenCurrentUserHasNoUsage(t *testing.T) {

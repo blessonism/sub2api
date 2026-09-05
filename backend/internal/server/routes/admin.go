@@ -823,6 +823,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/user-view/stats", h.Admin.Usage.UserViewStats)
 		usage.POST("/calibrations", h.Admin.Usage.CreateCalibration)
 		usage.GET("/calibrations", h.Admin.Usage.ListCalibrations)
+		usage.POST("/calibrations/:id/revoke", h.Admin.Usage.RevokeCalibration)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)

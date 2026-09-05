@@ -202,7 +202,7 @@ func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalDescBeforePagination
 	s.Require().Equal(mid.ID, users[0].ID)
 }
 
-func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalIncludesBalanceCalibrationSpend() {
+func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalExcludesBalanceCalibrationSpend() {
 	logOnly := s.mustCreateUser(&service.User{Email: "usage-log-only@example.com"})
 	calibrated := s.mustCreateUser(&service.User{Email: "usage-calibrated@example.com"})
 	admin := s.mustCreateUser(&service.User{Email: "usage-calibration-admin@example.com", Role: service.RoleAdmin})
@@ -244,8 +244,8 @@ func (s *UserRepoSuite) TestListWithFilters_SortByUsageTotalIncludesBalanceCalib
 	}, service.UserListFilters{})
 	s.Require().NoError(err)
 	s.Require().Len(users, 3)
-	s.Require().Equal(calibrated.ID, users[0].ID)
-	s.Require().Equal(logOnly.ID, users[1].ID)
+	s.Require().Equal(logOnly.ID, users[0].ID)
+	s.Require().Equal(calibrated.ID, users[1].ID)
 }
 
 func (s *UserRepoSuite) TestListWithFilters_SortByGrokUsageTotalDescBeforePagination() {

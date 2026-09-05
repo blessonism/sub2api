@@ -158,6 +158,8 @@ export interface AdminUsageCalibration {
   consumption_end_date?: string
   consumption_timezone?: string
   created_at: string
+  revoked_at?: string
+  revoked_by?: number
   allocations?: AdminUsageCalibrationDailyAllocation[]
 }
 
@@ -391,6 +393,13 @@ export async function listCalibrations(params?: {
   return data
 }
 
+export async function revokeCalibration(calibrationId: number): Promise<AdminUsageCalibration> {
+  const { data } = await apiClient.post<AdminUsageCalibration>(
+    `/admin/usage/calibrations/${calibrationId}/revoke`
+  )
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -402,7 +411,8 @@ export const adminUsageAPI = {
   createCleanupTask,
   cancelCleanupTask,
   createCalibration,
-  listCalibrations
+  listCalibrations,
+  revokeCalibration
 }
 
 export default adminUsageAPI

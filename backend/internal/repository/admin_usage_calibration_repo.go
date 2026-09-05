@@ -59,6 +59,89 @@ func (r *adminUsageCalibrationRepository) CreateAdminUsageCalibration(ctx contex
 	return record, nil
 }
 
+func (r *adminUsageCalibrationRepository) RevokeAdminUsageCalibration(ctx context.Context, calibrationID, adminUserID int64) (*service.AdminUsageCalibration, error) {
+	txStarter, ok := r.sql.(sqlTxStarter)
+	if !ok {
+		return nil, fmt.Errorf("admin usage calibration repository sql executor does not support transactions")
+	}
+	tx, err := txStarter.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin admin usage calibration revoke transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var record service.AdminUsageCalibration
+	if err := scanAdminUsageCalibrationRow(ctx, tx, `
+		SELECT
+			id, target_user_id, admin_user_id, reason,
+			token_mode, token_input_value, token_before_value, token_after_value, token_delta,
+			TO_CHAR(token_calculation_start_date, 'YYYY-MM-DD'),
+			TO_CHAR(token_calculation_end_date, 'YYYY-MM-DD'),
+			token_calculation_timezone,
+			balance_mode, balance_input_value, balance_before_value, balance_after_value, balance_delta,
+			consumption_mode, consumption_input_value, consumption_before_value, consumption_after_value, consumption_delta,
+			TO_CHAR(consumption_start_date, 'YYYY-MM-DD'),
+			TO_CHAR(consumption_end_date, 'YYYY-MM-DD'),
+			consumption_timezone,
+			created_at, revoked_at, revoked_by
+		FROM admin_usage_calibrations
+		WHERE id = $1
+		FOR UPDATE
+	`, []any{calibrationID}, &record); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, service.ErrAdminUsageCalibrationNotFound
+		}
+		return nil, fmt.Errorf("lock admin usage calibration: %w", err)
+	}
+	if record.RevokedAt != nil {
+		return nil, service.ErrAdminUsageCalibrationRevoked
+	}
+
+	var currentBalance float64
+	if err := scanSingleRow(ctx, tx, `
+		SELECT balance
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR UPDATE
+	`, []any{record.TargetUserID}, &currentBalance); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("lock target user balance for calibration revoke: %w", err)
+	}
+	if record.BalanceDelta != nil && *record.BalanceDelta != 0 {
+		restoredBalance := currentBalance - *record.BalanceDelta
+		if restoredBalance < 0 {
+			return nil, infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_NEGATIVE_BALANCE", "revoking calibration cannot make user balance negative")
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE users
+			SET balance = $2, updated_at = NOW()
+			WHERE id = $1 AND deleted_at IS NULL
+		`, record.TargetUserID, restoredBalance); err != nil {
+			return nil, fmt.Errorf("restore calibrated balance: %w", err)
+		}
+	}
+
+	var revokedAt sql.NullTime
+	var revokedBy sql.NullInt64
+	if err := scanSingleRow(ctx, tx, `
+		UPDATE admin_usage_calibrations
+		SET revoked_at = NOW(), revoked_by = $2
+		WHERE id = $1 AND revoked_at IS NULL
+		RETURNING revoked_at, revoked_by
+	`, []any{calibrationID, adminUserID}, &revokedAt, &revokedBy); err != nil {
+		return nil, fmt.Errorf("mark admin usage calibration revoked: %w", err)
+	}
+	record.RevokedAt = nullTimePtr(revokedAt)
+	record.RevokedBy = nullInt64Ptr(revokedBy)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit admin usage calibration revoke transaction: %w", err)
+	}
+	return &record, nil
+}
+
 func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx context.Context, tx *sql.Tx, input service.AdminUsageCalibrationCreateInput) (*service.AdminUsageCalibration, error) {
 	var currentBalance float64
 	if err := scanSingleRow(ctx, tx, `
@@ -287,7 +370,9 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 			TO_CHAR(consumption_start_date, 'YYYY-MM-DD'),
 			TO_CHAR(consumption_end_date, 'YYYY-MM-DD'),
 			consumption_timezone,
-			created_at
+			created_at,
+			revoked_at,
+			revoked_by
 	`
 	if err := scanAdminUsageCalibrationRow(ctx, tx, insertQuery, []any{
 		input.TargetUserID,
@@ -693,7 +778,9 @@ func (r *adminUsageCalibrationRepository) ListAdminUsageCalibrations(ctx context
 			TO_CHAR(consumption_start_date, 'YYYY-MM-DD'),
 			TO_CHAR(consumption_end_date, 'YYYY-MM-DD'),
 			consumption_timezone,
-			created_at
+			created_at,
+			revoked_at,
+			revoked_by
 		FROM admin_usage_calibrations
 		%s
 		ORDER BY created_at DESC, id DESC
@@ -776,26 +863,28 @@ func (r *adminUsageCalibrationRepository) SumAllTokenAllocations(ctx context.Con
 }
 
 func (r *adminUsageCalibrationRepository) SumTokenAllocationsByDate(ctx context.Context, userID int64, startDate, endDateExclusive string) (map[string]int64, error) {
-	conditions := make([]string, 0, 3)
+	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 3)
+	conditions = append(conditions, "c.revoked_at IS NULL")
 	if userID > 0 {
-		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.target_user_id = $%d", len(args)+1))
 		args = append(args, userID)
 	}
 	if startDate != "" {
-		conditions = append(conditions, fmt.Sprintf("allocation_date >= $%d::date", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.allocation_date >= $%d::date", len(args)+1))
 		args = append(args, startDate)
 	}
 	if endDateExclusive != "" {
-		conditions = append(conditions, fmt.Sprintf("allocation_date < $%d::date", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.allocation_date < $%d::date", len(args)+1))
 		args = append(args, endDateExclusive)
 	}
 	query := fmt.Sprintf(`
-		SELECT TO_CHAR(allocation_date, 'YYYY-MM-DD') AS date, COALESCE(SUM(token_delta), 0) AS token_delta
-		FROM admin_usage_calibration_daily_allocations
+		SELECT TO_CHAR(a.allocation_date, 'YYYY-MM-DD') AS date, COALESCE(SUM(a.token_delta), 0) AS token_delta
+		FROM admin_usage_calibration_daily_allocations a
+		JOIN admin_usage_calibrations c ON c.id = a.calibration_id
 		%s
-		GROUP BY allocation_date
-		ORDER BY allocation_date ASC
+		GROUP BY a.allocation_date
+		ORDER BY a.allocation_date ASC
 	`, buildWhere(conditions))
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -829,14 +918,16 @@ func sumBalanceSpentByTimeRange(ctx context.Context, exec sqlQueryer, userID int
 			FROM admin_usage_calibration_daily_allocations a
 			JOIN admin_usage_calibrations c ON c.id = a.calibration_id
 			WHERE a.balance_delta IS NOT NULL
+			  AND c.revoked_at IS NULL
 			  AND (c.consumption_delta IS NOT NULL OR a.balance_delta < 0)
 			  AND ($1::bigint = 0 OR a.target_user_id = $1)
-			  AND ($2::date IS NULL OR allocation_date >= $2::date)
-			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			  AND ($2::date IS NULL OR a.allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR a.allocation_date < $3::date)
 			UNION ALL
 			SELECT c.target_user_id, COALESCE(c.consumption_delta, -c.balance_delta)
 			FROM admin_usage_calibrations c
 			WHERE (c.consumption_delta IS NOT NULL OR c.balance_delta < 0)
+			  AND c.revoked_at IS NULL
 			  AND ($1::bigint = 0 OR c.target_user_id = $1)
 			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
 			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
@@ -868,14 +959,16 @@ func (r *adminUsageCalibrationRepository) SumBalanceSpentByUsers(ctx context.Con
 			JOIN admin_usage_calibrations c ON c.id = a.calibration_id
 			WHERE a.target_user_id = ANY($1)
 			  AND a.balance_delta IS NOT NULL
+			  AND c.revoked_at IS NULL
 			  AND (c.consumption_delta IS NOT NULL OR a.balance_delta < 0)
-			  AND ($2::date IS NULL OR allocation_date >= $2::date)
-			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			  AND ($2::date IS NULL OR a.allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR a.allocation_date < $3::date)
 			UNION ALL
 			SELECT c.target_user_id, COALESCE(c.consumption_delta, -c.balance_delta)
 			FROM admin_usage_calibrations c
 			WHERE c.target_user_id = ANY($1)
 			  AND (c.consumption_delta IS NOT NULL OR c.balance_delta < 0)
+			  AND c.revoked_at IS NULL
 			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
 			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
 			  AND NOT EXISTS (
@@ -907,21 +1000,22 @@ func (r *adminUsageCalibrationRepository) SumBalanceSpentByUsers(ctx context.Con
 }
 
 func sumTokenAllocationsByDateRange(ctx context.Context, exec sqlQueryer, userID int64, startDate, endDateExclusive string) (int64, error) {
-	conditions := make([]string, 0, 3)
+	conditions := make([]string, 0, 4)
 	args := make([]any, 0, 3)
+	conditions = append(conditions, "c.revoked_at IS NULL")
 	if userID > 0 {
-		conditions = append(conditions, fmt.Sprintf("target_user_id = $%d", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.target_user_id = $%d", len(args)+1))
 		args = append(args, userID)
 	}
 	if startDate != "" {
-		conditions = append(conditions, fmt.Sprintf("allocation_date >= $%d::date", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.allocation_date >= $%d::date", len(args)+1))
 		args = append(args, startDate)
 	}
 	if endDateExclusive != "" {
-		conditions = append(conditions, fmt.Sprintf("allocation_date < $%d::date", len(args)+1))
+		conditions = append(conditions, fmt.Sprintf("a.allocation_date < $%d::date", len(args)+1))
 		args = append(args, endDateExclusive)
 	}
-	query := "SELECT COALESCE(SUM(token_delta), 0) FROM admin_usage_calibration_daily_allocations " + buildWhere(conditions)
+	query := "SELECT COALESCE(SUM(a.token_delta), 0) FROM admin_usage_calibration_daily_allocations a JOIN admin_usage_calibrations c ON c.id = a.calibration_id " + buildWhere(conditions)
 	var total int64
 	if err := scanSingleRow(ctx, exec, query, args, &total); err != nil {
 		return 0, err
@@ -933,16 +1027,19 @@ func sumBalanceCalibrationsByTimeRange(ctx context.Context, exec sqlQueryer, use
 	args := append([]any{userID}, balanceCalibrationRangeArgs(startTime, endTime)...)
 	query := `
 		WITH balance_deltas AS (
-			SELECT target_user_id, balance_delta
-			FROM admin_usage_calibration_daily_allocations
-			WHERE balance_delta IS NOT NULL
-			  AND ($1::bigint = 0 OR target_user_id = $1)
-			  AND ($2::date IS NULL OR allocation_date >= $2::date)
-			  AND ($3::date IS NULL OR allocation_date < $3::date)
+			SELECT a.target_user_id, a.balance_delta
+			FROM admin_usage_calibration_daily_allocations a
+			JOIN admin_usage_calibrations c ON c.id = a.calibration_id
+			WHERE a.balance_delta IS NOT NULL
+			  AND c.revoked_at IS NULL
+			  AND ($1::bigint = 0 OR a.target_user_id = $1)
+			  AND ($2::date IS NULL OR a.allocation_date >= $2::date)
+			  AND ($3::date IS NULL OR a.allocation_date < $3::date)
 			UNION ALL
 			SELECT c.target_user_id, c.balance_delta
 			FROM admin_usage_calibrations c
 			WHERE c.balance_delta IS NOT NULL
+			  AND c.revoked_at IS NULL
 			  AND ($1::bigint = 0 OR c.target_user_id = $1)
 			  AND ($4::timestamptz IS NULL OR c.created_at >= $4::timestamptz)
 			  AND ($5::timestamptz IS NULL OR c.created_at < $5::timestamptz)
@@ -1025,6 +1122,8 @@ func scanAdminUsageCalibrationFromRows(rows *sql.Rows, out *service.AdminUsageCa
 		consumptionStartDate sql.NullString
 		consumptionEndDate   sql.NullString
 		consumptionTimezone  sql.NullString
+		revokedAt            sql.NullTime
+		revokedBy            sql.NullInt64
 	)
 	if err := rows.Scan(
 		&out.ID,
@@ -1053,9 +1152,13 @@ func scanAdminUsageCalibrationFromRows(rows *sql.Rows, out *service.AdminUsageCa
 		&consumptionEndDate,
 		&consumptionTimezone,
 		&out.CreatedAt,
+		&revokedAt,
+		&revokedBy,
 	); err != nil {
 		return err
 	}
+	out.RevokedAt = nullTimePtr(revokedAt)
+	out.RevokedBy = nullInt64Ptr(revokedBy)
 	out.TokenMode = nullStringPtr(tokenMode)
 	out.TokenInputValue = nullInt64Ptr(tokenInput)
 	out.TokenBeforeValue = nullInt64Ptr(tokenBefore)
@@ -1092,6 +1195,13 @@ func nullInt64Ptr(v sql.NullInt64) *int64 {
 		return nil
 	}
 	return &v.Int64
+}
+
+func nullTimePtr(v sql.NullTime) *time.Time {
+	if !v.Valid {
+		return nil
+	}
+	return &v.Time
 }
 
 func nullCalibrationFloat64Ptr(v sql.NullFloat64) *float64 {

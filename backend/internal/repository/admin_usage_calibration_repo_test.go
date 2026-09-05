@@ -97,7 +97,7 @@ func TestCreateAdminUsageCalibrationAllocatesBalanceAcrossTokenDates(t *testing.
 		WillReturnRows(sqlmock.NewRows([]string{"allocation_date", "tokens"}).
 			AddRow("2026-06-01", int64(100)).
 			AddRow("2026-06-02", int64(300)))
-	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations").
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(a.token_delta\\), 0\\) FROM admin_usage_calibration_daily_allocations a").
 		WithArgs(int64(42), "2026-06-01", "2026-06-03").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(0)))
 	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibrations .*RETURNING").
@@ -106,8 +106,8 @@ func TestCreateAdminUsageCalibrationAllocatesBalanceAcrossTokenDates(t *testing.
 			"id", "target_user_id", "admin_user_id", "reason", "token_mode", "token_input_value", "token_before_value", "token_after_value", "token_delta",
 			"token_calculation_start_date", "token_calculation_end_date", "token_calculation_timezone", "balance_mode", "balance_input_value", "balance_before_value", "balance_after_value", "balance_delta",
 			"consumption_mode", "consumption_input_value", "consumption_before_value", "consumption_after_value", "consumption_delta", "consumption_start_date", "consumption_end_date", "consumption_timezone",
-			"created_at",
-		}).AddRow(int64(9), int64(42), int64(1), "", "delta", int64(100), int64(400), int64(500), int64(100), "2026-06-01", "2026-06-02", "UTC", "delta", -4.0, 10.0, 6.0, -4.0, nil, nil, nil, nil, nil, nil, nil, nil, createdAt))
+			"created_at", "revoked_at", "revoked_by",
+		}).AddRow(int64(9), int64(42), int64(1), "", "delta", int64(100), int64(400), int64(500), int64(100), "2026-06-01", "2026-06-02", "UTC", "delta", -4.0, 10.0, 6.0, -4.0, nil, nil, nil, nil, nil, nil, nil, nil, createdAt, nil, nil))
 	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibration_daily_allocations .*RETURNING").
 		WithArgs(int64(9), int64(42), "2026-06-01", int64(100), int64(25), -1.0).
 		WillReturnRows(calibrationAllocationRows().AddRow(int64(1), int64(9), int64(42), "2026-06-01", int64(100), int64(25), -1.0, createdAt))
@@ -162,7 +162,7 @@ func TestCreateAdminUsageCalibrationTargetsRangeConsumptionAndUpdatesBalance(t *
 		WillReturnRows(calibrationAuditRows().AddRow(
 			int64(10), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
 			"delta", -4.0, 20.0, 16.0, -4.0, "target", 14.0, 10.0, 14.0, 4.0,
-			"2026-06-01", "2026-06-02", "UTC", createdAt,
+			"2026-06-01", "2026-06-02", "UTC", createdAt, nil, nil,
 		))
 	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibration_daily_allocations .*RETURNING").
 		WithArgs(int64(10), int64(42), "2026-06-01", int64(100), int64(0), -1.0).
@@ -217,7 +217,7 @@ func TestCreateAdminUsageCalibrationAllowsConsumptionWithoutOriginalTokens(t *te
 		WillReturnRows(calibrationAuditRows().AddRow(
 			int64(11), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
 			"delta", 70.0, 10.0, 80.0, 70.0, "target", 0.0, 70.0, 0.0, -70.0,
-			"2026-07-24", "2026-07-24", "UTC", createdAt,
+			"2026-07-24", "2026-07-24", "UTC", createdAt, nil, nil,
 		))
 	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibration_daily_allocations .*RETURNING").
 		WithArgs(int64(11), int64(42), "2026-07-24", int64(0), int64(0), 70.0).
@@ -273,7 +273,7 @@ func TestCreateAdminUsageCalibrationAllowsConsumptionDeltaWithoutOriginalTokens(
 		WillReturnRows(calibrationAuditRows().AddRow(
 			int64(12), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
 			"delta", 70.0, 10.0, 80.0, 70.0, "delta", -70.0, 70.0, 0.0, -70.0,
-			"2026-07-24", "2026-07-24", "UTC", createdAt,
+			"2026-07-24", "2026-07-24", "UTC", createdAt, nil, nil,
 		))
 	mock.ExpectQuery("(?s)INSERT INTO admin_usage_calibration_daily_allocations .*RETURNING").
 		WithArgs(int64(12), int64(42), "2026-07-24", int64(0), int64(0), 70.0).
@@ -345,12 +345,88 @@ func calibrationAuditRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "target_user_id", "admin_user_id", "reason", "token_mode", "token_input_value", "token_before_value", "token_after_value", "token_delta",
 		"token_calculation_start_date", "token_calculation_end_date", "token_calculation_timezone", "balance_mode", "balance_input_value", "balance_before_value", "balance_after_value", "balance_delta",
-		"consumption_mode", "consumption_input_value", "consumption_before_value", "consumption_after_value", "consumption_delta", "consumption_start_date", "consumption_end_date", "consumption_timezone", "created_at",
+		"consumption_mode", "consumption_input_value", "consumption_before_value", "consumption_after_value", "consumption_delta", "consumption_start_date", "consumption_end_date", "consumption_timezone", "created_at", "revoked_at", "revoked_by",
 	})
 }
 
 func calibrationAllocationRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"id", "calibration_id", "target_user_id", "allocation_date", "original_tokens", "token_delta", "balance_delta", "created_at"})
+}
+
+func TestRevokeAdminUsageCalibrationRestoresBalanceAndMarksAudit(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+	createdAt := time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC)
+	revokedAt := createdAt.Add(time.Hour)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("(?s)SELECT.*FROM admin_usage_calibrations.*FOR UPDATE").
+		WithArgs(int64(9)).
+		WillReturnRows(calibrationAuditRows().AddRow(
+			int64(9), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
+			"delta", -4.0, 10.0, 6.0, -4.0, nil, nil, nil, nil, nil, nil, nil, nil,
+			createdAt, nil, nil,
+		))
+	mock.ExpectQuery("SELECT balance").WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(6.0))
+	mock.ExpectExec("UPDATE users").WithArgs(int64(42), 10.0).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("UPDATE admin_usage_calibrations").WithArgs(int64(9), int64(2)).
+		WillReturnRows(sqlmock.NewRows([]string{"revoked_at", "revoked_by"}).AddRow(revokedAt, int64(2)))
+	mock.ExpectCommit()
+
+	got, err := repo.RevokeAdminUsageCalibration(context.Background(), 9, 2)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(42), got.TargetUserID)
+	require.Equal(t, int64(2), *got.RevokedBy)
+	require.Equal(t, revokedAt, *got.RevokedAt)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRevokeAdminUsageCalibrationRejectsAlreadyRevoked(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+	revokedAt := time.Date(2026, 7, 24, 9, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("(?s)SELECT.*FROM admin_usage_calibrations.*FOR UPDATE").
+		WithArgs(int64(9)).
+		WillReturnRows(calibrationAuditRows().AddRow(
+			int64(9), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
+			"delta", -4.0, 10.0, 6.0, -4.0, nil, nil, nil, nil, nil, nil, nil, nil,
+			time.Now(), revokedAt, int64(1),
+		))
+	mock.ExpectRollback()
+
+	got, err := repo.RevokeAdminUsageCalibration(context.Background(), 9, 2)
+
+	require.Nil(t, got)
+	require.ErrorIs(t, err, service.ErrAdminUsageCalibrationRevoked)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRevokeAdminUsageCalibrationRollsBackWhenBalanceWouldBeNegative(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &adminUsageCalibrationRepository{sql: db}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("(?s)SELECT.*FROM admin_usage_calibrations.*FOR UPDATE").
+		WithArgs(int64(9)).
+		WillReturnRows(calibrationAuditRows().AddRow(
+			int64(9), int64(42), int64(1), "", nil, nil, nil, nil, nil, nil, nil, nil,
+			"delta", 4.0, 0.0, 4.0, 4.0, nil, nil, nil, nil, nil, nil, nil, nil,
+			time.Now(), nil, nil,
+		))
+	mock.ExpectQuery("SELECT balance").WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(3.0))
+	mock.ExpectRollback()
+
+	got, err := repo.RevokeAdminUsageCalibration(context.Background(), 9, 2)
+
+	require.Nil(t, got)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot make user balance negative")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestAdminUsageCalibrationSumBalanceSpentUsesOnlyNegativeDelta(t *testing.T) {
