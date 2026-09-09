@@ -275,14 +275,18 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
-			field.JSON("models_list_config", domain.GroupModelsListConfig{}).
-				Default(domain.GroupModelsListConfig{}).
-				SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-				Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
-			field.JSON("openai_scheduler_overrides", domain.GroupOpenAISchedulerOverrides{}).
-				Default(domain.GroupOpenAISchedulerOverrides{}).
-				SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-				Comment("OpenAI/Codex 分组级调度覆盖：lb_top_k、TTFT/错误率/负载权重、相对淘汰与 sticky 逃逸；空对象继承全局"),
+		field.JSON("model_allowlist", domain.GroupModelAllowlist{}).
+			Default(domain.GroupModelAllowlist{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组模型白名单：同时约束模型列表接口与请求准入"),
+		field.JSON("codex_models_manifest_config", domain.GroupCodexModelsManifestConfig{}).
+			Default(domain.GroupCodexModelsManifestConfig{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("固定账号获取 Codex Model Manifest 配置；开启后 /models 请求只用选定账号拉取（仅 openai 平台）"),
+		field.JSON("openai_scheduler_overrides", domain.GroupOpenAISchedulerOverrides{}).
+			Default(domain.GroupOpenAISchedulerOverrides{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("OpenAI/Codex 分组级调度覆盖：lb_top_k、TTFT/错误率/负载权重、相对淘汰与 sticky 逃逸；空对象继承全局"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

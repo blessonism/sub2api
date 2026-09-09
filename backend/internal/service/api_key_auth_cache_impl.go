@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// v22：分组 Fast 计费策略进入认证快照；同时保留二开的倍率与长上下文字段。
-const apiKeyAuthSnapshotVersion = 22
+// v24：分组模型白名单进入认证快照。
+const apiKeyAuthSnapshotVersion = 24
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -426,7 +426,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			FreeOpenAIFast:                  apiKey.Group.FreeOpenAIFast,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                apiKey.Group.ModelsListConfig,
+			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
+			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
+			OpenAISchedulerOverrides:        apiKey.Group.OpenAISchedulerOverrides,
 			RPMLimit:                        apiKey.Group.RPMLimit,
 			MaxReasoningEffort:              apiKey.Group.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     apiKey.Group.MaxReasoningEffortOverLimit,
@@ -530,7 +532,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                snapshot.Group.ModelsListConfig,
+			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
+			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
+			OpenAISchedulerOverrides:        snapshot.Group.OpenAISchedulerOverrides,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     snapshot.Group.MaxReasoningEffortOverLimit,

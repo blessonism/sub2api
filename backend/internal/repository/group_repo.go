@@ -24,6 +24,32 @@ type sqlExecutor interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
+func lockLiveGroups(ctx context.Context, exec sqlExecutor, groupIDs []int64) error {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	unique := make(map[int64]struct{}, len(groupIDs))
+	for _, id := range groupIDs {
+		unique[id] = struct{}{}
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT id FROM groups WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY id FOR SHARE`, pq.Array(groupIDs))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	locked := 0
+	for rows.Next() {
+		locked++
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if locked != len(unique) {
+		return service.ErrGroupNotFound
+	}
+	return nil
+}
+
 type groupRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
@@ -112,7 +138,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
-		SetModelsListConfig(groupIn.ModelsListConfig).
+		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
+		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
@@ -295,7 +322,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
-		SetModelsListConfig(groupIn.ModelsListConfig).
+		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
+		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
@@ -818,6 +846,14 @@ func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, grou
 }
 
 func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
+	return r.deleteCascade(ctx, id, false)
+}
+
+func (r *groupRepository) DeleteCascadeIfEmpty(ctx context.Context, id int64) ([]int64, error) {
+	return r.deleteCascade(ctx, id, true)
+}
+
+func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEmpty bool) ([]int64, error) {
 	g, err := r.client.Group.Query().Where(group.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
@@ -860,6 +896,19 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	}
 	if lockedID == 0 {
 		return nil, service.ErrGroupNotFound
+	}
+	if requireEmpty {
+		var hasAccount bool
+		if err := scanSingleRow(ctx, exec, `SELECT EXISTS (
+			SELECT 1 FROM account_groups ag
+			JOIN accounts a ON a.id = ag.account_id
+			WHERE ag.group_id = $1 AND a.deleted_at IS NULL
+		)`, []any{id}, &hasAccount); err != nil {
+			return nil, err
+		}
+		if hasAccount {
+			return nil, service.ErrGroupNotEmpty
+		}
 	}
 
 	var affectedUserIDs []int64

@@ -432,7 +432,8 @@ type ChannelMonitorRuntime struct {
 	// ShowQuota: when true, user-facing monitor views keep the quota/balance
 	// snapshots; otherwise the user handler strips them server-side.
 	// Parsed fail-closed (only literal "true" enables). Admin always sees them.
-	ShowQuota bool
+	ShowQuota       bool
+	HideUserRanking bool
 }
 
 // ActiveProbesAllowed reports whether V1 active provider probes may run.
@@ -462,6 +463,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
+		SettingKeyChannelMonitorHideUserRanking,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{
@@ -477,6 +479,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
+		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
 	}
 }
 
@@ -575,57 +578,57 @@ func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
-	RegistrationEnabled              bool                     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
-	RegistrationEmailDomainQuotaEnabled bool                   `json:"registration_email_domain_quota_enabled"`
-	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
-	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                     `json:"totp_enabled"`
-	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
-	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
-	LoginAgreementMode               string                   `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
-	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
-	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
-	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
-	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
-	TencentCaptchaEnabled            bool                     `json:"tencent_captcha_enabled"`
-	TencentCaptchaAppID              string                   `json:"tencent_captcha_app_id"`
-	TencentCaptchaRegion             string                   `json:"tencent_captcha_region"`
-	AliyunCaptchaEnabled             bool                     `json:"aliyun_captcha_enabled"`
-	AliyunCaptchaSceneID             string                   `json:"aliyun_captcha_scene_id"`
-	AliyunCaptchaPrefix              string                   `json:"aliyun_captcha_prefix"`
-	AliyunCaptchaRegion              string                   `json:"aliyun_captcha_region"`
-	SiteName                         string                   `json:"site_name"`
-	SiteLogo                         string                   `json:"site_logo"`
-	SiteSubtitle                     string                   `json:"site_subtitle"`
-	APIBaseURL                       string                   `json:"api_base_url"`
-	ContactInfo                      string                   `json:"contact_info"`
-	DocURL                           string                   `json:"doc_url"`
-	HomeContent                      string                   `json:"home_content"`
-	CompactHomeEnabled               bool                     `json:"compact_home_enabled"`
-	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
-	TableDefaultPageSize             int                      `json:"table_default_page_size"`
-	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
-	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
-	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
-	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
-	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
-	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
-	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
-	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
-	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
-	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
-	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
-	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
-	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
-	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
-	PaymentEnabled                   bool                     `json:"payment_enabled"`
-	Version                          string                   `json:"version"`
+	RegistrationEnabled                 bool                     `json:"registration_enabled"`
+	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
+	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
+	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
+	TotpEnabled                         bool                     `json:"totp_enabled"`
+	PasskeyEnabled                      bool                     `json:"passkey_enabled"`
+	LoginAgreementEnabled               bool                     `json:"login_agreement_enabled"`
+	LoginAgreementMode                  string                   `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
+	LoginAgreementRevision              string                   `json:"login_agreement_revision"`
+	LoginAgreementDocuments             []LoginAgreementDocument `json:"login_agreement_documents"`
+	TurnstileEnabled                    bool                     `json:"turnstile_enabled"`
+	TurnstileSiteKey                    string                   `json:"turnstile_site_key"`
+	TencentCaptchaEnabled               bool                     `json:"tencent_captcha_enabled"`
+	TencentCaptchaAppID                 string                   `json:"tencent_captcha_app_id"`
+	TencentCaptchaRegion                string                   `json:"tencent_captcha_region"`
+	AliyunCaptchaEnabled                bool                     `json:"aliyun_captcha_enabled"`
+	AliyunCaptchaSceneID                string                   `json:"aliyun_captcha_scene_id"`
+	AliyunCaptchaPrefix                 string                   `json:"aliyun_captcha_prefix"`
+	AliyunCaptchaRegion                 string                   `json:"aliyun_captcha_region"`
+	SiteName                            string                   `json:"site_name"`
+	SiteLogo                            string                   `json:"site_logo"`
+	SiteSubtitle                        string                   `json:"site_subtitle"`
+	APIBaseURL                          string                   `json:"api_base_url"`
+	ContactInfo                         string                   `json:"contact_info"`
+	DocURL                              string                   `json:"doc_url"`
+	HomeContent                         string                   `json:"home_content"`
+	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
+	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL             string                   `json:"purchase_subscription_url"`
+	TableDefaultPageSize                int                      `json:"table_default_page_size"`
+	TablePageSizeOptions                []int                    `json:"table_page_size_options"`
+	CustomMenuItems                     json.RawMessage          `json:"custom_menu_items"`
+	CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
+	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
+	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled              bool                     `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled                bool                     `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled            bool                     `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                    bool                     `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName               string                   `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled                  bool                     `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
+	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
+	PaymentEnabled                      bool                     `json:"payment_enabled"`
+	Version                             string                   `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移），分时倍率等服务端本地时间窗口的展示标注用
 	ServerTimezone              string  `json:"server_timezone"`
 	ServerUTCOffset             string  `json:"server_utc_offset"`
@@ -637,23 +640,24 @@ type PublicSettingsInjectionPayload struct {
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	// ChannelMonitorHideThroughput is public so the user UI can hide RPM/TPM
 	// without waiting for API redaction alone (defense in depth).
 	ChannelMonitorHideThroughput bool `json:"channel_monitor_hide_throughput"`
 	// ChannelMonitorShowQuota gates the user-facing quota/balance display on
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
-	ChannelMonitorShowQuota     bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled    bool `json:"available_channels_enabled"`
-	TokenLeaderboardUserVisible bool `json:"token_leaderboard_user_visible"`
-	ModelPlazaEnabled           bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth       bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled     bool `json:"plugin_management_enabled"`
-	AffiliateEnabled            bool `json:"affiliate_enabled"`
-	RiskControlEnabled          bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests  bool `json:"allow_user_view_error_requests"`
+	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
+	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
+	TokenLeaderboardUserVisible   bool `json:"token_leaderboard_user_visible"`
+	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool `json:"affiliate_enabled"`
+	RiskControlEnabled            bool `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -728,6 +732,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		TokenLeaderboardUserVisible:          settings.TokenLeaderboardUserVisible,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,

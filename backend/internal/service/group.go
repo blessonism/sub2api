@@ -12,9 +12,15 @@ import (
 )
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
-type GroupModelsListConfig = domain.GroupModelsListConfig
+type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type GroupOpenAISchedulerOverrides = domain.GroupOpenAISchedulerOverrides
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
+
+// GroupModelsListConfig 保留旧的自定义模型列表内存表示；持久化新配置使用 ModelAllowlist。
+type GroupModelsListConfig struct {
+	Enabled bool     `json:"enabled"`
+	Models  []string `json:"models,omitempty"`
+}
 
 type Group struct {
 	ID             int64
@@ -111,6 +117,8 @@ type Group struct {
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+	ModelAllowlist              GroupModelAllowlist
+	CodexModelsManifestConfig   GroupCodexModelsManifestConfig
 	ModelsListConfig            GroupModelsListConfig
 	OpenAISchedulerOverrides    GroupOpenAISchedulerOverrides
 
@@ -142,6 +150,12 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+}
+
+// IsGroupBindableInSimpleMode reports whether a group can be exposed to
+// account bindings while the application runs in simple mode.
+func IsGroupBindableInSimpleMode(group *Group) bool {
+	return group != nil && group.Platform != PlatformComposite
 }
 
 func (g *Group) IsActive() bool {

@@ -613,7 +613,7 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 }
 
 // recordUsageOpts 内部选项，参数化计费入口的差异点。
-type recordUsageOpts struct {}
+type recordUsageOpts struct{}
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
@@ -858,6 +858,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 			},
 			cost.TotalCost,
+			pricingAt,
 		)
 	}
 
@@ -1123,15 +1124,16 @@ func (s *GatewayService) calculateTokenCost(
 		resolved = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, Group: apiKey.Group})
 	}
 	cost, err := s.billingService.CalculateTokenCostForRequest(TokenCostRequest{
-		Ctx:               ctx,
-		Model:             billingModel,
-		Group:             apiKey.Group,
-		Tokens:            tokens,
-		RateMultiplier:    multiplier,
-		PricingAt:         pricingAt,
-		ServiceTier:       optionalStringValue(result.ServiceTier),
-		Resolver:          s.resolver,
-		Resolved:          resolved,
+		Ctx:             ctx,
+		Model:           billingModel,
+		Group:           apiKey.Group,
+		Tokens:          tokens,
+		RateMultiplier:  multiplier,
+		PricingAt:       pricingAt,
+		ServiceTier:     optionalStringValue(result.ServiceTier),
+		ReasoningEffort: optionalStringValue(result.ReasoningEffort),
+		Resolver:        s.resolver,
+		Resolved:        resolved,
 	})
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
@@ -1212,6 +1214,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ModelMappingChain:        optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:                optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:                optionalTrimmedStringPtr(input.IPAddress),
+		UpstreamRequestID:        usageUpstreamRequestIDPtr(account, result.UpstreamHeaders, false),
 		SessionID:                optionalTrimmedStringPtr(input.SessionID),
 		GroupID:                  apiKey.GroupID,
 		SubscriptionID:           optionalSubscriptionID(subscription),
