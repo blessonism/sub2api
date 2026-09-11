@@ -110,6 +110,8 @@ export interface AdminUser extends User {
   // 用户专属可见分组倍率配置 (group_id -> visible_rate_multiplier)
   visible_group_rates?: Record<number, number>
   group_account_bindings?: Record<number, UserGroupAccountBinding>
+  // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
+  // 管理侧权限开关，普通用户接口不返回。
   restrict_public_groups?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
@@ -269,7 +271,7 @@ export interface PublicSettings {
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
   version: string
-  // 服务器全局时区（IANA 名称与当前 UTC 偏移），分时倍率等服务端本地时间窗口的展示标注用；
+  // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
   // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
   server_timezone?: string
   server_utc_offset?: string
@@ -284,6 +286,8 @@ export interface PublicSettings {
   channel_monitor_hide_throughput?: boolean
   /** When true, user monitor shows account quota/balance snapshots (default off). */
   channel_monitor_show_quota?: boolean
+  /** When true, user monitor hides the user ranking tab and /users payload. */
+  channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   token_leaderboard_user_visible: boolean
   model_plaza_enabled: boolean
@@ -579,11 +583,9 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
-
-export type SubscriptionType = 'standard' | 'subscription'
 
 export type TimeRatePriority = 'schedule_first' | 'user_first' | 'proportional'
 
@@ -594,6 +596,8 @@ export interface GroupTimeRatePeriod {
   visible_rate_multiplier: number
   enabled: boolean
 }
+
+export type SubscriptionType = 'standard' | 'subscription'
 
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
@@ -619,8 +623,8 @@ export interface Group {
   rate_multiplier: number
   visible_rate_multiplier?: number | null
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
-  max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
-  max_reasoning_effort_over_limit?: string
+  max_reasoning_effort?: string // Anthropic/OpenAI reasoning ceiling; empty means unlimited
+  max_reasoning_effort_over_limit?: string // downgrade (default) or deny when over the ceiling
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
   status: 'active' | 'inactive'
@@ -704,12 +708,20 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
+  codex_models_manifest_config?: CodexModelsManifestConfig
   openai_scheduler_overrides?: GroupOpenAISchedulerOverrides
 
   // 分组排序
   sort_order: number
 }
+
+export interface ModelAllowlist {
+  enabled: boolean
+  models: string[]
+}
+
+export type ModelAllowlistConfig = ModelAllowlist
 
 export interface GroupOpenAISchedulerOverrides {
   lb_top_k?: number | null
@@ -721,9 +733,11 @@ export interface GroupOpenAISchedulerOverrides {
   sticky_escape_error_rate?: number | null
 }
 
-export interface ModelsListConfig {
+// 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
+export interface CodexModelsManifestConfig {
   enabled: boolean
-  models: string[]
+  account_ids: number[]
+  fallback_to_scheduler: boolean
 }
 
 export type CompositeRouteMatchType = 'exact' | 'prefix'
@@ -855,6 +869,8 @@ export interface CreateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
@@ -891,7 +907,8 @@ export interface CreateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
+  codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -921,6 +938,8 @@ export interface UpdateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
@@ -957,7 +976,8 @@ export interface UpdateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
+  codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -975,7 +995,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1351,6 +1371,10 @@ export interface Account {
   parent_chatgpt_account_id?: string
 }
 
+// The admin account list may return this compact shape when lite=1. Detail
+// operations still use Account from /admin/accounts/:id.
+export type AccountListItem = Omit<Account, 'groups'>
+
 export interface AccountSchedulerGroupScore {
   group_id?: number | null
   group_name?: string
@@ -1568,6 +1592,15 @@ export interface UpdateAccountRequest {
   confirm_mixed_channel_risk?: boolean
 }
 
+export type GrokMediaEligibilityMode = 'auto' | 'enabled' | 'disabled'
+
+export interface GrokMediaEligibilityState {
+  account_id: number
+  mode: GrokMediaEligibilityMode
+  eligible: boolean
+  reason: string
+}
+
 export interface CheckMixedChannelRequest {
   platform: AccountPlatform
   group_ids: number[]
@@ -1773,6 +1806,7 @@ export interface UsageLog {
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
+  native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
 
@@ -1817,6 +1851,7 @@ export interface AdminUsageLog extends UsageLog {
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
+  upstream_request_id?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
@@ -2219,9 +2254,9 @@ export interface UsageQueryParams {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  native_compaction_v2?: boolean | null
   billing_type?: number | null
   billing_mode?: string | null
-  native_compaction_v2?: boolean | null
   start_date?: string
   end_date?: string
   timezone?: string

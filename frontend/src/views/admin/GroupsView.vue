@@ -804,10 +804,10 @@
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t("admin.groups.modelsList.title") }}
+                {{ t("admin.groups.modelAllowlist.title") }}
               </label>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.modelsList.hint") }}
+                {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
             <button
@@ -838,7 +838,7 @@
             >
               <span class="text-gray-500 dark:text-gray-400">
                 {{
-                  t("admin.groups.modelsList.selectedSummary", {
+                  t("admin.groups.modelAllowlist.selectedSummary", {
                     selected: createModelsListSelectedCount,
                     total: createModelsListState.items.length,
                   })
@@ -850,14 +850,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(createModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.selectAll") }}
+                  {{ t("admin.groups.modelAllowlist.selectAll") }}
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(createModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.invertSelection") }}
+                  {{ t("admin.groups.modelAllowlist.invertSelection") }}
                 </button>
               </div>
             </div>
@@ -865,13 +865,13 @@
               class="max-h-64 space-y-2 overflow-y-auto p-2"
             >
               <p v-if="createModelsListLoading" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.modelsList.loading") }}
+                {{ t("admin.groups.modelAllowlist.loading") }}
               </p>
               <p
                 v-else-if="createModelsListState.items.length === 0"
                 class="text-xs text-gray-500 dark:text-gray-400"
               >
-                {{ t("admin.groups.modelsList.empty") }}
+                {{ t("admin.groups.modelAllowlist.empty") }}
               </p>
               <div
                 v-for="(item, index) in createModelsListState.items"
@@ -2660,10 +2660,10 @@
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t("admin.groups.modelsList.title") }}
+                {{ t("admin.groups.modelAllowlist.title") }}
               </label>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.modelsList.hint") }}
+                {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
             <button
@@ -2694,7 +2694,7 @@
             >
               <span class="text-gray-500 dark:text-gray-400">
                 {{
-                  t("admin.groups.modelsList.selectedSummary", {
+                  t("admin.groups.modelAllowlist.selectedSummary", {
                     selected: editModelsListSelectedCount,
                     total: editModelsListState.items.length,
                   })
@@ -2706,14 +2706,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(editModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.selectAll") }}
+                  {{ t("admin.groups.modelAllowlist.selectAll") }}
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(editModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.invertSelection") }}
+                  {{ t("admin.groups.modelAllowlist.invertSelection") }}
                 </button>
               </div>
             </div>
@@ -2721,13 +2721,13 @@
               class="max-h-64 space-y-2 overflow-y-auto p-2"
             >
               <p v-if="editModelsListLoading" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.modelsList.loading") }}
+                {{ t("admin.groups.modelAllowlist.loading") }}
               </p>
               <p
                 v-else-if="editModelsListState.items.length === 0"
                 class="text-xs text-gray-500 dark:text-gray-400"
               >
-                {{ t("admin.groups.modelsList.empty") }}
+                {{ t("admin.groups.modelAllowlist.empty") }}
               </p>
               <div
                 v-for="(item, index) in editModelsListState.items"
@@ -4754,14 +4754,14 @@ import {
   supportsGroupOpenAIFast,
 } from "./groupsOpenAIFast";
 import {
-  buildModelsListConfig,
-  createModelsListState as createInitialModelsListState,
-  invertModelsListSelection,
-  moveModelsListItem,
-  selectAllModelsListItems,
-  setModelsListCandidates,
-} from "./groupsModelsList";
-import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
+  buildModelAllowlistConfig as buildModelsListConfig,
+  createModelAllowlistState as createInitialModelsListState,
+  invertModelAllowlistSelection as invertModelsListSelection,
+  moveModelAllowlistItem as moveModelsListItem,
+  selectAllModelAllowlistItems as selectAllModelsListItems,
+  setModelAllowlistCandidates as setModelsListCandidates,
+} from "./groupModelAllowlist";
+import { createModelAllowlistCandidatesTracker as createModelsListCandidatesTracker } from "./modelAllowlistCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
   isProfitControlPlatform,
@@ -5659,7 +5659,7 @@ const loadModelsListCandidates = async (
   const loadingRef = mode === "create" ? createModelsListLoading : editModelsListLoading;
   loadingRef.value = true;
   try {
-    const models = await adminAPI.groups.getModelsListCandidates(groupID, platform);
+    const models = await adminAPI.groups.getModelAllowlistCandidates(groupID, platform);
     if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
       return;
     }
@@ -6361,7 +6361,7 @@ const handleCreateGroup = async () => {
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
-      models_list_config: buildModelsListConfig(createModelsListState),
+      model_allowlist: buildModelsListConfig(createModelsListState),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         createForm.platform,
         createForm.supported_model_scopes,
@@ -6547,7 +6547,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.reasoning_effort_mappings,
     group.platform,
   );
-  resetModelsListState(editModelsListState, group.models_list_config);
+  resetModelsListState(editModelsListState, group.model_allowlist);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
@@ -6655,7 +6655,7 @@ const handleUpdateGroup = async () => {
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
-      models_list_config: buildModelsListConfig(editModelsListState),
+      model_allowlist: buildModelsListConfig(editModelsListState),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         editForm.platform,
         editForm.supported_model_scopes,
@@ -7113,7 +7113,7 @@ watch(
     }
     resetDisabledBatchImagePricing(editForm);
     if (editingGroup.value) {
-      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
+      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.model_allowlist : undefined);
       loadModelsListCandidates("edit", editingGroup.value.id, newVal);
     }
   },
