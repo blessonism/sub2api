@@ -105,6 +105,27 @@ func TestGptIntelligenceServiceFetchSnapshot_KeepsBaseSnapshotWhenEfficiencyUnav
 	require.Equal(t, "public_json_current", snapshot.Metadata.Method)
 }
 
+func TestSnapshotFromIntelligenceEfficiencyDiscoversGptAndGrokModels(t *testing.T) {
+	point := func(model, effort string, iq float64) gptIntelligenceEfficiencyPoint {
+		return gptIntelligenceEfficiencyPoint{Model: model, Effort: effort, IQ: &iq}
+	}
+	efficiency := &gptIntelligenceEfficiencyPayload{
+		SourceUpdatedAt: "2026-09-16T22:06:22+08:00",
+		Points: []gptIntelligenceEfficiencyPoint{
+			point("gpt-6-astra", "medium", 106.49),
+			point("grok-4.6", "xhigh", 106.12),
+		},
+	}
+
+	snapshot, err := snapshotFromIntelligenceEfficiency(efficiency, time.Date(2026, 9, 16, 14, 0, 0, 0, time.UTC))
+
+	require.NoError(t, err)
+	require.Equal(t, "gpt-6-astra", snapshot.Latest.Model)
+	require.Len(t, snapshot.Comparisons, 1)
+	require.Equal(t, "grok_4_6_xhigh", snapshot.Comparisons[0].Key)
+	require.Equal(t, "grok-4.6", snapshot.Comparisons[0].Model)
+}
+
 func TestParseGptIntelligenceJSON_ExtractsPublicModelIqSummary(t *testing.T) {
 	collectedAt := time.Date(2026, 6, 29, 9, 0, 0, 0, time.UTC)
 	raw := []byte(`{

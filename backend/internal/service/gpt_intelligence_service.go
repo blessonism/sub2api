@@ -24,11 +24,8 @@ const (
 	gptIntelligenceFetchTimeout       = 8 * time.Second
 	gptIntelligenceCacheTTL           = time.Hour
 	gptIntelligenceMaxSourceBytes     = 512 * 1024
-	gptIntelligenceEfficiencyMaxBytes = 2 * 1024 * 1024
+	gptIntelligenceEfficiencyMaxBytes = 8 * 1024 * 1024
 )
-
-// deepseekEfficiencyModel 是 Codex 雷达智力效率数据中 DeepSeek 模型的标识。
-const deepseekEfficiencyModel = "deepseek-v4-flash"
 
 var (
 	ErrGptIntelligenceUnavailable = infraerrors.ServiceUnavailable(
@@ -328,24 +325,22 @@ func (s *GptIntelligenceService) fetchSnapshot(ctx context.Context) (*GptIntelli
 		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
 	}
 
-	snap, err := ParseGptIntelligenceJSON(body, s.now())
-	if err != nil {
-		return nil, err
-	}
-
-	// DeepSeek 智力评分不在 current.json 的 model_iq 里，而是在公开的
-	// intelligence-efficiency 数据中；以 best-effort 方式额外抓取并合并，失败不影响主快照。
+	snap, currentErr := ParseGptIntelligenceJSON(body, s.now())
 	efficiency, efficiencyErr := s.fetchIntelligenceEfficiency(ctx)
-	if efficiencyErr != nil {
+	if currentErr != nil {
+		if efficiencyErr != nil {
+			return nil, currentErr
+		}
+		snap, currentErr = snapshotFromIntelligenceEfficiency(efficiency, s.now())
+		if currentErr != nil {
+			return nil, currentErr
+		}
+	} else if efficiencyErr != nil {
 		logger.LegacyPrintf("service.gpt_intelligence", "efficiency_fetch_failed: %v", efficiencyErr)
-	} else if merged := mergeGptIntelligenceDeepSeekEfficiency(snap, efficiency); merged {
+	} else if mergeGptIntelligenceEfficiency(snap, efficiency) {
 		snap.Metadata.Method = "public_json_current+efficiency"
 		snap.Metadata.Series = 1 + len(snap.Comparisons)
-		for _, comparison := range snap.Comparisons {
-			if comparison.Model == deepseekEfficiencyModel {
-				snap.Metadata.RunCount += len(comparison.RecentDays)
-			}
-		}
+		snap.Metadata.RunCount = countGptIntelligenceRuns(snap)
 	}
 
 	s.mu.Lock()
@@ -405,67 +400,64 @@ type gptIntelligenceEfficiencyPoint struct {
 	ValidTasks *float64 `json:"valid_tasks"`
 }
 
-// mergeGptIntelligenceDeepSeekEfficiency 把 intelligence-efficiency 里的 DeepSeek 系列合并进快照。
-// 只处理 deepseek-v4-flash 模型，避免与 current.json 已有的 GPT 对比重复；
-// 已存在同 key 对比时跳过。返回是否合并了新的 DeepSeek 系列。
-func mergeGptIntelligenceDeepSeekEfficiency(snap *GptIntelligenceSnapshot, efficiency *gptIntelligenceEfficiencyPayload) bool {
+type gptIntelligenceSeriesKey struct{ model, effort string }
+
+// mergeGptIntelligenceEfficiency 合并公开效率数据中的所有模型系列。
+// 模型和推理档位来自数据本身，新增模型只要遵循同一公开协议即可自动展示。
+func mergeGptIntelligenceEfficiency(snap *GptIntelligenceSnapshot, efficiency *gptIntelligenceEfficiencyPayload) bool {
 	if snap == nil || efficiency == nil {
 		return false
 	}
 
-	type seriesKey struct {
-		model  string
-		effort string
+	seen := make(map[gptIntelligenceSeriesKey]struct{}, len(snap.Comparisons)+1)
+	if snap.Latest != nil {
+		seen[gptIntelligenceSeriesKey{model: snap.Latest.Model, effort: snap.Latest.ReasoningEffort}] = struct{}{}
 	}
-	seen := make(map[string]struct{}, len(snap.Comparisons))
 	for _, comparison := range snap.Comparisons {
-		seen[comparison.Key] = struct{}{}
+		seen[gptIntelligenceSeriesKey{model: comparison.Model, effort: comparison.ReasoningEffort}] = struct{}{}
 	}
 
-	currentByKey := make(map[seriesKey]gptIntelligenceEfficiencyPoint)
+	currentByKey := make(map[gptIntelligenceSeriesKey]gptIntelligenceEfficiencyPoint)
 	for _, point := range efficiency.Points {
-		if point.Model != deepseekEfficiencyModel {
+		if strings.TrimSpace(point.Model) == "" || strings.TrimSpace(point.Effort) == "" {
 			continue
 		}
 		if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
 			continue
 		}
-		currentByKey[seriesKey{model: point.Model, effort: point.Effort}] = point
+		currentByKey[gptIntelligenceSeriesKey{model: point.Model, effort: point.Effort}] = point
 	}
 
-	historyByKey := make(map[seriesKey][]GptIntelligenceRun)
+	historyByKey := make(map[gptIntelligenceSeriesKey][]GptIntelligenceRun)
 	for _, snapItem := range efficiency.History {
 		for _, point := range snapItem.Points {
-			if point.Model != deepseekEfficiencyModel {
-				continue
-			}
 			if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
 				continue
 			}
-			key := seriesKey{model: point.Model, effort: point.Effort}
+			key := gptIntelligenceSeriesKey{model: point.Model, effort: point.Effort}
 			historyByKey[key] = append(historyByKey[key], gptIntelligenceEfficiencyRun(snapItem.At, point))
 		}
 	}
 
 	merged := false
 	for key, point := range currentByKey {
-		comparisonKey := gptIntelligenceComparisonKey(key.model, key.effort)
-		if _, exists := seen[comparisonKey]; exists {
+		if _, exists := seen[key]; exists {
 			continue
 		}
 
 		latestRun := gptIntelligenceEfficiencyRun(efficiency.SourceUpdatedAt, point)
 		runs := normalizeGptIntelligenceRuns(historyByKey[key], key.model, key.effort, &latestRun)
 
+		comparisonKey := gptIntelligenceComparisonKey(key.model, key.effort)
 		snap.Comparisons = append(snap.Comparisons, GptIntelligenceComparison{
 			Key:             comparisonKey,
-			Label:           gptIntelligenceDeepSeekLabel(key.effort),
+			Label:           gptIntelligenceModelLabel(key.model, key.effort),
 			Model:           key.model,
 			ReasoningEffort: key.effort,
 			Latest:          &latestRun,
 			RecentDays:      runs,
 		})
-		seen[comparisonKey] = struct{}{}
+		seen[key] = struct{}{}
 		merged = true
 	}
 
@@ -475,6 +467,53 @@ func mergeGptIntelligenceDeepSeekEfficiency(snap *GptIntelligenceSnapshot, effic
 		})
 	}
 	return merged
+}
+
+func mergeGptIntelligenceDeepSeekEfficiency(snap *GptIntelligenceSnapshot, efficiency *gptIntelligenceEfficiencyPayload) bool {
+	return mergeGptIntelligenceEfficiency(snap, efficiency)
+}
+
+func snapshotFromIntelligenceEfficiency(efficiency *gptIntelligenceEfficiencyPayload, collectedAt time.Time) (*GptIntelligenceSnapshot, error) {
+	if efficiency == nil || len(efficiency.Points) == 0 {
+		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("efficiency payload has no points"))
+	}
+	snapshot := &GptIntelligenceSnapshot{
+		MonitoredAt: collectedAt.UTC().Format(time.RFC3339),
+		Timezone:    "Asia/Shanghai",
+		Templates:   DefaultGptIntelligencePromptTemplates(),
+		Source:      GptIntelligenceSource{Name: gptIntelligenceSourceLabel, URL: gptIntelligenceSourceURL},
+		Metadata:    GptIntelligenceCollectionMetadata{Method: "public_json_efficiency", CachedAt: collectedAt.UTC().Format(time.RFC3339), CacheTTL: int64(gptIntelligenceCacheTTL / time.Second), Attribution: "数据来自 Codex 雷达 codexradar.com"},
+	}
+	var primary *gptIntelligenceEfficiencyPoint
+	for i := range efficiency.Points {
+		point := &efficiency.Points[i]
+		if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
+			continue
+		}
+		if primary == nil || (point.IQ != nil && (primary.IQ == nil || *point.IQ > *primary.IQ)) {
+			primary = point
+		}
+	}
+	if primary == nil {
+		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("efficiency payload has no valid series"))
+	}
+	latest := gptIntelligenceEfficiencyRun(efficiency.SourceUpdatedAt, *primary)
+	snapshot.Latest = &latest
+	mergeGptIntelligenceEfficiency(snapshot, efficiency)
+	snapshot.Metadata.Series = 1 + len(snapshot.Comparisons)
+	snapshot.Metadata.RunCount = countGptIntelligenceRuns(snapshot)
+	return snapshot, nil
+}
+
+func countGptIntelligenceRuns(snapshot *GptIntelligenceSnapshot) int {
+	if snapshot == nil {
+		return 0
+	}
+	count := len(snapshot.RecentDays)
+	for _, comparison := range snapshot.Comparisons {
+		count += len(comparison.RecentDays)
+	}
+	return count
 }
 
 // gptIntelligenceEfficiencyRun 把智力效率数据点转换为快照中的运行记录。
@@ -490,13 +529,27 @@ func gptIntelligenceEfficiencyRun(at string, point gptIntelligenceEfficiencyPoin
 }
 
 // gptIntelligenceDeepSeekLabel 生成 DeepSeek 对比系列的展示名。
+func gptIntelligenceModelLabel(model, effort string) string {
+	if strings.EqualFold(model, "deepseek-v4-flash") {
+		return strings.TrimSpace("DeepSeek V4 Flash " + effort)
+	}
+	label := strings.NewReplacer("-", " ", "_", " ").Replace(strings.TrimSpace(model))
+	words := strings.Fields(label)
+	for i, word := range words {
+		if strings.HasPrefix(strings.ToLower(word), "gpt") || strings.HasPrefix(strings.ToLower(word), "grok") || strings.HasPrefix(strings.ToLower(word), "deepseek") {
+			words[i] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
+	return strings.TrimSpace(strings.Join(words, " ") + " " + effort)
+}
+
 func gptIntelligenceDeepSeekLabel(effort string) string {
-	return strings.TrimSpace("DeepSeek V4 Flash " + effort)
+	return gptIntelligenceModelLabel("deepseek-v4-flash", effort)
 }
 
 // gptIntelligenceComparisonKey 生成与 current.json 一致的对比 key（短横线转下划线）。
 func gptIntelligenceComparisonKey(model, effort string) string {
-	return strings.ReplaceAll(model, "-", "_") + "_" + effort
+	return strings.NewReplacer("-", "_", ".", "_").Replace(model) + "_" + effort
 }
 
 // ParseGptIntelligenceJSON 将 Codex 雷达公开摘要转换为站内稳定快照契约。

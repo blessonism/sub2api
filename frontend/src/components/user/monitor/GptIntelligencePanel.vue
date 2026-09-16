@@ -1199,6 +1199,7 @@ function mergeRuns(runs: GptIntelligenceRun[], latestRun: GptIntelligenceRun | n
   if (latestRun?.date) byDate.set(latestRun.date, latestRun)
   return Array.from(byDate.values())
     .filter((run) => run.score !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-12)
 }
 
@@ -1216,14 +1217,6 @@ function buildSeriesTitle(model: string, effort: string, fallback: string): stri
 function buildLegendLabel(title: string): string {
   return title.replace(/^GPT-/i, '')
 }
-
-const INTELLIGENCE_FAMILY_ORDER = [
-  'gpt-5.6-sol',
-  'gpt-5.6-terra',
-  'gpt-5.6-luna',
-  'gpt-5.5',
-  'deepseek-v4-flash',
-]
 
 const INTELLIGENCE_EFFORT_ORDER: Record<string, number> = {
   low: 0,
@@ -1273,12 +1266,17 @@ function intelligenceSeriesEffort(series: SeriesSource): string {
 }
 
 function intelligenceFamilyOrder(model: string): number {
-  const index = INTELLIGENCE_FAMILY_ORDER.indexOf(model)
-  return index >= 0 ? index : INTELLIGENCE_FAMILY_ORDER.length
+  const match = model.match(/^(?:gpt|grok|claude|gemini|deepseek|glm)[-_]?(\d+(?:\.\d+)?)/i)
+  if (!match) return Number.MAX_SAFE_INTEGER
+  return -Number(match[1])
 }
 
 function formatModelName(model: string): string {
-  return model.replace(/^gpt-/i, 'GPT-')
+  return model
+    .replace(/^gpt-/i, 'GPT-')
+    .replace(/^grok-/i, 'Grok-')
+    .replace(/^deepseek-/i, 'DeepSeek-')
+    .replace(/^glm-/i, 'GLM-')
 }
 
 function formatScore(value: number | null): string {
