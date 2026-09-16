@@ -1499,6 +1499,88 @@ func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
 	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
 }
 
+func TestAPIKeyAuthChannelStatusSkipsBillingAndDisabledGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	group := &service.Group{
+		ID:       42,
+		Name:     "plus",
+		Status:   service.StatusDisabled,
+		Hydrated: true,
+		Platform: service.PlatformOpenAI,
+	}
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 0}
+	expiredAt := time.Now().Add(-time.Hour)
+	apiKey := &service.APIKey{
+		ID:        100,
+		UserID:    user.ID,
+		Key:       "channel-status-auth",
+		Status:    service.StatusAPIKeyQuotaExhausted,
+		User:      user,
+		GroupID:   &group.ID,
+		Group:     group,
+		Quota:     1,
+		QuotaUsed: 1,
+		ExpiresAt: &expiredAt,
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(context.Context, string) (*service.APIKey, error) {
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/channel-status", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	blocked := httptest.NewRecorder()
+	msgReq := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	msgReq.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(blocked, msgReq)
+	require.Equal(t, http.StatusForbidden, blocked.Code)
+	require.Contains(t, blocked.Body.String(), "GROUP_DISABLED")
+}
+
+func TestAPIKeyAuthChannelStatusRejectsQueryKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(&stubApiKeyRepo{}, nil, nil, nil, nil, nil, cfg), nil, cfg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/channel-status?api_key=secret", nil)
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestChannelStatusPathHelpers(t *testing.T) {
+	require.True(t, isChannelStatusPath("/v1/sub2api/channel-status"))
+	require.False(t, isChannelStatusPath("/v1/sub2api/billing"))
+	require.False(t, isChannelStatusPath("/v1/messages"))
+	require.True(t, isSub2APIBillingPath("/v1/sub2api/billing"))
+	require.False(t, isSub2APIBillingPath("/v1/sub2api/channel-status"))
+}
+
+func TestAPIKeyAuthChannelStatusRejectsDisabledKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive}
+	apiKey := &service.APIKey{ID: 1, UserID: user.ID, Key: "disabled-key", Status: service.StatusDisabled, User: user}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/channel-status", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
@@ -1510,6 +1592,7 @@ func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService
 	router.POST("/v1/messages", ok)
 	router.GET("/v1/usage", ok)
 	router.GET("/v1/sub2api/billing", ok)
+	router.GET("/v1/sub2api/channel-status", ok)
 	return router
 }
 

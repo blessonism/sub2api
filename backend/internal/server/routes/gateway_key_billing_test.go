@@ -104,6 +104,7 @@ func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRoute
 		nil,
 		nil,
 		cfg,
+		nil,
 	)
 	return router, rateRepo, apiKey.Key
 }

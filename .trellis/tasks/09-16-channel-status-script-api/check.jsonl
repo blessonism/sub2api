@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "检查是否遵守下游 fork 分支边界"}
+{"file": ".trellis/tasks/09-16-channel-status-script-api/prd.md", "reason": "对照验收标准检查接口行为"}
+{"file": ".trellis/tasks/09-16-channel-status-script-api/design.md", "reason": "检查鉴权、限流、脱敏与可见范围是否按设计实现"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查测试覆盖与质量约定"}

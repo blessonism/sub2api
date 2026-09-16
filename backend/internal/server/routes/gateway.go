@@ -18,9 +18,25 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func channelStatusGET(h *handler.Handlers) gin.HandlerFunc {
+	if h != nil && h.ChannelStatus != nil {
+		return h.ChannelStatus.Get
+	}
+	return func(c *gin.Context) {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "api_error",
+				"message": "channel status is unavailable",
+			},
+		})
+	}
+}
 
 // RegisterGatewayRoutes 注册 API 网关路由（Claude/OpenAI/Gemini 兼容）
 func RegisterGatewayRoutes(
@@ -33,6 +49,7 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
+	redisClient *redis.Client,
 ) {
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
@@ -191,6 +208,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.GET("/sub2api/channel-status", middleware.ChannelStatusRateLimit(redisClient), channelStatusGET(h))
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
