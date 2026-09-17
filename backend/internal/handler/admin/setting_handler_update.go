@@ -352,6 +352,9 @@ type UpdateSettingsRequest struct {
 	TokenLeaderboardCommonGroupID *int64  `json:"token_leaderboard_common_group_id"`
 	TokenLeaderboardTierTooltip   *string `json:"token_leaderboard_tier_tooltip"`
 
+	// Subscription feature switch (user-facing subscription surface; see SettingKeySubscriptionEnabled)
+	SubscriptionEnabled *bool `json:"subscription_enabled"`
+
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
@@ -2049,6 +2052,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.TokenLeaderboardTierTooltip
 		}(),
+		SubscriptionEnabled: func() bool {
+			if req.SubscriptionEnabled != nil {
+				return *req.SubscriptionEnabled
+			}
+			return previousSettings.SubscriptionEnabled
+		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
 				return *req.ModelPlazaEnabled
@@ -2498,6 +2507,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TokenLeaderboardUserVisible:   updatedSettings.TokenLeaderboardUserVisible,
 		TokenLeaderboardCommonGroupID: updatedSettings.TokenLeaderboardCommonGroupID,
 		TokenLeaderboardTierTooltip:   updatedSettings.TokenLeaderboardTierTooltip,
+		SubscriptionEnabled:           updatedSettings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,

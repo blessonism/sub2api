@@ -400,6 +400,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
 		TokenLeaderboardUserVisible:   settings.TokenLeaderboardUserVisible,
 		TokenLeaderboardCommonGroupID: settings.TokenLeaderboardCommonGroupID,
