@@ -8,6 +8,7 @@
       :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
       @refresh="manualReload"
+      @open-api-docs="showApiDocs = true"
     />
 
     <MonitorCardGrid
@@ -35,6 +36,7 @@
       :title="detailTitle"
       @close="closeDetail"
     />
+    <ChannelStatusApiDialog :show="showApiDocs" @close="showApiDocs = false" />
   </AppLayout>
 </template>
 
@@ -62,6 +64,7 @@ import MonitorHero, {
 import GptIntelligencePanel from '@/components/user/monitor/GptIntelligencePanel.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
+import ChannelStatusApiDialog from '@/components/user/monitor/ChannelStatusApiDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
@@ -75,6 +78,7 @@ const loading = ref(false)
 const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
+const showApiDocs = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 const gptIntelligenceSnapshot = ref<GptIntelligenceSnapshot | null>(null)
 const gptIntelligenceLoading = ref(false)

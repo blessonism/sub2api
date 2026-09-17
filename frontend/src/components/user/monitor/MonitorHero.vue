@@ -42,6 +42,16 @@
         <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
       </button>
 
+      <button
+        type="button"
+        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500/50 dark:hover:text-primary-300"
+        :title="t('common.channelStatusApi.open')"
+        @click="emit('open-api-docs')"
+      >
+        <Icon name="document" size="sm" />
+        <span>{{ t('common.channelStatusApi.shortLabel') }}</span>
+      </button>
+
       <AutoRefreshButton
         v-if="autoRefresh"
         :enabled="autoRefresh.enabled.value"
@@ -81,6 +91,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:window', value: MonitorWindow): void
   (e: 'refresh'): void
+  (e: 'open-api-docs'): void
 }>()
 
 const { t } = useI18n()

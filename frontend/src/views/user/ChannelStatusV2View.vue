@@ -52,6 +52,16 @@
           >
             <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
           </button>
+          <button
+            class="btn btn-secondary inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-2.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
+            type="button"
+            :title="t('common.channelStatusApi.open')"
+            :aria-label="t('common.channelStatusApi.open')"
+            @click="showApiDocs = true"
+          >
+            <Icon name="document" size="sm" />
+            <span>{{ t('common.channelStatusApi.shortLabel') }}</span>
+          </button>
         </header>
 
         <!-- First-upgrade silent backfill: show until 30d product window is covered -->
@@ -454,6 +464,7 @@
         </div>
       </section>
     </div>
+    <ChannelStatusApiDialog :show="showApiDocs" @close="showApiDocs = false" />
   </AppLayout>
 </template>
 
@@ -462,6 +473,7 @@ import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ChannelStatusApiDialog from '@/components/user/monitor/ChannelStatusApiDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
@@ -509,6 +521,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const appStore = useAppStore()
+const showApiDocs = ref(false)
 const { t, te, locale } = useI18n()
 const isAdmin = computed(() => authStore.isAdmin)
 /** Admins always see RPM/TPM; users honor the hide-throughput system setting. */
