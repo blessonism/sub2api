@@ -1266,9 +1266,16 @@ function intelligenceSeriesEffort(series: SeriesSource): string {
 }
 
 function intelligenceFamilyOrder(model: string): number {
-  const match = model.match(/^(?:gpt|grok|claude|gemini|deepseek|glm)[-_]?(\d+(?:\.\d+)?)/i)
-  if (!match) return Number.MAX_SAFE_INTEGER
-  return -Number(match[1])
+  const knownFamilies = [
+    'gpt-6-astra',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+    'gpt-5.5',
+    'deepseek-v4-flash',
+  ]
+  const index = knownFamilies.indexOf(model)
+  return index >= 0 ? index : knownFamilies.length
 }
 
 function formatModelName(model: string): string {
