@@ -49,6 +49,7 @@ vi.mock('@/composables/useAutoRefresh', () => ({
     setInterval: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
+    resetCountdown: vi.fn(),
   }),
 }))
 
@@ -138,6 +139,10 @@ describe('channel status API docs entry', () => {
       props: { show: true },
       global: { stubs: { BaseDialog: BaseDialogStub } },
     })
+
+    expect(wrapper.text()).toContain('GET /v1/sub2api/channel-status?scope=visible')
+    expect(wrapper.text()).toContain('common.channelStatusApi.responseStatus')
+    expect(wrapper.text()).toContain('common.channelStatusApi.responseVisible')
 
     await wrapper.get('button[aria-label="common.channelStatusApi.copyExample"]').trigger('click')
     expect(copyToClipboard).toHaveBeenCalledWith(

@@ -3,14 +3,17 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 )
 
 const (
 	channelStatusObject        = "sub2api.channel_status"
-	channelStatusSchemaVersion = 1
-	channelStatusModeOff       = "off"
+	channelStatusSchemaVersion = 2
 	channelStatusV2Range       = "90m"
+	ChannelStatusScopeKey      = "key"
+	ChannelStatusScopeVisible  = "visible"
+	ChannelStatusStatusUnknown = "unknown"
 )
 
 type channelStatusSettings interface {
@@ -30,35 +33,36 @@ type channelStatusV2 interface {
 	Matrix(ctx context.Context, filter ChannelMonitorV2Filter, groupBy ChannelMonitorV2GroupBy, admin bool) (*ChannelMonitorV2Matrix, error)
 }
 
-// ChannelStatusItem 脚本可见的单条渠道状态。
+// ChannelStatusQuery GET /v1/sub2api/channel-status 的查询条件。
+type ChannelStatusQuery struct {
+	UserID         int64
+	KeyGroupID     *int64
+	KeyGroupName   string
+	IncludeVisible bool
+}
+
+// ChannelStatusItem 可见分组的一条渠道状态。仅 ?scope=visible 返回。
 type ChannelStatusItem struct {
-	GroupID       *int64 `json:"group_id,omitempty"`
-	GroupName     string `json:"group_name"`
-	Name          string `json:"name"`
-	Provider      string `json:"provider"`
-	Status        string `json:"status"`
-	Connected     bool   `json:"connected"`
-	IsKeyGroup    bool   `json:"is_key_group"`
-	ErrorCategory string `json:"error_category,omitempty"`
+	GroupID   *int64 `json:"group_id,omitempty"`
+	GroupName string `json:"group_name"`
+	Connected bool   `json:"connected"`
+	Status    string `json:"status"`
 }
 
 // ChannelStatusSnapshot GET /v1/sub2api/channel-status 成功响应。
+// 顶层字段描述当前 API Key 绑定分组；无监控时 connected 为 null、status 为 unknown。
 type ChannelStatusSnapshot struct {
-	Object            string              `json:"object"`
-	SchemaVersion     int                 `json:"schema_version"`
-	Mode              string              `json:"mode"`
-	Connected         bool                `json:"connected"`
-	KeyGroupID        *int64              `json:"key_group_id,omitempty"`
-	KeyGroupName      string              `json:"key_group_name,omitempty"`
-	KeyGroupConnected *bool               `json:"key_group_connected"`
-	KeyGroupStatus    string              `json:"key_group_status,omitempty"`
-	CheckedAt         time.Time           `json:"checked_at"`
-	ItemCount         int                 `json:"item_count"`
-	ConnectedCount    int                 `json:"connected_count"`
-	Items             []ChannelStatusItem `json:"items"`
+	Object        string              `json:"object"`
+	SchemaVersion int                 `json:"schema_version"`
+	CheckedAt     time.Time           `json:"checked_at"`
+	GroupID       *int64              `json:"group_id"`
+	GroupName     string              `json:"group_name"`
+	Connected     *bool               `json:"connected"`
+	Status        string              `json:"status"`
+	Items         []ChannelStatusItem `json:"items,omitempty"`
 }
 
-// ChannelStatusService 汇总用户可见分组的只读渠道状态。
+// ChannelStatusService 汇总当前 Key 绑定分组的只读渠道状态。
 type ChannelStatusService struct {
 	settings channelStatusSettings
 	groups   channelStatusGroups
@@ -89,8 +93,8 @@ func NewChannelStatusService(
 	return svc
 }
 
-func (s *ChannelStatusService) Get(ctx context.Context, userID int64, keyGroupID *int64, keyGroupName string) (*ChannelStatusSnapshot, error) {
-	snap := emptyChannelStatusSnapshot(s.nowFn(), keyGroupID, keyGroupName)
+func (s *ChannelStatusService) Get(ctx context.Context, q ChannelStatusQuery) (*ChannelStatusSnapshot, error) {
+	snap := emptyChannelStatusSnapshot(s.nowFn(), q.KeyGroupID, q.KeyGroupName)
 	if s == nil || s.settings == nil {
 		return snap, nil
 	}
@@ -105,11 +109,9 @@ func (s *ChannelStatusService) Get(ctx context.Context, userID int64, keyGroupID
 	)
 	switch runtime.Mode {
 	case ChannelMonitorModeV2:
-		snap.Mode = ChannelMonitorModeV2
-		items, err = s.v2Items(ctx, userID)
+		items, err = s.v2Items(ctx, q)
 	default:
-		snap.Mode = ChannelMonitorModeV1
-		items, err = s.v1Items(ctx, userID)
+		items, err = s.v1Items(ctx, q)
 	}
 	if err != nil {
 		if errors.Is(err, ErrChannelMonitorDisabled) {
@@ -117,11 +119,14 @@ func (s *ChannelStatusService) Get(ctx context.Context, userID int64, keyGroupID
 		}
 		return nil, err
 	}
-	if items == nil {
-		items = []ChannelStatusItem{}
+	items = aggregateChannelStatusByGroup(items)
+	applyChannelStatusKeyGroup(snap, items)
+	if q.IncludeVisible {
+		if items == nil {
+			items = []ChannelStatusItem{}
+		}
+		snap.Items = items
 	}
-	markChannelStatusKeyGroup(items, keyGroupID, keyGroupName)
-	fillChannelStatusCounts(snap, items)
 	return snap, nil
 }
 
@@ -139,11 +144,11 @@ func (s *ChannelStatusService) availableGroups(ctx context.Context, userID int64
 	return s.groups.GetAvailableGroups(ctx, userID)
 }
 
-func (s *ChannelStatusService) v1Items(ctx context.Context, userID int64) ([]ChannelStatusItem, error) {
+func (s *ChannelStatusService) v1Items(ctx context.Context, q ChannelStatusQuery) ([]ChannelStatusItem, error) {
 	if s.v1 == nil {
 		return []ChannelStatusItem{}, nil
 	}
-	groups, err := s.availableGroups(ctx, userID)
+	groups, err := s.availableGroups(ctx, q.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +159,6 @@ func (s *ChannelStatusService) v1Items(ctx context.Context, userID int64) ([]Cha
 		}
 		byName[groups[i].Name] = groups[i]
 	}
-	if len(byName) == 0 {
-		return []ChannelStatusItem{}, nil
-	}
 	views, err := s.v1.ListUserView(ctx)
 	if err != nil {
 		return nil, err
@@ -166,37 +168,53 @@ func (s *ChannelStatusService) v1Items(ctx context.Context, userID int64) ([]Cha
 		if view == nil || view.GroupName == "" {
 			continue
 		}
-		group, ok := byName[view.GroupName]
+		groupID, ok := resolveChannelStatusGroupID(view.GroupName, byName, q.KeyGroupID, q.KeyGroupName)
 		if !ok {
 			continue
 		}
-		groupID := group.ID
+		id := groupID
+		if !q.IncludeVisible && !isChannelStatusKeyGroup(&id, view.GroupName, q.KeyGroupID, q.KeyGroupName) {
+			continue
+		}
 		items = append(items, ChannelStatusItem{
-			GroupID:       &groupID,
-			GroupName:     view.GroupName,
-			Name:          view.Name,
-			Provider:      view.Provider,
-			Status:        view.PrimaryStatus,
-			Connected:     channelStatusV1Connected(view.PrimaryStatus, view.PrimaryErrorCategory),
-			ErrorCategory: view.PrimaryErrorCategory,
+			GroupID:   &id,
+			GroupName: view.GroupName,
+			Connected: channelStatusV1Connected(view.PrimaryStatus, view.PrimaryErrorCategory),
+			Status:    view.PrimaryStatus,
 		})
 	}
 	return items, nil
 }
 
-func (s *ChannelStatusService) v2Items(ctx context.Context, userID int64) ([]ChannelStatusItem, error) {
+func (s *ChannelStatusService) v2Items(ctx context.Context, q ChannelStatusQuery) ([]ChannelStatusItem, error) {
 	if s.v2 == nil {
 		return []ChannelStatusItem{}, nil
 	}
-	groups, err := s.availableGroups(ctx, userID)
+	groups, err := s.availableGroups(ctx, q.UserID)
 	if err != nil {
 		return nil, err
 	}
-	allowed := make(map[int64]struct{}, len(groups))
-	allowedIDs := make([]int64, 0, len(groups))
+	allowed := make(map[int64]struct{}, len(groups)+1)
+	allowedIDs := make([]int64, 0, len(groups)+1)
 	for i := range groups {
 		allowed[groups[i].ID] = struct{}{}
 		allowedIDs = append(allowedIDs, groups[i].ID)
+	}
+	if q.KeyGroupID != nil {
+		if _, ok := allowed[*q.KeyGroupID]; !ok {
+			allowed[*q.KeyGroupID] = struct{}{}
+			allowedIDs = append(allowedIDs, *q.KeyGroupID)
+		}
+	}
+	if !q.IncludeVisible {
+		if q.KeyGroupID == nil {
+			return []ChannelStatusItem{}, nil
+		}
+		allowedIDs = []int64{*q.KeyGroupID}
+		allowed = map[int64]struct{}{*q.KeyGroupID: {}}
+	}
+	if len(allowedIDs) == 0 {
+		return []ChannelStatusItem{}, nil
 	}
 	filter, err := s.v2.ParseFilter(channelStatusV2Range, nil, nil, nil)
 	if err != nil {
@@ -220,17 +238,11 @@ func (s *ChannelStatusService) v2Items(ctx context.Context, userID int64) ([]Cha
 		if _, ok := allowed[*row.GroupID]; !ok {
 			continue
 		}
-		name := row.GroupName
-		if name == "" {
-			name = row.Platform
-		}
 		items = append(items, ChannelStatusItem{
 			GroupID:   row.GroupID,
 			GroupName: row.GroupName,
-			Name:      name,
-			Provider:  row.Platform,
-			Status:    row.Health.Overall,
 			Connected: channelStatusV2Connected(row.Health.Overall),
+			Status:    row.Health.Overall,
 		})
 	}
 	return items, nil
@@ -240,59 +252,83 @@ func emptyChannelStatusSnapshot(now time.Time, keyGroupID *int64, keyGroupName s
 	return &ChannelStatusSnapshot{
 		Object:        channelStatusObject,
 		SchemaVersion: channelStatusSchemaVersion,
-		Mode:          channelStatusModeOff,
 		CheckedAt:     now,
-		KeyGroupID:    cloneInt64Ptr(keyGroupID),
-		KeyGroupName:  keyGroupName,
-		Items:         []ChannelStatusItem{},
+		GroupID:       cloneInt64Ptr(keyGroupID),
+		GroupName:     keyGroupName,
+		Status:        ChannelStatusStatusUnknown,
 	}
 }
 
-func fillChannelStatusCounts(snap *ChannelStatusSnapshot, items []ChannelStatusItem) {
-	connectedCount := 0
-	keyItems := make([]ChannelStatusItem, 0, 2)
-	for i := range items {
-		if items[i].Connected {
-			connectedCount++
-		}
-		if items[i].IsKeyGroup {
-			keyItems = append(keyItems, items[i])
-		}
-	}
-	snap.Items = items
-	snap.ItemCount = len(items)
-	snap.ConnectedCount = connectedCount
-	snap.Connected = snap.ItemCount > 0 && snap.ConnectedCount == snap.ItemCount
-	if len(keyItems) == 0 {
+func applyChannelStatusKeyGroup(snap *ChannelStatusSnapshot, items []ChannelStatusItem) {
+	if snap == nil {
 		return
 	}
-	allUp := true
-	status := keyItems[0].Status
-	for i := range keyItems {
-		if keyItems[i].Connected {
+	for i := range items {
+		if !isChannelStatusKeyGroup(items[i].GroupID, items[i].GroupName, snap.GroupID, snap.GroupName) {
 			continue
 		}
-		allUp = false
-		status = keyItems[i].Status
-		break
+		connected := items[i].Connected
+		snap.Connected = &connected
+		snap.Status = items[i].Status
+		return
 	}
-	snap.KeyGroupConnected = &allUp
-	snap.KeyGroupStatus = status
 }
 
-func markChannelStatusKeyGroup(items []ChannelStatusItem, keyGroupID *int64, keyGroupName string) {
+func aggregateChannelStatusByGroup(items []ChannelStatusItem) []ChannelStatusItem {
+	if len(items) == 0 {
+		return items
+	}
+	type acc struct {
+		item ChannelStatusItem
+	}
+	order := make([]string, 0, len(items))
+	byKey := make(map[string]*acc, len(items))
+	for i := range items {
+		key := channelStatusItemKey(items[i])
+		existing, ok := byKey[key]
+		if !ok {
+			cp := items[i]
+			byKey[key] = &acc{item: cp}
+			order = append(order, key)
+			continue
+		}
+		if existing.item.Connected && !items[i].Connected {
+			existing.item.Connected = false
+			existing.item.Status = items[i].Status
+		}
+	}
+	out := make([]ChannelStatusItem, 0, len(order))
+	for _, key := range order {
+		out = append(out, byKey[key].item)
+	}
+	return out
+}
+
+func channelStatusItemKey(item ChannelStatusItem) string {
+	if item.GroupID != nil {
+		return "id:" + strconv.FormatInt(*item.GroupID, 10)
+	}
+	return "name:" + item.GroupName
+}
+
+func resolveChannelStatusGroupID(groupName string, byName map[string]Group, keyGroupID *int64, keyGroupName string) (int64, bool) {
+	if group, ok := byName[groupName]; ok {
+		return group.ID, true
+	}
+	if keyGroupName != "" && groupName == keyGroupName && keyGroupID != nil {
+		return *keyGroupID, true
+	}
+	return 0, false
+}
+
+func isChannelStatusKeyGroup(groupID *int64, groupName string, keyGroupID *int64, keyGroupName string) bool {
 	if keyGroupID == nil && keyGroupName == "" {
-		return
+		return false
 	}
-	for i := range items {
-		if keyGroupID != nil && items[i].GroupID != nil && *items[i].GroupID == *keyGroupID {
-			items[i].IsKeyGroup = true
-			continue
-		}
-		if keyGroupName != "" && items[i].GroupName == keyGroupName {
-			items[i].IsKeyGroup = true
-		}
+	if keyGroupID != nil && groupID != nil && *groupID == *keyGroupID {
+		return true
 	}
+	return keyGroupName != "" && groupName == keyGroupName
 }
 
 func channelStatusV1Connected(status, errorCategory string) bool {

@@ -64,21 +64,22 @@ func newChannelStatusTestService() *ChannelStatusService {
 	return &ChannelStatusService{now: func() time.Time { return fixed }}
 }
 
-func TestChannelStatusServiceDisabledReturnsEmpty(t *testing.T) {
+func TestChannelStatusServiceDisabledReturnsUnknown(t *testing.T) {
 	svc := newChannelStatusTestService()
 	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: false, Mode: ChannelMonitorModeV1}}
 	id := int64(12)
-	snap, err := svc.Get(context.Background(), 1, &id, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "plus"})
 	require.NoError(t, err)
-	require.Equal(t, "off", snap.Mode)
-	require.False(t, snap.Connected)
+	require.Equal(t, 2, snap.SchemaVersion)
+	require.Nil(t, snap.Connected)
+	require.Equal(t, ChannelStatusStatusUnknown, snap.Status)
 	require.Empty(t, snap.Items)
-	require.Equal(t, id, *snap.KeyGroupID)
-	require.Equal(t, "plus", snap.KeyGroupName)
-	require.Nil(t, snap.KeyGroupConnected)
+	require.Equal(t, id, *snap.GroupID)
+	require.Equal(t, "plus", snap.GroupName)
+	requireChannelStatusJSONOmitsItems(t, snap)
 }
 
-func TestChannelStatusServiceV1FiltersAndMarksKeyGroup(t *testing.T) {
+func TestChannelStatusServiceDefaultReturnsOnlyKeyGroup(t *testing.T) {
 	plusID := int64(12)
 	proID := int64(13)
 	svc := newChannelStatusTestService()
@@ -94,24 +95,47 @@ func TestChannelStatusServiceV1FiltersAndMarksKeyGroup(t *testing.T) {
 		{Name: "No group", GroupName: "", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational},
 	}}
 
-	snap, err := svc.Get(context.Background(), 7, &plusID, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 7, KeyGroupID: &plusID, KeyGroupName: "plus"})
 	require.NoError(t, err)
-	require.Equal(t, ChannelMonitorModeV1, snap.Mode)
-	require.False(t, snap.Connected)
-	require.Equal(t, 2, snap.ItemCount)
-	require.Equal(t, 1, snap.ConnectedCount)
-	require.True(t, snap.Items[0].IsKeyGroup)
+	require.NotNil(t, snap.Connected)
+	require.True(t, *snap.Connected)
+	require.Equal(t, MonitorStatusOperational, snap.Status)
+	require.Equal(t, plusID, *snap.GroupID)
+	require.Empty(t, snap.Items)
+	requireChannelStatusJSONOmitsItems(t, snap)
+	requireChannelStatusJSONRedacted(t, snap)
+}
+
+func TestChannelStatusServiceVisibleIncludesOtherGroups(t *testing.T) {
+	plusID := int64(12)
+	proID := int64(13)
+	svc := newChannelStatusTestService()
+	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}}
+	svc.groups = stubChannelStatusGroups{groups: []Group{
+		{ID: plusID, Name: "plus"},
+		{ID: proID, Name: "pro"},
+	}}
+	svc.v1 = stubChannelStatusV1{views: []*UserMonitorView{
+		{Name: "Plus probe", GroupName: "plus", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational},
+		{Name: "Pro probe", GroupName: "pro", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusFailed},
+		{Name: "Hidden", GroupName: "admin-only", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational},
+	}}
+
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{
+		UserID: 7, KeyGroupID: &plusID, KeyGroupName: "plus", IncludeVisible: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, snap.Connected)
+	require.True(t, *snap.Connected)
+	require.Equal(t, MonitorStatusOperational, snap.Status)
+	require.Len(t, snap.Items, 2)
+	require.Equal(t, "plus", snap.Items[0].GroupName)
 	require.True(t, snap.Items[0].Connected)
-	require.Equal(t, plusID, *snap.Items[0].GroupID)
-	require.False(t, snap.Items[1].IsKeyGroup)
+	require.Equal(t, "pro", snap.Items[1].GroupName)
 	require.False(t, snap.Items[1].Connected)
-	require.NotNil(t, snap.KeyGroupConnected)
-	require.True(t, *snap.KeyGroupConnected)
-	require.Equal(t, MonitorStatusOperational, snap.KeyGroupStatus)
 	for _, item := range snap.Items {
 		require.NotEqual(t, "admin-only", item.GroupName)
 	}
-	requireChannelStatusJSONRedacted(t, snap)
 }
 
 func TestChannelStatusServiceV1RateOrCapacityNotConnected(t *testing.T) {
@@ -123,11 +147,11 @@ func TestChannelStatusServiceV1RateOrCapacityNotConnected(t *testing.T) {
 		PrimaryStatus: MonitorStatusOperational, PrimaryErrorCategory: MonitorErrorCategoryRateOrCapacity,
 	}}}
 	id := int64(1)
-	snap, err := svc.Get(context.Background(), 1, &id, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "plus"})
 	require.NoError(t, err)
-	require.False(t, snap.Items[0].Connected)
-	require.NotNil(t, snap.KeyGroupConnected)
-	require.False(t, *snap.KeyGroupConnected)
+	require.NotNil(t, snap.Connected)
+	require.False(t, *snap.Connected)
+	require.Equal(t, MonitorStatusOperational, snap.Status)
 }
 
 func TestChannelStatusServiceV2MatrixAndWarningConnected(t *testing.T) {
@@ -146,41 +170,37 @@ func TestChannelStatusServiceV2MatrixAndWarningConnected(t *testing.T) {
 	}}}
 	svc.v2 = v2
 
-	snap, err := svc.Get(context.Background(), 7, &plusID, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 7, KeyGroupID: &plusID, KeyGroupName: "plus"})
 	require.NoError(t, err)
-	require.Equal(t, ChannelMonitorModeV2, snap.Mode)
-	require.Equal(t, 2, snap.ItemCount)
-	require.True(t, snap.Items[0].Connected)
-	require.True(t, snap.Items[0].IsKeyGroup)
-	require.False(t, snap.Items[1].Connected)
-	require.NotNil(t, snap.KeyGroupConnected)
-	require.True(t, *snap.KeyGroupConnected)
-	require.Equal(t, "warning", snap.KeyGroupStatus)
+	require.NotNil(t, snap.Connected)
+	require.True(t, *snap.Connected)
+	require.Equal(t, "warning", snap.Status)
+	require.Empty(t, snap.Items)
 	require.Equal(t, channelStatusV2Range, v2.lastRange)
 	require.True(t, v2.lastFilter.RestrictGroups)
-	require.Equal(t, []int64{plusID, proID}, v2.lastFilter.AllowedGroupIDs)
+	require.Equal(t, []int64{plusID}, v2.lastFilter.AllowedGroupIDs)
 	require.Equal(t, ChannelMonitorV2GroupByPlatformGroup, v2.lastGroupBy)
 	require.False(t, v2.lastAdmin)
 	requireChannelStatusJSONRedacted(t, snap)
 }
 
-func TestChannelStatusServiceUnboundKeyLeavesKeyGroupNull(t *testing.T) {
+func TestChannelStatusServiceUnboundKeyStaysUnknown(t *testing.T) {
 	svc := newChannelStatusTestService()
 	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}}
 	svc.groups = stubChannelStatusGroups{groups: []Group{{ID: 12, Name: "plus"}}}
 	svc.v1 = stubChannelStatusV1{views: []*UserMonitorView{{
 		Name: "Plus", GroupName: "plus", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational,
 	}}}
-	snap, err := svc.Get(context.Background(), 1, nil, "")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1})
 	require.NoError(t, err)
-	require.Nil(t, snap.KeyGroupID)
-	require.Empty(t, snap.KeyGroupName)
-	require.Nil(t, snap.KeyGroupConnected)
-	require.False(t, snap.Items[0].IsKeyGroup)
-	require.True(t, snap.Connected)
+	require.Nil(t, snap.GroupID)
+	require.Empty(t, snap.GroupName)
+	require.Nil(t, snap.Connected)
+	require.Equal(t, ChannelStatusStatusUnknown, snap.Status)
+	require.Empty(t, snap.Items)
 }
 
-func TestChannelStatusServiceMissingKeyGroupMonitorLeavesConnectedNull(t *testing.T) {
+func TestChannelStatusServiceMissingKeyGroupMonitorLeavesUnknown(t *testing.T) {
 	id := int64(99)
 	svc := newChannelStatusTestService()
 	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}}
@@ -188,12 +208,27 @@ func TestChannelStatusServiceMissingKeyGroupMonitorLeavesConnectedNull(t *testin
 	svc.v1 = stubChannelStatusV1{views: []*UserMonitorView{{
 		Name: "Plus", GroupName: "plus", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational,
 	}}}
-	snap, err := svc.Get(context.Background(), 1, &id, "codex")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "codex"})
 	require.NoError(t, err)
-	require.Equal(t, id, *snap.KeyGroupID)
-	require.Equal(t, "codex", snap.KeyGroupName)
-	require.Nil(t, snap.KeyGroupConnected)
-	require.False(t, snap.Items[0].IsKeyGroup)
+	require.Equal(t, id, *snap.GroupID)
+	require.Equal(t, "codex", snap.GroupName)
+	require.Nil(t, snap.Connected)
+	require.Equal(t, ChannelStatusStatusUnknown, snap.Status)
+}
+
+func TestChannelStatusServiceKeyGroupOutsideAvailableStillResolved(t *testing.T) {
+	id := int64(40)
+	svc := newChannelStatusTestService()
+	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}}
+	svc.groups = stubChannelStatusGroups{groups: []Group{{ID: 12, Name: "plus"}}}
+	svc.v1 = stubChannelStatusV1{views: []*UserMonitorView{{
+		Name: "Luna", GroupName: "luna", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusDegraded,
+	}}}
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "luna"})
+	require.NoError(t, err)
+	require.NotNil(t, snap.Connected)
+	require.False(t, *snap.Connected)
+	require.Equal(t, MonitorStatusDegraded, snap.Status)
 }
 
 func TestChannelStatusServiceV1MultipleMonitorsSameKeyGroup(t *testing.T) {
@@ -205,39 +240,48 @@ func TestChannelStatusServiceV1MultipleMonitorsSameKeyGroup(t *testing.T) {
 		{Name: "Plus a", GroupName: "plus", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusOperational},
 		{Name: "Plus b", GroupName: "plus", Provider: MonitorProviderOpenAI, PrimaryStatus: MonitorStatusFailed},
 	}}
-	snap, err := svc.Get(context.Background(), 1, &plusID, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{
+		UserID: 1, KeyGroupID: &plusID, KeyGroupName: "plus", IncludeVisible: true,
+	})
 	require.NoError(t, err)
-	require.Equal(t, 2, snap.ItemCount)
-	require.True(t, snap.Items[0].IsKeyGroup)
-	require.True(t, snap.Items[1].IsKeyGroup)
-	require.NotNil(t, snap.KeyGroupConnected)
-	require.False(t, *snap.KeyGroupConnected)
-	require.Equal(t, MonitorStatusFailed, snap.KeyGroupStatus)
+	require.NotNil(t, snap.Connected)
+	require.False(t, *snap.Connected)
+	require.Equal(t, MonitorStatusFailed, snap.Status)
+	require.Len(t, snap.Items, 1)
+	require.False(t, snap.Items[0].Connected)
+	require.Equal(t, MonitorStatusFailed, snap.Items[0].Status)
 }
 
-func TestChannelStatusServiceV2DisabledConfigReturnsEmpty(t *testing.T) {
+func TestChannelStatusServiceV2DisabledConfigReturnsUnknown(t *testing.T) {
 	id := int64(12)
 	svc := newChannelStatusTestService()
 	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}}
 	svc.groups = stubChannelStatusGroups{groups: []Group{{ID: id, Name: "plus"}}}
 	svc.v2 = &stubChannelStatusV2{err: ErrChannelMonitorDisabled}
-	snap, err := svc.Get(context.Background(), 1, &id, "plus")
+	snap, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "plus"})
 	require.NoError(t, err)
-	require.Equal(t, ChannelMonitorModeV2, snap.Mode)
-	require.False(t, snap.Connected)
+	require.Nil(t, snap.Connected)
+	require.Equal(t, ChannelStatusStatusUnknown, snap.Status)
 	require.Empty(t, snap.Items)
-	require.Equal(t, id, *snap.KeyGroupID)
-	require.Equal(t, "plus", snap.KeyGroupName)
-	require.Nil(t, snap.KeyGroupConnected)
+	require.Equal(t, id, *snap.GroupID)
 }
 
 func TestChannelStatusServiceV2MatrixErrorPropagates(t *testing.T) {
+	id := int64(1)
 	svc := newChannelStatusTestService()
 	svc.settings = stubChannelStatusSettings{runtime: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}}
 	svc.groups = stubChannelStatusGroups{groups: []Group{{ID: 1, Name: "plus"}}}
 	svc.v2 = &stubChannelStatusV2{err: errors.New("db down")}
-	_, err := svc.Get(context.Background(), 1, nil, "")
+	_, err := svc.Get(context.Background(), ChannelStatusQuery{UserID: 1, KeyGroupID: &id, KeyGroupName: "plus"})
 	require.EqualError(t, err, "db down")
+}
+
+func requireChannelStatusJSONOmitsItems(t *testing.T, snap *ChannelStatusSnapshot) {
+	t.Helper()
+	raw, err := json.Marshal(snap)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"items"`)
+	require.Contains(t, string(raw), `"schema_version":2`)
 }
 
 func requireChannelStatusJSONRedacted(t *testing.T, snap *ChannelStatusSnapshot) {

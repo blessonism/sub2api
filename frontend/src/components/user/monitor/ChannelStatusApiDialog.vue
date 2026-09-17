@@ -7,6 +7,7 @@
         <h3 class="font-semibold text-gray-900 dark:text-white">{{ t('common.channelStatusApi.requestTitle') }}</h3>
         <div class="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs leading-6 text-gray-100">
           <code>GET /v1/sub2api/channel-status</code>
+          <div class="text-gray-400">GET /v1/sub2api/channel-status?scope=visible</div>
         </div>
       </section>
 
@@ -38,9 +39,9 @@
       <section>
         <h3 class="font-semibold text-gray-900 dark:text-white">{{ t('common.channelStatusApi.responseTitle') }}</h3>
         <ul class="mt-2 list-disc space-y-1 pl-5">
-          <li>{{ t('common.channelStatusApi.responseItems') }}</li>
           <li>{{ t('common.channelStatusApi.responseConnected') }}</li>
-          <li>{{ t('common.channelStatusApi.responseKeyGroup') }}</li>
+          <li>{{ t('common.channelStatusApi.responseStatus') }}</li>
+          <li>{{ t('common.channelStatusApi.responseVisible') }}</li>
         </ul>
       </section>
 
