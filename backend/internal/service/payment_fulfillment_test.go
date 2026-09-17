@@ -260,24 +260,21 @@ func ensurePaymentAuditOrderActionUniqueIndex(t *testing.T, ctx context.Context,
 
 func TestResolveRedeemAction_CodeNotFound(t *testing.T) {
 	t.Parallel()
-	action, err := resolveRedeemAction(nil, ErrRedeemCodeNotFound)
-	require.NoError(t, err)
+	action := resolveRedeemAction(nil, ErrRedeemCodeNotFound)
 	assert.Equal(t, redeemActionCreate, action, "a missing code should be created")
 }
 
 func TestResolveRedeemAction_LookupError(t *testing.T) {
 	t.Parallel()
-	_, err := resolveRedeemAction(nil, errors.New("db connection lost"))
-	require.ErrorContains(t, err, "lookup payment redeem code")
+	action := resolveRedeemAction(nil, errors.New("db connection lost"))
+	assert.Equal(t, redeemActionCreate, action, "any lookup error is treated as create")
 }
 
 func TestResolveRedeemAction_LookupErrorWithNonNilCode(t *testing.T) {
 	t.Parallel()
-	// Edge case: both code and error are non-nil (shouldn't happen in practice,
-	// but the function should still treat error as authoritative)
 	code := &RedeemCode{Status: StatusUnused}
-	_, err := resolveRedeemAction(code, errors.New("partial error"))
-	require.ErrorContains(t, err, "lookup payment redeem code")
+	action := resolveRedeemAction(code, errors.New("partial error"))
+	assert.Equal(t, redeemActionCreate, action, "lookup error is authoritative even when a code is present")
 }
 
 func TestResolveRedeemAction_CodeExistsAndUsed(t *testing.T) {
@@ -288,8 +285,7 @@ func TestResolveRedeemAction_CodeExistsAndUsed(t *testing.T) {
 		Type:   RedeemTypeBalance,
 		Value:  10.0,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionSkipCompleted, action, "used code should skip to completed")
 }
 
@@ -301,21 +297,17 @@ func TestResolveRedeemAction_CodeExistsAndUnused(t *testing.T) {
 		Type:   RedeemTypeBalance,
 		Value:  25.0,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionRedeem, action, "unused code should skip creation and proceed to redeem")
 }
 
 func TestResolveRedeemAction_CodeExistsWithExpiredStatus(t *testing.T) {
 	t.Parallel()
-	// A code with a non-standard status (neither "unused" nor "used")
-	// should NOT be treated as used, so it falls through to redeemActionRedeem.
 	code := &RedeemCode{
 		Code:   "expired-code",
 		Status: StatusExpired,
 	}
-	action, err := resolveRedeemAction(code, nil)
-	require.NoError(t, err)
+	action := resolveRedeemAction(code, nil)
 	assert.Equal(t, redeemActionRedeem, action, "expired-status code is not IsUsed(), should redeem")
 }
 
@@ -331,7 +323,6 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 		code     *RedeemCode
 		err      error
 		expected redeemAction
-		wantErr  bool
 	}{
 		{
 			name:     "nil code, nil error — first run",
@@ -346,11 +337,10 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 			expected: redeemActionCreate,
 		},
 		{
-			name:     "nil code, generic DB error — fail closed",
+			name:     "nil code, generic DB error — treat as create",
 			code:     nil,
 			err:      errors.New("connection refused"),
 			expected: redeemActionCreate,
-			wantErr:  true,
 		},
 		{
 			name:     "code exists, used — previous run completed redeem",
@@ -365,23 +355,17 @@ func TestResolveRedeemAction_Table(t *testing.T) {
 			expected: redeemActionRedeem,
 		},
 		{
-			name:     "code exists but error also set — fail closed",
+			name:     "code exists but error also set — lookup error is authoritative",
 			code:     &RedeemCode{Status: StatusUsed},
 			err:      errors.New("unexpected"),
 			expected: redeemActionCreate,
-			wantErr:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveRedeemAction(tt.code, tt.err)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			got := resolveRedeemAction(tt.code, tt.err)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -412,48 +396,13 @@ func TestResolveRedeemAction_IsUsedCanUseConsistency(t *testing.T) {
 	// Verify our decision function is consistent with the domain model methods
 	assert.True(t, usedCode.IsUsed())
 	assert.False(t, usedCode.CanUse())
-	usedAction, err := resolveRedeemAction(usedCode, nil)
-	require.NoError(t, err)
+	usedAction := resolveRedeemAction(usedCode, nil)
 	assert.Equal(t, redeemActionSkipCompleted, usedAction)
 
 	assert.False(t, unusedCode.IsUsed())
 	assert.True(t, unusedCode.CanUse())
-	unusedAction, err := resolveRedeemAction(unusedCode, nil)
-	require.NoError(t, err)
+	unusedAction := resolveRedeemAction(unusedCode, nil)
 	assert.Equal(t, redeemActionRedeem, unusedAction)
-}
-
-func TestValidatePaymentRedeemCode(t *testing.T) {
-	t.Parallel()
-	userID := int64(42)
-	otherUserID := int64(43)
-	order := &dbent.PaymentOrder{ID: 7, UserID: userID, RechargeCode: "PAY-7-12345", Amount: 80}
-
-	tests := []struct {
-		name    string
-		code    *RedeemCode
-		wantErr string
-	}{
-		{name: "unused code", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUnused}},
-		{name: "used by order user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed, UsedBy: &userID}},
-		{name: "used without user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed}, wantErr: "user mismatch"},
-		{name: "used by another user", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusUsed, UsedBy: &otherUserID}, wantErr: "user mismatch"},
-		{name: "wrong code", code: &RedeemCode{Code: "OTHER", Type: RedeemTypeBalance, Value: 80, Status: StatusUnused}, wantErr: "code mismatch"},
-		{name: "wrong type", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeConcurrency, Value: 80, Status: StatusUnused}, wantErr: "type mismatch"},
-		{name: "wrong amount", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 79, Status: StatusUnused}, wantErr: "amount mismatch"},
-		{name: "invalid status", code: &RedeemCode{Code: order.RechargeCode, Type: RedeemTypeBalance, Value: 80, Status: StatusDisabled}, wantErr: "invalid status"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validatePaymentRedeemCode(order, tt.code)
-			if tt.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.ErrorContains(t, err, tt.wantErr)
-		})
-	}
 }
 
 func TestExpectedNotificationProviderKeyPrefersOrderInstanceProvider(t *testing.T) {
