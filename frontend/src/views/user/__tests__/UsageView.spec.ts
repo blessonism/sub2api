@@ -1186,6 +1186,14 @@ describe('user UsageView', () => {
     getAvailable.mockResolvedValue([{ id: 1, name: 'default' }])
   })
 
+  it('keeps usage details in a page-scroll layout instead of TablePageLayout', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    expect(wrapper.find('.space-y-6').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'TablePageLayout' }).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
     mountUsageView()
     await flushPromises()

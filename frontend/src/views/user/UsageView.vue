@@ -1,7 +1,6 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
-      <template #actions>
+    <div class="space-y-6">
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total Requests -->
           <div class="card p-4">
@@ -102,9 +101,7 @@
           </div>
         </div>
         </div>
-      </template>
 
-      <template #filters>
         <div class="card">
           <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
@@ -269,9 +266,7 @@
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
-      </template>
 
-      <template #table>
         <!-- Tab 切换栏 -->
         <div v-if="errorViewEnabled" class="mb-0 flex gap-2 border-b border-gray-200 px-4 pt-3 dark:border-dark-700">
           <button class="tab" :class="{ 'tab-active': activeTab === 'usage' }" @click="activeTab = 'usage'">
@@ -282,10 +277,8 @@
           </button>
         </div>
 
-        <!-- 用量明细表 -->
-        <!-- flex 链让 DataTable 根 .table-wrapper(flex:1)拿到有界高度以启用内部滚动。
-             虚拟化器测高 race 导致的概率空白,已在 DataTable 内用「就绪门控 + initialRect 兜底」根治。 -->
-        <div v-show="activeTab === 'usage'" class="flex min-h-0 flex-1 flex-col">
+        <!-- 用量明细表：与上游一致，整页滚动，避免图表把明细高度挤没 -->
+        <div v-show="activeTab === 'usage'" class="card overflow-hidden">
           <DataTable
           :columns="columns"
           :data="usageLogs"
@@ -308,7 +301,7 @@
           </template>
 
           <template #cell-reasoning_effort="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">
+            <span data-testid="reasoning-effort-cell" class="text-sm text-gray-900 dark:text-white">
               {{ formatReasoningEffort(row.reasoning_effort) }}
             </span>
           </template>
@@ -490,7 +483,7 @@
         </div>
 
         <!-- 错误请求表 -->
-        <div v-if="errorViewEnabled" v-show="activeTab === 'errors'" class="flex min-h-0 flex-1 flex-col">
+        <div v-if="errorViewEnabled" v-show="activeTab === 'errors'" class="card overflow-hidden">
           <UserErrorRequestsTable
             :rows="errorRows"
             :total="errorTotal"
@@ -503,9 +496,7 @@
             @update:pageSize="onErrorPageSize"
           />
         </div>
-      </template>
 
-      <template #pagination>
         <Pagination
           v-if="pagination.total > 0 && activeTab === 'usage'"
           :page="pagination.page"
@@ -514,8 +505,7 @@
           @update:page="handlePageChange"
           @update:pageSize="handlePageSizeChange"
         />
-      </template>
-    </TablePageLayout>
+    </div>
   </AppLayout>
 
   <BaseDialog
@@ -967,7 +957,6 @@ import type {
 } from '@/api/admin/usage'
 import { usersAPI } from '@/api/admin/users'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
