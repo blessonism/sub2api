@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GroupRateMultipliersModal from '../GroupRateMultipliersModal.vue'
@@ -204,6 +204,59 @@ describe('GroupRateMultipliersModal', () => {
 
     expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
       { user_id: 1, rate_multiplier: 0.75 }
+    ])
+  })
+})
+
+describe('GroupRateMultipliersModal new override validation', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    apiMocks.getGroupRateMultipliers.mockResolvedValue([])
+    apiMocks.batchSetGroupRateMultipliers.mockResolvedValue({ message: 'ok' })
+    apiMocks.listUsers.mockResolvedValue({
+      items: [{ id: 7, username: '', email: 'user@example.com', status: 'active' }],
+      total: 1, page: 1, page_size: 10, pages: 1
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const selectSearchedUser = async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountModal()
+    const searchInput = wrapper.get('input[type="text"]')
+    await searchInput.setValue('user@example.com')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    const option = wrapper.findAll('button').find(button => button.text().includes('user@example.com'))
+    expect(option).toBeTruthy()
+    await option!.trigger('click')
+    return wrapper
+  }
+
+  it.each(['', '0', '-1'])('does not add invalid rate %j', async (value) => {
+    const wrapper = await selectSearchedUser()
+    const input = wrapper.get('input[placeholder="1.00"]')
+    await input.setValue('100')
+    await input.setValue(value)
+    const add = wrapper.findAll('button').find(button => button.text() === 'common.add')!
+    expect(add.attributes('disabled')).toBeDefined()
+    await add.trigger('click')
+    expect(wrapper.find('tbody tr').exists()).toBe(false)
+    expect(apiMocks.batchSetGroupRateMultipliers).not.toHaveBeenCalled()
+  })
+
+  it.each([0.25, 1])('saves positive rate %s', async (value) => {
+    const wrapper = await selectSearchedUser()
+    await wrapper.get('input[placeholder="1.00"]').setValue(String(value))
+    await wrapper.findAll('button').find(button => button.text() === 'common.add')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'common.save')!.trigger('click')
+    await flushPromises()
+    expect(apiMocks.batchSetGroupRateMultipliers).toHaveBeenCalledWith(10, [
+      { user_id: 7, rate_multiplier: value }
     ])
   })
 })

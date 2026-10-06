@@ -127,3 +127,34 @@ describe('UserAllowedGroupsModal account bindings', () => {
     expect(apiMocks.updateUser).not.toHaveBeenCalled()
   })
 })
+
+describe('UserAllowedGroupsModal load readiness', () => {
+  it('cannot save an empty configuration while groups are loading', async () => {
+    let resolveGroups!: (value: unknown) => void
+    apiMocks.listGroups.mockReturnValueOnce(
+      new Promise((resolve) => { resolveGroups = resolve }) as ReturnType<typeof apiMocks.listGroups>
+    )
+    const wrapper = mount(UserAllowedGroupsModal, { props: { show: false, user } })
+    await wrapper.setProps({ show: true })
+    const save = wrapper.get('button.btn-primary')
+    expect(save.attributes('disabled')).toBeDefined()
+    await save.trigger('click')
+    expect(apiMocks.updateUser).not.toHaveBeenCalled()
+    resolveGroups({ items: [group], total: 1, page: 1, page_size: 1000, pages: 1 })
+    await flushPromises()
+    expect(save.attributes('disabled')).toBeUndefined()
+  })
+
+  it('cannot save after loading fails', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apiMocks.listGroups.mockRejectedValueOnce(new Error('Offline'))
+    const wrapper = mount(UserAllowedGroupsModal, { props: { show: false, user } })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const save = wrapper.get('button.btn-primary')
+    expect(save.attributes('disabled')).toBeDefined()
+    await save.trigger('click')
+    expect(apiMocks.updateUser).not.toHaveBeenCalled()
+    consoleSpy.mockRestore()
+  })
+})

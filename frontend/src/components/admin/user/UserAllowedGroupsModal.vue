@@ -253,7 +253,7 @@
     <template #footer>
       <div class="flex justify-end gap-3">
         <button @click="$emit('close')" class="btn btn-secondary px-5">{{ t('common.cancel') }}</button>
-        <button @click="handleSave" :disabled="submitting" class="btn btn-primary px-6">
+        <button @click="handleSave" :disabled="submitting || !loaded" class="btn btn-primary px-6">
           <svg v-if="submitting" class="-ml-1 mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -303,6 +303,7 @@ const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属
 const originalVisibleGroupRates = ref<Record<number, number>>({})
 const restrictPublicGroups = ref(false)
 const loading = ref(false)
+const loaded = ref(false)
 const submitting = ref(false)
 
 // 分离专属分组和公开分组
@@ -322,6 +323,7 @@ watch(
 )
 
 const load = async () => {
+  loaded.value = false
   loading.value = true
   try {
     const [res, userDetail] = await Promise.all([
@@ -363,6 +365,7 @@ const load = async () => {
         accountsLoaded: false,
       }
     })
+    loaded.value = true
 
     await Promise.all(publicGroupConfigs.value.filter((config) => config.bindingEnabled).map(loadGroupAccounts))
   } catch (error) {
@@ -458,7 +461,7 @@ const updateVisibleRate = (groupId: number, value: string) => {
 }
 
 const handleSave = async () => {
-  if (!props.user) return
+  if (!props.user || !loaded.value) return
 
   const invalidBinding = publicGroupConfigs.value.find((config) => config.bindingEnabled && config.bindingAccountIds.length === 0)
   if (invalidBinding) {

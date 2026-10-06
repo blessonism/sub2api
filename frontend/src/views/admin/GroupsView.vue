@@ -889,6 +889,12 @@
                 />
                 <span class="min-w-0 flex-1 break-all text-sm text-gray-700 dark:text-gray-300">
                   {{ item.id }}
+                  <span
+                    v-if="item.id.includes('*')"
+                    class="ml-1 rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+                  >
+                    {{ t("admin.groups.modelAllowlist.wildcardTag") }}
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -2745,6 +2751,12 @@
                 />
                 <span class="min-w-0 flex-1 break-all text-sm text-gray-700 dark:text-gray-300">
                   {{ item.id }}
+                  <span
+                    v-if="item.id.includes('*')"
+                    class="ml-1 rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+                  >
+                    {{ t("admin.groups.modelAllowlist.wildcardTag") }}
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -3384,6 +3396,16 @@
             </div>
           </div>
         </div>
+
+        <!-- 固定账号获取 Codex Model Manifest（仅 openai 平台，仅编辑对话框） -->
+        <CodexManifestAccountsField
+          v-if="editForm.platform === 'openai' && editingGroup"
+          ref="editCodexManifestRef"
+          :group-id="editingGroup.id"
+          :model-value="editCodexManifestConfig"
+          @update:model-value="Object.assign(editCodexManifestConfig, $event)"
+          :account-names="editCodexManifestAccountNames"
+        />
 
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
@@ -4704,6 +4726,7 @@ import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import type {
   AdminGroup,
+  CodexModelsManifestConfig,
   CompositeModelRoute,
   CompositeModelRouteInput,
   CompositeRouteDecision,
@@ -4731,6 +4754,7 @@ import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupTimeRateStrategyModal from "@/components/admin/group/GroupTimeRateStrategyModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
@@ -4739,9 +4763,11 @@ import {
   apiIntervalsToForm,
   createDefaultTimePricingForm,
   formIntervalsToAPI,
+  formReasoningEffortMultipliersToAPI,
   mTokToPerToken,
   perTokenToMTok,
   toNullableNumber,
+  validateReasoningEffortMultipliers,
 } from "@/components/admin/channel/types";
 import type { ChannelModelPricing } from "@/api/admin/channels";
 import { VueDraggable } from "vue-draggable-plus";
@@ -4815,6 +4841,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   cache_write_price: null,
   cache_write_1h_price: null,
   cache_read_price: null,
+  reasoning_effort_multipliers: null,
   image_input_price: null,
   image_output_price: null,
   per_request_price: null,
@@ -4836,6 +4863,9 @@ const groupPricingFromAPI = (
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
+    reasoning_effort_multipliers: entry.reasoning_effort_multipliers
+      ? { ...entry.reasoning_effort_multipliers }
+      : null,
     image_input_price: perTokenToMTok(entry.image_input_price),
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
@@ -4858,6 +4888,9 @@ const groupPricingToAPI = (
       cache_write_price: mTokToPerToken(entry.cache_write_price),
       cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
+      reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(
+        entry.reasoning_effort_multipliers,
+      ),
       image_input_price: mTokToPerToken(entry.image_input_price),
       image_output_price: mTokToPerToken(entry.image_output_price),
       per_request_price: toNullableNumber(entry.per_request_price),
@@ -5372,6 +5405,20 @@ const createModelsListSelectedCount = computed(
 const editModelsListSelectedCount = computed(
   () => editModelsListState.items.filter((item) => item.selected).length,
 );
+
+// 固定账号获取 Codex Model Manifest（仅 openai 分组编辑对话框）
+type CodexManifestAccountsFieldExpose = {
+  validate: () => boolean;
+  resetValidation: () => void;
+};
+const editCodexManifestRef = ref<CodexManifestAccountsFieldExpose | null>(null);
+const createCodexManifestDefaults = (): CodexModelsManifestConfig => ({
+  enabled: false,
+  account_ids: [],
+  fallback_to_scheduler: false,
+});
+const editCodexManifestConfig = ref<CodexModelsManifestConfig>(createCodexManifestDefaults());
+const editCodexManifestAccountNames = ref<Record<number, string>>({});
 
 const createForm = reactive({
   name: "",
@@ -6312,6 +6359,17 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean => {
+  for (const entry of pricing) {
+    const error = validateReasoningEffortMultipliers(entry.reasoning_effort_multipliers, t);
+    if (error) {
+      appStore.showError(`${entry.models.join(", ") || t("admin.channels.form.unnamed")}: ${error}`);
+      return false;
+    }
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -6325,6 +6383,15 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(createForm)) {
+    return;
+  }
+  if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
+  // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
+  if (
+    createModelsListState.enabled &&
+    createModelsListSelectedCount.value === 0
+  ) {
+    appStore.showError(t("admin.groups.modelAllowlist.emptySelectionError"));
     return;
   }
   submitting.value = true;
@@ -6370,6 +6437,8 @@ const handleCreateGroup = async () => {
         createModelRoutingRules.value,
       ),
       model_allowlist: buildModelsListConfig(createModelsListState),
+      // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
+      codex_models_manifest_config: createCodexManifestDefaults(),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         createForm.platform,
         createForm.supported_model_scopes,
@@ -6556,6 +6625,28 @@ const handleEdit = async (group: AdminGroup) => {
     group.platform,
   );
   resetModelsListState(editModelsListState, group.model_allowlist);
+  // 固定账号 manifest 配置：回显配置并异步解析已存账号名称（失败显示 #<id>）
+  const savedCodexManifestConfig =
+    group.codex_models_manifest_config ?? createCodexManifestDefaults();
+  editCodexManifestConfig.value = {
+    enabled: savedCodexManifestConfig.enabled ?? false,
+    account_ids: [...(savedCodexManifestConfig.account_ids ?? [])],
+    fallback_to_scheduler: savedCodexManifestConfig.fallback_to_scheduler ?? false,
+  };
+  editCodexManifestAccountNames.value = {};
+  for (const id of editCodexManifestConfig.value.account_ids) {
+    adminAPI.accounts
+      .getById(id)
+      .then((account) => {
+        editCodexManifestAccountNames.value = {
+          ...editCodexManifestAccountNames.value,
+          [id]: account.name,
+        };
+      })
+      .catch(() => {
+        // 无法解析名称时由组件回退展示 #<id>，提示管理员清理脏 ID。
+      });
+  }
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
@@ -6603,6 +6694,9 @@ const closeEditModal = () => {
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
   resetModelsListState(editModelsListState);
+  editCodexManifestConfig.value = createCodexManifestDefaults();
+  editCodexManifestAccountNames.value = {};
+  editCodexManifestRef.value?.resetValidation?.();
 };
 
 const handleUpdateGroup = async () => {
@@ -6619,6 +6713,25 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(editForm)) {
+    return;
+  }
+  if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
+  // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
+  if (
+    editModelsListState.enabled &&
+    editModelsListSelectedCount.value === 0
+  ) {
+    appStore.showError(t("admin.groups.modelAllowlist.emptySelectionError"));
+    return;
+  }
+  // 固定账号 manifest：开启后至少一个账号，前端阻止提交并提示。
+  if (
+    editForm.platform === "openai" &&
+    editCodexManifestConfig.value.enabled &&
+    editCodexManifestConfig.value.account_ids.length === 0
+  ) {
+    appStore.showError(t("admin.groups.codexModelsManifest.selectAtLeastOne"));
+    editCodexManifestRef.value?.validate();
     return;
   }
 
@@ -6664,6 +6777,15 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       model_allowlist: buildModelsListConfig(editModelsListState),
+      // 非 openai 平台提交关闭状态，与后端归一化一致
+      codex_models_manifest_config:
+        editForm.platform === "openai"
+          ? {
+              enabled: editCodexManifestConfig.value.enabled,
+              account_ids: [...editCodexManifestConfig.value.account_ids],
+              fallback_to_scheduler: editCodexManifestConfig.value.fallback_to_scheduler,
+            }
+          : createCodexManifestDefaults(),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         editForm.platform,
         editForm.supported_model_scopes,

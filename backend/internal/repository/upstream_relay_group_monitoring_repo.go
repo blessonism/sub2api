@@ -2084,14 +2084,6 @@ func nullableIntFromSQL(v sql.NullInt64) *int {
 	return &out
 }
 
-func nullableInt64Ptr(v sql.NullInt64) *int64 {
-	if !v.Valid {
-		return nil
-	}
-	out := v.Int64
-	return &out
-}
-
 func nullableBoolFromSQL(v sql.NullBool) *bool {
 	if !v.Valid {
 		return nil
