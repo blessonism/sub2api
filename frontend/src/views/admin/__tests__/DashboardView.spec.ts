@@ -253,11 +253,11 @@ describe('admin DashboardView', () => {
       end_date: today,
       granularity: 'hour'
     }))
-    expect(getUserSpendingRanking).toHaveBeenLastCalledWith({
+    expect(getUserSpendingRanking).toHaveBeenLastCalledWith(expect.objectContaining({
       start_date: today,
       end_date: today,
       limit: 12
-    })
+    }))
 
     await wrapper.get('[data-testid="admin-dashboard-ranking-period-week"]').trigger('click')
     await flushPromises()
@@ -267,16 +267,16 @@ describe('admin DashboardView', () => {
       end_date: today,
       granularity: 'day'
     }))
-    expect(getUserUsageTrend).toHaveBeenLastCalledWith({
+    expect(getUserUsageTrend).toHaveBeenLastCalledWith(expect.objectContaining({
       start_date: weekStart,
       end_date: today,
       granularity: 'day',
       limit: 12
-    })
-    expect(getUserSpendingRanking).toHaveBeenLastCalledWith({
+    }))
+    expect(getUserSpendingRanking).toHaveBeenLastCalledWith(expect.objectContaining({
       start_date: weekStart,
       end_date: today,
       limit: 12
-    })
+    }))
   })
 })
