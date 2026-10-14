@@ -1,10 +1,15 @@
 {
-  "status": "passed_locally",
-  "production_release": "authorized_pending_deployment",
+  "status": "released_and_verified",
+  "production_release": "completed",
   "production": {
-    "image": "sub2api-custom:8fec104efb1f",
+    "image": "sub2api-custom:eb5bff47e499",
+    "image_id": "sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7",
+    "release_sha": "eb5bff47e4990083a0dc785a9690c6169f03c600",
     "health": "healthy",
-    "modified_by_this_task": false
+    "modified_by_this_task": true,
+    "scope": "application container only",
+    "git_push": false,
+    "override_backup": "/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_8fec104efb1f-to-eb5bff47e499-20261014-204820.yml"
   },
   "final_contract": {
     "models": "all valid source-provided model/effort grades; no allowlist or generation exclusion",
@@ -90,7 +95,15 @@
     "lint-radar-bench.txt": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
     "live-radar-bench-replay.json": "5b8f6e6e5892f993a1a47f23c8124d22e2fb87ae175b87bc55108301d3603a81",
     "research/radar-bench-live-source.json": "13c67516724f8ffc5988205897fa72d4b4149f93c8642bdae8c90f12598f35e8",
-    "build-radar-bench.json": "1de1cdd2ad2521cdb7e3e545dfa3d8d89d1ec3efa85d96dafaeb516fcc5c5f0f"
+    "build-radar-bench.json": "1de1cdd2ad2521cdb7e3e545dfa3d8d89d1ec3efa85d96dafaeb516fcc5c5f0f",
+    "release-build-evidence.json": "4310539808bcc0a007081751391e0995c35f69bce8cf4434754564825720bf98",
+    "release-validation.json": "ef9247da44e91b00e66ba25a1381dab9603fb70c0b6087329710a0bf2ee6157c",
+    "production-ui-validation.json": "8c513fca10358362c6eb13c35dd00414a315f08507f6c52b78b3b25aa0a5a758",
+    "server-before.json": "979a81a56eab8b0ea603636acc4e2fce96ff4a8a3b8f61f284c4de04cd2102b5",
+    "server-after.json": "605b2e0ea6d0b351bc1e17f3370c92c88d3ffdda31e6a304b2e54e83735e5a52",
+    "deploy-wrapper.diff": "5cfbe675b5f2b0f82097e2d8ae8b687c88ad1b96df8efcad1b2e6755a82e5fe7",
+    "runtime-dockerfile.diff": "f6420baf06bad8e0f045cf9c4903886224d0c0216a2ce2cea0dc00b272cb6b3e",
+    "deploy.log": "ca129a29429e7a1b2456c0c46134b5368190e875fa617bc267ae745123acc050"
   },
   "superseded_evidence": [
     "regression-before.txt",
@@ -108,5 +121,13 @@
     "build_location": "local workstation",
     "switch_scope": "sub2api application container only",
     "deploy_script_deviation": "fixed local commit and clean git archive snapshot replace origin/custom/main alignment because user requested no push; no remote refs rewritten"
+  },
+  "release_validation": {
+    "evidence": "release-validation.json",
+    "ui_evidence": "production-ui-validation.json",
+    "public_assets": 9,
+    "other_containers_unchanged": 7,
+    "new_migrations": 0,
+    "env_and_compose_unchanged": true
   }
 }

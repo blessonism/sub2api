@@ -1,6 +1,6 @@
 # 智力雷达最新数据源验收
 
-本地实现与最终检查通过，用户已确认提交和生产发布，正在执行。OVH 只读复查仍为 `sub2api-custom:8fec104efb1f`、healthy，`/health` 返回 ok。本任务尚未重启生产应用或改动生产数据。
+本地实现、提交和 OVH 发布均已完成。代码提交 `eb5bff47e499` 已快进本地 custom/main；生产镜像 `sub2api-custom:eb5bff47e499` 为 healthy，`/health` 返回 ok。未推送 Git。
 
 ## 最终行为
 
@@ -46,10 +46,25 @@
 
 早期旧接口回归、回放和 lint 日志仅保留为调查证据（`regression-before.txt`、`unit-after.txt`、`lint-after.txt`、`live-replay.txt`），不是最终实现验收。最终方案已接入新公开入口。
 
-## 拟交付与回滚
+## 已交付与回滚
 
-拟提交 `fix(monitor): 接入最新雷达成绩并动态展示来源模型`，范围为 4 个后端文件、6 个前端实现/测试/文案文件、2 个规范文件和本任务记录。上次部署 journal、归档和其他本地未跟踪工作不混入本次代码提交。
+已提交 `fix(monitor): 接入最新雷达成绩并动态展示来源模型`（`eb5bff47e499`），范围为 4 个后端文件、6 个前端实现/测试/文案文件、2 个规范文件和本任务记录。上次部署 journal、归档和其他本地未跟踪工作不混入本次代码提交。
 
-确认后快进本地 custom/main，本地构建 linux/amd64 镜像并加载 OVH，只切换 sub2api 应用容器，不推送 Git。此次代码未新增数据库迁移，应用会短暂重启；回滚恢复 override 备份并切回健康镜像 `sub2api-custom:8fec104efb1f`。数据库/Redis/反代等维持当前运行实例。
+已快进本地 custom/main，从固定提交的 git archive 干净快照本地构建 linux/amd64 release 镜像并加载 OVH，只切换 sub2api 应用容器，不推送 Git。此次代码未新增数据库迁移，启动日志没有新迁移执行；回滚恢复 override 备份并切回健康镜像 `sub2api-custom:8fec104efb1f`。数据库/Redis/反代等维持当前运行实例。
 
 因用户要求不推送，标准部署脚本的 origin/custom/main 对齐门禁不适用；发布时使用固定本地 commit、干净 git archive 快照和仅切应用的等价检查，记录 wrapper/runtime Dockerfile 差异，禁止伪造远端 refs。OVH 不执行构建。
+
+## 生产最终验收
+
+- 当前镜像：`sub2api-custom:eb5bff47e499`，镜像 ID：`sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7`，本地/加载/运行一致；版本输出为 0.2.16 / eb5bff47e499。
+- Docker health 为 healthy、restart_count=0；公网 health/公开设置正常，未鉴权雷达接口返回 401。
+- 9 个公网 JS/CSS 资源（含 3 个雷达相关资源）的内容及 SHA256 与发布产物一致。
+- 使用现有已登录 Dia 标签页验证实际生产雷达：6.1 Sol、6 Astra、6 Sol/Luna、5.6 Sol/Luna 可见，真实 10 月 14 日判分日可见，覆盖/暂定状态及新评分口径正确。页面本次提示 1/34 档位读取失败；未把请求失败解释为没有成绩，也未据此推算全部有成绩系列数。
+- 其余 7 个容器的 ID/镜像/启动时间/重启计数/健康状态相同；应用环境变量 hash 相同；.env 与主 Compose 的 hash/权限相同。override 仅镜像行变化，权限 0600。
+- 启动日志 fatal/error、旧 efficiency 采集错误、新迁移应用记录均为 0。应用启动早期首次健康连接重置，自动重试成功。
+- override 备份：`/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_8fec104efb1f-to-eb5bff47e499-20261014-204820.yml`。旧镜像保留。
+- 标准部署脚本使用临时固定提交副本；因为用户不推送，用固定 SHA/干净快照替代远端对齐门禁，并明确只执行 `docker compose up -d --no-deps --pull never sub2api`。差异见 deploy-wrapper.diff / runtime-dockerfile.diff。OVH 未执行构建命令。
+
+发布与界面证据见 release-build-evidence.json、release-validation.json、production-ui-validation.json、server-before.json、server-after.json、deploy.log。没有读取或导出浏览器私有凭据。
+
+生产旧镜像和 override 备份保留用于回滚；本次无用的本地临时源码、二进制、构建日志和 wrapper 在 hash 记录后清理。原有未跟踪工作和上次部署 journal 保留，不混入本次代码或归档提交。因 journal 原先已有未提交内容，本次使用 add_session.py --no-commit 追加记录，避免自动提交夹带先前记录。

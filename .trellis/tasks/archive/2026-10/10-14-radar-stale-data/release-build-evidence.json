@@ -1,0 +1,29 @@
+{
+  "status": "passed",
+  "release_sha": "eb5bff47e4990083a0dc785a9690c6169f03c600",
+  "source": "git archive of local custom/main",
+  "image": "sub2api-custom:eb5bff47e499",
+  "image_id": "sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7",
+  "platform": "linux/amd64",
+  "image_size_bytes": 89008837,
+  "binary_sha256": "741df86aea688097850257a2b86f6936329df047b6e9d65dd66db74d5a8dab56",
+  "frontend_build": "passed: check:i18n, vue-tsc -b, vite build",
+  "backend_build": "passed: Go 1.27.2 native Linux AMD64 release cross compilation with embed and trimpath",
+  "runtime_build": "passed: standard final stage with local artifacts and fixed Alpine digest",
+  "runtime_version_probe": "2026-10-14T12:46:45.818Z\tINFO\tstdlog\tSub2API 0.2.16 (commit: eb5bff47e499, built: 2026-10-14T12:43:16Z)\t{\"service\": \"sub2api\", \"env\": \"bootstrap\", \"legacy_stdlog\": true}",
+  "log_evidence": {
+    "frontend-build.log": {
+      "bytes": 55535,
+      "sha256": "5bbf8e05ccc7b8ed4767081377ea090e20200182e22efb77bdddf326c049bb0a"
+    },
+    "backend-build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runtime-build.log": {
+      "bytes": 2253,
+      "sha256": "d274fd32ef7bd69b12f8ebe95f2dd03a5b6ee7d0af21bf2acbe210e88b0fc326"
+    }
+  },
+  "temporary_source_and_logs_removed": true
+}

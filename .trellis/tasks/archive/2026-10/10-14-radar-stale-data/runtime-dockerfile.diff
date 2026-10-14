@@ -1,0 +1,33 @@
+--- deploy/Dockerfile (runtime stage)
++++ temporary/runtime/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM ${ALPINE_IMAGE}
++FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+ 
+ # Labels
+ LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
+@@ -21,14 +21,14 @@
+ WORKDIR /app
+ 
+ # Copy binary and runtime fallback resources from builder
+-COPY --from=backend-builder /app/sub2api /app/sub2api
+-COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
++COPY sub2api /app/sub2api
++COPY --chown=sub2api:sub2api resources /app/resources
+ 
+ # Create data directory
+ RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
+ 
+ # Copy entrypoint script (fixes volume permissions then drops to sub2api)
+-COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
++COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+ RUN chmod +x /app/docker-entrypoint.sh
+ 
+ # Expose port (can be overridden by SERVER_PORT env var)
+@@ -41,3 +41,6 @@
+ # Run the application (entrypoint fixes /app/data ownership then execs as sub2api)
+ ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ CMD ["/app/sub2api"]
++
++LABEL org.opencontainers.image.revision="eb5bff47e4990083a0dc785a9690c6169f03c600"
++LABEL org.opencontainers.image.version="0.2.16"

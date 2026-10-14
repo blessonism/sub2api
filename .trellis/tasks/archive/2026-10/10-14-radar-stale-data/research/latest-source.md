@@ -23,14 +23,14 @@
 - scoring_policy_version: `radar-bench-v2-last3-per-task-equal-weight-150`；展示原站总分，不自行换算为旧 IQ。
 - `coverage` / `required_tasks` / `score_status` 必须随分数展示，provisional 表示任务覆盖尚未完整。
 - summary 的 `history.updated_bucket` 和 `history.points[].at` 是 UTC 日桶，不是采集时间或精确判分时刻。
-- 本任务已在本地接入 binding 与 RadarBench summary，停止旧静态源 runtime 采集；生产仍运行原镜像，待提交和发布确认。
+- 本任务已在本地接入 binding 与 RadarBench summary，停止旧静态源 runtime 采集；生产已发布本次代码镜像 sub2api-custom:eb5bff47e499 并验证实际 UI。
 - 仅提高旧 JSON 上限不足以完成最新来源升级。本地实现与 UI 已使用新评分口径，不拼接旧曲线，也不降级旧 IQ。
 
 ## 检查限制
 
 `/api/intelligence-efficiency-metrics` 从本地与 OVH 均返回 502；旧非 summary 的 `/api/radar-bench-score` 返回 410。正式公开 summary 可用。原站 `/data/radar-bench-last-known.json` entries 为空，不能拿它冒充最新结果。
 
-原始公开响应的摘要、URL 与 SHA256 在 `radar-bench-observations.json`。本站发布状态没有变化。
+原始公开响应的摘要、URL 与 SHA256 在 `radar-bench-observations.json`。早期复核时本站发布状态没有变化；本任务最终已发布，详见 validation.md。
 
 ## 最终动态采集与回放
 

@@ -1,0 +1,75 @@
+{
+  "status": "passed",
+  "release_sha": "eb5bff47e4990083a0dc785a9690c6169f03c600",
+  "image": "sub2api-custom:eb5bff47e499",
+  "image_id": "sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7",
+  "app_health": "healthy",
+  "other_containers_unchanged": 7,
+  "application_environment_unchanged": true,
+  "env_and_compose_unchanged": true,
+  "logs_and_override": {
+    "override_backup": "/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_8fec104efb1f-to-eb5bff47e499-20261014-204820.yml",
+    "override_only_image_changed": true,
+    "fatal_or_error_lines": 0,
+    "legacy_efficiency_errors": 0,
+    "radar_partial_lines": 0,
+    "new_migration_apply_lines": 0
+  },
+  "public_checks": {
+    "/health": {
+      "status": 200
+    },
+    "/api/v1/settings/public": {
+      "status": 200
+    },
+    "/api/v1/channel-monitors/gpt-intelligence": {
+      "status": 401
+    },
+    "/assets/index-BFiQTt9i.js": {
+      "status": 200,
+      "sha256": "83b44d62b222d2e7a66fcf6a702a0dadb9a7f540f157d2dfdcced1b86511bd27",
+      "bytes": 215031
+    },
+    "/assets/vendor-vue-D6NE8qQV.js": {
+      "status": 200,
+      "sha256": "1b9eabd4083b09360b144b54e0604435d880b54ff298f881dff7f6f48811fbb4",
+      "bytes": 116585
+    },
+    "/assets/vendor-i18n-B-VMpT5n.js": {
+      "status": 200,
+      "sha256": "9e034f608f27fd78f53664dd06a7b2d783f77d6d023d2b53db90d016cd6093d1",
+      "bytes": 63323
+    },
+    "/assets/vendor-misc-eqOCIPqB.js": {
+      "status": 200,
+      "sha256": "9b6dde158dc70b761ba2422332d7e1048297ea4f2c4628b2471b694bbac03257",
+      "bytes": 279017
+    },
+    "/assets/vendor-misc-DB0Q8XAf.css": {
+      "status": 200,
+      "sha256": "4b398481a7ce8375af4d9f58f39410c73a0b70726fe513686d3d51c10ad76cb5",
+      "bytes": 3938
+    },
+    "/assets/index-BEXVByrn.css": {
+      "status": 200,
+      "sha256": "8cc60b7bb7aaf2b395d879196b31f747d6b1c811c4a9c66489e2622f4c78ac24",
+      "bytes": 298212
+    },
+    "/assets/ChannelStatusView-C2diQ548.js": {
+      "status": 200,
+      "sha256": "decaa9660e1e139a1d583ae2b0f6c38218b03773cd9c0344fc0e6f637c6c0604",
+      "bytes": 117024
+    },
+    "/assets/index-Df3U_iEy.js": {
+      "status": 200,
+      "sha256": "b6675e2855c254a14748092bb2ce0974a40886fff64d512258d41523b17488d0",
+      "bytes": 513172
+    },
+    "/assets/index-BmuN_GLm.js": {
+      "status": 200,
+      "sha256": "a5a4d5a8d226849d36600a5581fbaccf22c541c98aa25440b5be8f37fc4ef98c",
+      "bytes": 535570
+    }
+  },
+  "radar_asset_count": 3
+}

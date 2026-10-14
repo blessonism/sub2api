@@ -1,0 +1,63 @@
+{
+  "url": "https://api.edom37.online/monitor",
+  "method": "existing authenticated Dia session; native accessibility tree after full page load",
+  "status": "passed",
+  "visible_title": "模型智力雷达",
+  "visible_source": "Codex 雷达 · 雷达Bench",
+  "visible_models": [
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-luna"
+  ],
+  "requested_configurations": 34,
+  "visible_failed_configurations": 1,
+  "samples": [
+    {
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "display_score": "113.2",
+      "coverage": "60/64",
+      "status": "暂定",
+      "grading_day_utc": "2026-10-14"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "max",
+      "display_score": "106.7",
+      "coverage": "53/64",
+      "status": "暂定",
+      "grading_day_utc": "2026-10-13"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "effort": "max",
+      "display_score": "75.9",
+      "coverage": "49/64",
+      "status": "暂定",
+      "grading_day_utc": "2026-10-13"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "display_score": "59.0",
+      "coverage": "25/64",
+      "status": "暂定",
+      "grading_day_utc": "2026-10-14"
+    },
+    {
+      "model": "gpt-6-luna",
+      "effort": "max",
+      "display_score": "52.6",
+      "coverage": "60/64",
+      "status": "暂定",
+      "grading_day_utc": "2026-10-14"
+    }
+  ],
+  "date_and_capture_time_separate": true,
+  "partial_failure_notice_visible": true,
+  "old_model_grades_visible": true,
+  "limitation": "UI verification confirms visible valid grades; did not export private browser credentials or user records. Exact full series count not inferred from failed/requested notice."
+}

@@ -1,0 +1,6 @@
+600 710012021 /opt/sub2api-backups/predeploy-8fec104efb1f-20261014T103609Z/sub2api-db.dump
+600 15916 /opt/sub2api-backups/predeploy-8fec104efb1f-20261014T103609Z/sub2api-data.tar.gz
+Backup directory: /opt/sub2api-backups/predeploy-8fec104efb1f-20261014T103609Z
+Database archive full parsing: passed (completed before app-data archive)
+App data archive: passed (runtime logs excluded)
+{"status":"ok"}

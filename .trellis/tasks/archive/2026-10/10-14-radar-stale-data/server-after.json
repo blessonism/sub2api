@@ -1,0 +1,110 @@
+{
+  "checked_at": "2026-10-14T12:49:49.150583+00:00",
+  "containers": [
+    {
+      "name": "sub2api",
+      "id": "5ed7d2771e8acd969413dc1cabede1f326af8a761f279b0acab37653db27830e",
+      "image": "sub2api-custom:eb5bff47e499",
+      "image_id": "sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7",
+      "started_at": "2026-10-14T12:48:26.821831136Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "d4ae6677790372270bf765c74758700b163a860357eb42a09405ec064b47f138"
+    },
+    {
+      "name": "sub4api",
+      "id": "1a0cf09323451db0b0ed5b28221c3a3f7bbc6c8b54197baf387c0dfefc0c7b98",
+      "image": "macosdo/sub4api@sha256:9522fa0b425fc1e454be16563312a2d887fa4fea99cf385a27cc1dd930125cb3",
+      "image_id": "sha256:9522fa0b425fc1e454be16563312a2d887fa4fea99cf385a27cc1dd930125cb3",
+      "started_at": "2026-09-26T10:10:15.726897462Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "c8c2995c7e40a2bd514f109c0c92ca2117aeabbfc4e492cc4b2005d46948015f"
+    },
+    {
+      "name": "sub4api-postgres",
+      "id": "e66b898850f69fa4cf30609725f4f8219d79f133c155390febe19874437c8cf2",
+      "image": "postgres:18-alpine",
+      "image_id": "sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa",
+      "started_at": "2026-09-26T10:06:19.931089836Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "88f87b562632dcf2e13f13023fa7b6dd17073bfeab1b47124e38a1d41b454abe"
+    },
+    {
+      "name": "sub4api-redis",
+      "id": "f24b87de39fb4237187d9c6d055ba6af4697cdc487988661b3ed265dead90d1b",
+      "image": "redis:8-alpine",
+      "image_id": "sha256:9eb6a7ba3d344e1958c7e1589fa3dee90373a934e8159c634562a91d622759a0",
+      "started_at": "2026-09-26T10:06:19.932294135Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "49ac4fb5aca04044340b94cf6a5159ec8f03eea79ca8c2e2f9026a6c1aa55dc7"
+    },
+    {
+      "name": "sub2api-caddy",
+      "id": "644aa42488e1f312accfc6eca5d5be20518e98ed8846c2858e357b4346463e3c",
+      "image": "caddy:2-alpine",
+      "image_id": "sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
+      "started_at": "2026-08-19T10:54:59.190947411Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "0d704140ed1561d07ddbbf70e567889ce51707270664613161c603155154a4ba"
+    },
+    {
+      "name": "sub2api-databasus",
+      "id": "0b6275f971a2540beb255779636c2b1da6716dca96d5c417e4d0fc2544a34020",
+      "image": "databasus/databasus:latest",
+      "image_id": "sha256:ed017f58674a18173a924cc7fd8059121adbd0aa6171d68357c4398fa14e0763",
+      "started_at": "2026-08-18T14:50:06.905387159Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "acaae9b47e380e4ebcfefd545260b95743cc04c4f5316f2fc76d2cd9a343ad7e"
+    },
+    {
+      "name": "sub2api-redis",
+      "id": "62096ccfee8de1cf4bbd5e60fda9f633ac059ae72bedd0133410878a04748104",
+      "image": "redis:8-alpine",
+      "image_id": "sha256:9eb6a7ba3d344e1958c7e1589fa3dee90373a934e8159c634562a91d622759a0",
+      "started_at": "2026-08-02T04:41:55.503670637Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "6abf02f66c04a857f9656739b07d30f94ac287236181ae54ba9781447418c42f"
+    },
+    {
+      "name": "sub2api-postgres",
+      "id": "237bccc6d72f635b21bd3c6659efdda67219b3023c12329222eb242830bb154a",
+      "image": "postgres:18-alpine",
+      "image_id": "sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa",
+      "started_at": "2026-08-02T04:41:55.518031426Z",
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0,
+      "environment_sha256": "5638404d58b45ffaffe4806a8cf51fe063889e1105bcfde2c444c8f1a6d165ef"
+    }
+  ],
+  "files": {
+    ".env": {
+      "sha256": "d9a82773c3c7f9e9d987c47e632f6f457f63e769551bbbc4a4c79b24235c47c6",
+      "mode": "0o600"
+    },
+    "docker-compose.yml": {
+      "sha256": "e4a2b37f4ecb603274478f7c4d383564609b27c3429d109fb910fa41e8606fe0",
+      "mode": "0o644"
+    },
+    "docker-compose.override.yml": {
+      "sha256": "796949208f39e9020a4ec203df00a43d34c7613fee12b0cc52afccab84f85b7f",
+      "mode": "0o600"
+    }
+  },
+  "health": {
+    "status": "ok"
+  }
+}
