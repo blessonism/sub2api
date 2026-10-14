@@ -22,6 +22,7 @@ type AvailableGroupRef struct {
 	SubscriptionType string
 	RateMultiplier   float64
 	IsExclusive      bool
+	I18n             GroupI18n
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -68,6 +69,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			SubscriptionType: g.SubscriptionType,
 			RateMultiplier:   g.CurrentVisibleRate(timezone.Now()),
 			IsExclusive:      g.IsExclusive,
+			I18n:             g.I18n,
 		}
 	}
 

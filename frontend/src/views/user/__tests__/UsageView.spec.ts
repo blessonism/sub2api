@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 import UsageView from '../UsageView.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
-import UsageTable from '@/components/admin/usage/UsageTable.vue'
+import DataTable from '@/components/common/DataTable.vue'
 
 const {
   query,
@@ -235,7 +235,7 @@ const TablePageLayoutStub = {
   template: '<div><slot name="actions" /><slot name="filters" /><slot name="table" /><slot /></div>',
 }
 const DataTableStub = {
-  props: ['data'],
+  props: ['data', 'columns'],
   template: `
     <div>
       <div v-for="row in data" :key="row.request_id">
@@ -1128,7 +1128,7 @@ function mountUsageView() {
         Icon: true,
         DataTable: DataTableStub,
         UsageStatsCards: chartStub,
-        UsageTable: chartStub,
+        UsageTable: { ...chartStub, props: ['columns'] },
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
@@ -1195,9 +1195,10 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
+    expect(wrapper.findComponent(DataTable).props('columns').map((column: { key: string }) => column.key)).toContain('latency')
     expect(query).toHaveBeenCalled()
     expect(getStats).toHaveBeenCalled()
     expect(getDashboardModels).toHaveBeenCalled()

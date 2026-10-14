@@ -652,7 +652,7 @@ describe('admin UsersView', () => {
     await flushPromises()
 
     expect(raiseConcurrencyFloor).toHaveBeenCalledWith(5)
-    expect(showSuccess).toHaveBeenCalledWith('admin.users.concurrencyFloorSuccess')
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.concurrencyFloorSuccess:2')
     expect(listUsers.mock.calls.length).toBeGreaterThan(initialCalls)
   })
 
@@ -706,7 +706,7 @@ describe('admin UsersView', () => {
     await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
     await flushPromises()
     expect(reduceAllUserBalances).toHaveBeenCalledWith('2.5', expect.stringContaining('admin-balance-reduction-'))
-    expect(showSuccess).toHaveBeenCalledWith('admin.users.balanceReductionSuccess')
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.balanceReductionSuccess:2')
   })
 
   it('keeps selected user IDs across pages and clears them after a successful bulk update', async () => {

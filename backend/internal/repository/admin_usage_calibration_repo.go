@@ -215,7 +215,7 @@ func (r *adminUsageCalibrationRepository) createAdminUsageCalibrationInTx(ctx co
 
 	if input.Balance != nil {
 		before := currentBalance
-		after := currentBalance
+		var after float64
 		switch input.Balance.Mode {
 		case service.AdminUsageCalibrationModeDelta:
 			after = currentBalance + input.Balance.Value

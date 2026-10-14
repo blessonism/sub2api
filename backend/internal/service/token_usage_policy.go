@@ -135,28 +135,28 @@ type TokenUsageAutoPolicyRunStats struct {
 }
 
 type TokenUsageAutoPolicyChange struct {
-	ChangeType        string   `json:"change_type"`
-	UserID            int64    `json:"user_id"`
-	UserName          string   `json:"user_name,omitempty"`
-	UserEmail         string   `json:"user_email,omitempty"`
-	TokenUsage        int64    `json:"token_usage"`
-	ActualCost        float64  `json:"actual_cost"`
-	TotalTokenUsage   int64    `json:"total_token_usage"`
-	TotalActualCost   float64  `json:"total_actual_cost"`
-	TargetGroupID     int64    `json:"target_group_id"`
-	TierID            *int64   `json:"tier_id,omitempty"`
-	TierMinTokens     *int64   `json:"tier_min_tokens,omitempty"`
-	TierConditionMode string   `json:"tier_condition_mode,omitempty"`
-	TierMinActualCost *float64 `json:"tier_min_actual_cost,omitempty"`
+	ChangeType                string   `json:"change_type"`
+	UserID                    int64    `json:"user_id"`
+	UserName                  string   `json:"user_name,omitempty"`
+	UserEmail                 string   `json:"user_email,omitempty"`
+	TokenUsage                int64    `json:"token_usage"`
+	ActualCost                float64  `json:"actual_cost"`
+	TotalTokenUsage           int64    `json:"total_token_usage"`
+	TotalActualCost           float64  `json:"total_actual_cost"`
+	TargetGroupID             int64    `json:"target_group_id"`
+	TierID                    *int64   `json:"tier_id,omitempty"`
+	TierMinTokens             *int64   `json:"tier_min_tokens,omitempty"`
+	TierConditionMode         string   `json:"tier_condition_mode,omitempty"`
+	TierMinActualCost         *float64 `json:"tier_min_actual_cost,omitempty"`
 	ResidentTierID            *int64   `json:"resident_tier_id,omitempty"`
 	ResidentTierMinTokens     *int64   `json:"resident_tier_min_tokens,omitempty"`
 	ResidentTierConditionMode string   `json:"resident_tier_condition_mode,omitempty"`
 	ResidentTierMinActualCost *float64 `json:"resident_tier_min_actual_cost,omitempty"`
-	OldRateMultiplier *float64 `json:"old_rate_multiplier,omitempty"`
-	NewRateMultiplier *float64 `json:"new_rate_multiplier,omitempty"`
-	Reason            string   `json:"reason,omitempty"`
-	GroupGranted      bool     `json:"group_granted"`
-	ManualTakeover    bool     `json:"manual_takeover"`
+	OldRateMultiplier         *float64 `json:"old_rate_multiplier,omitempty"`
+	NewRateMultiplier         *float64 `json:"new_rate_multiplier,omitempty"`
+	Reason                    string   `json:"reason,omitempty"`
+	GroupGranted              bool     `json:"group_granted"`
+	ManualTakeover            bool     `json:"manual_takeover"`
 }
 
 type TokenUsageAutoPolicyPreview struct {
@@ -183,11 +183,11 @@ type TokenUsageAutoPolicyListFilters struct {
 }
 
 type TokenUsageAutoPolicyUsageRow struct {
-	UserID     int64
-	UserName   string
-	UserEmail  string
-	TokenUsage int64
-	ActualCost float64
+	UserID          int64
+	UserName        string
+	UserEmail       string
+	TokenUsage      int64
+	ActualCost      float64
 	TotalTokenUsage int64
 	TotalActualCost float64
 }

@@ -36,6 +36,7 @@
               @change="loadGroups"
             />
             <Select
+              v-if="!authStore.isSimpleMode"
               v-model="filters.is_exclusive"
               :options="exclusiveOptions"
               :placeholder="t('admin.groups.allGroups')"
@@ -93,6 +94,7 @@
               </div>
             </div>
             <button
+              v-if="!authStore.isSimpleMode"
               @click="openSortModal"
               class="btn btn-secondary"
               :title="t('admin.groups.sortOrder')"
@@ -160,7 +162,7 @@
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
+              {{ t("admin.groups.platforms." + value, platformLabel(value)) }}
             </span>
           </template>
 
@@ -395,6 +397,7 @@
                 <span class="text-xs">{{ t("common.edit") }}</span>
               </button>
               <button
+                v-if="!authStore.isSimpleMode"
                 data-testid="group-duplicate"
                 :title="
                   duplicatingGroupIds.has(row.id)
@@ -415,7 +418,7 @@
                 </span>
               </button>
               <button
-                v-if="row.platform === 'composite'"
+                v-if="!authStore.isSimpleMode && row.platform === 'composite'"
                 @click="handleCompositeRoutes(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-cyan-600 dark:hover:bg-dark-700 dark:hover:text-cyan-400"
               >
@@ -425,6 +428,7 @@
                 }}</span>
               </button>
               <button
+                v-if="!authStore.isSimpleMode"
                 @click="handleRateMultipliers(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:hover:bg-dark-700 dark:hover:text-purple-400"
               >
@@ -434,6 +438,7 @@
                 }}</span>
               </button>
               <button
+                v-if="!authStore.isSimpleMode"
                 @click="handleTimeRateStrategy(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-emerald-600 dark:hover:bg-dark-700 dark:hover:text-emerald-400"
               >
@@ -441,6 +446,7 @@
                 <span class="text-xs">{{ t("admin.groups.timeRate.action") }}</span>
               </button>
               <button
+                v-if="!authStore.isSimpleMode"
                 @click="handleRPMOverrides(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-orange-600 dark:hover:bg-dark-700 dark:hover:text-orange-400"
               >
@@ -495,26 +501,26 @@
         class="space-y-5"
       >
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="createForm.name"
-            type="text"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             :placeholder="t('admin.groups.enterGroupName')"
             data-tour="group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="createForm.description"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
             :placeholder="t('admin.groups.optionalDescription')"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -2356,24 +2362,24 @@
         class="space-y-5"
       >
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="editForm.name"
-            type="text"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             data-tour="edit-group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="editForm.description"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -4284,7 +4290,7 @@
                                       : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
-                  {{ t("admin.groups.platforms." + group.platform) }}
+                  {{ t("admin.groups.platforms." + group.platform, platformLabel(group.platform)) }}
                 </span>
               </div>
             </div>
@@ -4722,6 +4728,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
+import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import type {
@@ -4733,6 +4740,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupOpenAISchedulerOverrides,
+  GroupI18n,
   GroupPlatform,
   SubscriptionType,
 } from "@/types";
@@ -4750,7 +4758,9 @@ import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
+import { platformLabel } from "@/utils/platformColors";
 import Icon from "@/components/icons/Icon.vue";
+import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupTimeRateStrategyModal from "@/components/admin/group/GroupTimeRateStrategyModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
@@ -4903,6 +4913,7 @@ const groupPricingToAPI = (
 
 const { t } = useI18n();
 const appStore = useAppStore();
+const authStore = useAuthStore();
 const onboardingStore = useOnboardingStore();
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
@@ -4957,7 +4968,7 @@ const allColumns = computed<Column[]>(() => [
   { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
   { key: "status", label: t("admin.groups.columns.status"), sortable: true },
   { key: "actions", label: t("admin.groups.columns.actions"), sortable: false },
-]);
+].filter(column => !authStore.isSimpleMode || ["name", "id", "platform", "account_count", "status", "actions"].includes(column.key)));
 
 const toggleableColumns = computed(() =>
   allColumns.value.filter((col) => !ALWAYS_VISIBLE_COLUMNS.has(col.key)),
@@ -5084,11 +5095,11 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") },
 ]);
 
-const platformOptions = computed(() => [...GROUP_PLATFORM_OPTIONS]);
+const platformOptions = computed(() => [...GROUP_PLATFORM_OPTIONS].filter(option => !authStore.isSimpleMode || option.value !== "composite"));
 
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") },
-  ...GROUP_PLATFORM_OPTIONS,
+  ...platformOptions.value,
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [
@@ -5215,7 +5226,7 @@ const canCopyAccountsFromGroup = (targetPlatform: GroupPlatform, sourcePlatform:
 
 const copyAccountsGroupLabel = (g: AdminGroup) => {
   const count = g.account_count || 0;
-  const platform = t("admin.groups.platforms." + g.platform);
+  const platform = t("admin.groups.platforms." + g.platform, platformLabel(g.platform));
   return `${g.name} - ${platform} (${t("admin.groups.accountsCount", { count })})`;
 };
 
@@ -5423,6 +5434,7 @@ const editCodexManifestAccountNames = ref<Record<number, string>>({});
 const createForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   visible_rate_multiplier: null as number | null,
@@ -5708,6 +5720,7 @@ const loadModelsListCandidates = async (
   groupID: number,
   platform: GroupPlatform,
 ) => {
+  if (authStore.isSimpleMode) return;
   const request = { mode, groupID, platform };
   const requestID = modelsListCandidatesTracker.next(request);
   const state = mode === "create" ? createModelsListState : editModelsListState;
@@ -5788,6 +5801,7 @@ const convertApiFormatToRoutingRules = async (
 const editForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   visible_rate_multiplier: null as number | null,
@@ -6036,6 +6050,7 @@ const deleteConfirmMessage = computed(() => {
 });
 
 const loadLiveCapability = async () => {
+  if (authStore.isSimpleMode) return { supported: false };
   if (liveCapability.value) return liveCapability.value;
   if (!liveCapabilityRequest) {
     liveCapabilityRequest = adminAPI.groups
@@ -6153,7 +6168,7 @@ const getQuotaUsageClass = (
 };
 
 const loadUsageSummary = async () => {
-  if (!hasVisibleUsageSummaryConsumer.value) {
+  if (authStore.isSimpleMode || !hasVisibleUsageSummaryConsumer.value) {
     usageLoading.value = false;
     return;
   }
@@ -6177,7 +6192,7 @@ const loadUsageSummary = async () => {
 };
 
 const loadCapacitySummary = async () => {
-  if (!hasVisibleCapacityColumn.value) {
+  if (authStore.isSimpleMode || !hasVisibleCapacityColumn.value) {
     return;
   }
   try {
@@ -6249,6 +6264,7 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
+  createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
@@ -6511,7 +6527,15 @@ const handleCreateGroup = async () => {
     requestData.web_search_price_per_call = emptyToNull(
       requestData.web_search_price_per_call,
     );
-    await adminAPI.groups.create(requestData);
+    const payload = authStore.isSimpleMode
+      ? {
+          name: createForm.name,
+          description: createForm.description,
+          i18n: createForm.i18n,
+          platform: createForm.platform,
+        }
+      : requestData;
+    await adminAPI.groups.create(payload);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
     loadGroups();
@@ -6534,6 +6558,12 @@ const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
+  editForm.i18n = Object.fromEntries(
+    Object.entries(group.i18n ?? {}).map(([locale, text]) => [
+      locale,
+      { ...text },
+    ]),
+  );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.visible_rate_multiplier = group.visible_rate_multiplier ?? null;
@@ -6860,7 +6890,14 @@ const handleUpdateGroup = async () => {
     payload.web_search_price_per_call = emptyPriceToClear(
       payload.web_search_price_per_call,
     );
-    await adminAPI.groups.update(editingGroup.value.id, payload);
+    const requestData = authStore.isSimpleMode
+      ? {
+          name: editForm.name,
+          description: editForm.description,
+          i18n: editForm.i18n,
+        }
+      : payload;
+    await adminAPI.groups.update(editingGroup.value.id, requestData);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
     loadGroups();
@@ -6942,7 +6979,7 @@ const formatCompositeEndpoint = (endpoint: CompositeRouteEndpoint) =>
 
 const formatCompositePlatform = (platform: string) => {
   if (!platform) return "—";
-  return t(`admin.groups.platforms.${platform}`);
+  return t(`admin.groups.platforms.${platform}`, platformLabel(platform));
 };
 
 const compositeRouteSourceLabel = (source: string) => {

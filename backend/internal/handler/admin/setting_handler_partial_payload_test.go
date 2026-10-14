@@ -11,22 +11,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Saving settings is a whole-document PUT. A client that sends only the field it
-// cares about must not reset everything else: a payload as small as
-// `{"risk_control_enabled":true}` used to clear site_name, after which
-// getStringOrDefault rendered the empty value as the built-in default and the
-// login page silently changed name.
+// 设置使用完整 PUT；客户端先读现值，再合并编辑字段，避免无关设置被清空。
 
 func TestUpdateSettingsPartialPayloadKeepsUnsentKeys(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
-		service.SettingKeySiteName:         "Example Gateway",
-		service.SettingKeySiteSubtitle:     "Example Gateway Platform",
-		service.SettingKeySMTPHost:         "smtp.example.com",
-		service.SettingKeySMTPFrom:         "noreply@example.com",
-		service.SettingKeyTurnstileEnabled: "true",
+		service.SettingKeySiteName:           "Example Gateway",
+		service.SettingKeySiteSubtitle:       "Example Gateway Platform",
+		service.SettingKeySMTPHost:           "smtp.example.com",
+		service.SettingKeySMTPFrom:           "noreply@example.com",
+		service.SettingKeyTurnstileEnabled:   "true",
+		service.SettingKeyTurnstileSiteKey:   "site-key",
+		service.SettingKeyTurnstileSecretKey: "secret-key",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"risk_control_enabled": true}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Equal(t, "true", repo.values[service.SettingKeyRiskControlEnabled],
@@ -46,7 +44,7 @@ func TestUpdateSettingsFullPayloadStillClearsSentEmptyFields(t *testing.T) {
 		service.SettingKeySiteName: "Example Gateway",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"site_name": ""}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"site_name": ""}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Equal(t, "", repo.values[service.SettingKeySiteName],
@@ -60,7 +58,7 @@ func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
 		service.SettingKeySMTPFrom: "old@example.com",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"smtp_from_email": "new@example.com"}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"smtp_from_email": "new@example.com"}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Equal(t, "new@example.com", repo.values[service.SettingKeySMTPFrom])
@@ -71,7 +69,7 @@ func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 		service.SettingKeyGrokDefaultBaseURLMode: service.GrokDefaultBaseURLModeCLI,
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{
 		"grok_default_base_url_mode": service.GrokDefaultBaseURLModeEUWest1,
 	}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -85,7 +83,7 @@ func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
 		service.SettingKeyTurnstileSecretKey: "turnstile-secret",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{
 		"turnstile_enabled":                true,
 		"turnstile_site_key":               "site-key",
 		"turnstile_secret_key":             "turnstile-secret",
@@ -103,7 +101,7 @@ func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
 func TestUpdateSettingsRequiresFourTencentCaptchaCredentialsWhenEnabled(t *testing.T) {
 	h, _ := newStepUpSwitchTestHandler(t, map[string]string{})
 
-	rec := doUpdateSettings(t, h, map[string]any{
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{
 		"tencent_captcha_enabled": true,
 		"tencent_captcha_app_id":  "123456789",
 	}, nil)
@@ -119,7 +117,7 @@ func TestUpdateSettingsRetainsStoredTencentCaptchaCredentialsWhenInputsEmpty(t *
 		service.SettingKeyTencentCaptchaCloudSecretKey: "stored-cloud-secret-key",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{
 		"tencent_captcha_enabled":          true,
 		"tencent_captcha_app_id":           "123456789",
 		"tencent_captcha_app_secret_key":   "",
@@ -140,7 +138,7 @@ func TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion(t *testing.T) {
 		service.SettingKeyTencentCaptchaRegion: service.TencentCaptchaRegionINTL,
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"risk_control_enabled": true}, nil)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, service.TencentCaptchaRegionINTL,
@@ -152,7 +150,7 @@ func TestUpdateSettingsNormalizesUnknownTencentCaptchaRegion(t *testing.T) {
 		service.SettingKeyTencentCaptchaRegion: service.TencentCaptchaRegionINTL,
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"tencent_captcha_region": "sgp"}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"tencent_captcha_region": "sgp"}, nil)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, service.TencentCaptchaRegionCN,
@@ -163,7 +161,7 @@ func TestUpdateSettingsNormalizesUnknownTencentCaptchaRegion(t *testing.T) {
 func TestUpdateSettingsWritesTencentCaptchaRegionWhenSent(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
 
-	rec := doUpdateSettings(t, h, map[string]any{"tencent_captcha_region": "intl"}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"tencent_captcha_region": "intl"}, nil)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, service.TencentCaptchaRegionINTL,
@@ -179,7 +177,7 @@ func TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted(t *t
 		service.SettingKeyTencentCaptchaCloudSecretKey: "stored-cloud-secret-key",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{
 		"tencent_captcha_app_id": "not-a-number",
 	}, nil)
 
@@ -194,11 +192,11 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 		service.SettingKeySubscriptionEnabled: "true",
 	})
 
-	rec := doUpdateSettings(t, h, map[string]any{"subscription_enabled": false}, nil)
+	rec := doUpdateSettingsFromCurrent(t, h, map[string]any{"subscription_enabled": false}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled])
 
-	rec = doUpdateSettings(t, h, map[string]any{"site_name": "Example Gateway"}, nil)
+	rec = doUpdateSettingsFromCurrent(t, h, map[string]any{"site_name": "Example Gateway"}, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")

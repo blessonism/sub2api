@@ -4,6 +4,7 @@
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
+            class="lg:w-auto lg:flex-1"
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
@@ -324,7 +325,7 @@
             />
           </template>
           <template #cell-groups="{ row }">
-            <AccountGroupsCell :groups="row.groups" :max-display="4" />
+            <AccountGroupsCell :groups="resolveAccountGroups(row)" :max-display="4" />
           </template>
           <template #header-usage="{ column }">
             <div class="flex items-center">
@@ -1907,7 +1908,22 @@ const cols = computed(() =>
   )
 )
 
-const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true }
+const resolveAccountGroups = (account: Account) => account.groups?.length
+  ? account.groups
+  : groups.value.filter(group => account.group_ids?.includes(group.id))
+
+const loadAccountForModal = async (account: Account): Promise<Account | null> => {
+  try {
+    return await adminAPI.accounts.getById(account.id)
+  } catch (error) {
+    appStore.showError(error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+const handleEdit = async (account: Account) => {
+  const full = await loadAccountForModal(account)
+  if (full) { edAcc.value = full; showEdit.value = true }
+}
 const openMenu = (a: Account, e: MouseEvent) => {
   menu.acc = a
   const target = e.currentTarget as HTMLElement | null
@@ -1958,9 +1974,12 @@ const handleBulkResetStatus = async () => {
 const handleBulkRefreshToken = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
-    const result = await adminAPI.accounts.batchRefresh(selIds.value)
+    const accountIDs = [...selIds.value]
+    const result = await adminAPI.accounts.batchRefresh(accountIDs)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+      const failedIDs = result.errors?.map(item => item.account_id).filter(id => accountIDs.includes(id)) ?? []
+      setSelectedIds(failedIDs.length ? failedIDs : accountIDs)
     } else {
       appStore.showSuccess(t('admin.accounts.bulkActions.refreshTokenSuccess', { count: result.success }))
       clearSelection()
@@ -2373,8 +2392,14 @@ const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
-const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true }
-const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true }
+const handleTest = async (account: Account) => {
+  const full = await loadAccountForModal(account)
+  if (full) { testingAcc.value = full; showTest.value = true }
+}
+const handleViewStats = async (account: Account) => {
+  const full = await loadAccountForModal(account)
+  if (full) { statsAcc.value = full; showStats.value = true }
+}
 const handleSchedule = async (a: Account) => {
   scheduleAcc.value = a
   scheduleModelOptions.value = []
@@ -2550,7 +2575,8 @@ const proxyExpiryText = (p: AccountProxy): string => {
 }
 
 // 表格滚动时关闭行操作菜单，并让顶部工具菜单继续贴紧触发按钮。
-const handleScroll = () => {
+const handleScroll = (event: Event) => {
+  if (event.target instanceof Element && event.target.closest('.action-menu-content')) return
   menu.show = false
   if (showAccountToolsDropdown.value) updateAccountToolsDropdownPosition()
 }

@@ -106,6 +106,7 @@ func provideCleanup(
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	tokenUsagePolicyRunner *service.TokenUsageAutoPolicyRunner,
 	lotteryCampaignRunner *service.LotteryCampaignRunner,
+	geminiCachedContent *service.GeminiCachedContentService,
 	batchImageCleanup *service.BatchImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
@@ -260,6 +261,12 @@ func provideCleanup(
 			{"LotteryCampaignRunner", func() error {
 				if lotteryCampaignRunner != nil {
 					lotteryCampaignRunner.Stop()
+				}
+				return nil
+			}},
+			{"GeminiCachedContentService", func() error {
+				if geminiCachedContent != nil {
+					geminiCachedContent.Stop()
 				}
 				return nil
 			}},

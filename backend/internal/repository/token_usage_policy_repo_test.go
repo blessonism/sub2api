@@ -18,7 +18,7 @@ import (
 func TestTokenUsagePolicyRepositoryGetPolicyByIDNotFoundReturnsBadRequest(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectQuery("SELECT p\\.id, p\\.name, p\\.enabled").
@@ -36,7 +36,7 @@ func TestTokenUsagePolicyRepositoryGetPolicyByIDNotFoundReturnsBadRequest(t *tes
 func TestTokenUsagePolicyRepositoryCreatePolicyDuplicateEnabledTargetGroupReturnsConflict(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	policy := &service.TokenUsageAutoPolicy{
@@ -82,7 +82,7 @@ func TestTokenUsagePolicyRepositoryCreatePolicyInvalidGroupReturnsBadRequest(t *
 		t.Run(tt.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			repo := NewTokenUsageAutoPolicyRepository(db)
 
 			policy := &service.TokenUsageAutoPolicy{
@@ -112,7 +112,7 @@ func TestTokenUsagePolicyRepositoryCreatePolicyInvalidGroupReturnsBadRequest(t *
 func TestTokenUsagePolicyRepositoryDeletePolicyNoRowsReturnsBadRequest(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectExec("DELETE FROM token_usage_auto_policies").
@@ -130,7 +130,7 @@ func TestTokenUsagePolicyRepositoryDeletePolicyNoRowsReturnsBadRequest(t *testin
 func TestTokenUsagePolicyRepositoryCountAssignmentsIgnoresManualOnlyTakeovers(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*FROM token_usage_auto_assignments").
@@ -147,7 +147,7 @@ func TestTokenUsagePolicyRepositoryCountAssignmentsIgnoresManualOnlyTakeovers(t 
 func TestTokenUsagePolicyRepositoryListPolicyStatesScopesAssignmentsToTargetGroup(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectQuery("SELECT a\\.id, a\\.policy_id").
@@ -164,7 +164,7 @@ func TestTokenUsagePolicyRepositoryListPolicyStatesScopesAssignmentsToTargetGrou
 func TestTokenUsagePolicyRepositoryApplyClearPreservesManualTakeoverRate(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	policy := service.TokenUsageAutoPolicy{
@@ -204,7 +204,7 @@ func TestTokenUsagePolicyRepositoryApplyClearPreservesManualTakeoverRate(t *test
 func TestTokenUsagePolicyRepositoryApplyPolicyChangesDoesNotMarkConflictedGroupGrant(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -251,7 +251,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesDoesNotMarkConflictedGroupG
 func TestTokenUsagePolicyRepositoryApplyClearDetectsManualRateBeforeRestore(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
@@ -284,7 +284,7 @@ func TestTokenUsagePolicyRepositoryApplyClearDetectsManualRateBeforeRestore(t *t
 func TestTokenUsagePolicyRepositoryApplyClearRestoresPreviousRateConditionally(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	policy := service.TokenUsageAutoPolicy{ID: 9, TargetGroupID: 8}
@@ -319,7 +319,7 @@ func TestTokenUsagePolicyRepositoryApplyClearRestoresPreviousRateConditionally(t
 func TestTokenUsagePolicyRepositoryApplyClearMarksManualTakeoverWhenConditionalRestoreMisses(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	currentRate := 0.7
@@ -369,7 +369,7 @@ func TestTokenUsagePolicyRepositoryApplyClearMarksManualTakeoverWhenConditionalR
 func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -418,7 +418,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsChanges(t *testing.T) 
 func TestTokenUsagePolicyRepositoryFinishPolicyRunPersistsConditionModes(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -482,7 +482,7 @@ func TestNullIfEmpty(t *testing.T) {
 func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChangesFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, UpdateCount: 1}
@@ -517,7 +517,7 @@ func TestTokenUsagePolicyRepositoryFinishPolicyRunMarksFailedWhenPersistingChang
 func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAuditFailure(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -568,7 +568,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesAndFinishRunIsAtomicOnAudit
 func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunPersistsHistory(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	oldRate := 0.7
@@ -626,7 +626,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunPersistsHistory(t *test
 func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunAuditsManualRateDetectedInTx(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	stats := service.TokenUsageAutoPolicyRunStats{TotalUsers: 1, ClearCount: 1}
@@ -673,7 +673,7 @@ func TestTokenUsagePolicyRepositoryApplyClearAndFinishRunAuditsManualRateDetecte
 func TestTokenUsagePolicyRepositoryListPolicyRunsDoesNotAttachChanges(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 	now := time.Now().UTC()
 
@@ -703,7 +703,7 @@ func TestTokenUsagePolicyRepositoryListPolicyRunsDoesNotAttachChanges(t *testing
 func TestTokenUsagePolicyRepositoryListPolicyRunChangesScopesRunToPolicy(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectQuery("SELECT EXISTS").
@@ -723,7 +723,7 @@ func TestTokenUsagePolicyRepositoryListPolicyRunChangesScopesRunToPolicy(t *test
 func TestTokenUsagePolicyRepositoryListPolicyRunChangesReturnsScopedChanges(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -770,7 +770,7 @@ func TestTokenUsagePolicyRepositoryListPolicyRunChangesReturnsScopedChanges(t *t
 func TestTokenUsagePolicyRepositoryApplyPolicyChangesManualSkipUpdatesTargetGroup(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -803,7 +803,7 @@ func TestTokenUsagePolicyRepositoryApplyPolicyChangesManualSkipUpdatesTargetGrou
 func TestTokenUsagePolicyRepositoryApplyManualSkipClearsRemovedGroupOwnership(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	tierID := int64(3)
@@ -838,7 +838,7 @@ func TestTokenUsagePolicyRepositoryApplyManualSkipClearsRemovedGroupOwnership(t 
 func TestTokenUsagePolicyRepositoryBeginPolicyRunRecoversStaleRunningBeforeInsert(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	now := time.Now().UTC()
@@ -870,7 +870,7 @@ func TestTokenUsagePolicyRepositoryBeginPolicyRunRecoversStaleRunningBeforeInser
 func TestTokenUsagePolicyRepositoryRefreshUserUsageTotalsUpsertsDeltaAndReads(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewTokenUsageAutoPolicyRepository(db)
 
 	mock.ExpectBegin()

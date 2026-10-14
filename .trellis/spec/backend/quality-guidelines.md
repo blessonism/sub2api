@@ -1250,3 +1250,127 @@ UNION ALL SELECT balance_delta FROM admin_usage_calibrations WHERE NOT EXISTS (.
 <!-- What reviewers should check -->
 
 (To be filled by the team)
+
+### Scenario: 下游同步中的缓存计费、账号绑定与配置兼容
+
+#### 1. Scope / Trigger
+- 官方更新拆分 Gemini 模型端点、改动 `RecordUsage`/`QuoteUsageCost`，或添加环境配置可达性检查时，核对二开的完整调用链。
+
+#### 2. Signatures
+- Gemini 模型入口：`GeminiMessagesCompatService.SelectAccountForModelsEndpoints(ctx, groupID)`。
+- 计费入口：`GatewayService.QuoteUsageCost(ctx, *RecordUsageInput)` 与 `RecordUsage`，共同使用 `RecordUsageInput.PricingAt`。
+- 配置入口：`config.Load()` 与 `setDefaults()`；持久化入口：`createGroupRecord` / `groupRepository.Update`。
+
+#### 3. Contracts
+- Gemini 模型列表和详情仍须执行用户公开分组账号绑定：优先绑定账号，严格绑定不得越界；明确允许回退时排除已绑定账号后再选分组账号。
+- 显式缓存存储费参与实际倍率与可见倍率计算；报价、扣费、usage log 使用同一请求计价时刻，不能在报价和落库之间重新取当前分时倍率。
+- `GATEWAY_CONVERSATION_CAPTURE_{INCLUDED,EXCLUDED}_{USER,API_KEY}_IDS` 是逗号分隔的 int64 列表；对应四个 `mapstructure` key 必须注册空切片默认值，使无配置文件的环境变量部署可加载。
+- 旧调用方传入空 `TimeRatePriority` 时，仓储创建和更新使用 `schedule_first`，与业务归一化和数据库默认值一致；非空值保持原语义。
+
+#### 4. Validation & Error Matrix
+- 绑定账号不可用且禁止回退 → 返回无可用账号错误。
+- 绑定账号不可用且允许回退 → 从分组未绑定账号选择；不能再次选择不可用绑定账号。
+- 非法 ID 环境变量 → `Load()` 返回解码错误；合法列表不得被静默丢弃。
+- 分时优先模式空值 → `schedule_first`；非法非空值 → 现有校验/数据库约束拒绝。
+
+#### 5. Good / Base / Bad Cases
+- Good：绑定的 Vertex 账号优先于非绑定 AI Studio 账号；峰谷请求的缓存报价与落库相同。
+- Base：未配置绑定时沿用官方选号排序，未提供 ID 列表时为空切片。
+- Bad：保留已删除的 `SelectAccountForAIStudioEndpoints`，但新端点绕过绑定；只保留 DTO 而丢失计费或配置生产者。
+
+#### 6. Tests Required
+- `TestSelectAccountForModelsEndpoints*` 覆盖绑定优先、严格边界及允许回退。
+- `GeminiCachedContentStorage` 用例断言存储费和实际/可见分时倍率一致。
+- `TestConfigKeysAreEnvReachable` 与 `TestLoadConversationCaptureSubjectIDsFromEnv` 同时通过。
+- `GroupRepoSuite/TestCreate` 和 `TestUpdate` 断言未填优先模式时读回 `schedule_first`；保留分组 I18n 与缓存 repository integration 回归。
+
+#### 7. Wrong vs Correct
+- Wrong：模型接口重命名后只保留旧选号方法；使用两次 `time.Now()` 分别报价和落库；字段只有 `mapstructure` tag 而没有注册 key。
+- Correct：把绑定逻辑迁移到实际调用的新方法；在请求入口确定 `PricingAt` 并贯穿报价和落库；为四个 ID 切片注册 `[]int64{}` 默认值。
+
+### Scenario: 请求路径的倍率缓存生命周期
+
+#### 1. Scope / Trigger
+- 修改网关倍率解析，或测试使用未经过构造函数装配的 `GatewayService` / `OpenAIGatewayService` 时。
+
+#### 2. Signatures
+- `GatewayService.getUserGroupRateResolver()`；`userGroupRateResolver.ResolveWithSource` / `ResolveVisibleWithSource`。
+
+#### 3. Contracts
+- 正常装配的服务复用已有 resolver 和缓存；请求路径不得反复创建 `go-cache` janitor。
+- 未装配且没有缓存时使用无缓存 resolver，仍保留仓储查询与 singleflight；OpenAI 的 nil resolver 沿用默认倍率。
+- 实际倍率和可见倍率仍使用同一套解析及覆盖来源语义。
+
+#### 4. Validation & Error Matrix
+- 仓储失败或 resolver 为 nil → 沿用已有默认倍率行为，不新增后台缓存。
+- 缓存类型不符 → 回源，不能用未检查的类型断言导致 panic。
+
+#### 5. Good / Base / Bad Cases
+- Good：长批次计费请求完成后内存保持有界。
+- Base：构造函数装配的服务继续命中共享缓存。
+- Bad：每次请求创建缓存，再被全局失效注册表永久持有。
+
+#### 6. Tests Required
+- 保留大批次计费内存上限回归，以及 `TestGetUserGroupRateMultiplier_*` 的缓存、singleflight 和回退断言。
+
+#### 7. Wrong vs Correct
+- Wrong：在 nil resolver 回退中调用 `newUserGroupRateResolver(..., nil, ...)`。
+- Correct：复用已装配缓存；无缓存时构造不含 janitor 的 resolver，或使用 nil 接收者默认语义。
+
+### Scenario: 支付余额履约与用户兑换限流
+
+#### 1. Scope / Trigger
+- 修改支付余额入账、重复通知或兑换完成后的履约恢复时。
+
+#### 2. Signatures
+- `PaymentService.doBalance`；`RedeemService.redeemForPaymentFulfillment`；`RedeemCode.UsedBy`。
+
+#### 3. Contracts
+- 已验证支付订单使用内部可信兑换入口，绕过用户手动兑换失败限流，也不增加该失败计数。
+- 公开兑换入口继续执行限流；支付恢复时，已使用码必须属于订单用户才能跳过入账并继续返利。
+- 重复通知及入账后恢复不能重复增加余额。
+
+#### 4. Validation & Error Matrix
+- 已使用码的 `UsedBy` 为空或与订单用户不同 → `payment redeem code user mismatch`，不完成订单。
+- 公开兑换无效码或超过失败阈值 → 保留原错误与计数行为。
+
+#### 5. Good / Base / Bad Cases
+- Good：用户手动兑换已被限流，但合法支付仍能入账。
+- Base：订单用户已完成兑换时只恢复后续步骤。
+- Bad：仅凭码的 used 状态认定订单用户已收到充值。
+
+#### 6. Tests Required
+- 保留公开兑换限流、支付绕过限流、兑换后恢复不重复入账、他人使用码拒绝和重复通知回归。
+
+#### 7. Wrong vs Correct
+- Wrong：支付调用公开 `Redeem`，或已使用码不校验 `UsedBy`。
+- Correct：支付调用内部可信入口，并在幂等恢复前确认码的用户归属。
+
+### Scenario: 二开审计外键下的仓储集成测试隔离
+
+#### 1. Scope / Trigger
+- 集成测试使用全局 Ent client，或新增引用用户的审计表时。
+
+#### 2. Signatures
+- `UserRepoSuite.SetupTest`；`integrationDB` 指向 Testcontainers 创建的临时测试数据库。
+
+#### 3. Contracts
+- 清理语句必须检查错误；隔离测试数据库中的用户夹具可用 `TRUNCATE TABLE users CASCADE` 清除外键关联数据。
+- 在测试前及 `t.Cleanup` 中清理，避免污染后续列表数量及唯一约束测试；不重置序列。
+- 统计夹具的输入、输出、缓存创建和缓存读取 Token 必须与各项期望和总和一致。
+
+#### 4. Validation & Error Matrix
+- 清理因外键失败 → 立即报告测试失败，不能忽略错误后继续。
+- 仅在隔离测试数据库执行级联清理，不得将该方式用于业务数据库清理。
+
+#### 5. Good / Base / Bad Cases
+- Good：写入带用户审计外键的测试之后，用户列表和订阅测试仍独立通过。
+- Base：事务夹具使用自动回滚。
+- Bad：忽略 `DELETE FROM users` 的 RESTRICT 错误；期望缓存 Token 数量却未写入夹具。
+
+#### 6. Tests Required
+- 完整 repository integration 套件同时覆盖 `TestUserRepoSuite`、`TestUserSubscriptionRepoSuite` 和 `TestUsageLogRepoSuite`，不能仅分别选跑。
+
+#### 7. Wrong vs Correct
+- Wrong：`_, _ = integrationDB.ExecContext(ctx, "DELETE FROM users")`。
+- Correct：隔离数据库中级联清理、断言成功，并在每个测试完成后清除夹具。

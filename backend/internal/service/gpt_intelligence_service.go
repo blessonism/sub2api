@@ -57,7 +57,11 @@ func NewGptIntelligenceService() *GptIntelligenceService {
 }
 
 func newGptIntelligenceHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	transport := base.Clone()
 	transport.Proxy = nil
 	return &http.Client{
 		Timeout:   gptIntelligenceFetchTimeout,
@@ -469,10 +473,6 @@ func mergeGptIntelligenceEfficiency(snap *GptIntelligenceSnapshot, efficiency *g
 	return merged
 }
 
-func mergeGptIntelligenceDeepSeekEfficiency(snap *GptIntelligenceSnapshot, efficiency *gptIntelligenceEfficiencyPayload) bool {
-	return mergeGptIntelligenceEfficiency(snap, efficiency)
-}
-
 func snapshotFromIntelligenceEfficiency(efficiency *gptIntelligenceEfficiencyPayload, collectedAt time.Time) (*GptIntelligenceSnapshot, error) {
 	if efficiency == nil || len(efficiency.Points) == 0 {
 		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("efficiency payload has no points"))
@@ -541,10 +541,6 @@ func gptIntelligenceModelLabel(model, effort string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(words, " ") + " " + effort)
-}
-
-func gptIntelligenceDeepSeekLabel(effort string) string {
-	return gptIntelligenceModelLabel("deepseek-v4-flash", effort)
 }
 
 // gptIntelligenceComparisonKey 生成与 current.json 一致的对比 key（短横线转下划线）。

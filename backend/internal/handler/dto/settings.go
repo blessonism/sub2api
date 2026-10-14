@@ -14,8 +14,8 @@ const (
 )
 
 var (
-	errInvalidCustomMenuOpenMode  = errors.New("Custom menu item open_mode must be 'embed' or 'external'")
-	errExternalCustomMenuMarkdown = errors.New("Custom menu item open_mode 'external' cannot use md:<slug> URLs")
+	errInvalidCustomMenuOpenMode  = errors.New("custom menu item open_mode must be 'embed' or 'external'")
+	errExternalCustomMenuMarkdown = errors.New("custom menu item open_mode 'external' cannot use md:<slug> URLs")
 )
 
 // CustomMenuItem represents a user-configured custom menu entry.

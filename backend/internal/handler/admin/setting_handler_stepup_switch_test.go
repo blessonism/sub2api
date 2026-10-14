@@ -218,3 +218,20 @@ func TestUpdateSettingsRejectsInvalidForwardedClientIPHeader(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.JSONEq(t, `["X-Existing-IP"]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
 }
+
+func doUpdateSettingsFromCurrent(t *testing.T, h *SettingHandler, fields map[string]any, prepare func(c *gin.Context)) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+	h.GetSettings(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var response struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	for key, value := range fields {
+		response.Data[key] = value
+	}
+	return doUpdateSettings(t, h, response.Data, prepare)
+}

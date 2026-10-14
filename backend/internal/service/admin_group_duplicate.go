@@ -109,6 +109,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
 		Description:                     source.Description,
+		I18n:                            cloneGroupI18nForDuplicate(source.I18n),
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
 		PeakRateEnabled:                 source.PeakRateEnabled,
@@ -176,6 +177,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 // RecoverDuplicateGroup performs a read-only lookup for a copy that was already
 // committed for the same actor, source group, and idempotency key.
 func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error) {
+	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDuplicate); err != nil {
+		return nil, err
+	}
 	operationID := duplicateGroupOperationID(id, actorScope, operationKey)
 	if operationID == "" {
 		return nil, nil

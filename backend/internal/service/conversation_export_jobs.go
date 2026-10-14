@@ -314,8 +314,8 @@ func buildConversationExportPayloadWithOptions(turns []ConversationTurn, encodin
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		raw.Write(line)
-		raw.WriteByte('\n')
+		_, _ = raw.Write(line)
+		_ = raw.WriteByte('\n')
 	}
 	if encoding != ConversationExportEncodingZstd {
 		return raw.Bytes(), int64(len(seenSessions)), turnCount, nil

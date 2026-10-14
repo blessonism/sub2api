@@ -80,7 +80,8 @@ vi.mock('@/stores', () => ({
   useOnboardingStore: () => sidebarTestState.onboardingStore,
 }))
 
-vi.mock('@/utils/featureFlags', () => ({
+vi.mock('@/utils/featureFlags', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/utils/featureFlags')>(),
   FeatureFlags: {
     availableChannels: {},
     channelMonitor: {},

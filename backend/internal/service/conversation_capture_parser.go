@@ -147,7 +147,7 @@ func parseChatCompletionsStreamAssistant(body []byte) (json.RawMessage, error) {
 		choices.ForEach(func(_, choice gjson.Result) bool {
 			delta := choice.Get("delta")
 			if part := delta.Get("content"); part.Exists() && part.Type == gjson.String {
-				content.WriteString(part.String())
+				_, _ = content.WriteString(part.String())
 			}
 			return true
 		})
@@ -226,21 +226,21 @@ func parseResponsesStream(body []byte) ([]json.RawMessage, []json.RawMessage, st
 			responseID = id
 		}
 		eventType := event.Get("type").String()
-		switch {
-		case eventType == "response.output_text.delta":
+		switch eventType {
+		case "response.output_text.delta":
 			if delta := event.Get("delta"); delta.Exists() && delta.Type == gjson.String {
-				text.WriteString(delta.String())
+				_, _ = text.WriteString(delta.String())
 			}
-		case eventType == "response.output_text.done":
+		case "response.output_text.done":
 			if value := event.Get("text"); value.Exists() && value.Type == gjson.String && text.Len() == 0 {
-				text.WriteString(value.String())
+				_, _ = text.WriteString(value.String())
 			}
-		case eventType == "response.output_item.done":
+		case "response.output_item.done":
 			item := event.Get("item")
 			if item.Exists() {
 				consumeResponsesOutputItem(item, &messages, &tools)
 			}
-		case eventType == "response.completed":
+		case "response.completed":
 			seenTerminal = true
 			output := event.Get("response.output")
 			output.ForEach(func(_, item gjson.Result) bool {
@@ -346,11 +346,11 @@ func responsesContentText(content gjson.Result) string {
 	var b strings.Builder
 	content.ForEach(func(_, part gjson.Result) bool {
 		if text := part.Get("text"); text.Exists() && text.Type == gjson.String {
-			b.WriteString(text.String())
+			_, _ = b.WriteString(text.String())
 			return true
 		}
 		if text := part.Get("output_text"); text.Exists() && text.Type == gjson.String {
-			b.WriteString(text.String())
+			_, _ = b.WriteString(text.String())
 			return true
 		}
 		return true

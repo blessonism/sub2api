@@ -5,12 +5,15 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -371,6 +374,8 @@ func TestAPIContracts(t *testing.T) {
 						"description": "desc",
 						"platform": "anthropic",
 						"rate_multiplier": 0.75,
+                        "peak_rate_enabled": false,
+                        "peak_start": "", "peak_end": "", "peak_rate_multiplier": 1,
 						"is_exclusive": false,
 						"status": "active",
 						"subscription_type": "standard",
@@ -878,7 +883,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1210,7 +1215,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1451,7 +1456,24 @@ func TestAPIContracts(t *testing.T) {
 
 			status, body := doRequest(t, deps.router, tt.method, tt.path, tt.body, tt.headers)
 			require.Equal(t, tt.wantStatus, status)
-			require.JSONEq(t, tt.wantJSON, body)
+			expected := tt.wantJSON
+			if strings.HasPrefix(tt.name, "GET /api/v1/admin/settings") {
+				var payload map[string]any
+				require.NoError(t, json.Unmarshal([]byte(expected), &payload))
+				data := payload["data"].(map[string]any)
+				data["enable_codex_base_prompt_injection"] = true
+				data["codex_base_prompt"] = ""
+				data["builtin_codex_base_prompts"] = map[string]string{
+					"codex":    openai.CodexBaseInstructionsForModel("gpt-5-codex"),
+					"gpt-5.1":  openai.CodexBaseInstructionsForModel("gpt-5.1"),
+					"gpt-5.2":  openai.CodexBaseInstructionsForModel("gpt-5.2"),
+					"fallback": openai.CodexBaseInstructionsForModel("gpt-5.5"),
+				}
+				raw, err := json.Marshal(payload)
+				require.NoError(t, err)
+				expected = string(raw)
+			}
+			require.JSONEq(t, expected, body)
 		})
 	}
 }
@@ -1521,7 +1543,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	userHandler := handler.NewUserHandler(userService, nil, nil, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)

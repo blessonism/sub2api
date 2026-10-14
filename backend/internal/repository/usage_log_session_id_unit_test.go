@@ -81,15 +81,28 @@ func TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, "text", usageLogInsertArgTypes[48], "requested_reasoning_effort must follow reasoning_effort")
-	require.Equal(t, "text", usageLogInsertArgTypes[47], "reasoning_effort arg type must stay text")
+	query, _ := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared})
+	columnStart := strings.Index(query, "(") + 1
+	columnEnd := strings.Index(query[columnStart:], ")") + columnStart
+	columns := strings.Split(query[columnStart:columnEnd], ",")
+	effortIndex := -1
+	for i, column := range columns {
+		if strings.TrimSpace(column) == "reasoning_effort" {
+			effortIndex = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, effortIndex, 0)
+	require.Equal(t, "requested_reasoning_effort", strings.TrimSpace(columns[effortIndex+1]))
+	require.Equal(t, "text", usageLogInsertArgTypes[effortIndex+1], "requested_reasoning_effort must follow reasoning_effort")
+	require.Equal(t, "text", usageLogInsertArgTypes[effortIndex], "reasoning_effort arg type must stay text")
 
-	forwardedArg, ok := prepared.args[47].(sql.NullString)
+	forwardedArg, ok := prepared.args[effortIndex].(sql.NullString)
 	require.True(t, ok)
 	require.True(t, forwardedArg.Valid)
 	require.Equal(t, forwarded, forwardedArg.String)
 
-	requestedArg, ok := prepared.args[48].(sql.NullString)
+	requestedArg, ok := prepared.args[effortIndex+1].(sql.NullString)
 	require.True(t, ok)
 	require.True(t, requestedArg.Valid)
 	require.Equal(t, requested, requestedArg.String)

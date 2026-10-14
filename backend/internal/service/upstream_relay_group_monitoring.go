@@ -3517,10 +3517,6 @@ func buildUpstreamRelayExclusion(candidate UpstreamRelayCandidate, now time.Time
 	}
 }
 
-func sortRelayCandidates(candidates []UpstreamRelayCandidate) {
-	sortRelayCandidatesWithPolicy(candidates, defaultUpstreamRelayRecommendationPolicy(), time.Now())
-}
-
 func sortRelayCandidatesWithPolicy(candidates []UpstreamRelayCandidate, policy UpstreamRelayRecommendationPolicy, now time.Time) {
 	sort.SliceStable(candidates, func(i, j int) bool {
 		left, right := candidates[i], candidates[j]
@@ -3551,10 +3547,6 @@ func sortRelayCandidatesWithPolicy(candidates []UpstreamRelayCandidate, policy U
 		}
 		return left.ID < right.ID
 	})
-}
-
-func effectiveRelayRate(candidate UpstreamRelayCandidate, now time.Time) (float64, string, bool) {
-	return effectiveRelayRateWithPolicy(candidate, now, defaultUpstreamRelayRecommendationPolicy())
 }
 
 func effectiveRelayRateWithPolicy(candidate UpstreamRelayCandidate, now time.Time, policy UpstreamRelayRecommendationPolicy) (float64, string, bool) {
@@ -3748,12 +3740,6 @@ func parseUpstreamAccountBalance(body []byte) (*float64, error) {
 	return nil, fmt.Errorf("upstream profile response missing balance")
 }
 
-type upstreamRelayUsagePageItem struct {
-	GroupID     string
-	ActualCost  float64
-	TotalTokens int64
-}
-
 type upstreamRelayAPIKeyPageItem struct {
 	ID      int64
 	Name    string
@@ -3859,50 +3845,6 @@ func parseUpstreamUsageStats(body []byte) (UpstreamRelayGroupTodayUsage, error) 
 		totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
 	}
 	return UpstreamRelayGroupTodayUsage{ActualCost: actualCost, TotalTokens: totalTokens}, nil
-}
-
-func parseUpstreamUsagePage(body []byte) ([]upstreamRelayUsagePageItem, int, error) {
-	var raw any
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, 0, fmt.Errorf("parse upstream usage page: %w", err)
-	}
-	root, _ := raw.(map[string]any)
-	if root == nil {
-		return nil, 0, fmt.Errorf("upstream usage response is not an object")
-	}
-	if data, ok := root["data"].(map[string]any); ok {
-		root = data
-	}
-	pages := int(relayFloat(firstPresent(root, "pages", "total_pages"), 1))
-	rawItems := extractRelayArray(root)
-	out := make([]upstreamRelayUsagePageItem, 0, len(rawItems))
-	for _, rawItem := range rawItems {
-		m, ok := rawItem.(map[string]any)
-		if !ok {
-			continue
-		}
-		groupID := relayString(m["group_id"])
-		if groupID == "" {
-			return nil, 0, fmt.Errorf("upstream usage item missing group_id")
-		}
-		actualCost, ok := relayFloatOK(m["actual_cost"])
-		if !ok {
-			return nil, 0, fmt.Errorf("upstream usage item missing actual_cost")
-		}
-		inputTokens, inputOK := relayInt64OK(m["input_tokens"])
-		outputTokens, outputOK := relayInt64OK(m["output_tokens"])
-		cacheCreationTokens, cacheCreationOK := relayInt64OK(m["cache_creation_tokens"])
-		cacheReadTokens, cacheReadOK := relayInt64OK(m["cache_read_tokens"])
-		if !inputOK || !outputOK || !cacheCreationOK || !cacheReadOK {
-			return nil, 0, fmt.Errorf("upstream usage item missing token fields")
-		}
-		out = append(out, upstreamRelayUsagePageItem{
-			GroupID:     groupID,
-			ActualCost:  actualCost,
-			TotalTokens: inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens,
-		})
-	}
-	return out, pages, nil
 }
 
 type upstreamRelayUsageSnapshot struct {
@@ -4244,22 +4186,6 @@ func resolveUsageEndpoint(account *Account) string {
 		return base + "/usage"
 	}
 	return base + "/v1/usage"
-}
-
-func upstreamRelayProviderFromAccount(account *Account) string {
-	if account == nil {
-		return ""
-	}
-	switch {
-	case account.IsOpenAI():
-		return MonitorProviderOpenAI
-	case account.IsGemini():
-		return MonitorProviderGemini
-	case account.Platform == PlatformAnthropic:
-		return MonitorProviderAnthropic
-	default:
-		return ""
-	}
 }
 
 func classifyProbeError(status int, message string) string {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,21 @@ func TestLoadDefaultModelsListReadMaxBytes(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, DefaultModelsListReadMaxBytes, cfg.Gateway.ModelsListReadMaxBytes)
+}
+
+func TestLoadConversationCaptureSubjectIDsFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_INCLUDED_USER_IDS", "11,12")
+	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_INCLUDED_API_KEY_IDS", "21,22")
+	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_EXCLUDED_USER_IDS", "31,32")
+	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_EXCLUDED_API_KEY_IDS", "41,42")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []int64{11, 12}, cfg.Gateway.ConversationCapture.IncludedUserIDs)
+	require.Equal(t, []int64{21, 22}, cfg.Gateway.ConversationCapture.IncludedAPIKeyIDs)
+	require.Equal(t, []int64{31, 32}, cfg.Gateway.ConversationCapture.ExcludedUserIDs)
+	require.Equal(t, []int64{41, 42}, cfg.Gateway.ConversationCapture.ExcludedAPIKeyIDs)
 }
 
 func TestLoadTimezonePrecedence(t *testing.T) {
@@ -831,6 +847,7 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 
 	wantHosts := []string{
 		"api.kimi.com",
+		"api.kimi.ai",
 		"api.moonshot.ai",
 		"api.moonshot.cn",
 	}
@@ -842,6 +859,19 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 		if _, ok := hostSet[want]; !ok {
 			t.Fatalf("URLAllowlist.UpstreamHosts missing %q; got %v", want, cfg.Security.URLAllowlist.UpstreamHosts)
 		}
+	}
+	opts := urlvalidator.ValidationOptions{
+		AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
+	}
+	for _, host := range []string{"api.kimi.com", "api.kimi.ai"} {
+		target := "https://" + host + "/coding/v1/usages"
+		normalized, err := urlvalidator.ValidateHTTPSURL(target, opts)
+		require.NoError(t, err)
+		require.Equal(t, target, normalized)
+		_, err = urlvalidator.ValidateHTTPSURL("https://"+host+".attacker.example/coding/v1/usages", opts)
+		require.Error(t, err)
 	}
 }
 

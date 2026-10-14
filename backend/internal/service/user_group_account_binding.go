@@ -56,12 +56,16 @@ func (r *UserGroupAccountBindingResolver) Get(ctx context.Context, userID, group
 	}
 	key := fmt.Sprintf("%d:%d", userID, groupID)
 	if cached, ok := r.cache.Get(key); ok {
-		return cloneUserGroupAccountBinding(cached.(userGroupAccountBindingCacheEntry).Binding), nil
+		if entry, valid := cached.(userGroupAccountBindingCacheEntry); valid {
+			return cloneUserGroupAccountBinding(entry.Binding), nil
+		}
 	}
 
 	value, err, _ := r.sf.Do(key, func() (any, error) {
 		if cached, ok := r.cache.Get(key); ok {
-			return cached.(userGroupAccountBindingCacheEntry).Binding, nil
+			if entry, valid := cached.(userGroupAccountBindingCacheEntry); valid {
+				return entry.Binding, nil
+			}
 		}
 		binding, err := r.repo.GetByUserAndGroup(ctx, userID, groupID)
 		if err != nil {
@@ -77,7 +81,11 @@ func (r *UserGroupAccountBindingResolver) Get(ctx context.Context, userID, group
 	if value == nil {
 		return nil, nil
 	}
-	return cloneUserGroupAccountBinding(value.(*UserGroupAccountBinding)), nil
+	binding, ok := value.(*UserGroupAccountBinding)
+	if !ok {
+		return nil, fmt.Errorf("unexpected account binding result type %T", value)
+	}
+	return cloneUserGroupAccountBinding(binding), nil
 }
 
 func (r *UserGroupAccountBindingResolver) ListByUserID(ctx context.Context, userID int64) (map[int64]UserGroupAccountBinding, error) {

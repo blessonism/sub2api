@@ -1,16 +1,12 @@
 package routes
 
 import (
-	"bytes"
 	"errors"
-	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
@@ -65,22 +61,15 @@ func RegisterGatewayRoutes(
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok,
-			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-			service.PlatformMiniMax, service.PlatformOpenCodeGo:
-			// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
-			return true
-		default:
-			return false
-		}
+		// openai、grok 与多协议 API Key 供应商经 OpenAI 网关转发（平台清单）。
+		return domain.UsesOpenAIGateway(getGroupPlatform(c))
 	}
 	countTokensHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
-			h.OpenAIGateway.CountTokens(c)
-		case service.PlatformGrok:
+		switch platform := getGroupPlatform(c); {
+		case platform == service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
+		case domain.UsesOpenAIGateway(platform):
+			h.OpenAIGateway.CountTokens(c)
 		default:
 			h.Gateway.CountTokens(c)
 		}
@@ -387,6 +376,12 @@ func RegisterGatewayRoutes(
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
 		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		// 显式上下文缓存：网关自管资源 ID 与账号绑定，list/get 只读本地记录。
+		gemini.POST("/cachedContents", h.Gateway.GeminiCachedContentsCreate)
+		gemini.GET("/cachedContents", h.Gateway.GeminiCachedContentsList)
+		gemini.GET("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsGet)
+		gemini.PATCH("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsPatch)
+		gemini.DELETE("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsDelete)
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
@@ -638,63 +633,6 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 	}
 }
 
-func compositeRequestModelFromBody(contentType string, body []byte) string {
-	if model, _ := compositeJSONRequestModel(body); model != "" {
-		return model
-	}
-	return compositeMultipartModelFromBody(contentType, body)
-}
-
-func compositeJSONRequestModel(body []byte) (string, string) {
-	for _, path := range []string{"model", "session.model"} {
-		model := gjson.GetBytes(body, path)
-		if model.Type != gjson.String {
-			continue
-		}
-		if value := strings.TrimSpace(model.String()); value != "" {
-			return value, path
-		}
-	}
-	return "", ""
-}
-
-func compositeMultipartModelFromBody(contentType string, body []byte) string {
-	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
-	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
-		return ""
-	}
-	boundary := strings.TrimSpace(params["boundary"])
-	if boundary == "" {
-		return ""
-	}
-	reader := multipart.NewReader(bytes.NewReader(body), boundary)
-	for {
-		part, err := reader.NextPart()
-		if errors.Is(err, io.EOF) {
-			return ""
-		}
-		if err != nil {
-			return ""
-		}
-		fieldName := part.FormName()
-		if part.FileName() != "" || (fieldName != "model" && fieldName != "session") {
-			continue
-		}
-		data, err := io.ReadAll(part)
-		if err != nil {
-			return ""
-		}
-		switch fieldName {
-		case "model":
-			return strings.TrimSpace(string(data))
-		case "session":
-			if model, _ := compositeJSONRequestModel(data); model != "" {
-				return model
-			}
-		}
-	}
-}
-
 func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {
 	if resolver == nil {
 		resolver = service.NewCompositeRouteResolver(nil)
@@ -753,12 +691,6 @@ func compositeGeminiModelFromParams(c *gin.Context) string {
 		return strings.TrimSpace(modelAction[:idx])
 	}
 	return modelAction
-}
-
-func resetRequestBody(c *gin.Context, body []byte) {
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	c.Request.ContentLength = int64(len(body))
-	c.Request.Header.Set("Content-Length", strconv.Itoa(len(body)))
 }
 
 func compositeRouteEndpointForPath(path string) string {

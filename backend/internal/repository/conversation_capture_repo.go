@@ -121,7 +121,7 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []service.ConversationSession{}
 	for rows.Next() {
 		item, err := scanConversationSession(rows)
@@ -173,7 +173,7 @@ LIMIT $2 OFFSET $3`, sessionID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items, err := scanConversationTurnSummaries(rows)
 	return items, total, err
 }
@@ -377,7 +377,7 @@ FOR UPDATE`, sourceSessionID)
 		for rows.Next() {
 			var turnID int64
 			if err := rows.Scan(&turnID); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			turnIDs = append(turnIDs, turnID)
@@ -716,7 +716,7 @@ func (r *conversationCaptureRepository) ListExportableTurns(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanConversationTurns(rows)
 }
 
@@ -773,7 +773,7 @@ LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []service.ConversationExportJob{}
 	for rows.Next() {
 		item, err := scanConversationExportJob(rows)
@@ -880,7 +880,7 @@ ORDER BY expires_at ASC`, now, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var jobs []service.ConversationExportJob
 	for rows.Next() {
 		job, err := scanConversationExportJob(rows)
@@ -947,7 +947,7 @@ func (r *conversationCaptureRepository) CleanupExpired(ctx context.Context, now 
 	for sessionRows.Next() {
 		var sessionID string
 		if err := sessionRows.Scan(&sessionID); err != nil {
-			sessionRows.Close()
+			_ = sessionRows.Close()
 			return 0, 0, err
 		}
 		sessionIDs = append(sessionIDs, sessionID)

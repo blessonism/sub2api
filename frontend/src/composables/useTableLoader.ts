@@ -52,7 +52,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
       const response = await fetchFn(
         pagination.page,
         pagination.page_size,
-        toRaw(params) as P,
+        { ...toRaw(params) } as P,
         { signal: currentController.signal }
       )
 

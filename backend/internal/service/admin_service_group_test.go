@@ -806,8 +806,8 @@ func TestAdminService_UpdateGroup_LimitFieldsPartialUpdate(t *testing.T) {
 	t.Run("explicit changes and unlimited clear only touched limits", func(t *testing.T) {
 		newDaily, unlimited := 15.0, -1.0
 		group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
-			DailyLimitUSD:  &newDaily,
-			WeeklyLimitUSD: &unlimited,
+			DailyLimitUSD: &newDaily, DailyLimitUSDSet: true,
+			WeeklyLimitUSD: &unlimited, WeeklyLimitUSDSet: true,
 		})
 		require.NoError(t, err)
 		require.Equal(t, 15.0, *group.DailyLimitUSD)

@@ -31,6 +31,7 @@ const {
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    accountCollections: { list: vi.fn(async () => []) },
     accounts: {
       list: listAccounts,
       getById,
@@ -218,7 +219,7 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('keeps lite=1 on automatic ETag refreshes', async () => {
+  it('uses full rows on automatic ETag refreshes after the initial lite load', async () => {
     vi.useFakeTimers()
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
@@ -231,7 +232,7 @@ describe('admin AccountsView lite account list', () => {
     expect(listWithEtag).toHaveBeenCalledWith(
       1,
       20,
-      expect.objectContaining({ lite: '1' }),
+      expect.not.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
     wrapper.unmount()

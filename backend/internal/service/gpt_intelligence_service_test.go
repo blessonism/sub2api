@@ -269,7 +269,7 @@ func TestMergeGptIntelligenceDeepSeekEfficiency_ExtractsDeepSeekSeries(t *testin
 		},
 	}
 
-	merged := mergeGptIntelligenceDeepSeekEfficiency(snapshot, &efficiency)
+	merged := mergeGptIntelligenceEfficiency(snapshot, &efficiency)
 
 	require.True(t, merged)
 	require.Len(t, snapshot.Comparisons, 3)
@@ -304,7 +304,7 @@ func TestMergeGptIntelligenceDeepSeekEfficiency_SkipsExistingKeys(t *testing.T) 
 		},
 	}
 
-	merged := mergeGptIntelligenceDeepSeekEfficiency(snapshot, &efficiency)
+	merged := mergeGptIntelligenceEfficiency(snapshot, &efficiency)
 
 	require.True(t, merged)
 	require.Len(t, snapshot.Comparisons, 2)
@@ -314,7 +314,7 @@ func TestMergeGptIntelligenceDeepSeekEfficiency_SkipsExistingKeys(t *testing.T) 
 
 func TestGptIntelligenceDeepSeekHelpers(t *testing.T) {
 	require.Equal(t, "deepseek_v4_flash_max", gptIntelligenceComparisonKey("deepseek-v4-flash", "max"))
-	require.Equal(t, "DeepSeek V4 Flash max", gptIntelligenceDeepSeekLabel("max"))
+	require.Equal(t, "DeepSeek V4 Flash max", gptIntelligenceModelLabel("deepseek-v4-flash", "max"))
 }
 
 func TestEncodeGptIntelligencePromptTemplates_NormalizesKnownTemplates(t *testing.T) {

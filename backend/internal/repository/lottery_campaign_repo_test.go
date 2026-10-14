@@ -16,7 +16,7 @@ func TestGetActiveLotteryCampaignReturnsFeaturedCampaignOutsideActiveWindow(t *t
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewLotteryCampaignRepository(db)
 	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
@@ -85,7 +85,7 @@ func TestUpsertLotteryEntryPersistsUSDUsageWithTypedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewLotteryCampaignRepository(db)
 	entryDate := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
@@ -127,7 +127,7 @@ func TestCountLotteryParticipantsCountsOnlyEnrolledUsersInCurrentDraw(t *testing
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewLotteryCampaignRepository(db)
 	entryDate := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
@@ -155,7 +155,7 @@ func TestUpdateLotteryCampaignRejectsUsageModeChangeAfterDraw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewLotteryCampaignRepository(db)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT usage_mode FROM lottery_campaigns").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"usage_mode"}).AddRow("token"))
@@ -176,7 +176,7 @@ func TestGrantLotteryWinnerBalanceCommitsUserBalanceAndWinnerAtomically(t *testi
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewLotteryCampaignRepository(db)
 	mock.ExpectBegin()
@@ -230,7 +230,7 @@ func TestGrantLotteryWinnerBalanceSkipsAlreadySuccessfulWinner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewLotteryCampaignRepository(db)
 	mock.ExpectBegin()

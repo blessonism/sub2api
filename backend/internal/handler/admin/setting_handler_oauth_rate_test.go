@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -36,11 +35,9 @@ func TestSettingHandler_OAuthSchedulingRateRoundTrip(t *testing.T) {
 			repo := &settingHandlerRepoStub{values: tt.initial}
 			svc := service.NewSettingService(repo, &config.Config{})
 			handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
-			rec := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(rec)
-			c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewBufferString(tt.body))
-			c.Request.Header.Set("Content-Type", "application/json")
-			handler.UpdateSettings(c)
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &fields))
+			rec := doUpdateSettingsFromCurrent(t, handler, fields, nil)
 			require.Equal(t, tt.status, rec.Code, rec.Body.String())
 			if tt.status != http.StatusOK {
 				require.Empty(t, repo.lastUpdates)

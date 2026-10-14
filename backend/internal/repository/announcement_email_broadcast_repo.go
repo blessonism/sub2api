@@ -123,7 +123,7 @@ WHERE `+where+fmt.Sprintf(` ORDER BY id ASC LIMIT $%d OFFSET $%d`, len(args)-1, 
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.AnnouncementEmailDelivery, 0)
 	for rows.Next() {
 		var d service.AnnouncementEmailDelivery

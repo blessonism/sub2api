@@ -165,12 +165,12 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 	gwSvc := service.NewGatewayService(
 		nil, // accountRepo (not used: scheduler snapshot hit)
 		&fakeGroupRepo{group: group},
-		nil, // usageLogRepo
-		nil, // usageBillingRepo
-		nil, // userRepo
-		nil, // userSubRepo
-		nil, // userGroupRateRepo
-		nil, // cache (disable sticky)
+		nil,      // usageLogRepo
+		nil,      // usageBillingRepo
+		nil,      // userRepo
+		nil,      // userSubRepo
+		nil,      // userGroupRateRepo
+		nil, nil, // cache (disable sticky)
 		nil, // cfg
 		schedulerSnapshot,
 		nil, // concurrencyService (disable load-aware; tryAcquire always acquired)

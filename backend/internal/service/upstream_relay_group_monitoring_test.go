@@ -310,20 +310,6 @@ func (r *upstreamRelayMetricsRefreshRepo) ListCandidateUsageBindings(context.Con
 	return out, nil
 }
 
-type upstreamRelayMetricsRefreshAccountRepo struct {
-	AccountRepository
-	accounts map[int64]*Account
-}
-
-func (r upstreamRelayMetricsRefreshAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
-	account := r.accounts[id]
-	if account == nil {
-		return nil, ErrAccountNotFound
-	}
-	copy := *account
-	return &copy, nil
-}
-
 func TestUpstreamRelayParseGroupRatesAllowsEmptyObject(t *testing.T) {
 	rates, err := parseGroupRates([]byte(`{}`))
 

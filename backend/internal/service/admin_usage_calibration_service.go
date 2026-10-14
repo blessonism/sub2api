@@ -18,8 +18,8 @@ const (
 
 var (
 	ErrAdminUsageCalibrationInvalidInput = infraerrors.BadRequest("ADMIN_USAGE_CALIBRATION_INVALID_INPUT", "invalid calibration input")
-	ErrAdminUsageCalibrationNotFound    = infraerrors.NotFound("ADMIN_USAGE_CALIBRATION_NOT_FOUND", "usage calibration not found")
-	ErrAdminUsageCalibrationRevoked     = infraerrors.Conflict("ADMIN_USAGE_CALIBRATION_ALREADY_REVOKED", "usage calibration has already been revoked")
+	ErrAdminUsageCalibrationNotFound     = infraerrors.NotFound("ADMIN_USAGE_CALIBRATION_NOT_FOUND", "usage calibration not found")
+	ErrAdminUsageCalibrationRevoked      = infraerrors.Conflict("ADMIN_USAGE_CALIBRATION_ALREADY_REVOKED", "usage calibration has already been revoked")
 )
 
 type AdminUsageTokenCalibrationInput struct {

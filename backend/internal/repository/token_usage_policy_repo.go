@@ -619,7 +619,7 @@ func (r *tokenUsagePolicyRepository) applyPolicyChangesInTx(ctx context.Context,
 						manual_takeover_at = COALESCE(token_usage_auto_assignments.manual_takeover_at, NOW()),
 						updated_at = NOW()
 				`, policy.ID, change.UserID, policy.TargetGroupID, change.TierID, change.TokenUsage, change.ActualCost,
-					change.TotalTokenUsage, change.TotalActualCost, change.ResidentTierID, change.OldRateMultiplier, change.Reason, clearPolicyGrantedGroupOwnership); err != nil {
+				change.TotalTokenUsage, change.TotalActualCost, change.ResidentTierID, change.OldRateMultiplier, change.Reason, clearPolicyGrantedGroupOwnership); err != nil {
 				return err
 			}
 		}
@@ -692,9 +692,7 @@ func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *s
 			if err != nil {
 				return err
 			}
-			if markManualTakeoverWhenNoRowsAffected(res, change) {
-				manualTakeover = true
-			}
+			markManualTakeoverWhenNoRowsAffected(res, change)
 		} else {
 			res, err := tx.ExecContext(ctx, `
 				UPDATE user_group_rate_multipliers
@@ -705,9 +703,7 @@ func (r *tokenUsagePolicyRepository) applyClearChange(ctx context.Context, tx *s
 			if err != nil {
 				return err
 			}
-			if markManualTakeoverWhenNoRowsAffected(res, change) {
-				manualTakeover = true
-			} else {
+			if !markManualTakeoverWhenNoRowsAffected(res, change) {
 				if _, err := tx.ExecContext(ctx, `
 						DELETE FROM user_group_rate_multipliers
 						WHERE user_id = $1 AND group_id = $2

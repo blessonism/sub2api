@@ -1147,7 +1147,8 @@ func TestUpstreamRelayBuildRelayHealthComputesWindowStats(t *testing.T) {
 
 func TestUpstreamRelayRepositoryRefreshCandidateHealthSnapshotUpsertsSummary(t *testing.T) {
 	db, mock := newSQLMock(t)
-	repo := NewUpstreamRelayRepository(db).(*upstreamRelayRepository)
+	repo, ok := NewUpstreamRelayRepository(db).(*upstreamRelayRepository)
+	require.True(t, ok)
 	ctx := context.Background()
 	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
 

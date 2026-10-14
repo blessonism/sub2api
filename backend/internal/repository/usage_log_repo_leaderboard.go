@@ -163,7 +163,7 @@ func (r *usageLogRepository) listSharedIPGroupSummaryItems(ctx context.Context, 
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	groups := make([]usagestats.SharedIPGroupSummaryItem, 0)
 	groupIndexByIP := make(map[string]int)

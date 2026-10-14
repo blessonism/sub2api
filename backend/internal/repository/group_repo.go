@@ -32,7 +32,11 @@ func lockLiveGroups(ctx context.Context, exec sqlExecutor, groupIDs []int64) err
 	for _, id := range groupIDs {
 		unique[id] = struct{}{}
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT id FROM groups WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY id FOR SHARE`, pq.Array(groupIDs))
+	rows, err := exec.QueryContext(ctx, `/* account_group_live_group_lock */
+		SELECT id FROM groups
+		WHERE id = ANY($1) AND deleted_at IS NULL
+		ORDER BY id
+		FOR SHARE`, pq.Array(groupIDs))
 	if err != nil {
 		return err
 	}
@@ -83,6 +87,10 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
+	timeRatePriority := groupIn.TimeRatePriority
+	if timeRatePriority == "" {
+		timeRatePriority = service.TimeRatePriorityScheduleFirst
+	}
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
@@ -93,7 +101,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetNillableVisibleRateMultiplier(groupIn.VisibleRateMultiplier).
-		SetTimeRatePriority(groupIn.TimeRatePriority).
+		SetTimeRatePriority(timeRatePriority).
 		SetTimeRatePeriods(groupIn.TimeRatePeriods).
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
@@ -163,6 +171,10 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
+
+	if groupIn.I18n != nil {
+		builder = builder.SetI18n(groupIn.I18n)
+	}
 
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -275,6 +287,10 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	timeRatePriority := groupIn.TimeRatePriority
+	if timeRatePriority == "" {
+		timeRatePriority = service.TimeRatePriorityScheduleFirst
+	}
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
@@ -285,7 +301,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetNillableVisibleRateMultiplier(groupIn.VisibleRateMultiplier).
-		SetTimeRatePriority(groupIn.TimeRatePriority).
+		SetTimeRatePriority(timeRatePriority).
 		SetTimeRatePeriods(groupIn.TimeRatePeriods).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
@@ -436,6 +452,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 
 	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
+
+	i18n := groupIn.I18n
+	if i18n == nil {
+		i18n = service.GroupI18n{}
+	}
+	builder = builder.SetI18n(i18n)
 
 	updated, err := builder.Save(ctx)
 	if err != nil {
@@ -966,6 +988,29 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
 		return nil, err
 	}
+	// Lock and validate the text value before using JSONB operators. A legacy
+	// malformed setting must not prevent deletion or be silently replaced.
+	var moderationValue string
+	err = scanSingleRow(ctx, exec, `SELECT value FROM settings WHERE key = $1 FOR UPDATE`,
+		[]any{service.SettingKeyContentModerationConfig}, &moderationValue)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	// Keep the moderation scope in sync in the same transaction. Updating the
+	// setting row in SQL also serializes concurrent group deletions across nodes.
+	if err == nil && json.Valid([]byte(moderationValue)) {
+		if _, err := exec.ExecContext(ctx, `UPDATE settings
+		SET value = jsonb_set(value::jsonb, '{group_ids}',
+			(SELECT COALESCE(jsonb_agg(group_id ORDER BY ord), '[]'::jsonb)
+			 FROM jsonb_array_elements(value::jsonb->'group_ids') WITH ORDINALITY AS ids(group_id, ord)
+			 WHERE group_id <> to_jsonb($2::bigint)))::text,
+			updated_at = NOW()
+		WHERE key = $1 AND jsonb_typeof(value::jsonb->'group_ids') = 'array'
+			AND value::jsonb->'group_ids' @> jsonb_build_array($2::bigint)`,
+			service.SettingKeyContentModerationConfig, id); err != nil {
+			return nil, err
+		}
+	}
 
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
@@ -1087,8 +1132,21 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 		return nil
 	}
 
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	exec := sqlExecutor(r.client)
+	if tx != nil {
+		defer func() { _ = tx.Rollback() }()
+		exec = tx.Client()
+	}
+	if err := lockLiveGroups(ctx, exec, []int64{groupID}); err != nil {
+		return err
+	}
+
 	// 使用 INSERT ... ON CONFLICT DO NOTHING 忽略已存在的绑定
-	_, err := r.sql.ExecContext(
+	_, err = exec.ExecContext(
 		ctx,
 		`INSERT INTO account_groups (account_id, group_id, priority, created_at)
 		 SELECT unnest($1::bigint[]), $2, 50, NOW()
@@ -1098,6 +1156,11 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 	)
 	if err != nil {
 		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
 
 	// 发送调度器事件

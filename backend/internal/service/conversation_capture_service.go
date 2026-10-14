@@ -275,8 +275,8 @@ func (s *ConversationCaptureService) ExportMessagesJSONL(ctx context.Context, re
 		if err != nil {
 			return nil, err
 		}
-		buf.Write(raw)
-		buf.WriteByte('\n')
+		_, _ = buf.Write(raw)
+		_ = buf.WriteByte('\n')
 	}
 	return buf.Bytes(), nil
 }
@@ -580,10 +580,10 @@ func buildConversationDedupeHash(requestMessages, responseMessages, tools []json
 		}
 	}
 	h := sha256.New()
-	h.Write([]byte(meta.RequestID))
-	h.Write([]byte(meta.ClientRequestID))
-	h.Write(requestBody)
-	h.Write(responseRaw)
+	_, _ = h.Write([]byte(meta.RequestID))
+	_, _ = h.Write([]byte(meta.ClientRequestID))
+	_, _ = h.Write(requestBody)
+	_, _ = h.Write(responseRaw)
 	return hex.EncodeToString(h.Sum(nil))
 }
 

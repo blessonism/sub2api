@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+
 	"errors"
 	"fmt"
 	"math"
 	"net/url"
 	"sort"
-	"strconv"
+
 	"strings"
 	"time"
 
@@ -1469,8 +1469,7 @@ func calculateCampaignRewards(campaignID int64, cfg *CampaignConfigVersion, fina
 	results := make([]CampaignRewardResult, 0, len(sortedRows))
 	for i, row := range sortedRows {
 		rank := i + 1
-		var rankPtr *int
-		rankPtr = &rank
+		rankPtr := &rank
 		rankReward := int64(0)
 		if rank <= rankWinnerCount && rankWeightSum > 0 {
 			rankReward = decimal.NewFromInt(rankPool).Mul(decimal.NewFromInt(cfg.RankWeights[rank-1])).Div(decimal.NewFromInt(rankWeightSum)).Floor().IntPart()
@@ -1573,43 +1572,4 @@ func centsFromYuan(amount float64) int64 {
 func centsToYuanFloat(cents int64) float64 {
 	v, _ := decimal.NewFromInt(cents).Div(decimal.NewFromInt(100)).Float64()
 	return v
-}
-
-func campaignConfigWeightsJSON(weights []int64) string {
-	b, _ := json.Marshal(weights)
-	return string(b)
-}
-
-func parseCampaignWeights(raw string) []int64 {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return append([]int64(nil), defaultCampaignRankWeights...)
-	}
-	var result []int64
-	if err := json.Unmarshal([]byte(raw), &result); err == nil && len(result) > 0 {
-		return result
-	}
-	parts := strings.FieldsFunc(raw, func(r rune) bool { return r == '/' || r == ',' || r == ' ' })
-	for _, part := range parts {
-		v, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
-		if err == nil {
-			result = append(result, v)
-		}
-	}
-	if len(result) == 0 {
-		return append([]int64(nil), defaultCampaignRankWeights...)
-	}
-	return result
-}
-
-func maskCampaignEmail(email string) string {
-	email = strings.TrimSpace(email)
-	at := strings.IndexByte(email, '@')
-	if at <= 1 {
-		if email == "" {
-			return ""
-		}
-		return "***"
-	}
-	return email[:1] + "***" + email[at:]
 }

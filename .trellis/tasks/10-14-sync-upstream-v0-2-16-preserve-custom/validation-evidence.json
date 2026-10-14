@@ -1,0 +1,1439 @@
+{
+  "refs": {
+    "base": "b16284c40d5bf8cd99dc5c77ff683ce3c450295a",
+    "base_input": "custom/main",
+    "merge_base": "b8dece9000c68815a5b867ca5a1e6f236e173905",
+    "merge_bases": [
+      "b8dece9000c68815a5b867ca5a1e6f236e173905"
+    ],
+    "upstream": "4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1",
+    "upstream_input": "4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1"
+  },
+  "preflight": {
+    "analysis_duration_seconds": 1.483,
+    "conflict_estimate_basis": "双方规范化路径交集；这是保守候选数，不等于 Git 文本冲突数",
+    "direct_overlaps": 96,
+    "downstream_commits": 300,
+    "downstream_paths": 1557,
+    "estimated_conflict_candidates": 96,
+    "upstream_commits": 233,
+    "upstream_paths": 472
+  },
+  "text_conflicts_resolved": 24,
+  "selected_checks": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/service",
+        "-run",
+        "AnnouncementEmail|DeliverableAnnouncementEmail",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "公告邮件渲染、收件人过滤与 Worker 投递回归",
+      "fallback": false,
+      "id": "announcement-email-backend",
+      "lane": "backend",
+      "reasons": [
+        "capability:announcement-email-broadcast"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/api/__tests__/admin.announcements.email-broadcast.spec.ts",
+        "src/components/admin/announcements/__tests__/AnnouncementEmailBroadcastDialog.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "公告邮件管理 API 与群发弹窗回归",
+      "fallback": false,
+      "id": "announcement-email-frontend",
+      "lane": "frontend",
+      "reasons": [
+        "capability:announcement-email-broadcast"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "Test(AnnouncementEmailBroadcastRepositoryDeliveryLifecycle|MigrationsRunner_IsIdempotent_AndSchemaIsUpToDate)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "公告邮件仓储生命周期与迁移结构回归",
+      "fallback": false,
+      "id": "announcement-email-integration",
+      "lane": "integration",
+      "reasons": [
+        "capability:announcement-email-broadcast"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./ent/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 Ent 生成代码交叉变更的通用编译门禁",
+      "fallback": true,
+      "id": "backend-ent-compile",
+      "lane": "backend",
+      "reasons": [
+        "fallback:backend/ent/migrate/schema.go",
+        "fallback:backend/ent/mutation.go",
+        "fallback:backend/ent/runtime/runtime.go",
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 handler 交叉变更的通用编译门禁",
+      "fallback": true,
+      "id": "backend-handler-compile",
+      "lane": "backend",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/handler/admin/account_handler.go",
+        "fallback:backend/internal/handler/api_key_handler.go",
+        "fallback:backend/internal/handler/available_channel_handler.go",
+        "fallback:backend/internal/handler/dto/mappers.go",
+        "fallback:backend/internal/handler/dto/types.go",
+        "fallback:backend/internal/handler/gateway_models_test.go",
+        "fallback:backend/internal/handler/gemini_v1beta_handler_test.go",
+        "fallback:backend/internal/handler/openai_codex_models_handler_test.go",
+        "fallback:backend/internal/handler/openai_gateway_handler.go",
+        "fallback:backend/internal/handler/openai_gateway_handler_test.go",
+        "fallback:backend/internal/handler/ops_error_logger.go",
+        "fallback:backend/internal/handler/payment_handler.go",
+        "fallback:backend/internal/handler/subscription_handler.go",
+        "fallback:backend/internal/handler/wire.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/repository",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 repository 交叉变更的通用编译门禁",
+      "fallback": true,
+      "id": "backend-repository-compile",
+      "lane": "backend",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/repository/api_key_repo.go",
+        "fallback:backend/internal/repository/wire.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/server/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 server 交叉变更的通用编译门禁",
+      "fallback": true,
+      "id": "backend-server-compile",
+      "lane": "backend",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/server/api_contract_test.go",
+        "fallback:backend/internal/server/routes/gateway.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/service",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 service 交叉变更的通用编译门禁",
+      "fallback": true,
+      "id": "backend-service-compile",
+      "lane": "backend",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/service/account.go",
+        "fallback:backend/internal/service/account_test_service.go",
+        "fallback:backend/internal/service/admin_account.go",
+        "fallback:backend/internal/service/admin_group.go",
+        "fallback:backend/internal/service/admin_group_duplicate.go",
+        "fallback:backend/internal/service/admin_service.go",
+        "fallback:backend/internal/service/api_key_service.go",
+        "fallback:backend/internal/service/auth_service.go",
+        "fallback:backend/internal/service/channel_available.go",
+        "fallback:backend/internal/service/channel_monitor_checker.go",
+        "fallback:backend/internal/service/channel_monitor_checker_body_test.go",
+        "fallback:backend/internal/service/channel_monitor_endpoint_test.go",
+        "fallback:backend/internal/service/composite_platform_test.go",
+        "fallback:backend/internal/service/domain_constants.go",
+        "fallback:backend/internal/service/gateway_service.go",
+        "fallback:backend/internal/service/group.go",
+        "fallback:backend/internal/service/openai_account_runtime_block_fastpath.go",
+        "fallback:backend/internal/service/openai_codex_transform.go",
+        "fallback:backend/internal/service/openai_gateway_chat_completions.go",
+        "fallback:backend/internal/service/openai_gateway_forward.go",
+        "fallback:backend/internal/service/openai_gateway_messages.go",
+        "fallback:backend/internal/service/openai_gateway_passthrough.go",
+        "fallback:backend/internal/service/openai_gateway_service.go",
+        "fallback:backend/internal/service/payment_config_plans.go",
+        "fallback:backend/internal/service/upstream_billing_probe.go",
+        "fallback:backend/internal/service/wire.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/admin",
+        "-run",
+        "^TestDashboardHandler_GetStats_IncludesOperationalMetrics$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "Dashboard handler 运营指标序列化回归",
+      "fallback": false,
+      "id": "dashboard-handler",
+      "lane": "backend",
+      "reasons": [
+        "capability:dashboard-operational-metrics"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "^TestUsageLogRepoSuite/(TestDashboardStats_TodayTotalsAndPerformance|TestDashboardStats_OperationalMetrics|TestDashboardStatsWithRange_Fallback|TestDashboardAggregationConsistency)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "Dashboard 真实 SQL 聚合与 fallback 运营指标回归",
+      "fallback": false,
+      "id": "dashboard-repository-integration",
+      "lane": "integration",
+      "reasons": [
+        "capability:dashboard-operational-metrics"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/views/admin/__tests__/DashboardView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "管理员 Dashboard 卡片契约回归",
+      "fallback": false,
+      "id": "dashboard-view",
+      "lane": "frontend",
+      "reasons": [
+        "capability:dashboard-operational-metrics",
+        "path:frontend/src/types/index.ts"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "typecheck"
+      ],
+      "cwd": "frontend",
+      "description": "前端 TypeScript 与 Vue 模板类型检查",
+      "fallback": true,
+      "id": "frontend-typecheck",
+      "lane": "frontend",
+      "reasons": [
+        "capability:announcement-email-broadcast",
+        "capability:group-time-rate-strategy",
+        "capability:i18n-overlay",
+        "capability:token-leaderboards",
+        "capability:user-public-group-account-binding",
+        "fallback:frontend/src/api/admin/settings.ts",
+        "fallback:frontend/src/api/admin/users.ts",
+        "fallback:frontend/src/components/account/AccountUsageCell.vue",
+        "fallback:frontend/src/components/account/CreateAccountModal.vue",
+        "fallback:frontend/src/components/account/EditAccountModal.vue",
+        "fallback:frontend/src/components/account/__tests__/AccountUsageCell.spec.ts",
+        "fallback:frontend/src/components/account/__tests__/credentialsBuilder.spec.ts",
+        "fallback:frontend/src/components/admin/group/GroupRateMultipliersModal.vue",
+        "fallback:frontend/src/components/common/BaseDialog.vue",
+        "fallback:frontend/src/components/common/GroupBadge.vue",
+        "fallback:frontend/src/views/admin/AccountsView.vue",
+        "fallback:frontend/src/views/admin/SettingsView.vue",
+        "fallback:frontend/src/views/user/ChannelStatusV1View.vue",
+        "fallback:frontend/src/views/user/CustomPageView.vue"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/handler/admin",
+        "./internal/service",
+        "./migrations",
+        "-run",
+        "TimeRate|MigratedPeakRate",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "分时倍率边界、计费优先级、迁移与管理员输入回归",
+      "fallback": false,
+      "id": "group-time-rate-backend",
+      "lane": "backend",
+      "reasons": [
+        "capability:group-time-rate-strategy",
+        "path:backend/ent/schema/group.go",
+        "path:backend/internal/handler/admin/group_handler.go",
+        "path:backend/internal/repository/group_repo.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/components/admin/group/__tests__/GroupTimeRateStrategyModal.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "分时倍率策略弹窗交互回归",
+      "fallback": false,
+      "id": "group-time-rate-frontend",
+      "lane": "frontend",
+      "reasons": [
+        "capability:group-time-rate-strategy",
+        "path:frontend/src/views/admin/GroupsView.vue"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/i18n/__tests__/localesNoKeyCollision.spec.ts",
+        "src/i18n/__tests__/opsLocaleKeys.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "locale 模块冲突与下游覆盖回归",
+      "fallback": false,
+      "id": "i18n-overlay",
+      "lane": "frontend",
+      "reasons": [
+        "capability:i18n-overlay",
+        "path:frontend/src/i18n/locales/en/admin/accounts.ts",
+        "path:frontend/src/i18n/locales/en/admin/overview.ts",
+        "path:frontend/src/i18n/locales/en/admin/resources.ts",
+        "path:frontend/src/i18n/locales/en/dashboard.ts",
+        "path:frontend/src/i18n/locales/zh/admin/accounts.ts",
+        "path:frontend/src/i18n/locales/zh/admin/overview.ts",
+        "path:frontend/src/i18n/locales/zh/admin/resources.ts",
+        "path:frontend/src/i18n/locales/zh/dashboard.ts"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/utils/__tests__/latencyHealth.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "延迟颜色分档与长时长格式回归",
+      "fallback": false,
+      "id": "latency-health",
+      "lane": "frontend",
+      "reasons": [
+        "capability:usage-latency-column"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler",
+        "./internal/handler/admin",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "Leaderboard",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "Token 排行榜查询、脱敏和管理员操作回归",
+      "fallback": false,
+      "id": "leaderboard-backend",
+      "lane": "backend",
+      "reasons": [
+        "capability:token-leaderboards",
+        "path:backend/internal/handler/usage_handler.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/api/__tests__/usage.leaderboard.spec.ts",
+        "src/api/__tests__/admin.dashboard.token-leaderboard.spec.ts",
+        "src/views/admin/__tests__/TokenLeaderboardView.spec.ts",
+        "src/views/user/__tests__/LeaderboardView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "用户与管理员 Token 排行榜 API 和页面回归",
+      "fallback": false,
+      "id": "leaderboard-frontend",
+      "lane": "frontend",
+      "reasons": [
+        "capability:token-leaderboards"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/tests",
+        "-p",
+        "test_upstream_sync.py"
+      ],
+      "cwd": ".",
+      "description": "上游同步 CLI、矩阵和集成入口回归",
+      "fallback": false,
+      "id": "upstream-sync-tool-tests",
+      "lane": "backend",
+      "reasons": [
+        "path:.github/workflows/backend-ci.yml",
+        "path:Makefile"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "UserGroupAccountBinding|AccountBinding",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "用户公开分组账号绑定仓储、校验与多平台调度回归",
+      "fallback": false,
+      "id": "user-group-account-binding-backend",
+      "lane": "backend",
+      "reasons": [
+        "capability:user-public-group-account-binding",
+        "path:backend/internal/service/gemini_messages_compat_service.go",
+        "path:backend/internal/service/openai_gateway_scheduling.go"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/components/admin/user/__tests__/UserAllowedGroupsModal.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "管理员用户公开分组账号绑定交互回归",
+      "fallback": false,
+      "id": "user-group-account-binding-frontend",
+      "lane": "frontend",
+      "reasons": [
+        "capability:user-public-group-account-binding"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "argv": [
+        "pnpm",
+        "test:run",
+        "src/views/user/__tests__/UsageView.spec.ts"
+      ],
+      "cwd": "frontend",
+      "description": "用户使用记录表格渲染回归",
+      "fallback": false,
+      "id": "user-usage-view",
+      "lane": "frontend",
+      "reasons": [
+        "capability:usage-latency-column",
+        "path:frontend/src/views/user/__tests__/UsageView.spec.ts"
+      ],
+      "timeout_seconds": 60
+    }
+  ],
+  "backend_lane": [
+    {
+      "id": "announcement-email-backend",
+      "status": "passed",
+      "duration_seconds": 35.769
+    },
+    {
+      "id": "backend-ent-compile",
+      "status": "passed",
+      "duration_seconds": 5.023
+    },
+    {
+      "id": "backend-handler-compile",
+      "status": "timeout",
+      "duration_seconds": 60.013
+    },
+    {
+      "id": "backend-repository-compile",
+      "status": "passed",
+      "duration_seconds": 25.154
+    },
+    {
+      "id": "backend-server-compile",
+      "status": "passed",
+      "duration_seconds": 26.777
+    },
+    {
+      "id": "backend-service-compile",
+      "status": "passed",
+      "duration_seconds": 33.663
+    },
+    {
+      "id": "dashboard-handler",
+      "status": "passed",
+      "duration_seconds": 11.897
+    },
+    {
+      "id": "group-time-rate-backend",
+      "status": "passed",
+      "duration_seconds": 12.532
+    },
+    {
+      "id": "leaderboard-backend",
+      "status": "passed",
+      "duration_seconds": 10.077
+    },
+    {
+      "id": "upstream-sync-tool-tests",
+      "status": "passed",
+      "duration_seconds": 3.576
+    },
+    {
+      "id": "user-group-account-binding-backend",
+      "status": "passed",
+      "duration_seconds": 7.002
+    }
+  ],
+  "backend_handler_compile_retry": {
+    "status": "passed",
+    "argv": [
+      "go",
+      "test",
+      "./internal/handler/...",
+      "-run",
+      "^$",
+      "-count=1",
+      "-timeout=60s"
+    ],
+    "note": "首次冷编译外层超时；标准命令重跑通过。"
+  },
+  "integration_lane": [
+    {
+      "id": "announcement-email-integration",
+      "status": "passed",
+      "duration_seconds": 18.277
+    },
+    {
+      "id": "dashboard-repository-integration",
+      "status": "passed",
+      "duration_seconds": 12.063
+    }
+  ],
+  "frontend_lane": {
+    "passed": 8,
+    "user_usage_view_after_fixture_adaptation": "passed: full frontend run, 24 tests (4 skipped)"
+  },
+  "backend_behavior_final": [
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t1.844s",
+    "ok  \tgithub.com/Wei-Shaw/sub2api/cmd/server\t1.349s",
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler\t2.295s",
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/admin\t1.044s",
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/dto\t3.439s",
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/quotaview\t0.329s [no tests to run]"
+  ],
+  "backend_gateway_final": [
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t1.496s"
+  ],
+  "repository_integration_extra": [
+    "ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t8.251s"
+  ],
+  "build": {
+    "frontend": "passed",
+    "backend": "passed",
+    "backend_embed": "passed"
+  },
+  "ent_wire_generation": "regenerated and second-run hashes unchanged",
+  "other_checks": {
+    "frontend_lint": "passed",
+    "frontend_typecheck": "passed",
+    "release_matrix_python_tests": "passed: 10 tests",
+    "release_shell_syntax": "passed",
+    "docker_compose_simple_mode_env": "passed",
+    "staged_diff_check": "passed"
+  },
+  "scope_exclusions": [
+    "生产部署",
+    "生产数据库迁移",
+    "远端推送",
+    "初始未跟踪文件"
+  ],
+  "historical_pre_fix": {
+    "purpose": "用户要求整改前的同步与基线失败对照；最终验收见 final_validation",
+    "frontend_full": {
+      "files_failed": 13,
+      "files_passed": 392,
+      "tests_failed": 32,
+      "tests_passed": 3110,
+      "tests_skipped": 4,
+      "unhandled_errors": 39,
+      "baseline_failures": [
+        "src/components/account/__tests__/CreateAccountModal.spec.ts > CreateAccountModal OpenAI long-context billing > allows a manually entered expiry to override a preset before account creation",
+        "src/components/account/__tests__/CreateAccountModal.spec.ts > CreateAccountModal OpenAI long-context billing > sends images_url_to_b64_json in extra when the toggle is enabled",
+        "src/components/account/__tests__/CreateAccountModal.spec.ts > CreateAccountModal OpenAI long-context billing > sends the trimmed upstream request id header in extra when filled",
+        "src/components/account/__tests__/CreateAccountModal.spec.ts > CreateAccountModal OpenAI long-context billing > sets month and year expiry presets without submitting the account form",
+        "src/components/admin/group/__tests__/GroupRateMultipliersModal.spec.ts > GroupRateMultipliersModal new override validation > saves positive rate 0.25",
+        "src/components/admin/group/__tests__/GroupRateMultipliersModal.spec.ts > GroupRateMultipliersModal new override validation > saves positive rate 1",
+        "src/components/charts/__tests__/ModelDistributionChart.spec.ts > ModelDistributionChart > uses the dashboard user label policy and renders Others with a dedicated chart color",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar custom menu open mode > opens admin-visible external custom menu items from the admin sidebar",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar custom menu open mode > opens external custom menu items in a new tab like buy plan",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar custom menu open mode > treats uppercase http(s) schemes as external sidebar links",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar mounted activity center navigation > marks activity center active when the legacy campaign rewards route is current",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar mounted activity center navigation > marks the admin activity center entry active when the legacy admin campaign rewards route is current",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar mounted activity center navigation > renders the admin activity center entry and marks it active on the main admin route",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar mounted activity center navigation > renders the admin personal activity center entry and keeps it active for the legacy user route",
+        "src/components/layout/__tests__/AppSidebar.spec.ts > AppSidebar mounted activity center navigation > renders the regular user activity center entry after the affiliate rebate entry",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > keeps lite=1 on automatic ETag refreshes",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > keeps lite=1 on the initial list request",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > keeps the action menu open during internal scrolling but closes it on table scrolling",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > loads the full account by id before opening edit, test, and stats actions",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > maps group_ids through the group catalog for the table cell",
+        "src/views/admin/__tests__/AccountsView.lite.spec.ts > admin AccountsView lite account list > shows an error and keeps the modal closed when detail loading fails",
+        "src/views/admin/__tests__/AccountsView.selectAllResults.spec.ts > admin AccountsView select all filtered results > 'keeps only failed accounts selected' after a batch token refresh and table reload",
+        "src/views/admin/__tests__/AccountsView.sparkShadow.spec.ts > admin AccountsView — 账号行展示 > replaces a Grok row when auto refresh returns a changed canonical usage snapshot",
+        "src/views/admin/__tests__/AccountsView.usageWindowsHint.spec.ts > admin AccountsView usage windows hint > keeps groups available when loading proxies fails",
+        "src/views/admin/__tests__/GroupsView.columnSettings.spec.ts > admin GroupsView column settings > applies saved hidden columns on mount and ignores unknown keys",
+        "src/views/admin/__tests__/GroupsView.columnSettings.spec.ts > admin GroupsView column settings > can show the id column from column settings",
+        "src/views/admin/__tests__/GroupsView.columnSettings.spec.ts > admin GroupsView column settings > does not call advanced group APIs or expose the exclusive filter in simple mode",
+        "src/views/admin/__tests__/GroupsView.duplicate.spec.ts > GroupsView duplicate action > hides advanced group actions in simple mode",
+        "src/views/admin/__tests__/SettingsView.spec.ts > admin SettingsView payment visible method controls > loads and saves the open button visibility for each custom menu",
+        "src/views/admin/__tests__/UsageView.spec.ts > admin UsageView request ID column visibility > keeps request ID hidden by default and allows enabling it from column settings",
+        "src/views/admin/__tests__/UsersView.spec.ts > admin UsersView > previews and confirms reducing every non-deleted user balance",
+        "src/views/admin/__tests__/UsersView.spec.ts > admin UsersView > validates and raises the concurrency floor for all users"
+      ],
+      "baseline_same_failure_names": true,
+      "baseline_unhandled_errors": {
+        "failed_files": 27,
+        "two_additional_files": 12
+      }
+    },
+    "backend_full": {
+      "passed_packages": 52,
+      "failed_test_groups": 18,
+      "failed_packages": [
+        "FAIL",
+        "FAIL",
+        "FAIL",
+        "FAIL",
+        "FAIL"
+      ],
+      "failure_names_including_subtests": [
+        "TestAPIContracts",
+        "TestAPIContracts/GET_/api/v1/admin/settings",
+        "TestAPIContracts/GET_/api/v1/admin/settings_falls_back_to_config_oauth_defaults",
+        "TestAPIContracts/GET_/api/v1/groups/available",
+        "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly",
+        "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/clear_multipliers",
+        "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/get_multipliers",
+        "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate",
+        "TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly",
+        "TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess",
+        "TestAdminService_UpdateGroup_LimitFieldsPartialUpdate",
+        "TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits",
+        "TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit",
+        "TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser",
+        "TestInflightEstimate_AccountMappingNoDBAndBoundedMemory",
+        "TestJWTAuth_ValidToken_DoesNotTouchLastActive",
+        "TestLockAndMergeAccountExtraDegradesOnUnparsableExtra",
+        "TestLockAndMergeAccountExtraPreservesLatestCodexTicket",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/api_key_changed_clears_both_managed_keys",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/base_url_no_longer_eligible_clears_both_managed_keys",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_keeps_disabled_switch_from_database",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/no_longer_eligible_account_never_inherits_managed_keys",
+        "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/proxy_changed_invalidates_snapshot_but_keeps_auto-refresh_switch",
+        "TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/clear_override",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/omitted_preserves_cleared",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/omitted_preserves_override",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/set_override",
+        "TestSettingHandler_OAuthSchedulingRateRoundTrip/zero_is_explicit",
+        "TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion",
+        "TestUpdateSettingsPartialPayloadKeepsUnsentKeys",
+        "TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted",
+        "TestValidateCreateParams_CheckModeMatrix",
+        "TestValidateCreateParams_CheckModeMatrix/probe_requires_api_key",
+        "TestValidateCreateParams_CheckModeMatrix/quota_probe_requires_primary_model"
+      ],
+      "new_failures": [],
+      "baseline_same_environment": true,
+      "timeout": false,
+      "service_duration_seconds": 213.13
+    },
+    "lint": {
+      "baseline_issue_count": 58,
+      "final_issue_count": 53,
+      "new_issues": [],
+      "remaining": [
+        [
+          "internal/handler/admin/user_handler.go",
+          "File is not properly formatted (gofmt)"
+        ],
+        [
+          "internal/handler/dto/settings.go",
+          "ST1005: error strings should not be capitalized (staticcheck)"
+        ],
+        [
+          "internal/handler/dto/settings.go",
+          "ST1005: error strings should not be capitalized (staticcheck)"
+        ],
+        [
+          "internal/repository/admin_usage_calibration_repo.go",
+          "SA4006: this value of after is never used (staticcheck)"
+        ],
+        [
+          "internal/repository/announcement_email_broadcast_repo.go",
+          "Error return value of `(*database/sql.Rows).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/repository/conversation_capture_repo_test.go",
+          "Error return value of `(*database/sql.DB).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/repository/conversation_capture_repo_test.go",
+          "Error return value of `(*database/sql.DB).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/repository/conversation_capture_repo_test.go",
+          "Error return value of `(*database/sql.DB).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/repository/token_usage_policy_repo.go",
+          "File is not properly formatted (gofmt)"
+        ],
+        [
+          "internal/repository/token_usage_policy_repo.go",
+          "ineffectual assignment to manualTakeover (ineffassign)"
+        ],
+        [
+          "internal/repository/token_usage_policy_repo.go",
+          "ineffectual assignment to manualTakeover (ineffassign)"
+        ],
+        [
+          "internal/server/routes/gateway.go",
+          "func compositeJSONRequestModel is unused (unused)"
+        ],
+        [
+          "internal/server/routes/gateway.go",
+          "func compositeMultipartModelFromBody is unused (unused)"
+        ],
+        [
+          "internal/server/routes/gateway.go",
+          "func compositeRequestModelFromBody is unused (unused)"
+        ],
+        [
+          "internal/server/routes/gateway.go",
+          "func resetRequestBody is unused (unused)"
+        ],
+        [
+          "internal/service/account_collection.go",
+          "Error return value of `(*database/sql.Rows).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/account_collection.go",
+          "Error return value of `(*database/sql.Rows).Close` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/account_collection.go",
+          "Error return value of `(*database/sql.Tx).Rollback` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/account_collection.go",
+          "Error return value of `(*database/sql.Tx).Rollback` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/account_collection.go",
+          "Error return value of `(*database/sql.Tx).Rollback` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/admin_usage_calibration_service.go",
+          "File is not properly formatted (gofmt)"
+        ],
+        [
+          "internal/service/campaign_service.go",
+          "S1021: should merge variable declaration with assignment on next line (staticcheck)"
+        ],
+        [
+          "internal/service/campaign_service.go",
+          "func campaignConfigWeightsJSON is unused (unused)"
+        ],
+        [
+          "internal/service/campaign_service.go",
+          "func maskCampaignEmail is unused (unused)"
+        ],
+        [
+          "internal/service/campaign_service.go",
+          "func parseCampaignWeights is unused (unused)"
+        ],
+        [
+          "internal/service/channel_monitor_checker.go",
+          "Error return value of `(*bytes.Buffer).WriteByte` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/channel_monitor_checker.go",
+          "Error return value of `(*bytes.Buffer).WriteString` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/channel_monitor_checker.go",
+          "Error return value of `(*strings.Builder).WriteString` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/channel_monitor_checker.go",
+          "Error return value of `(*strings.Builder).WriteString` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_parser.go",
+          "Error return value of `(*strings.Builder).WriteString` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_parser.go",
+          "QF1002: could use tagged switch on eventType (staticcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_service.go",
+          "Error return value of `(*bytes.Buffer).WriteByte` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_service.go",
+          "Error return value of `(*bytes.Buffer).Write` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_service.go",
+          "Error return value of `(io.Writer).Write` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_service.go",
+          "Error return value of `(io.Writer).Write` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_capture_service.go",
+          "Error return value of `(io.Writer).Write` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_export_jobs.go",
+          "Error return value of `(*bytes.Buffer).WriteByte` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/conversation_export_jobs.go",
+          "Error return value of `(*bytes.Buffer).Write` is not checked (errcheck)"
+        ],
+        [
+          "internal/service/gpt_intelligence_service.go",
+          "Error return value is not checked (errcheck)"
+        ],
+        [
+          "internal/service/gpt_intelligence_service.go",
+          "func gptIntelligenceDeepSeekLabel is unused (unused)"
+        ],
+        [
+          "internal/service/gpt_intelligence_service.go",
+          "func mergeGptIntelligenceDeepSeekEfficiency is unused (unused)"
+        ],
+        [
+          "internal/service/lottery_campaign_service.go",
+          "QF1003: could use tagged switch on input.UsageMode (staticcheck)"
+        ],
+        [
+          "internal/service/redeem_service.go",
+          "func (*RedeemService).redeemForPaymentFulfillment is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring.go",
+          "func effectiveRelayRate is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring.go",
+          "func parseUpstreamUsagePage is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring.go",
+          "func sortRelayCandidates is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring.go",
+          "func upstreamRelayProviderFromAccount is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring.go",
+          "type upstreamRelayUsagePageItem is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring_test.go",
+          "func upstreamRelayMetricsRefreshAccountRepo.GetByID is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_group_monitoring_test.go",
+          "type upstreamRelayMetricsRefreshAccountRepo is unused (unused)"
+        ],
+        [
+          "internal/service/upstream_relay_monitoring_runner.go",
+          "func (*UpstreamRelayMonitoringRunner).skipJob is unused (unused)"
+        ],
+        [
+          "internal/service/user_group_account_binding.go",
+          "Error return value is not checked (errcheck)"
+        ],
+        [
+          "internal/service/user_group_account_binding.go",
+          "Error return value is not checked (errcheck)"
+        ]
+      ]
+    },
+    "failure_excerpts": {
+      "backend-unit-final.log": [
+        "--- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip (0.00s)\n    --- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default (0.00s)\n        setting_handler_oauth_rate_test.go:44: \n            \tError Trace:\tbackend/internal/handler/admin/setting_handler_oauth_rate_test.go:44\n            \tError:      \tNot equal: \n            \t            \texpected: 200\n            \t            \tactual  : 400\n            \tTest:       \tTestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default\n            \tMessages:   \t{\"code\":400,\"message\":\"Full settings replacement requires X-Settings-Write-Mode: replace\",\"reason\":\"INVALID_SETTINGS_REPLACE_REQUEST\"}\n    --- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip/omitted_preserves_override (0.00s)\n    ",
+        "--- FAIL: TestUpdateSettingsPartialPayloadKeepsUnsentKeys (0.00s)\n    setting_handler_partial_payload_test.go:35: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:35\n        \tError:      \tNot equal: \n        \t            \texpected: \"Example Gateway\"\n        \t            \tactual  : \"\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-Example Gateway\n        \t            \t+\n        \tTest:       \tTestUpdateSettingsPartialPayloadKeepsUnsentKeys\n{\"level\":\"INFO\",\"time\":\"2026-10-14T08:48:18.589+0800\",\"logger\":\"slog\",\"msg\":\"settings updated\",\"service\":\"sub2api\",\"env\":\"test\",\"audit\":true,\"user_id\":0,\"role\"",
+        "--- FAIL: TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion (0.00s)\n    setting_handler_partial_payload_test.go:146: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:146\n        \tError:      \tNot equal: \n        \t            \texpected: \"intl\"\n        \t            \tactual  : \"cn\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-intl\n        \t            \t+cn\n        \tTest:       \tTestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion\n{\"level\":\"INFO\",\"time\":\"2026-10-14T08:48:18.592+0800\",\"logger\":\"slog\",\"msg\":\"settings updated\",\"service\":\"sub2api\",\"env\":\"test\",\"audit\":true,\"user_id\":0,\"r",
+        "--- FAIL: TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted (0.00s)\n    setting_handler_partial_payload_test.go:186: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:186\n        \tError:      \tNot equal: \n        \t            \texpected: 400\n        \t            \tactual  : 200\n        \tTest:       \tTestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted\n{\"level\":\"INFO\",\"time\":\"2026-10-14T08:48:18.595+0800\",\"logger\":\"slog\",\"msg\":\"settings updated\",\"service\":\"sub2api\",\"env\":\"test\",\"audit\":true,\"user_id\":0,\"role\":\"\",\"changed\":[\"promo_code_enabled\",\"dingtalk_connect_sync_corp_email_attr_key\",\"dingtalk_connect_sync_display_name_attr_key\",\"dingtalk_connect_sync_dept_attr_key\",\"oidc_connect_pro",
+        "--- FAIL: TestLockAndMergeAccountExtraPreservesLatestCodexTicket (0.00s)\n    account_repo_codex_ticket_test.go:26: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:26\n        \tError:      \tReceived unexpected error:\n        \t            \tsql: expected 10 destination arguments in Scan, not 13\n        \tTest:       \tTestLockAndMergeAccountExtraPreservesLatestCodexTicket\n--- FAIL: TestLockAndMergeAccountExtraDegradesOnUnparsableExtra (0.00s)\n    account_repo_codex_ticket_test.go:48: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:48\n        \tError:      \tReceived unexpected error:\n        \t            \tsql: expected 10 destination arguments in Scan, not 13\n        \tTest:  ",
+        "--- FAIL: TestLockAndMergeAccountExtraDegradesOnUnparsableExtra (0.00s)\n    account_repo_codex_ticket_test.go:48: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:48\n        \tError:      \tReceived unexpected error:\n        \t            \tsql: expected 10 destination arguments in Scan, not 13\n        \tTest:       \tTestLockAndMergeAccountExtraDegradesOnUnparsableExtra\n        \tMessages:   \tunparsable extra must not fail the account update\n--- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState (0.00s)\n    --- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input (0.00s)\n        account_repo_opencode_go_usage_test.go:194: \n            ",
+        "--- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState (0.00s)\n    --- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input (0.00s)\n        account_repo_opencode_go_usage_test.go:194: \n            \tError Trace:\tbackend/internal/repository/account_repo_opencode_go_usage_test.go:194\n            \tError:      \tReceived unexpected error:\n            \t            \tsql: expected 12 destination arguments in Scan, not 13\n            \tTest:       \tTestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input\n    --- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_keep",
+        "--- FAIL: TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring (0.00s)\n    usage_log_session_id_unit_test.go:89: \n        \tError Trace:\tbackend/internal/repository/usage_log_session_id_unit_test.go:89\n        \tError:      \tShould be true\n        \tTest:       \tTestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring\nFAIL\nFAIL\tgithub.com/Wei-Shaw/sub2api/internal/repository\t10.240s\nok  \tgithub.com/Wei-Shaw/sub2api/internal/securityaudit\t1.678s\n[GIN-debug] [WARNING] Running in \"debug\" mode. Switch to \"release\" mode in production.\n - using env:\texport GIN_MODE=release\n - using code:\tgin.SetMode(gin.ReleaseMode)\n\n2026/10/14 08:49:12 Global max request body size: 1024 bytes (0.00 MB)\n[GIN-debug] [WARNING] Running in \"debug\" mode. Switch to \"release\" mode in pro",
+        "--- FAIL: TestAPIContracts (0.03s)\n    --- FAIL: TestAPIContracts/GET_/api/v1/groups/available (0.00s)\n        api_contract_test.go:1454: \n            \tError Trace:\tbackend/internal/server/api_contract_test.go:1454\n            \tError:      \tNot equal: \n            \t            \texpected: map[string]interface {}{\"code\":0, \"data\":[]interface {}{map[string]interface {}{\"allow_batch_image_generation\":false, \"allow_image_generation\":false, \"allow_live\":false, \"allow_messages_dispatch\":false, \"audio_realtime_price_per_min\":interface {}(nil), \"audio_stt_price_per_hour\":interface {}(nil), \"audio_tts_price_per_million_chars\":interface {}(nil), \"batch_image_discount_multiplier\":0, \"batch_image_hold_multiplier\":0, \"claude_code_only\":false, \"created_at\":\"2025-01-02T03:04:05Z\",",
+        "--- FAIL: TestJWTAuth_ValidToken_DoesNotTouchLastActive (0.00s)\n    jwt_auth_test.go:165: \n        \tError Trace:\tbackend/internal/server/middleware/jwt_auth_test.go:165\n        \tError:      \tShould be empty, but was [1]\n        \tTest:       \tTestJWTAuth_ValidToken_DoesNotTouchLastActive\n{\"level\":\"INFO\",\"time\":\"2026-10-14T08:49:17.643+0800\",\"msg\":\"[OpenAI WS Mode][openai_ws_mode=true] bootstrap enabled=false oauth_enabled=false apikey_enabled=false force_http=false responses_websockets_v2=false responses_websockets=false payload_log_sample_rate=0.000 event_flush_batch_size=0 event_flush_interval_ms=0 prewarm_cooldown_ms=0 retry_backoff_initial_ms=0 retry_backoff_max_ms=0 retry_jitter_ratio=0.000 retry_total_budget_ms=0 ws_read_limit_bytes=16777216\",\"service\":\"sub2ap",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess (0.00s)\n    admin_service_group_test.go:149: \n        \tError Trace:\tbackend/internal/service/admin_service_group_test.go:149\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess\n--- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly (0.00s)\n    --- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate (0.00s)\n        admin_service_group_test.go:197: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:197\n            \tError:      \tNot equal: \n            \t            \texpected: \"SIMPLE_MODE_OPERATION_UNSUPPO",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly (0.00s)\n    --- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate (0.00s)\n        admin_service_group_test.go:197: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:197\n            \tError:      \tNot equal: \n            \t            \texpected: \"SIMPLE_MODE_OPERATION_UNSUPPORTED\"\n            \t            \tactual  : \"\"\n            \t            \t\n            \t            \tDiff:\n            \t            \t--- Expected\n            \t            \t+++ Actual\n            \t            \t@@ -1 +1 @@\n            \t            \t-SIMPLE_MODE_OPERATION_UNSUPPORTED\n            \t            \t+\n            \tTest:       \tTestAdminServiceSimpleMod",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly (0.00s)\n    admin_service_group_test.go:210: \n        \tError Trace:\tbackend/internal/service/admin_service_group_test.go:210\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly\n--- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate (0.00s)\n    --- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits (0.00s)\n        admin_service_group_test.go:813: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:813\n            \tError:      \tNot equal: \n            \t            \texp",
+        "--- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate (0.00s)\n    --- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits (0.00s)\n        admin_service_group_test.go:813: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:813\n            \tError:      \tNot equal: \n            \t            \texpected: 15\n            \t            \tactual  : 10\n            \tTest:       \tTestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits\n2026/10/14 00:51:25 failed to load user group rates in batch: err=batch unavailable\n2026/10/14 00:51:25 audit: admin user created actor_admin_id=0 target_user_id=30\n2026/10/14 00:51:25 audit: ",
+        "--- FAIL: TestInflightEstimate_AccountMappingNoDBAndBoundedMemory (0.24s)\n    billing_inflight_reservation_test.go:464: \n        \tError Trace:\tbackend/internal/service/billing_inflight_reservation_test.go:464\n        \tError:      \t\"26582424\" is not less than \"8388608\"\n        \tTest:       \tTestInflightEstimate_AccountMappingNoDBAndBoundedMemory\n        \tMessages:   \tno per-model cache growth\n2026/10/14 00:52:09 [Billing] Using fallback pricing for model: claude-opus-4-1\n2026/10/14 00:52:09 [Billing] Using fallback pricing for model: claude-sonnet-4-5\n2026/10/14 00:52:09 [Billing] Using fallback pricing for model: claude-sonnet-4\n2026/10/14 00:52:09 [Billing] Using fallback pricing for model: claude-sonnet-4\n2026/10/14 00:52:09 [Billing] Using fallback pricing for m",
+        "--- FAIL: TestValidateCreateParams_CheckModeMatrix (0.02s)\n    --- FAIL: TestValidateCreateParams_CheckModeMatrix/probe_requires_api_key (0.01s)\n        channel_monitor_quota_mode_test.go:346: \n            \tError Trace:\tbackend/internal/service/channel_monitor_quota_mode_test.go:346\n            \tError:      \tTarget error should be in err chain:\n            \t            \texpected: \"error: code=400 reason=\\\"CHANNEL_MONITOR_MISSING_API_KEY\\\" message=\\\"api_key is required when creating a monitor\\\" metadata=map[]\"\n            \t            \tin chain: \"error: code=400 reason=\\\"CHANNEL_MONITOR_ENDPOINT_PRIVATE\\\" message=\\\"endpoint must be a public host\\\" metadata=map[]\"\n            \tTest:       \tTestValidateCreateParams_CheckModeMatrix/probe_requires_api_key\n    --- FAIL: ",
+        "--- FAIL: TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit (0.01s)\n    payment_fulfillment_test.go:799: \n        \tError Trace:\tbackend/internal/service/payment_fulfillment_test.go:799\n        \tError:      \tReceived unexpected error:\n        \t            \tredeem balance: error: code=429 reason=\"REDEEM_RATE_LIMITED\" message=\"too many failed attempts, please try again later\" metadata=map[]\n        \tTest:       \tTestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit\n--- FAIL: TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser (0.01s)\n    payment_fulfillment_test.go:951: \n        \tError Trace:\tbackend/internal/service/payment_fulfillment_test.go:951\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTe",
+        "--- FAIL: TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser (0.01s)\n    payment_fulfillment_test.go:951: \n        \tError Trace:\tbackend/internal/service/payment_fulfillment_test.go:951\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser\n{\"level\":\"INFO\",\"time\":\"2026-10-14T00:54:38.697Z\",\"logger\":\"slog\",\"caller\":\"logger/slog_handler.go:59\",\"msg\":\"subscription already assigned for order, skipping\",\"service\":\"sub2api\",\"env\":\"test\",\"orderID\":1,\"groupID\":7}\n{\"level\":\"INFO\",\"time\":\"2026-10-14T00:54:38.709Z\",\"logger\":\"slog\",\"caller\":\"logger/slog_handler.go:59\",\"msg\":\"subscription already assigned for order, skipping\",\"service\":\"sub2api\",\"env\":\"test\",\"orderID\":1,\"groupID\":7}\n{\"level\""
+      ],
+      "backend-baseline.log": [
+        "--- FAIL: TestLockAndMergeAccountExtraPreservesLatestCodexTicket (0.00s)\n    account_repo_codex_ticket_test.go:26: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:26\n        \tError:      \tReceived unexpected error:\n        \t            \tsql: expected 10 destination arguments in Scan, not 13\n        \tTest:       \tTestLockAndMergeAccountExtraPreservesLatestCodexTicket\n--- FAIL: TestLockAndMergeAccountExtraDegradesOnUnparsableExtra (0.00s)\n    account_repo_codex_ticket_test.go:48: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:48\n        \tE",
+        "--- FAIL: TestLockAndMergeAccountExtraDegradesOnUnparsableExtra (0.00s)\n    account_repo_codex_ticket_test.go:48: \n        \tError Trace:\tbackend/internal/repository/account_repo_codex_ticket_test.go:48\n        \tError:      \tReceived unexpected error:\n        \t            \tsql: expected 10 destination arguments in Scan, not 13\n        \tTest:       \tTestLockAndMergeAccountExtraDegradesOnUnparsableExtra\n        \tMessages:   \tunparsable extra must not fail the account update\n--- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState (0.00s)\n    --- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input (0.00s)",
+        "--- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState (0.00s)\n    --- FAIL: TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input (0.00s)\n        account_repo_opencode_go_usage_test.go:194: \n            \tError Trace:\tbackend/internal/repository/account_repo_opencode_go_usage_test.go:194\n            \tError:      \tReceived unexpected error:\n            \t            \tsql: expected 12 destination arguments in Scan, not 13\n            \tTest:       \tTestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input\n    --- FAIL: TestLockAndMergeAccoun",
+        "--- FAIL: TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring (0.00s)\n    usage_log_session_id_unit_test.go:89: \n        \tError Trace:\tbackend/internal/repository/usage_log_session_id_unit_test.go:89\n        \tError:      \tShould be true\n        \tTest:       \tTestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring\nFAIL\nFAIL\tgithub.com/Wei-Shaw/sub2api/internal/repository\t2.383s\n--- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip (0.00s)\n    --- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default (0.00s)\n        setting_handler_oauth_rate_test.go:44: \n            \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-baseline-4xx4",
+        "--- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip (0.00s)\n    --- FAIL: TestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default (0.00s)\n        setting_handler_oauth_rate_test.go:44: \n            \tError Trace:\tbackend/internal/handler/admin/setting_handler_oauth_rate_test.go:44\n            \tError:      \tNot equal: \n            \t            \texpected: 200\n            \t            \tactual  : 400\n            \tTest:       \tTestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default\n            \tMessages:   \t{\"code\":400,\"message\":\"Full settings replacement requires X-Settings-Write-Mode: replace\",\"reason\":\"INVALID_SETTINGS_REPLACE_REQUEST\"}\n    --- FAIL: TestSettingHandler_OA",
+        "--- FAIL: TestUpdateSettingsPartialPayloadKeepsUnsentKeys (0.00s)\n    setting_handler_partial_payload_test.go:35: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:35\n        \tError:      \tNot equal: \n        \t            \texpected: \"Example Gateway\"\n        \t            \tactual  : \"\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-Example Gateway\n        \t            \t+\n        \tTest:       \tTestUpdateSettingsPartialPayloadKeepsUnsentKeys\n2026/10/14 08:43:27 INFO settings updated audit=true user_id=0 role=\"\" changed=\"[promo_code_e",
+        "--- FAIL: TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion (0.00s)\n    setting_handler_partial_payload_test.go:146: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:146\n        \tError:      \tNot equal: \n        \t            \texpected: \"intl\"\n        \t            \tactual  : \"cn\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-intl\n        \t            \t+cn\n        \tTest:       \tTestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion\n2026/10/14 08:43:27 INFO settings updated audit=true user_id=0 role=\"\" changed=\"[promo_co",
+        "--- FAIL: TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted (0.00s)\n    setting_handler_partial_payload_test.go:186: \n        \tError Trace:\tbackend/internal/handler/admin/setting_handler_partial_payload_test.go:186\n        \tError:      \tNot equal: \n        \t            \texpected: 400\n        \t            \tactual  : 200\n        \tTest:       \tTestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted\nFAIL\nFAIL\tgithub.com/Wei-Shaw/sub2api/internal/handler/admin\t1.107s\n--- FAIL: TestJWTAuth_ValidToken_DoesNotTouchLastActive (0.00s)\n    jwt_auth_test.go:165: \n        \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-baseline-4xx4qwu1/ba",
+        "--- FAIL: TestJWTAuth_ValidToken_DoesNotTouchLastActive (0.00s)\n    jwt_auth_test.go:165: \n        \tError Trace:\tbackend/internal/server/middleware/jwt_auth_test.go:165\n        \tError:      \tShould be empty, but was [1]\n        \tTest:       \tTestJWTAuth_ValidToken_DoesNotTouchLastActive\nFAIL\nFAIL\tgithub.com/Wei-Shaw/sub2api/internal/server/middleware\t0.804s\n--- FAIL: TestAPIContracts (0.01s)\n    --- FAIL: TestAPIContracts/GET_/api/v1/groups/available (0.00s)\n        api_contract_test.go:1454: \n            \tError Trace:\tbackend/internal/server/api_contract_test.go:1454\n            \tError:      \tNot equal: \n     ",
+        "--- FAIL: TestAPIContracts (0.01s)\n    --- FAIL: TestAPIContracts/GET_/api/v1/groups/available (0.00s)\n        api_contract_test.go:1454: \n            \tError Trace:\tbackend/internal/server/api_contract_test.go:1454\n            \tError:      \tNot equal: \n            \t            \texpected: map[string]interface {}{\"code\":0, \"data\":[]interface {}{map[string]interface {}{\"allow_batch_image_generation\":false, \"allow_image_generation\":false, \"allow_live\":false, \"allow_messages_dispatch\":false, \"audio_realtime_price_per_min\":interface {}(nil), \"audio_stt_price_per_hour\":interface {}(nil), \"audio_tts_price_per_million_chars\":interface {}(nil), \"batch_image_discount_multiplier\":0, \"batch_image_hold_multiplier\""
+      ],
+      "backend-service-baseline.log": [
+        "--- FAIL: TestAdaptiveProtocolRoutesKimiResponsesShapedChatToNativeResponses (0.00s)\n    adaptive_api_protocol_test.go:147: \n        \tError Trace:\tbackend/internal/service/adaptive_api_protocol_test.go:147\n        \tError:      \tNot equal: \n        \t            \texpected: \"http://responses.example/v1/responses\"\n        \t            \tactual  : \"http://chat.example/v1/chat/completions\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-http://responses.example/v1/responses\n        \t            \t+http://chat.example/v1/chat/completions\n        \tTest:       \tTestAdaptiveProtocolRout",
+        "--- FAIL: TestAdaptiveProtocolRoutesKimiResponsesToNativeResponses (0.00s)\n    adaptive_api_protocol_test.go:181: \n        \tError Trace:\tbackend/internal/service/adaptive_api_protocol_test.go:181\n        \tError:      \tNot equal: \n        \t            \texpected: \"http://responses.example/v1/responses\"\n        \t            \tactual  : \"http://chat.example/v1/chat/completions\"\n        \t            \t\n        \t            \tDiff:\n        \t            \t--- Expected\n        \t            \t+++ Actual\n        \t            \t@@ -1 +1 @@\n        \t            \t-http://responses.example/v1/responses\n        \t            \t+http://chat.example/v1/chat/completions\n        \tTest:       \tTestAdaptiveProtocolRoutesKimiResp",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess (0.00s)\n    admin_service_group_test.go:149: \n        \tError Trace:\tbackend/internal/service/admin_service_group_test.go:149\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess\n--- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly (0.00s)\n    --- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate (0.00s)\n        admin_service_group_test.go:197: \n            \tError Trace:\tbackend/internal/service/admi",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly (0.00s)\n    --- FAIL: TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate (0.00s)\n        admin_service_group_test.go:197: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:197\n            \tError:      \tNot equal: \n            \t            \texpected: \"SIMPLE_MODE_OPERATION_UNSUPPORTED\"\n            \t            \tactual  : \"\"\n            \t            \t\n            \t            \tDiff:\n            \t            \t--- Expected\n            \t            \t+++ Actual\n            \t            \t@@ -1 +1 @@\n            \t            \t-SIMPLE_MODE_OPERATION_UNSUPPORTED\n            \t",
+        "--- FAIL: TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly (0.00s)\n    admin_service_group_test.go:210: \n        \tError Trace:\tbackend/internal/service/admin_service_group_test.go:210\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly\n--- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate (0.00s)\n    --- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits (0.00s)\n        admin_service_group_test.go:813: \n            \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-baseline-4",
+        "--- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate (0.00s)\n    --- FAIL: TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits (0.00s)\n        admin_service_group_test.go:813: \n            \tError Trace:\tbackend/internal/service/admin_service_group_test.go:813\n            \tError:      \tNot equal: \n            \t            \texpected: 15\n            \t            \tactual  : 10\n            \tTest:       \tTestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits\n2026/10/14 00:43:36 [Billing] Using fallback pricing for model: claude-sonnet-4-5\n2026/10/14 00:43:36 Warning: inflight reserv",
+        "--- FAIL: TestInflightEstimate_AccountMappingNoDBAndBoundedMemory (0.13s)\n    billing_inflight_reservation_test.go:464: \n        \tError Trace:\tbackend/internal/service/billing_inflight_reservation_test.go:464\n        \tError:      \t\"26475192\" is not less than \"8388608\"\n        \tTest:       \tTestInflightEstimate_AccountMappingNoDBAndBoundedMemory\n        \tMessages:   \tno per-model cache growth\n--- FAIL: TestValidateCreateParams_CheckModeMatrix (0.01s)\n    --- FAIL: TestValidateCreateParams_CheckModeMatrix/probe_requires_api_key (0.01s)\n        channel_monitor_quota_mode_test.go:346: \n            \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-baseline-4xx4qwu1/bac",
+        "--- FAIL: TestValidateCreateParams_CheckModeMatrix (0.01s)\n    --- FAIL: TestValidateCreateParams_CheckModeMatrix/probe_requires_api_key (0.01s)\n        channel_monitor_quota_mode_test.go:346: \n            \tError Trace:\tbackend/internal/service/channel_monitor_quota_mode_test.go:346\n            \tError:      \tTarget error should be in err chain:\n            \t            \texpected: \"error: code=400 reason=\\\"CHANNEL_MONITOR_MISSING_API_KEY\\\" message=\\\"api_key is required when creating a monitor\\\" metadata=map[]\"\n            \t            \tin chain: \"error: code=400 reason=\\\"CHANNEL_MONITOR_ENDPOINT_PRIVATE\\\" message=\\\"endpoint must be a public host\\\" metadata=map[]\"\n            \tTest:       \tTestValidate",
+        "--- FAIL: TestOpenAIGatewayForwardNonStreamCompactRetryRecordsAttemptWithManagedProxy (0.00s)\n    openai_compact_fallback_test.go:288: \n        \tError Trace:\tbackend/internal/service/openai_compact_fallback_test.go:288\n        \tError:      \tShould be true\n        \tTest:       \tTestOpenAIGatewayForwardNonStreamCompactRetryRecordsAttemptWithManagedProxy\n--- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokens (0.00s)\n    --- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokens/deepseek_platform_native_responses_is_clamped (0.00s)\n        openai_gateway_ollama_cloud_max_tokens_test.go:389: \n            \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-bas",
+        "--- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokens (0.00s)\n    --- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokens/deepseek_platform_native_responses_is_clamped (0.00s)\n        openai_gateway_ollama_cloud_max_tokens_test.go:389: \n            \tError Trace:\tbackend/internal/service/openai_gateway_ollama_cloud_max_tokens_test.go:389\n            \tError:      \tNot equal: \n            \t            \texpected: 65535\n            \t            \tactual  : 256000\n            \tTest:       \tTestForwardResponsesClampsOllamaCloudMaxOutputTokens/deepseek_platform_native_responses_is_clamped\n    --- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokens/openai_platform_force_responses_is_clam",
+        "--- FAIL: TestForwardResponsesClampUsesResponsesUpstreamBaseURL (0.00s)\n    --- FAIL: TestForwardResponsesClampUsesResponsesUpstreamBaseURL/non-ollama_CC_base_but_ollama_responses_base_is_clamped (0.00s)\n        openai_gateway_ollama_cloud_max_tokens_test.go:464: \n            \tError Trace:\tbackend/internal/service/openai_gateway_ollama_cloud_max_tokens_test.go:464\n            \tError:      \tNot equal: \n            \t            \texpected: 65535\n            \t            \tactual  : 256000\n            \tTest:       \tTestForwardResponsesClampUsesResponsesUpstreamBaseURL/non-ollama_CC_base_but_ollama_responses_base_is_clamped\n--- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients (0.00",
+        "--- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients (0.00s)\n    --- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/codex_UA_is_clamped (0.00s)\n        openai_gateway_ollama_cloud_max_tokens_test.go:550: \n            \tError Trace:\tbackend/internal/service/openai_gateway_ollama_cloud_max_tokens_test.go:550\n            \tError:      \tNot equal: \n            \t            \texpected: 65535\n            \t            \tactual  : 256000\n            \tTest:       \tTestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/codex_UA_is_clamped\n    --- FAIL: TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/codex_originator_is_clamped (0.",
+        "--- FAIL: TestOpenAIGatewayService_Forward_MissingInstructionsUsesMappedModelTemplate (0.00s)\n    openai_oauth_passthrough_test.go:973: \n        \tError Trace:\tbackend/internal/service/openai_oauth_passthrough_test.go:973\n        \tError:      \tShould be true\n        \tTest:       \tTestOpenAIGatewayService_Forward_MissingInstructionsUsesMappedModelTemplate\n2026/10/14 00:43:36 [OpenAI WS v2 passthrough] ws_mode=passthrough ws_router=v2 relay_start account_id=901 model=gpt-5.1 previous_response_id=- first_message_type=text first_message_bytes=59\n2026/10/14 00:43:36 [OpenAI WS v2 passthrough] ws_mode=passthrough ws_router=v2 relay_dial_start account_id=901 ws_host=api.openai.com ws_path=/v1/responses proxy"
+      ],
+      "backend-payment-baseline.log": [
+        "--- FAIL: TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit (0.01s)\n    payment_fulfillment_test.go:799: \n        \tError Trace:\tbackend/internal/service/payment_fulfillment_test.go:799\n        \tError:      \tReceived unexpected error:\n        \t            \tredeem balance: error: code=429 reason=\"REDEEM_RATE_LIMITED\" message=\"too many failed attempts, please try again later\" metadata=map[]\n        \tTest:       \tTestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit\n--- FAIL: TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser (0.01s)\n    payment_fulfillment_test.go:951: \n        \tError Trace:\t/private/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-backend-baseline-4xx4qwu1/backe",
+        "--- FAIL: TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser (0.01s)\n    payment_fulfillment_test.go:951: \n        \tError Trace:\tbackend/internal/service/payment_fulfillment_test.go:951\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser\nFAIL\nFAIL\tgithub.com/Wei-Shaw/sub2api/internal/service\t2.949s\nFAIL\n"
+      ]
+    },
+    "baseline_backend_failure_names": [
+      "TestAPIContracts",
+      "TestAPIContracts/GET_/api/v1/admin/settings",
+      "TestAPIContracts/GET_/api/v1/admin/settings_falls_back_to_config_oauth_defaults",
+      "TestAPIContracts/GET_/api/v1/groups/available",
+      "TestAdaptiveProtocolRoutesKimiResponsesShapedChatToNativeResponses",
+      "TestAdaptiveProtocolRoutesKimiResponsesToNativeResponses",
+      "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly",
+      "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/clear_multipliers",
+      "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/get_multipliers",
+      "TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly/recover_duplicate",
+      "TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly",
+      "TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess",
+      "TestAdminService_UpdateGroup_LimitFieldsPartialUpdate",
+      "TestAdminService_UpdateGroup_LimitFieldsPartialUpdate/explicit_changes_and_unlimited_clear_only_touched_limits",
+      "TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit",
+      "TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser",
+      "TestForwardResponsesClampUsesResponsesUpstreamBaseURL",
+      "TestForwardResponsesClampUsesResponsesUpstreamBaseURL/non-ollama_CC_base_but_ollama_responses_base_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokens",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokens/deepseek_platform_native_responses_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokens/openai_platform_force_responses_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/ForceCodexCLI_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/codex_UA_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/codex_originator_is_clamped",
+      "TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients/non-codex_control_is_clamped",
+      "TestInflightEstimate_AccountMappingNoDBAndBoundedMemory",
+      "TestJWTAuth_ValidToken_DoesNotTouchLastActive",
+      "TestLockAndMergeAccountExtraDegradesOnUnparsableExtra",
+      "TestLockAndMergeAccountExtraPreservesLatestCodexTicket",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/api_key_changed_clears_both_managed_keys",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/base_url_no_longer_eligible_clears_both_managed_keys",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_keeps_disabled_switch_from_database",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/identity_unchanged_restores_both_managed_keys_over_forged_input",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/no_longer_eligible_account_never_inherits_managed_keys",
+      "TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState/proxy_changed_invalidates_snapshot_but_keeps_auto-refresh_switch",
+      "TestOpenAIGatewayForwardNonStreamCompactRetryRecordsAttemptWithManagedProxy",
+      "TestOpenAIGatewayService_Forward_MissingInstructionsUsesMappedModelTemplate",
+      "TestPrepareUsageLogInsert_RequestedReasoningEffortArgWiring",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/absent_keeps_default",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/clear_override",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/omitted_preserves_cleared",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/omitted_preserves_override",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/set_override",
+      "TestSettingHandler_OAuthSchedulingRateRoundTrip/zero_is_explicit",
+      "TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion",
+      "TestUpdateSettingsPartialPayloadKeepsUnsentKeys",
+      "TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted",
+      "TestValidateCreateParams_CheckModeMatrix",
+      "TestValidateCreateParams_CheckModeMatrix/probe_requires_api_key",
+      "TestValidateCreateParams_CheckModeMatrix/quota_probe_requires_primary_model"
+    ],
+    "raw_log_sha256": {
+      "frontend-baseline.log": "55d159b106f5203b56e003ebc6a26d7822cc18f98cc4aaf627bdb2e7be690349",
+      "frontend-baseline-errors.log": "9a18f5cffc16f8bac582aafb6869b37907207ceebd64062fae28c77c467187c3",
+      "backend-service-recheck.log": "6ad5d785cec1f169d8719a0cdf7bcec656dc4d86c0af53bff7f74917669f852c",
+      "backend-lint-final.log": "4edda929b5ae99dcb973b77cc40291c749516dc9dd87c248c88d848a53492fbe",
+      "backend-payment-baseline.log": "59112990c0d5027623ee40936db0a5de5141bfcc78182ea970fdebb4c967a01f",
+      "backend-lint.log": "4ec81c33191a5d921d130a3d1a057cd04693f20aca62a8c5407aa2c388f35f17",
+      "backend-final-fixes.log": "626e81dc8857f84624305432121b9fea254eb7cf78050b64ac6434cdfb08c648",
+      "backend-baseline.log": "3e7f98b885b62a87ae584d51ba6a1694ea8217b6b7d726b3ef04594bcc7d1a69",
+      "backend-lint-baseline.log": "aad69a4fbbe17b687c9104ac9ff3187c00a3461fe64e9367429e00e055ac9eb1",
+      "backend-behavior-final.log": "7d4f3bcdcfe0cb48e065462868ca9be764162ddc4db888aec0380d3ec370f850",
+      "backend-service-baseline.log": "e58673f2715c5e5f27faf28e7be25950d82d957e145ffe3576347bbb7f55ed09",
+      "repository-integration-extra.log": "a1a373491cbb6c6a651abf50b9c784995430d25e2ac3bb419ddcdf57de285b7f",
+      "backend-gateway-final.log": "1e0dc39ef3ccbb2a85123d58383710edc7869b492f37374edba901ef0144afb0",
+      "frontend-full.log": "7d4292ebb57c0e4762d6369221fc7b774311abe2672959f4627b89cd128cf539",
+      "frontend-build.log": "6dfe435c345eef883fcbbe2320243f8456202e41f4eb6d6600ef2ece0c1e360a",
+      "backend-unit.log": "424b4d1effebdb6535e7c0b854b673bb6db88195e05cfa850565c50190536c1c",
+      "backend-unit-final.log": "f0d3d14f723d466dfbbdc8a99d4861d893d2f51680088b303ad3d6d527e288ad"
+    }
+  },
+  "final_validation": {
+    "status": "passed",
+    "recorded_at": "2026-10-14T10:16:54.670906+00:00",
+    "frontend_full": {
+      "command": [
+        "pnpm",
+        "exec",
+        "vitest",
+        "run",
+        "--maxWorkers=2",
+        "--minWorkers=2"
+      ],
+      "exit_code": 0,
+      "files_passed": 405,
+      "tests_passed": 3144,
+      "tests_skipped": 4,
+      "tests_failed": 0,
+      "unhandled_errors": 0
+    },
+    "frontend_lint": {
+      "command": [
+        "pnpm",
+        "lint:check"
+      ],
+      "exit_code": 0
+    },
+    "frontend_typecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exit_code": 0
+    },
+    "frontend_build": {
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "exit_code": 0
+    },
+    "backend_unit": {
+      "command": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-tags=unit",
+        "./...",
+        "-timeout=600s"
+      ],
+      "exit_code": 0,
+      "passed_packages": [
+        "github.com/Wei-Shaw/sub2api/cmd/cleanup-ingress-reject-logs",
+        "github.com/Wei-Shaw/sub2api/cmd/profit-preview",
+        "github.com/Wei-Shaw/sub2api/cmd/server",
+        "github.com/Wei-Shaw/sub2api/ent/migrate",
+        "github.com/Wei-Shaw/sub2api/ent/schema",
+        "github.com/Wei-Shaw/sub2api/internal/config",
+        "github.com/Wei-Shaw/sub2api/internal/domain",
+        "github.com/Wei-Shaw/sub2api/internal/handler",
+        "github.com/Wei-Shaw/sub2api/internal/handler/admin",
+        "github.com/Wei-Shaw/sub2api/internal/handler/dto",
+        "github.com/Wei-Shaw/sub2api/internal/handler/quotaview",
+        "github.com/Wei-Shaw/sub2api/internal/middleware",
+        "github.com/Wei-Shaw/sub2api/internal/model",
+        "github.com/Wei-Shaw/sub2api/internal/payment",
+        "github.com/Wei-Shaw/sub2api/internal/payment/provider",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/anthropicfp",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/antigravity",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/apicompat",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/claude",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/errors",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/gemini",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/geminicli",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/googleapi",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/httputil",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/ip",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/logger",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/oauth",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/openai",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/pagination",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/redissession",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/response",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/servertiming",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/timezone",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/typesafe",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/usagestats",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/websearch",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/xai",
+        "github.com/Wei-Shaw/sub2api/internal/repository",
+        "github.com/Wei-Shaw/sub2api/internal/securityaudit",
+        "github.com/Wei-Shaw/sub2api/internal/server",
+        "github.com/Wei-Shaw/sub2api/internal/server/middleware",
+        "github.com/Wei-Shaw/sub2api/internal/server/routes",
+        "github.com/Wei-Shaw/sub2api/internal/service",
+        "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2",
+        "github.com/Wei-Shaw/sub2api/internal/setup",
+        "github.com/Wei-Shaw/sub2api/internal/util/logredact",
+        "github.com/Wei-Shaw/sub2api/internal/util/responseheaders",
+        "github.com/Wei-Shaw/sub2api/internal/util/urlvalidator",
+        "github.com/Wei-Shaw/sub2api/internal/web",
+        "github.com/Wei-Shaw/sub2api/migrations",
+        "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+      ],
+      "failed_packages": [],
+      "passed_package_count": 57
+    },
+    "backend_integration": {
+      "command": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-tags=integration",
+        "./...",
+        "-timeout=600s"
+      ],
+      "exit_code": 0,
+      "passed_packages": [
+        "github.com/Wei-Shaw/sub2api/cmd/cleanup-ingress-reject-logs",
+        "github.com/Wei-Shaw/sub2api/cmd/profit-preview",
+        "github.com/Wei-Shaw/sub2api/cmd/server",
+        "github.com/Wei-Shaw/sub2api/ent/migrate",
+        "github.com/Wei-Shaw/sub2api/ent/schema",
+        "github.com/Wei-Shaw/sub2api/internal/config",
+        "github.com/Wei-Shaw/sub2api/internal/domain",
+        "github.com/Wei-Shaw/sub2api/internal/handler",
+        "github.com/Wei-Shaw/sub2api/internal/handler/admin",
+        "github.com/Wei-Shaw/sub2api/internal/handler/dto",
+        "github.com/Wei-Shaw/sub2api/internal/handler/quotaview",
+        "github.com/Wei-Shaw/sub2api/internal/middleware",
+        "github.com/Wei-Shaw/sub2api/internal/model",
+        "github.com/Wei-Shaw/sub2api/internal/payment",
+        "github.com/Wei-Shaw/sub2api/internal/payment/provider",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/anthropicfp",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/antigravity",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/apicompat",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/claude",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/gemini",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/geminicli",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/googleapi",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/httputil",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/logger",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/oauth",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/openai",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/pagination",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/servertiming",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/timezone",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/typesafe",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/usagestats",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/websearch",
+        "github.com/Wei-Shaw/sub2api/internal/pkg/xai",
+        "github.com/Wei-Shaw/sub2api/internal/repository",
+        "github.com/Wei-Shaw/sub2api/internal/securityaudit",
+        "github.com/Wei-Shaw/sub2api/internal/server/middleware",
+        "github.com/Wei-Shaw/sub2api/internal/server/routes",
+        "github.com/Wei-Shaw/sub2api/internal/service",
+        "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2",
+        "github.com/Wei-Shaw/sub2api/internal/setup",
+        "github.com/Wei-Shaw/sub2api/internal/util/logredact",
+        "github.com/Wei-Shaw/sub2api/internal/util/responseheaders",
+        "github.com/Wei-Shaw/sub2api/internal/util/urlvalidator",
+        "github.com/Wei-Shaw/sub2api/migrations",
+        "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+      ],
+      "failed_packages": [],
+      "database_images": [
+        "postgres:18.1-alpine3.23",
+        "redis:8.4-alpine"
+      ],
+      "repository_live_run_seconds": 24.022,
+      "existing_skip": "ConcurrencyCacheSuite TODO for CurrentConcurrency",
+      "passed_package_count": 51
+    },
+    "backend_lint": {
+      "command": [
+        "golangci-lint",
+        "run",
+        "--concurrency=2",
+        "--max-same-issues=0",
+        "--max-issues-per-linter=0",
+        "--timeout=10m",
+        "./..."
+      ],
+      "exit_code": 0,
+      "issue_count": 0,
+      "tool_version": "2.14.0",
+      "summary": "0 issues."
+    },
+    "shell_release_checks": [
+      {
+        "command": [
+          "/bin/bash",
+          "-n",
+          "deploy/apple-container.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/bash",
+          "deploy/tests/apple-container-test.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/sh",
+          "deploy/tests/docker-compose-security-test.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/sh",
+          "deploy/tests/docker-compose-gateway-env-test.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/sh",
+          "deploy/tests/docker-runtime-resources-test.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/sh",
+          "deploy/test-caddyfile-cache.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "/bin/sh",
+          "deploy/tests/docker-compose-simple-mode-env-test.sh"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".github/release-tools",
+          "-p",
+          "test_release_matrix.py"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "bash",
+          "-n",
+          ".github/release-tools/release-images.sh"
+        ],
+        "exit_code": 0
+      }
+    ],
+    "runtime": {
+      "go": "1.27.2",
+      "node": "25.7.0",
+      "pnpm": "10.33.2",
+      "GOMAXPROCS": "2"
+    },
+    "build_status": "passed",
+    "raw_log_sha256": {
+      "frontend-tests-final.log": "331342dead5ad4654b14a55b6875a581b20379bf7f1e9f5ab67d97f198a6b51e",
+      "frontend-lint.log": "78046ce2bbde60d43c7630b38000415e9d051ff36b4ae03b9116cfb2dae645ce",
+      "frontend-typecheck.log": "09a840763f10a6e360c0d81f9abe4111af6fbf5c8690dec6bbffa73db9d2d411",
+      "frontend-build.log": "3e385d40493b8d946f5c2cad8ca78c4f1dacef04907d902ccfbfb19f4bfdbc7e",
+      "create-account-final.log": "01ae6e22c140a3ee18aeefcdd048d5281b0c6c818861b2a27be3cd25f903a3dc",
+      "backend-unit-final.log": "51ebf7c7a7b272f0c2f2179f27fc8b9165807825677309a43d8ba17b20254b3b",
+      "backend-integration-final.log": "a1db4d3788bf4a8e1349154b17e0a3cebd7527f2f23dd009edc827e48094b0bd",
+      "repository-integration-fixes.log": "42e5fc874e4aee0b289562e5c578129adcccd8e858559e4009d3779e098fd9eb",
+      "backend-lint-final.log": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "backend-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "backend-build-embed.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "shell-results.json": "2412b8b5fb40f8ec7d848c7fcf4957309950de1832489eb7e2b9b52882a4abfe"
+    },
+    "backend_build": {
+      "command": [
+        "go",
+        "build",
+        "-p",
+        "1",
+        "-ldflags=-s -w -X main.Version=0.2.16",
+        "-trimpath",
+        "-o",
+        "/dev/null",
+        "./cmd/server"
+      ],
+      "exit_code": 0,
+      "CGO_ENABLED": "0"
+    },
+    "backend_build_embed": {
+      "command": [
+        "go",
+        "build",
+        "-p",
+        "1",
+        "-tags=embed",
+        "-ldflags=-s -w -X main.Version=0.2.16",
+        "-trimpath",
+        "-o",
+        "/dev/null",
+        "./cmd/server"
+      ],
+      "exit_code": 0,
+      "CGO_ENABLED": "0"
+    }
+  },
+  "delivery": {
+    "mode": "local_custom_main",
+    "authorized_by": "已有失败修一下，然后提交更新，不推送",
+    "pushed": false,
+    "production_operations": false,
+    "initial_untracked_paths_preserved": true
+  }
+}

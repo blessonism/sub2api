@@ -15,7 +15,7 @@ import (
 func TestConversationCaptureRepositorySetSessionExportableUpdatesEligibleTurns(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 
 	mock.ExpectBegin()
@@ -37,7 +37,7 @@ func TestConversationCaptureRepositorySetSessionExportableUpdatesEligibleTurns(t
 func TestConversationCaptureRepositorySetSessionExportableFalseClearsAllTurns(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 
 	mock.ExpectBegin()
@@ -59,7 +59,7 @@ func TestConversationCaptureRepositorySetSessionExportableFalseClearsAllTurns(t 
 func TestConversationCaptureRepositorySetTurnExportableRecalculatesSession(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 
 	mock.ExpectBegin()
@@ -79,7 +79,7 @@ func TestConversationCaptureRepositorySetTurnExportableRecalculatesSession(t *te
 func TestConversationCaptureRepositorySetTurnQualityRecalculatesSession(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	exportable := true
 	qualityErrors := []service.QualityError{{Code: "manual_review", Message: "verified", Source: "admin"}}
@@ -103,7 +103,7 @@ func TestConversationCaptureRepositorySetTurnQualityRecalculatesSession(t *testi
 func TestConversationCaptureRepositoryBulkSetQualityRecalculatesAffectedTurnSessionsOnce(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	exportable := true
 	qualityErrors := []service.QualityError{{Code: "manual_clean", Message: "approved"}}
@@ -143,7 +143,7 @@ func TestConversationCaptureRepositoryBulkSetQualityRecalculatesAffectedTurnSess
 func TestConversationCaptureRepositoryBulkSetQualityKeepsSessionLevelUpdateLast(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	exportable := true
 	qualityErrors := []service.QualityError{{Code: "manual_clean", Message: "approved"}}
@@ -184,7 +184,7 @@ func TestConversationCaptureRepositoryBulkSetQualityKeepsSessionLevelUpdateLast(
 func TestConversationCaptureRepositoryListExportableTurnsUsesTurnExportableHardGate(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 
 	rows := sqlmock.NewRows([]string{
@@ -231,7 +231,7 @@ func TestConversationCaptureRepositoryListExportableTurnsCleanFilterStillUsesTur
 func TestConversationCaptureRepositoryListTurnsBySessionIDUsesSummaryColumns(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 
@@ -271,7 +271,7 @@ func TestConversationCaptureRepositoryListTurnsBySessionIDUsesSummaryColumns(t *
 func TestConversationCaptureRepositoryListSessionsQualityStatusFilterUsesSessionStatus(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 
@@ -307,7 +307,7 @@ func TestConversationCaptureRepositoryListSessionsQualityStatusFilterUsesSession
 func TestConversationCaptureRepositoryUpsertTurnCreatesSessionBeforeLock(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 	record := conversationCaptureRepoTestTurnRecord(now)
@@ -336,7 +336,7 @@ func TestConversationCaptureRepositoryUpsertTurnCreatesSessionBeforeLock(t *test
 func TestConversationCaptureRepositoryUpsertTurnRecalculatesSessionQuality(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 	record := conversationCaptureRepoTestTurnRecord(now)
@@ -366,7 +366,7 @@ func TestConversationCaptureRepositoryUpsertTurnRecalculatesSessionQuality(t *te
 func TestConversationCaptureRepositoryUpsertTurnNoInsertDoesNotUpdateSession(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 	record := conversationCaptureRepoTestTurnRecord(now)
@@ -390,7 +390,7 @@ func TestConversationCaptureRepositoryUpsertTurnNoInsertDoesNotUpdateSession(t *
 func TestConversationCaptureRepositoryCleanupExpiredDeletesWholeSessions(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
 
@@ -417,7 +417,7 @@ func TestConversationCaptureRepositoryCleanupExpiredDeletesWholeSessions(t *test
 func TestConversationCaptureRepositoryCompleteExportJobRequiresRunning(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 
@@ -434,7 +434,7 @@ func TestConversationCaptureRepositoryCompleteExportJobRequiresRunning(t *testin
 func TestConversationCaptureRepositoryFailExportJobRequiresPendingOrRunning(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 
@@ -451,7 +451,7 @@ func TestConversationCaptureRepositoryFailExportJobRequiresPendingOrRunning(t *t
 func TestConversationCaptureRepositoryMarkExpiredExportJobsDoesNotUpdateBeforeObjectDelete(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 	expiresAt := now.Add(-time.Hour)
@@ -479,7 +479,7 @@ func TestConversationCaptureRepositoryMarkExpiredExportJobsDoesNotUpdateBeforeOb
 func TestConversationCaptureRepositoryMarkExportJobsExpiredUpdatesSelectedIDs(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewConversationCaptureRepository(db)
 	now := time.Now()
 

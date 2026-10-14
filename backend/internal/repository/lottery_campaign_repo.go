@@ -40,7 +40,7 @@ LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.LotteryCampaign, 0)
 	for rows.Next() {
 		item, err := scanLotteryCampaign(rows)
@@ -247,7 +247,7 @@ ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.LotteryCampaign, 0)
 	for rows.Next() {
 		item, err := scanLotteryCampaign(rows)
@@ -295,7 +295,7 @@ ORDER BY user_id ASC`, metric)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryUsage, 0)
 	for rows.Next() {
 		var item service.LotteryUsage
@@ -352,7 +352,7 @@ ORDER BY user_id ASC`, campaignID, entryDate)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryDrawCandidate, 0)
 	for rows.Next() {
 		var item service.LotteryDrawCandidate
@@ -386,7 +386,7 @@ ORDER BY e.enrolled_at ASC NULLS LAST, e.user_id ASC`, campaignID, entryDate)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	participants := make([]service.LotteryParticipant, 0)
 	for rows.Next() {
 		var email string
@@ -610,7 +610,7 @@ LIMIT $2 OFFSET $3`, campaignID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryDrawBatch, 0)
 	for rows.Next() {
 		item, err := scanLotteryDrawBatch(rows)
@@ -644,7 +644,7 @@ WHERE w.campaign_id = $1`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryWinner, 0)
 	for rows.Next() {
 		item, err := scanLotteryWinner(rows)
@@ -668,7 +668,7 @@ LIMIT $2`, campaignID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryPublicWinner, 0)
 	for rows.Next() {
 		var email string
@@ -692,7 +692,7 @@ ORDER BY e.entry_count DESC, e.user_id ASC`, campaignID, drawDate)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryDesignationCandidate, 0)
 	for rows.Next() {
 		var email string
@@ -717,7 +717,7 @@ ORDER BY d.prize_tier_id ASC, d.id ASC`, campaignID, drawDate)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryWinnerDesignation, 0)
 	for rows.Next() {
 		var item service.LotteryWinnerDesignation
@@ -791,7 +791,7 @@ ORDER BY sort_order ASC, id ASC`, campaignID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.LotteryPrizeTier, 0)
 	for rows.Next() {
 		var item service.LotteryPrizeTier

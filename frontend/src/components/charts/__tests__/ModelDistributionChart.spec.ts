@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import ModelDistributionChart from '../ModelDistributionChart.vue'
 
 const messages: Record<string, string> = {
+  'admin.redeem.userPrefix': 'User #{id}',
   'admin.dashboard.modelDistribution': 'Model Distribution',
   'admin.dashboard.spendingRankingTitle': 'User Spending Ranking',
   'admin.dashboard.viewModelDistribution': 'Model Distribution',

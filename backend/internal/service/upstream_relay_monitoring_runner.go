@@ -416,10 +416,6 @@ func (r *UpstreamRelayMonitoringRunner) runRecommendationJob(parentCtx context.C
 	}()
 }
 
-func (r *UpstreamRelayMonitoringRunner) skipJob(state *upstreamRelayMonitoringJobState, now time.Time) {
-	r.skipJobWithRetry(state, now, 0)
-}
-
 func (r *UpstreamRelayMonitoringRunner) skipJobWithRetry(state *upstreamRelayMonitoringJobState, now time.Time, failureRetryMinutes int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

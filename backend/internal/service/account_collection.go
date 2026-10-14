@@ -28,7 +28,7 @@ func (s *AccountCollectionService) List(ctx context.Context) ([]AccountCollectio
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]AccountCollection, 0)
 	for rows.Next() {
 		var item AccountCollection
@@ -76,7 +76,7 @@ func (s *AccountCollectionService) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE account_collections SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
@@ -99,7 +99,7 @@ func (s *AccountCollectionService) UpdateSort(ctx context.Context, ids []int64) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for i, id := range ids {
 		result, err := tx.ExecContext(ctx, `UPDATE account_collections SET sort_order=$2, updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id, i)
 		if err != nil {
@@ -121,7 +121,7 @@ func (s *AccountCollectionService) ListForAccount(ctx context.Context, accountID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]AccountCollection, 0)
 	for rows.Next() {
 		var item AccountCollection
@@ -144,7 +144,7 @@ func (s *AccountCollectionService) BatchMembers(ctx context.Context, accountIDs,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, accountID := range accountIDs {
 		var exists bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM accounts WHERE id=$1 AND deleted_at IS NULL)`, accountID).Scan(&exists); err != nil {

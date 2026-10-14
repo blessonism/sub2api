@@ -793,10 +793,11 @@ func normalizeLotteryInput(input *LotteryCampaignInput) {
 	if input.UsageMode == "" {
 		input.UsageMode = LotteryUsageToken
 	}
-	if input.UsageMode == LotteryUsageToken {
+	switch input.UsageMode {
+	case LotteryUsageToken:
 		input.ThresholdCostMicrousd = 0
 		input.EntryStepCostMicrousd = 0
-	} else if input.UsageMode == LotteryUsageUSD {
+	case LotteryUsageUSD:
 		input.ThresholdTokens = 0
 		input.EntryStepTokens = 0
 	}

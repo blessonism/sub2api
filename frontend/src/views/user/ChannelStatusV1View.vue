@@ -7,7 +7,7 @@
       :loading="loading"
       :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
-      @refresh="manualReload"
+      @refresh="refresh()"
       @open-api-docs="showApiDocs = true"
     />
 
@@ -92,7 +92,7 @@ const autoRefresh = useAutoRefresh({
   intervals: [30, 60, 120] as const,
   defaultInterval: DEFAULT_INTERVAL_SECONDS,
   defaultEnabled: true,
-  onRefresh: () => reloadAll(true),
+  onRefresh: () => refresh(true),
   shouldPause: () => document.hidden || loading.value || gptIntelligenceLoading.value,
 })
 const countdown = autoRefresh.countdown
@@ -165,8 +165,8 @@ async function reloadAll(silent = false) {
   ])
 }
 
-async function manualReload() {
-  await reloadAll(false)
+async function refresh(silent = false) {
+  await reloadAll(silent)
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {

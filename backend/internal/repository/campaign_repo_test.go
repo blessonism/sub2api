@@ -93,7 +93,10 @@ func TestCampaignRepositoryEnsureHistoricalInviteSnapshotIsIdempotent(t *testing
 	}
 	defer func() { _ = db.Close() }()
 
-	repo := NewCampaignRepository(db).(*campaignRepository)
+	repo, ok := NewCampaignRepository(db).(*campaignRepository)
+	if !ok {
+		t.Fatal("expected campaign repository")
+	}
 	ctx := context.Background()
 	startAt := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
 	campaign := &service.Campaign{ID: 7, Status: service.CampaignStatusActive, StartAt: startAt}

@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -313,10 +314,13 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	// TypeSafe stays out of the static composite candidates (jev-latest only works
-	// through /v1/systemone); groups with TypeSafe accounts still get it from the
-	// account model mappings collected by GetGroupModelsListCandidates.
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range domain.CompositePrecedencePlatformIDs() {
+		// TypeSafe stays out of the static composite candidates (jev-latest only works
+		// through /v1/systemone); groups with TypeSafe accounts still get it from the
+		// account model mappings collected by GetGroupModelsListCandidates.
+		if platform == PlatformTypeSafe {
+			continue
+		}
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
@@ -357,18 +361,39 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 		platform == PlatformComposite
 }
 
+func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
+	if input == nil {
+		return
+	}
+	*input = CreateGroupInput{
+		Name: input.Name, Description: input.Description, I18n: input.I18n, Platform: input.Platform,
+		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+	}
+}
+
+func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
+	if input == nil {
+		return
+	}
+	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && NormalizeGroupPlatform(input.Platform) == PlatformComposite {
 		return nil, infraerrors.BadRequest("SIMPLE_MODE_GROUP_NOT_BINDABLE", "composite groups are not supported in simple mode")
 	}
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		*input = CreateGroupInput{Name: input.Name, Description: input.Description, Platform: input.Platform, RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard}
+		normalizeCreateGroupInputForSimpleMode(input)
 	}
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
 	if input.VisibleRateMultiplier != nil && *input.VisibleRateMultiplier <= 0 {
 		return nil, errors.New("visible_rate_multiplier must be > 0")
+	}
+	i18n, err := normalizeGroupI18n(input.I18n)
+	if err != nil {
+		return nil, err
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
@@ -542,6 +567,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
+		I18n:                            i18n,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		VisibleRateMultiplier:           input.VisibleRateMultiplier,
@@ -733,7 +759,13 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 }
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
-	group, err := s.groupRepo.GetByID(ctx, id)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if input.Platform == PlatformComposite {
+			return nil, infraerrors.BadRequest("SIMPLE_MODE_GROUP_NOT_BINDABLE", "composite groups are not supported in simple mode")
+		}
+		normalizeUpdateGroupInputForSimpleMode(input)
+	}
+	group, err := s.GetGroup(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +778,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Description != nil {
 		group.Description = *input.Description
+	}
+	if input.I18n != nil {
+		i18n, err := normalizeGroupI18n(*input.I18n)
+		if err != nil {
+			return nil, err
+		}
+		group.I18n = i18n
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
@@ -1240,6 +1279,9 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 }
 
 func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
+	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationMultiplier); err != nil {
+		return nil, err
+	}
 	if s.userGroupRateRepo == nil {
 		return nil, nil
 	}
@@ -1247,6 +1289,9 @@ func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID 
 }
 
 func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupID int64) error {
+	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationMultiplier); err != nil {
+		return err
+	}
 	if s.userGroupRateRepo == nil {
 		return nil
 	}

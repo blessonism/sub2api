@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -30,12 +31,15 @@ func (s *UserRepoSuite) SetupTest() {
 	s.client = testEntClient(s.T())
 	s.repo = newUserRepositoryWithSQL(s.client, integrationDB)
 
-	// 清理测试数据，确保每个测试从干净状态开始
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
+	// 审计等二开表可能通过 RESTRICT 外键引用用户；隔离测试数据库中级联清理，
+	// 并检查错误，避免历史测试数据污染后续列表和唯一约束断言。
+	t := s.T()
+	cleanup := func() {
+		_, err := integrationDB.ExecContext(context.Background(), "TRUNCATE TABLE users CASCADE")
+		require.NoError(t, err, "reset user repository test data")
+	}
+	cleanup()
+	t.Cleanup(cleanup)
 }
 
 func TestUserRepoSuite(t *testing.T) {

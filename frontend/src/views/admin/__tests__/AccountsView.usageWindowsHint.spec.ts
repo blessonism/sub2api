@@ -19,6 +19,7 @@ const {
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    accountCollections: { list: vi.fn(async () => []) },
     accounts: {
       list: listAccounts,
       listWithEtag,

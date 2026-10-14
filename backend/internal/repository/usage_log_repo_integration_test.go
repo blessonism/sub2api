@@ -1053,6 +1053,8 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 		Model:                 "claude-3",
 		InputTokens:           10,
 		OutputTokens:          20,
+		CacheCreationTokens:   30,
+		CacheReadTokens:       40,
 		TotalCost:             1.0,
 		ActualCost:            2.0,
 		AccountRateMultiplier: &m1,
