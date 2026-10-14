@@ -1434,6 +1434,9 @@
     "authorized_by": "已有失败修一下，然后提交更新，不推送",
     "pushed": false,
     "production_operations": false,
-    "initial_untracked_paths_preserved": true
+    "initial_untracked_paths_preserved": true,
+    "merge_commit": "8983b05ff58c71a73beb405f9034158b8f7e9039",
+    "custom_main_fast_forward_target": "8983b05ff58c71a73beb405f9034158b8f7e9039",
+    "completed_at": "2026-10-14T10:18:46.502567+00:00"
   }
 }

@@ -71,3 +71,9 @@ golangci-lint run --concurrency=2 --max-same-issues=0 --max-issues-per-linter=0 
 工作提交：`chore(sync): 同步官方 0.2.16 并保留二开`。提交并快进本地 `custom/main` 后，仅归档当前 Trellis 任务并记录本次 journal。
 
 合并提交可用 `git revert -m 1 <merge-commit>` 创建反向提交；不改写共享历史。生产环境及原有未跟踪文件保持原状。
+
+## 本地交付结果
+
+- 同步 merge commit：`8983b05ff58c71a73beb405f9034158b8f7e9039`，父提交为原二开基线和固定官方 v0.2.16 SHA。
+- 本地 `custom/main` 已快进到该同步结果；当前任务随后归档并记录 journal。
+- 未推送、未部署；起始 7 项未跟踪路径保持原状。
