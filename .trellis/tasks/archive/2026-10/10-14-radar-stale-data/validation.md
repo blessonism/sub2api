@@ -68,3 +68,9 @@
 发布与界面证据见 release-build-evidence.json、release-validation.json、production-ui-validation.json、server-before.json、server-after.json、deploy.log。没有读取或导出浏览器私有凭据。
 
 生产旧镜像和 override 备份保留用于回滚；本次无用的本地临时源码、二进制、构建日志和 wrapper 在 hash 记录后清理。原有未跟踪工作和上次部署 journal 保留，不混入本次代码或归档提交。因 journal 原先已有未提交内容，本次使用 add_session.py --no-commit 追加记录，避免自动提交夹带先前记录。
+
+## 归档提交范围纠正
+
+收尾复核发现 task.py archive 的 safe_archive_paths_to_add 虽接受 task_name，实际仍暂存整个 .trellis/tasks/archive 目录，导致归档提交一度包含原先未跟踪的 10-14-deploy-ovh-v0-2-16 记录。随后使用精确路径 git rm --cached 从版本跟踪移出，原文件完整留在本地，并提交纠正；本次最终差异不包含这些先前记录，未推送。
+
+后续存在其他未提交归档记录时，使用 task.py archive --no-commit，再只显式暂存本任务源路径删除和准确目标路径，不依赖自动归档暂存范围。本任务未扩大到修改 Trellis 脚本。

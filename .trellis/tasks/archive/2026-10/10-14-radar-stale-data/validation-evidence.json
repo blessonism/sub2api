@@ -130,5 +130,11 @@
     "new_migrations": 0,
     "env_and_compose_unchanged": true
   },
-  "task_status": "completed_and_archived"
+  "task_status": "completed_and_archived",
+  "archive_scope_correction": {
+    "automatic_archive_commit_staged_existing_untracked_deploy_records": true,
+    "corrected_by": "precise git rm --cached; original local files preserved",
+    "future_workaround": "task.py archive --no-commit and explicit source/destination staging",
+    "git_push": false
+  }
 }
