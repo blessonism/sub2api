@@ -1,18 +1,9 @@
 --- deploy/ovh-safe-deploy.sh
 +++ temporary/ovh-safe-deploy-pinned.sh
-@@ -5,7 +5,7 @@
- set -euo pipefail
- 
- SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -8 +8 @@
 -REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 +REPO_ROOT=/Users/suki/code/sub2api
- 
- SSH_HOST="${SSH_HOST:-ovh}"
- PLATFORM="${SUB2API_PLATFORM:-linux/amd64}"
-@@ -104,18 +104,17 @@
- 
- [[ "$REV" == "$SHORT_HEAD" ]] || fail "requested rev $REV does not match checked-out HEAD $SHORT_HEAD"
- 
+@@ -107,12 +107,11 @@
 -if [[ -n "$(git status --porcelain)" ]]; then
 -  fail "working tree is not clean; deploy from a clean checkout of custom/main"
 -fi
@@ -36,39 +27,20 @@
 +[[ "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" == "$PLATFORM" ]] || fail "image platform mismatch"
 +[[ "$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$EXPECTED_FULL_HEAD" ]] || fail "image revision mismatch"
 +[[ "$SKIP_BUILD" -eq 1 ]] || fail "pinned release requires --skip-build"
- 
- echo "Target image: $IMAGE"
- echo "Target commit: $FULL_HEAD"
-@@ -153,14 +152,16 @@
- docker save "$IMAGE" | ssh "$SSH_HOST" 'docker load'
- 
- ssh "$SSH_HOST" \
+@@ -156 +155 @@
 -  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' bash -s" <<'REMOTE'
 +  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' EXPECTED_IMAGE_ID='$LOCAL_IMAGE_ID' bash -s" <<'REMOTE'
- set -euo pipefail
- 
- IMAGE="${IMAGE_REPO}:${REV}"
+@@ -160 +159 @@
 -docker image inspect "$IMAGE" >/dev/null
 +[[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$EXPECTED_IMAGE_ID" ]] || { echo "Loaded image ID mismatch" >&2; exit 1; }
- 
- cd "$DEPLOY_DIR"
- OLD_IMAGE="$(docker inspect "$CONTAINER_NAME" --format "{{.Config.Image}}")"
+@@ -163,0 +163,2 @@
 +[[ "$OLD_IMAGE" == sub2api-custom:8fec104efb1f ]] || { echo 'Production image changed since preflight' >&2; exit 1; }
 +[[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == sha256:6a108ce3562339c9038afcb85990374444d835db5f95b671e0718d393c0e009c ]] || { echo 'Production image ID changed since preflight' >&2; exit 1; }
- STAMP="$(date +%Y%m%d-%H%M%S)"
- mkdir -p "$BACKUP_DIR"
- OLD_IMAGE_SAFE="$(printf "%s" "$OLD_IMAGE" | tr "/:" "__")"
-@@ -185,23 +186,26 @@
-   exit 1
- fi
- 
+@@ -188,3 +188,0 @@
 -mv "$TMP_FILE" docker-compose.override.yml
 -docker compose config --quiet
 -
- rollback() {
-   echo "Rolling back to $OLD_IMAGE using $BACKUP_FILE" >&2
-   cp "$BACKUP_FILE" docker-compose.override.yml
-   docker compose config --quiet
+@@ -195,4 +193,5 @@
 -  docker compose up -d "$CONTAINER_NAME" || true
 -}
 -
@@ -78,10 +50,7 @@
 +
 +mv "$TMP_FILE" docker-compose.override.yml
 +if ! docker compose config --quiet; then
-   rollback
-   exit 1
- fi
- 
+@@ -203,2 +202,7 @@
 -for _ in $(seq 1 30); do
 -  if curl -fsS --max-time 5 "$HEALTH_URL"; then
 +if ! docker compose up -d --no-deps --pull never "$CONTAINER_NAME"; then
@@ -91,6 +60,3 @@
 +
 +for _ in $(seq 1 60); do
 +  if [[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == "$EXPECTED_IMAGE_ID" ]] && curl -fsS --max-time 5 "$HEALTH_URL"; then
-     echo ""
-     echo "Deployment healthy"
-     echo "New image: $IMAGE"

@@ -101,8 +101,8 @@
     "production-ui-validation.json": "8c513fca10358362c6eb13c35dd00414a315f08507f6c52b78b3b25aa0a5a758",
     "server-before.json": "979a81a56eab8b0ea603636acc4e2fce96ff4a8a3b8f61f284c4de04cd2102b5",
     "server-after.json": "605b2e0ea6d0b351bc1e17f3370c92c88d3ffdda31e6a304b2e54e83735e5a52",
-    "deploy-wrapper.diff": "5cfbe675b5f2b0f82097e2d8ae8b687c88ad1b96df8efcad1b2e6755a82e5fe7",
-    "runtime-dockerfile.diff": "f6420baf06bad8e0f045cf9c4903886224d0c0216a2ce2cea0dc00b272cb6b3e",
+    "deploy-wrapper.diff": "9bcb933f0c52cca9a320c5d3af63694a1f8e820ddcd36ee590dd4fc85c5f2167",
+    "runtime-dockerfile.diff": "31d0930877cfaf0ca7147dcbdc2ec332df5e9bf6012cdad23e7acc4ff9dddd93",
     "deploy.log": "ca129a29429e7a1b2456c0c46134b5368190e875fa617bc267ae745123acc050"
   },
   "superseded_evidence": [
@@ -129,5 +129,6 @@
     "other_containers_unchanged": 7,
     "new_migrations": 0,
     "env_and_compose_unchanged": true
-  }
+  },
+  "task_status": "completed_and_archived"
 }
