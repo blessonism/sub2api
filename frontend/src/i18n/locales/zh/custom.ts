@@ -91,6 +91,24 @@ export default {
   },
   "channelStatus": {
     "modelIq": {
+      "radarBench": {
+        "title": "模型智力雷达",
+        "description": "展示 Codex 雷达提供的模型与推理档位成绩。雷达Bench 满分 150；任务覆盖未满时为暂定成绩，与旧 IQ 指数口径不同。",
+        "badge": "Codex 雷达 · 雷达Bench",
+        "sortByScore": "分数从高到低",
+        "score": "雷达分",
+        "scoreMax": "满分 {max}",
+        "overviewTrend": "雷达分总览",
+        "historyNotice": "最近 12 个 UTC 判分日；没有判分的日期留空，不代表当天重新评测。",
+        "gradingDay": "判分日：{date}（UTC）",
+        "gradingDayLabel": "最新判分日",
+        "utcDay": "按 UTC 自然日统计",
+        "collectedAt": "读取于 {time} · {timezone}",
+        "coverage": "任务覆盖",
+        "coverageValue": "覆盖 {covered}/{tasks} 题",
+        "gradedRuns": "累计有效判分",
+        "partial": "有 {failed}/{total} 个档位暂时读取失败，当前展示已成功读取的成绩。"
+      },
       "title": "官方 GPT 智商测试",
       "description": "实验性指标：固定 DeepSWE 题目探针的通过率会折算为 GPT 智商指数趋势，样本、口径和自动化仍在校准中。",
       "source": "查看信息源",
@@ -159,6 +177,8 @@ export default {
       "quotaSummary": "{window} 窗口 · 速率 {rate}",
       "quotaEmpty": "暂无配额雷达",
       "status": {
+        "complete": "覆盖完整",
+        "provisional": "暂定",
         "green": "GREEN",
         "yellow": "YELLOW",
         "red": "RED",

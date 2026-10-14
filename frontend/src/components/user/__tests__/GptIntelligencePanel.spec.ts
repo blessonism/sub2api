@@ -12,6 +12,23 @@ vi.mock('@/api/admin/gptIntelligence', () => ({
 }))
 
 const messages: Record<string, string> = {
+  'channelStatus.modelIq.radarBench.title': 'Model Intelligence Radar',
+  'channelStatus.modelIq.radarBench.description': 'RadarBench out of 150',
+  'channelStatus.modelIq.radarBench.badge': 'Codex Radar · RadarBench',
+  'channelStatus.modelIq.radarBench.sortByScore': 'Score high to low',
+  'channelStatus.modelIq.radarBench.overviewTrend': 'Radar score overview',
+  'channelStatus.modelIq.radarBench.historyNotice': 'UTC grading days',
+  'channelStatus.modelIq.radarBench.gradingDay': 'Grading day: {date} (UTC)',
+  'channelStatus.modelIq.radarBench.gradingDayLabel': 'Latest grading day',
+  'channelStatus.modelIq.radarBench.utcDay': 'UTC calendar day',
+  'channelStatus.modelIq.radarBench.coverage': 'Task coverage',
+  'channelStatus.modelIq.radarBench.coverageValue': 'Coverage {covered}/{tasks}',
+  'channelStatus.modelIq.radarBench.gradedRuns': 'Valid graded runs',
+  'channelStatus.modelIq.radarBench.scoreMax': 'Out of {max}',
+  'channelStatus.modelIq.radarBench.collectedAt': 'Read {time} · {timezone}',
+  'channelStatus.modelIq.radarBench.partial': '{failed}/{total} configurations could not be read',
+  'channelStatus.modelIq.status.complete': 'Complete',
+  'channelStatus.modelIq.status.provisional': 'Provisional',
   'channelStatus.modelIq.title': 'GPT IQ Test',
   'channelStatus.modelIq.description': 'Experimental metric',
   'channelStatus.modelIq.source': 'View source',
@@ -237,6 +254,27 @@ const snapshot: GptIntelligenceSnapshot = {
 describe('GptIntelligencePanel', () => {
   beforeEach(() => {
     updateGptIntelligenceTemplates.mockReset()
+  })
+
+  it('renders provided RadarBench models without excluding old models or presenting coverage as passes', () => {
+    const run = { ...snapshot.latest!, date: '2026-10-13', model: 'gpt-6.1-sol', reasoning_effort: 'max', score: 106.72, score_max: 150, coverage: 53, required_tasks: 64, graded_runs_count: 54, status: 'provisional' as const }
+    const bench: GptIntelligenceSnapshot = {
+      ...snapshot, benchmark: 'radar-bench-final64-20261004', monitored_at: '2026-10-14T12:00:00Z', timezone: 'UTC',
+      metadata: { requested_series: 3, failed_series: 1 }, latest: run, recent_days: [run],
+      comparisons: [{ key: 'provided-old', label: 'GPT-5.5 high', model: 'gpt-5.5', reasoning_effort: 'high', latest: { ...run, model: 'gpt-5.5', reasoning_effort: 'high', score: 0, coverage: 64, status: 'complete' }, recent_days: [] }],
+    }
+    const wrapper = mount(GptIntelligencePanel, { props: { snapshot: bench, loading: false, error: null }, global: { stubs: { Icon: true } } })
+    expect(wrapper.text()).toContain('Model Intelligence Radar')
+    expect(wrapper.text()).toContain('Coverage 53/64')
+    expect(wrapper.text()).toContain('Provisional')
+    expect(wrapper.text()).toContain('Grading day: 2026-10-13 (UTC)')
+    expect(wrapper.text()).toContain('Out of 150')
+    expect(wrapper.text()).toContain('0.0')
+    expect(wrapper.text()).toContain('GPT-5.5-high')
+    expect(wrapper.text()).not.toContain('Passed 10/12')
+    expect(wrapper.text()).not.toContain('DeepSWE')
+    expect(wrapper.get('[data-test="radar-bench-partial"]').text()).toContain('1/3 configurations could not be read')
+    expect(wrapper.get('a').attributes('href')).toBe('https://codexradar.com/#intelligence-efficiency')
   })
 
   it('renders the latest intelligence snapshot', () => {

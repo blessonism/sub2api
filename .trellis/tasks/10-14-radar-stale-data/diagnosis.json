@@ -1,0 +1,13 @@
+{
+  "deployed_image": "sub2api-custom:8fec104efb1f",
+  "optimization_commit": "b08200006732789aa85c85482381486eeb7b7056",
+  "optimization_present": true,
+  "efficiency_bytes": 9695083,
+  "previous_limit_bytes": 8388608,
+  "source_updated_at": "2026-10-01T23:00:27+08:00",
+  "point_count": 89,
+  "history_count": 416,
+  "model_count": 24,
+  "current_iq_date": "2026-09-13T11:11:18+08:00",
+  "production_log": "efficiency_fetch_failed: decode intelligence efficiency: unexpected end of JSON input"
+}

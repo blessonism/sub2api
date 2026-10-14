@@ -91,6 +91,24 @@ export default {
   },
   "channelStatus": {
     "modelIq": {
+      "radarBench": {
+        "title": "Model Intelligence Radar",
+        "description": "Scores for the models and reasoning efforts provided by Codex Radar. RadarBench is scored out of 150; incomplete task coverage is provisional and uses a different scale from the legacy IQ index.",
+        "badge": "Codex Radar · RadarBench",
+        "sortByScore": "Score high to low",
+        "score": "Radar score",
+        "scoreMax": "Out of {max}",
+        "overviewTrend": "Radar score overview",
+        "historyNotice": "Latest 12 UTC grading days. Days without grades stay empty; these are not new daily evaluations.",
+        "gradingDay": "Grading day: {date} (UTC)",
+        "gradingDayLabel": "Latest grading day",
+        "utcDay": "UTC calendar day",
+        "collectedAt": "Read {time} · {timezone}",
+        "coverage": "Task coverage",
+        "coverageValue": "Coverage {covered}/{tasks}",
+        "gradedRuns": "Valid graded runs",
+        "partial": "{failed}/{total} configurations could not be read. Showing successfully read scores."
+      },
       "title": "GPT IQ Test",
       "description": "Experimental metric: pass rates from a fixed DeepSWE probe are converted into a GPT IQ trend while samples, scoring, and automation are still being calibrated.",
       "source": "View source",
@@ -159,6 +177,8 @@ export default {
       "quotaSummary": "{window} window · rate {rate}",
       "quotaEmpty": "Quota radar unavailable",
       "status": {
+        "complete": "Complete",
+        "provisional": "Provisional",
         "green": "GREEN",
         "yellow": "YELLOW",
         "red": "RED",

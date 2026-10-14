@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,19 +11,15 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"golang.org/x/sync/singleflight"
 )
 
 const (
-	gptIntelligenceSourceURL          = "https://codexradar.com/"
-	gptIntelligenceDataURL            = "https://codexradar.com/current.json"
-	gptIntelligenceEfficiencyURL      = "https://codexradar.com/data/intelligence-efficiency.json"
-	gptIntelligenceSourceLabel        = "Codex 雷达"
-	gptIntelligenceFetchTimeout       = 8 * time.Second
-	gptIntelligenceCacheTTL           = time.Hour
-	gptIntelligenceMaxSourceBytes     = 512 * 1024
-	gptIntelligenceEfficiencyMaxBytes = 8 * 1024 * 1024
+	gptIntelligenceSourceURL      = "https://codexradar.com/"
+	gptIntelligenceSourceLabel    = "Codex 雷达"
+	gptIntelligenceFetchTimeout   = 8 * time.Second
+	gptIntelligenceCacheTTL       = time.Hour
+	gptIntelligenceMaxSourceBytes = 512 * 1024
 )
 
 var (
@@ -43,10 +38,11 @@ type GptIntelligenceService struct {
 	client *http.Client
 	now    func() time.Time
 
-	mu     sync.RWMutex
-	cache  *GptIntelligenceSnapshot
-	loaded time.Time
-	sf     singleflight.Group
+	mu         sync.RWMutex
+	cache      *GptIntelligenceSnapshot
+	loaded     time.Time
+	retryUntil time.Time
+	sf         singleflight.Group
 }
 
 func NewGptIntelligenceService() *GptIntelligenceService {
@@ -70,6 +66,7 @@ func newGptIntelligenceHTTPClient() *http.Client {
 }
 
 type GptIntelligenceSnapshot struct {
+	Benchmark   string                            `json:"benchmark,omitempty"`
 	MonitoredAt string                            `json:"monitored_at"`
 	Timezone    string                            `json:"timezone"`
 	Latest      *GptIntelligenceRun               `json:"latest"`
@@ -82,6 +79,10 @@ type GptIntelligenceSnapshot struct {
 }
 
 type GptIntelligenceRun struct {
+	ScoreMax        int      `json:"score_max,omitempty"`
+	Coverage        int      `json:"coverage,omitempty"`
+	RequiredTasks   int      `json:"required_tasks,omitempty"`
+	GradedRunsCount *int     `json:"graded_runs_count,omitempty"`
 	Date            string   `json:"date"`
 	Score           *float64 `json:"score"`
 	Status          string   `json:"status"`
@@ -120,12 +121,14 @@ type GptIntelligenceSource struct {
 }
 
 type GptIntelligenceCollectionMetadata struct {
-	Method      string `json:"method"`
-	CachedAt    string `json:"cached_at"`
-	CacheTTL    int64  `json:"cache_ttl_seconds"`
-	RunCount    int    `json:"run_count"`
-	Series      int    `json:"series"`
-	Attribution string `json:"attribution"`
+	RequestedSeries int    `json:"requested_series,omitempty"`
+	FailedSeries    int    `json:"failed_series,omitempty"`
+	Method          string `json:"method"`
+	CachedAt        string `json:"cached_at"`
+	CacheTTL        int64  `json:"cache_ttl_seconds"`
+	RunCount        int    `json:"run_count"`
+	Series          int    `json:"series"`
+	Attribution     string `json:"attribution"`
 }
 
 type gptIntelligencePublicPayload struct {
@@ -280,6 +283,12 @@ func (s *GptIntelligenceService) GetSnapshot(ctx context.Context) (*GptIntellige
 	if snap := s.cachedSnapshot(); snap != nil {
 		return snap, nil
 	}
+	s.mu.RLock()
+	rateLimited := s.now().Before(s.retryUntil)
+	s.mu.RUnlock()
+	if rateLimited {
+		return nil, ErrGptIntelligenceUnavailable
+	}
 
 	value, err, _ := s.sf.Do("snapshot", func() (any, error) {
 		if snap := s.cachedSnapshot(); snap != nil {
@@ -294,241 +303,26 @@ func (s *GptIntelligenceService) GetSnapshot(ctx context.Context) (*GptIntellige
 	if !ok || snap == nil {
 		return nil, ErrGptIntelligenceUnavailable
 	}
-	return snap, nil
+	return cloneGptIntelligenceSnapshot(snap), nil
 }
 
 func (s *GptIntelligenceService) cachedSnapshot() *GptIntelligenceSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.cache == nil || s.now().Sub(s.loaded) >= gptIntelligenceCacheTTL {
+	if s.cache == nil {
+		return nil
+	}
+	ttl := gptIntelligenceCacheTTL
+	if s.cache.Metadata.CacheTTL > 0 {
+		ttl = time.Duration(s.cache.Metadata.CacheTTL) * time.Second
+	}
+	if s.now().Sub(s.loaded) >= ttl {
 		return nil
 	}
 	return cloneGptIntelligenceSnapshot(s.cache)
 }
 
-func (s *GptIntelligenceService) fetchSnapshot(ctx context.Context) (*GptIntelligenceSnapshot, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gptIntelligenceDataURL, nil)
-	if err != nil {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sub2api-gpt-intelligence/1.0")
-
-	res, err := s.client.Do(req)
-	if err != nil {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("source returned HTTP %d", res.StatusCode))
-	}
-
-	body, err := io.ReadAll(io.LimitReader(res.Body, gptIntelligenceMaxSourceBytes))
-	if err != nil {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(err)
-	}
-
-	snap, currentErr := ParseGptIntelligenceJSON(body, s.now())
-	efficiency, efficiencyErr := s.fetchIntelligenceEfficiency(ctx)
-	if currentErr != nil {
-		if efficiencyErr != nil {
-			return nil, currentErr
-		}
-		snap, currentErr = snapshotFromIntelligenceEfficiency(efficiency, s.now())
-		if currentErr != nil {
-			return nil, currentErr
-		}
-	} else if efficiencyErr != nil {
-		logger.LegacyPrintf("service.gpt_intelligence", "efficiency_fetch_failed: %v", efficiencyErr)
-	} else if mergeGptIntelligenceEfficiency(snap, efficiency) {
-		snap.Metadata.Method = "public_json_current+efficiency"
-		snap.Metadata.Series = 1 + len(snap.Comparisons)
-		snap.Metadata.RunCount = countGptIntelligenceRuns(snap)
-	}
-
-	s.mu.Lock()
-	s.cache = cloneGptIntelligenceSnapshot(snap)
-	s.loaded = s.now()
-	s.mu.Unlock()
-
-	return cloneGptIntelligenceSnapshot(snap), nil
-}
-
-// fetchIntelligenceEfficiency 拉取 Codex 雷达公开的智力效率数据（含 DeepSeek V4 Flash）。
-func (s *GptIntelligenceService) fetchIntelligenceEfficiency(ctx context.Context) (*gptIntelligenceEfficiencyPayload, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gptIntelligenceEfficiencyURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sub2api-gpt-intelligence/1.0")
-
-	res, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("efficiency source returned HTTP %d", res.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, gptIntelligenceEfficiencyMaxBytes))
-	if err != nil {
-		return nil, err
-	}
-
-	var payload gptIntelligenceEfficiencyPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("decode intelligence efficiency: %w", err)
-	}
-	return &payload, nil
-}
-
-type gptIntelligenceEfficiencyPayload struct {
-	SourceUpdatedAt string                           `json:"source_updated_at"`
-	Points          []gptIntelligenceEfficiencyPoint `json:"points"`
-	History         []gptIntelligenceEfficiencySnap  `json:"history"`
-}
-
-type gptIntelligenceEfficiencySnap struct {
-	At     string                           `json:"at"`
-	Points []gptIntelligenceEfficiencyPoint `json:"points"`
-}
-
-type gptIntelligenceEfficiencyPoint struct {
-	Model      string   `json:"model"`
-	Effort     string   `json:"effort"`
-	IQ         *float64 `json:"iq"`
-	Passed     *float64 `json:"passed"`
-	ValidTasks *float64 `json:"valid_tasks"`
-}
-
-type gptIntelligenceSeriesKey struct{ model, effort string }
-
-// mergeGptIntelligenceEfficiency 合并公开效率数据中的所有模型系列。
-// 模型和推理档位来自数据本身，新增模型只要遵循同一公开协议即可自动展示。
-func mergeGptIntelligenceEfficiency(snap *GptIntelligenceSnapshot, efficiency *gptIntelligenceEfficiencyPayload) bool {
-	if snap == nil || efficiency == nil {
-		return false
-	}
-
-	seen := make(map[gptIntelligenceSeriesKey]struct{}, len(snap.Comparisons)+1)
-	if snap.Latest != nil {
-		seen[gptIntelligenceSeriesKey{model: snap.Latest.Model, effort: snap.Latest.ReasoningEffort}] = struct{}{}
-	}
-	for _, comparison := range snap.Comparisons {
-		seen[gptIntelligenceSeriesKey{model: comparison.Model, effort: comparison.ReasoningEffort}] = struct{}{}
-	}
-
-	currentByKey := make(map[gptIntelligenceSeriesKey]gptIntelligenceEfficiencyPoint)
-	for _, point := range efficiency.Points {
-		if strings.TrimSpace(point.Model) == "" || strings.TrimSpace(point.Effort) == "" {
-			continue
-		}
-		if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
-			continue
-		}
-		currentByKey[gptIntelligenceSeriesKey{model: point.Model, effort: point.Effort}] = point
-	}
-
-	historyByKey := make(map[gptIntelligenceSeriesKey][]GptIntelligenceRun)
-	for _, snapItem := range efficiency.History {
-		for _, point := range snapItem.Points {
-			if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
-				continue
-			}
-			key := gptIntelligenceSeriesKey{model: point.Model, effort: point.Effort}
-			historyByKey[key] = append(historyByKey[key], gptIntelligenceEfficiencyRun(snapItem.At, point))
-		}
-	}
-
-	merged := false
-	for key, point := range currentByKey {
-		if _, exists := seen[key]; exists {
-			continue
-		}
-
-		latestRun := gptIntelligenceEfficiencyRun(efficiency.SourceUpdatedAt, point)
-		runs := normalizeGptIntelligenceRuns(historyByKey[key], key.model, key.effort, &latestRun)
-
-		comparisonKey := gptIntelligenceComparisonKey(key.model, key.effort)
-		snap.Comparisons = append(snap.Comparisons, GptIntelligenceComparison{
-			Key:             comparisonKey,
-			Label:           gptIntelligenceModelLabel(key.model, key.effort),
-			Model:           key.model,
-			ReasoningEffort: key.effort,
-			Latest:          &latestRun,
-			RecentDays:      runs,
-		})
-		seen[key] = struct{}{}
-		merged = true
-	}
-
-	if merged {
-		sort.Slice(snap.Comparisons, func(i, j int) bool {
-			return snap.Comparisons[i].Key < snap.Comparisons[j].Key
-		})
-	}
-	return merged
-}
-
-func snapshotFromIntelligenceEfficiency(efficiency *gptIntelligenceEfficiencyPayload, collectedAt time.Time) (*GptIntelligenceSnapshot, error) {
-	if efficiency == nil || len(efficiency.Points) == 0 {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("efficiency payload has no points"))
-	}
-	snapshot := &GptIntelligenceSnapshot{
-		MonitoredAt: collectedAt.UTC().Format(time.RFC3339),
-		Timezone:    "Asia/Shanghai",
-		Templates:   DefaultGptIntelligencePromptTemplates(),
-		Source:      GptIntelligenceSource{Name: gptIntelligenceSourceLabel, URL: gptIntelligenceSourceURL},
-		Metadata:    GptIntelligenceCollectionMetadata{Method: "public_json_efficiency", CachedAt: collectedAt.UTC().Format(time.RFC3339), CacheTTL: int64(gptIntelligenceCacheTTL / time.Second), Attribution: "数据来自 Codex 雷达 codexradar.com"},
-	}
-	var primary *gptIntelligenceEfficiencyPoint
-	for i := range efficiency.Points {
-		point := &efficiency.Points[i]
-		if point.IQ == nil && point.Passed == nil && point.ValidTasks == nil {
-			continue
-		}
-		if primary == nil || (point.IQ != nil && (primary.IQ == nil || *point.IQ > *primary.IQ)) {
-			primary = point
-		}
-	}
-	if primary == nil {
-		return nil, ErrGptIntelligenceUnavailable.WithCause(fmt.Errorf("efficiency payload has no valid series"))
-	}
-	latest := gptIntelligenceEfficiencyRun(efficiency.SourceUpdatedAt, *primary)
-	snapshot.Latest = &latest
-	mergeGptIntelligenceEfficiency(snapshot, efficiency)
-	snapshot.Metadata.Series = 1 + len(snapshot.Comparisons)
-	snapshot.Metadata.RunCount = countGptIntelligenceRuns(snapshot)
-	return snapshot, nil
-}
-
-func countGptIntelligenceRuns(snapshot *GptIntelligenceSnapshot) int {
-	if snapshot == nil {
-		return 0
-	}
-	count := len(snapshot.RecentDays)
-	for _, comparison := range snapshot.Comparisons {
-		count += len(comparison.RecentDays)
-	}
-	return count
-}
-
-// gptIntelligenceEfficiencyRun 把智力效率数据点转换为快照中的运行记录。
-func gptIntelligenceEfficiencyRun(at string, point gptIntelligenceEfficiencyPoint) GptIntelligenceRun {
-	return GptIntelligenceRun{
-		Date:            at,
-		Score:           point.IQ,
-		Passed:          point.Passed,
-		Tasks:           point.ValidTasks,
-		Model:           point.Model,
-		ReasoningEffort: point.Effort,
-	}
-}
-
-// gptIntelligenceDeepSeekLabel 生成 DeepSeek 对比系列的展示名。
+// gptIntelligenceModelLabel 根据公开模型标识生成系列展示名。
 func gptIntelligenceModelLabel(model, effort string) string {
 	if strings.EqualFold(model, "deepseek-v4-flash") {
 		return strings.TrimSpace("DeepSeek V4 Flash " + effort)
@@ -712,6 +506,10 @@ func cloneGptIntelligenceRunPtr(run *GptIntelligenceRun) *GptIntelligenceRun {
 	out.OutputTokens = cloneFloat64Ptr(run.OutputTokens)
 	out.WallSeconds = cloneFloat64Ptr(run.WallSeconds)
 	out.CostUSD = cloneFloat64Ptr(run.CostUSD)
+	if run.GradedRunsCount != nil {
+		count := *run.GradedRunsCount
+		out.GradedRunsCount = &count
+	}
 	return &out
 }
 

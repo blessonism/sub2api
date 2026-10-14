@@ -62,6 +62,20 @@ afterEach(() => {
 })
 
 describe('parseGptIntelligenceSnapshot', () => {
+  it('preserves RadarBench coverage, provisional status and valid zero scores', () => {
+    const snapshot = parseGptIntelligenceSnapshot({
+      benchmark: 'radar-bench-final64-20261004',
+      monitored_at: '2026-10-14T12:00:00Z', timezone: 'UTC',
+      metadata: { requested_series: 3, failed_series: 1 },
+      latest: { model: 'gpt-6.1-sol', reasoning_effort: 'max', date: '2026-10-13', score: 106.72, score_max: 150, coverage: 53, required_tasks: 64, graded_runs_count: 54, status: 'provisional' },
+      comparisons: [{ key: 'old-but-provided', model: 'gpt-5.5', reasoning_effort: 'high', latest: { score: 0, status: 'complete', coverage: 64, required_tasks: 64 } }],
+    })
+    expect(snapshot.benchmark).toBe('radar-bench-final64-20261004')
+    expect(snapshot.metadata).toEqual({ requested_series: 3, failed_series: 1 })
+    expect(snapshot.latest).toMatchObject({ date: '2026-10-13', status: 'provisional', score_max: 150, coverage: 53, required_tasks: 64, graded_runs_count: 54, passed: null, total_tokens: null })
+    expect(snapshot.comparisons[0].latest).toMatchObject({ score: 0, status: 'complete', graded_runs_count: null })
+  })
+
   it('extracts model_iq fields from the CodexRadar payload', () => {
     const snapshot = parseGptIntelligenceSnapshot(payload)
 

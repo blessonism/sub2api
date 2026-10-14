@@ -1,0 +1,5 @@
+=== RUN   TestPublicSourceReplay
+{"history_run_count":15663,"latest_date":"2026-10-01T23:00:27+08:00","latest_date_counts":{"2026-10-01T23:00:27+08:00":89},"latest_model":"gpt-5.6-sol","latest_score":108.48,"method":"public_json_current+efficiency","model_count":24,"series_count":89,"status":"passed"}
+--- PASS: TestPublicSourceReplay (0.05s)
+PASS
+ok  	github.com/Wei-Shaw/sub2api/.cache/radar-live-probe/probe	2.661s

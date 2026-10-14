@@ -1,0 +1,59 @@
+2026/10/14 12:23:59 Timezone initialized: UTC (UTC offset: +00:00)
+=== RUN   TestGptIntelligenceLiveReplayCurrentSource
+2026/10/14 12:23:59 radar_bench_partial: failed=5 total=34 first_error=radar bench source returned HTTP 503
+    gpt_intelligence_live_replay_test.go:61: {"cache_ttl_seconds":60,"checked_at":"2026-10-14T12:23:59Z","date_counts":{"2026-10-11":1,"2026-10-13":22,"2026-10-14":6},"failed":5,"method":"public_radar_bench","models":6,"requested":34,"series":29}
+--- PASS: TestGptIntelligenceLiveReplayCurrentSource (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_DiscoversProvidedModelsAndPreservesZero
+--- PASS: TestGptIntelligenceRadarBench_DiscoversProvidedModelsAndPreservesZero (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_PartialFailureRetriesAndNoOldFallback
+2026/10/14 12:23:59 radar_bench_partial: failed=1 total=2 first_error=radar bench source returned HTTP 503
+2026/10/14 12:23:59 radar_bench_partial: failed=1 total=2 first_error=radar bench source returned HTTP 503
+--- PASS: TestGptIntelligenceRadarBench_PartialFailureRetriesAndNoOldFallback (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_NoPublishedGradesIsEmpty
+--- PASS: TestGptIntelligenceRadarBench_NoPublishedGradesIsEmpty (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/model
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/catalog
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/digest
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/coverage
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/status
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/last_grade
+=== RUN   TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/non_day_timestamp
+--- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/model (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/catalog (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/digest (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/coverage (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/status (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/last_grade (0.00s)
+    --- PASS: TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory/non_day_timestamp (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_ResponseLimitAndInvalidBinding
+--- PASS: TestGptIntelligenceRadarBench_ResponseLimitAndInvalidBinding (0.00s)
+=== RUN   TestGptIntelligenceRadarBench_LimitsConcurrentReadsAndHonorsCancellation
+--- PASS: TestGptIntelligenceRadarBench_LimitsConcurrentReadsAndHonorsCancellation (0.01s)
+=== RUN   TestGptIntelligenceRadarBench_HonorsSourceRetryAfter
+--- PASS: TestGptIntelligenceRadarBench_HonorsSourceRetryAfter (0.00s)
+=== RUN   TestParseGptIntelligenceJSON_ExtractsPublicModelIqSummary
+--- PASS: TestParseGptIntelligenceJSON_ExtractsPublicModelIqSummary (0.00s)
+=== RUN   TestParseGptIntelligenceJSON_ReturnsUnavailableWhenModelIqMissing
+--- PASS: TestParseGptIntelligenceJSON_ReturnsUnavailableWhenModelIqMissing (0.00s)
+=== RUN   TestParseGptIntelligenceJSON_ReturnsUnavailableForMalformedJSON
+--- PASS: TestParseGptIntelligenceJSON_ReturnsUnavailableForMalformedJSON (0.00s)
+=== RUN   TestNewGptIntelligenceHTTPClient_DisablesEnvironmentProxy
+--- PASS: TestNewGptIntelligenceHTTPClient_DisablesEnvironmentProxy (0.00s)
+=== RUN   TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers
+--- PASS: TestCloneGptIntelligenceSnapshot_DeepCopiesRunPointers (0.00s)
+=== RUN   TestGptIntelligenceDeepSeekHelpers
+--- PASS: TestGptIntelligenceDeepSeekHelpers (0.00s)
+=== RUN   TestEncodeGptIntelligencePromptTemplates_NormalizesKnownTemplates
+--- PASS: TestEncodeGptIntelligencePromptTemplates_NormalizesKnownTemplates (0.00s)
+=== RUN   TestEncodeGptIntelligencePromptTemplates_PreservesCustomTemplates
+--- PASS: TestEncodeGptIntelligencePromptTemplates_PreservesCustomTemplates (0.00s)
+=== RUN   TestEncodeGptIntelligencePromptTemplates_DoesNotRestoreDeletedDefaultTemplates
+--- PASS: TestEncodeGptIntelligencePromptTemplates_DoesNotRestoreDeletedDefaultTemplates (0.00s)
+=== RUN   TestEncodeGptIntelligencePromptTemplates_AllowsEmptyTemplates
+--- PASS: TestEncodeGptIntelligencePromptTemplates_AllowsEmptyTemplates (0.00s)
+=== RUN   TestEncodeGptIntelligencePromptTemplates_RejectsEmptyPrompt
+--- PASS: TestEncodeGptIntelligencePromptTemplates_RejectsEmptyPrompt (0.00s)
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/service	2.693s

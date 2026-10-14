@@ -1,0 +1,112 @@
+{
+  "status": "passed_locally",
+  "production_release": "authorized_pending_deployment",
+  "production": {
+    "image": "sub2api-custom:8fec104efb1f",
+    "health": "healthy",
+    "modified_by_this_task": false
+  },
+  "final_contract": {
+    "models": "all valid source-provided model/effort grades; no allowlist or generation exclusion",
+    "source": "binding + public RadarBench summary",
+    "score_version": "radar-bench-v2-150",
+    "score_max": 150,
+    "required_tasks": 64,
+    "date_semantics": "UTC grading day; capture time kept separate",
+    "old_iq_fallback": false
+  },
+  "diagnosis": {
+    "optimization_commit": "b08200006732789aa85c85482381486eeb7b7056",
+    "optimization_present": true,
+    "legacy_efficiency_bytes": 9695083,
+    "previous_limit_bytes": 8388608,
+    "legacy_source_updated_at": "2026-10-01T23:00:27+08:00",
+    "legacy_source_is_not_site_latest": true,
+    "runtime_source_has_changed_to_radar_bench": true
+  },
+  "validation": {
+    "unit": {
+      "main_tests": 18,
+      "result": "passed",
+      "evidence": "unit-radar-bench-final.txt"
+    },
+    "lint": {
+      "result": "0 issues",
+      "scope": "changed service lines versus custom/main with unit tags; both new Go files included through intent-to-add",
+      "version": "2.14.0",
+      "evidence": "lint-radar-bench.txt"
+    },
+    "frontend": {
+      "targeted_files": 4,
+      "tests": 49,
+      "i18n_completeness_tests": 3,
+      "typecheck": "passed",
+      "changed_file_eslint": "passed",
+      "production_build": "passed",
+      "evidence": "successful terminal results from implementation phase; build-radar-bench.json records generated artifacts"
+    },
+    "linux_amd64_embed_build": "passed",
+    "public_source_replay": {
+      "cache_ttl_seconds": 60,
+      "checked_at": "2026-10-14T12:23:59Z",
+      "date_counts": {
+        "2026-10-11": 1,
+        "2026-10-13": 22,
+        "2026-10-14": 6
+      },
+      "failed": 5,
+      "method": "public_radar_bench",
+      "models": 6,
+      "requested": 34,
+      "series": 29
+    },
+    "live_source": {
+      "checked_at": "2026-10-14T12:18:04.558697+00:00",
+      "duration_seconds": 17.38053075876087,
+      "source_capture_sha256": "772024234b93991906b010803bd93f853ccd35573b82c16ff0c86512ec69b1e5",
+      "request_failures": 5,
+      "failure_semantics": "timeout does not imply no published grade"
+    },
+    "diff_check": "passed",
+    "scope_review": "backend/frontend spec indexes and final cross-layer contract reviewed; routes and prompt management retained"
+  },
+  "source_sha256": {
+    "backend/internal/service/gpt_intelligence_radar_bench.go": "43ef26ed423581f75987095d19075f50ac64e9b09ed5ef96865a71520cb69486",
+    "backend/internal/service/gpt_intelligence_radar_bench_test.go": "a89d5eec342214441e2479aaa6f279d0dabc706353d3d406ebb577180aef5ded",
+    "backend/internal/service/gpt_intelligence_service.go": "3f201186f01f7b7943095da70371602e36cd4ba9a1cf52e42c3e6312f089c037",
+    "backend/internal/service/gpt_intelligence_service_test.go": "0a9fadc0cfb204a788d479ce29ddde8d3daa05f9db38cd48d48e10432bdce556",
+    "frontend/src/api/gptIntelligence.ts": "3c7e34bcca2f1d55bf32b2915ddb68bc9bd5f49581494e5b5cdf15be5192b0a3",
+    "frontend/src/api/__tests__/gptIntelligence.spec.ts": "77e059675f60b009107b571354942227ac85f67929f021448cb1d318c7302aea",
+    "frontend/src/components/user/monitor/GptIntelligencePanel.vue": "5bd7594cc6bbbef7177e57a7228aac76227dc5d6dba22a42494669edbbf2fa62",
+    "frontend/src/components/user/__tests__/GptIntelligencePanel.spec.ts": "76707f35ce6c4afa7871745f8da1f65c21eadeb7a7a91c3636c9d869d311f48e",
+    "frontend/src/i18n/locales/zh/custom.ts": "defd17593d3924f0830fdab440aa2f71e50df39e7d9e2173f468824a0741ef44",
+    "frontend/src/i18n/locales/en/custom.ts": "71f863512e898c1381c871e8b42b84acb6f68ded62052cdcacad018d2aa0e3c2",
+    ".trellis/spec/backend/quality-guidelines.md": "b26a6912a5155f0b7175dd39647e57037d205557a51c503c45d2a635c65eeae2",
+    ".trellis/spec/frontend/type-safety.md": "36b8a17b8326326a75d672c875c4019b98cfe0ee015af7e6fa6989fb2632b059"
+  },
+  "evidence_sha256": {
+    "unit-radar-bench-final.txt": "c1bfbefeffd9a14f1180b6e23715ad992b475a0c86872097947c1873b79b995b",
+    "unit-radar-bench.txt": "58f4dd4189cbe349c8d232cc687299472a0eec06f18f0587c8bf66259bc5fe5a",
+    "lint-radar-bench.txt": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+    "live-radar-bench-replay.json": "5b8f6e6e5892f993a1a47f23c8124d22e2fb87ae175b87bc55108301d3603a81",
+    "research/radar-bench-live-source.json": "13c67516724f8ffc5988205897fa72d4b4149f93c8642bdae8c90f12598f35e8",
+    "build-radar-bench.json": "1de1cdd2ad2521cdb7e3e545dfa3d8d89d1ec3efa85d96dafaeb516fcc5c5f0f"
+  },
+  "superseded_evidence": [
+    "regression-before.txt",
+    "unit-after.txt",
+    "lint-after.txt",
+    "live-replay.txt"
+  ],
+  "release_plan": {
+    "commit_title": "fix(monitor): 接入最新雷达成绩并动态展示来源模型",
+    "branch": "fix/radar-stale-data",
+    "merge_target": "custom/main",
+    "git_push": false,
+    "new_database_migrations": false,
+    "rollback_image": "sub2api-custom:8fec104efb1f",
+    "build_location": "local workstation",
+    "switch_scope": "sub2api application container only",
+    "deploy_script_deviation": "fixed local commit and clean git archive snapshot replace origin/custom/main alignment because user requested no push; no remote refs rewritten"
+  }
+}

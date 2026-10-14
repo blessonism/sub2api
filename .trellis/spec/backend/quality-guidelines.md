@@ -945,40 +945,49 @@ turns := FilterConversationExportableTurns(repoTurns, req) // final service gate
 ### Scenario: User-facing external metric snapshot APIs
 
 #### 1. Scope / Trigger
-- Trigger: adding or changing an authenticated user-facing API that exposes third-party or public external metrics, such as GPT intelligence snapshots shown inside channel status pages.
-- These APIs cross external collection, service normalization, handler/route registration, frontend API parsing, and UI error states. They need code-spec depth because a third-party payload change can otherwise break an unrelated local dashboard.
+- 适用于用户渠道监控页展示的外部公开指标，涵盖第三方采集、service 归一化、路由、前端解析和错误状态。
+- CodexRadar 现行 RadarBench 与旧 IQ 采用不同评分口径。旧 `current.json` / `intelligence-efficiency-metrics.json` 的静态快照日期不能代表原站最新评测日期。
 
 #### 2. Signatures
-- Route pattern: `GET /api/v1/channel-monitors/<metric-name>` for metrics displayed with the user channel monitor surface.
-- Handler pattern: check the same feature flag as the owning user surface, call a dedicated service method, and return with `response.Success` / `response.ErrorFrom`.
-- Service pattern: expose `GetSnapshot(ctx)` and keep external HTTP collection behind the backend; do not let frontend call third-party metric URLs directly.
-- Static metric routes must be registered before parameterized monitor routes such as `/:id/status`.
+- 路由：`GET /api/v1/channel-monitors/gpt-intelligence`；handler 遵循渠道监控功能开关，调用 `GptIntelligenceService.GetSnapshot(ctx)`，使用 `response.Success` / `response.ErrorFrom`。
+- 静态指标路由应注册在 `/:id/status` 等参数路由之前。
+- 采集入口：`fetchSnapshot(ctx)` -> `fetchRadarBenchJSON(ctx, sourceURL, target)` -> `radarBenchSummary.validate(binding, selection)` -> `snapshotFromRadarBench(...)`。
+- 固定公开源：`https://codexradar.com/data/radar-bench-binding.json` 和 `https://codexradar.com/api/radar-bench-score?model=...&effort=...&view=summary&selection=user-selected-v1`。
 
 #### 3. Contracts
-- Backend response must be a normalized DTO owned by this project, not a raw third-party payload.
-- External requests must use a short timeout, a bounded response body, and an in-process cache or stronger cache to avoid high-frequency third-party traffic.
-- Publicly rendered HTML may be parsed only for data already visible on the public page; do not bypass authorization-only APIs or embed third-party secrets in frontend code.
-- Fields unavailable from the public source should be returned as nullable fields, not fabricated zeros.
-- Cached snapshots returned to callers must be cloned when they contain mutable slices or pointer fields.
-- Frontend API functions should request the backend route and then run runtime parsing/normalization at the API boundary.
+- 模型和档位来自 binding 的 `model_efforts`，按 model/effort 去重，最多 256 项；不能使用模型白名单或按版本排除旧型号。只展示有效非 null 成绩，0 分保留。
+- 不使用第三方字段中的任意 `transport_origin`。公共采集不携带私有凭据；HTTP client 禁用环境代理。
+- 单请求 8 秒、整批 20 秒、并发最多 3、每个响应最多 512 KiB。读取 `limit+1` 后明确判断超限。
+- binding 需启用且接口验证标志为真；benchmark/catalog 非空，task digest 为 32 字节十六进制，score version 为 `radar-bench-v2-150`，满分 150、题数 64。
+- summary schema 为 `radar-bench-public-summary-v5-150-daily-graded-count`，评分 policy 为 `radar-bench-v2-last3-per-task-equal-weight-150`。模型、档位、benchmark/catalog/digest/评分版本/满分必须与请求及 binding 一致。
+- `coverage` 是任务覆盖，不能填入旧 `passed`。覆盖 0 时 score=null/status=`missing_current_result`；1..63 时有效 0..150 分/status=`provisional`；64 时 status=`complete`。`graded_runs_count` 为非负累计有效判分数，缺少旧 token/费用等数据时保留 null。
+- `history_state=available` 时校验 history schema `radar-bench-public-history-v1-150-daily`、模型/档位/版本/满分、UTC/day、递增 UTC 零点日桶、覆盖和状态；最终日桶与 summary/updated_bucket 一致。latest.date 使用真实 `YYYY-MM-DD` 判分日；历史不可用时日期留空，不能取抓取时间。
+- 归一化 DTO 沿用 latest/recent_days/comparisons，增加 benchmark、score_max/coverage/required_tasks/graded_runs_count 和 metadata.requested_series/failed_series；`monitored_at`、`cached_at` 为采集时间。
+- 不与旧 IQ 历史拼接，不回退旧静态 IQ 来冒充新成绩。旧公开 JSON parser 仅保留兼容契约。
+- 完整采集缓存一小时，部分失败缓存一分钟；429 取消剩余采集，遵守至少一分钟的 Retry-After 冷却。返回缓存和 singleflight 结果时均深拷贝 slice 和 pointer，包括新增的 graded_runs_count。
 
 #### 4. Validation & Error Matrix
-- Feature disabled -> return a clear unavailable/not found error for the metric while the rest of the channel monitor page can still render.
-- Third-party HTTP error, timeout, or invalid payload -> return service unavailable using a project error type.
-- Missing public metric markers -> return service unavailable and keep the previous UI error state isolated to the metric panel.
-- Legacy payload wrapper still present -> frontend parser may accept it for compatibility tests, but runtime fetching should still go through the backend.
+- 功能关闭 -> 返回独立的不可用/未找到错误，渠道监控其余内容仍能显示。
+- binding HTTP 错误、超时、超限或校验失败 -> `ErrGptIntelligenceUnavailable`。
+- 单个 summary 错误或校验失败 -> 该档计入 failed_series；其余成功成绩保留，页面提示不完整。
+- 所有 summary 失败 -> unavailable；不回退旧 IQ。
+- summary 合法但尚无成绩 -> 跳过展示，不算采集失败；全部暂无成绩可返回空快照。
+- 429 -> 停止后续 HTTP 请求；Retry-After 到期前不重新采集，有部分快照时同步延长缓存冷却。
+- 单响应超限 -> 明确返回 `radar bench response exceeds <limit> bytes`，不能将静默截断的 JSON 错误视为源格式变化。
+- 历史不可用 -> 保留合法当前分数，判分日留空；有历史但口径或最终成绩不一致 -> 该档校验失败。
 
 #### 5. Good/Base/Bad Cases
-- Good: `GET /api/v1/channel-monitors/gpt-intelligence` returns a normalized snapshot parsed from public HTML and cached for a TTL.
-- Base: token breakdown is not present in the public source, so `total_tokens` and `output_tokens` are `null`.
-- Bad: frontend fetches `https://third-party.example/current.json` directly and assumes a vendor-specific field exists.
-- Bad: a static route is added after `/:id/status`, causing the metric name to be parsed as a monitor id.
+- Good：目录新增未知型号或 5.5/5.6，有有效成绩就进入 DTO 和页面；未覆盖全部任务的成绩随附覆盖及暂定状态。
+- Base：某档超时但其余成功，显示成功成绩并提示缺失档位；判分日与读取时间分别展示。
+- Bad：用源快照生成时间替代判分日，或把 RadarBench 分数与旧 IQ 拼在同一条趋势中。
+- Bad：前端直连第三方 URL，或者通过型号名单决定展示范围。
 
 #### 6. Tests Required
-- Service test covers parsing the public payload and the unavailable path when expected markers are missing.
-- Service test covers cache/snapshot clone behavior when mutable pointers or slices are returned.
-- Handler/routes test proves the static metric route is registered before parameterized channel monitor routes.
-- Frontend API test proves the backend endpoint path is used and legacy/direct normalized payloads parse correctly.
+- service 回归覆盖动态新/旧型号、去重、null/0 分、覆盖与状态、部分/全部失败、无成绩、边界及超限、目录异常、错误历史、历史不可用、并发限制、取消、429 冷却和缓存深拷贝。
+- 保留旧 JSON parser、环境代理禁用和 Prompt 题库回归；不再维护旧 runtime efficiency 合并测试。
+- handler/routes 验证静态指标路由与功能开关；前端验证后端路径、超时/取消转发、运行时解析和旧 DTO 兼容。
+- UI 验证有成绩的旧型号及 0 分仍显示，覆盖不会显示为通过数，UTC 判分日、状态、满分和部分失败提示正确；zh/en key 同步。
+- 新接口接入时使用实际公开源捕获做采集/归一化回放，记录成功/失败数量、真实判分日分布及证据 hash，不能声称超时配置没有数据。
 
 #### 7. Wrong vs Correct
 
@@ -1002,6 +1011,21 @@ Correct:
 ```go
 monitors.GET("/gpt-intelligence", h.ChannelMonitor.GetGptIntelligence)
 monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+```
+
+Wrong:
+```go
+body, err := io.ReadAll(io.LimitReader(res.Body, limit)) // 静默截断
+run.Date = collectedAt.Format(time.DateOnly)           // 抓取时间冒充判分日
+if summary.Score == nil || *summary.Score == 0 { continue }
+```
+
+Correct:
+```go
+body, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+if err != nil { return err }
+if len(body) > limit { return fmt.Errorf("radar bench response exceeds %d bytes", limit) }
+if summary.Score == nil { continue } // 0 分保留；日期从已校验的 UTC 历史日桶取，未知留空
 ```
 
 ---

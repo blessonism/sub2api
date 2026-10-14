@@ -2,9 +2,13 @@ import { apiClient } from './client'
 
 const DEFAULT_TIMEZONE = 'UTC'
 
-export type GptIntelligenceStatus = 'green' | 'yellow' | 'red' | 'unknown'
+export type GptIntelligenceStatus = 'green' | 'yellow' | 'red' | 'unknown' | 'provisional' | 'complete'
 
 export interface GptIntelligenceRun {
+  score_max?: number | null
+  coverage?: number | null
+  required_tasks?: number | null
+  graded_runs_count?: number | null
   date: string
   score: number | null
   status: GptIntelligenceStatus
@@ -47,6 +51,8 @@ export interface GptIntelligencePromptTemplate {
 }
 
 export interface GptIntelligenceSnapshot {
+  benchmark?: string
+  metadata?: { requested_series: number | null; failed_series: number | null }
   monitored_at: string
   timezone: string
   latest: GptIntelligenceRun | null
@@ -74,7 +80,7 @@ function readNumber(value: unknown): number | null {
 }
 
 function readStatus(value: unknown): GptIntelligenceStatus {
-  if (value === 'green' || value === 'yellow' || value === 'red') return value
+  if (value === 'green' || value === 'yellow' || value === 'red' || value === 'provisional' || value === 'complete') return value
   return 'unknown'
 }
 
@@ -91,6 +97,10 @@ function readTimezone(value: unknown): string {
 function parseRun(value: unknown): GptIntelligenceRun | null {
   if (!isRecord(value)) return null
   return {
+    score_max: readNumber(value.score_max),
+    coverage: readNumber(value.coverage),
+    required_tasks: readNumber(value.required_tasks),
+    graded_runs_count: readNumber(value.graded_runs_count),
     date: readString(value.date),
     score: readNumber(value.score),
     status: readStatus(value.status),
@@ -192,6 +202,10 @@ export function parseGptIntelligenceSnapshot(value: unknown): GptIntelligenceSna
     : []
 
   return {
+    benchmark: readString(value.benchmark),
+    metadata: isRecord(value.metadata)
+      ? { requested_series: readNumber(value.metadata.requested_series), failed_series: readNumber(value.metadata.failed_series) }
+      : undefined,
     monitored_at: readString(value.monitored_at),
     timezone: readTimezone(value.timezone),
     latest: parseRun(modelIq.latest),

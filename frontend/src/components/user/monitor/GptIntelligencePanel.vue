@@ -7,7 +7,7 @@
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-lg font-semibold leading-tight text-gray-900 dark:text-gray-100">
-              {{ t('channelStatus.modelIq.title') }}
+              {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.title' : 'channelStatus.modelIq.title') }}
             </h2>
             <span
               class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold uppercase"
@@ -17,7 +17,7 @@
               {{ statusLabel }}
             </span>
             <a
-              href="https://github.com/datacurve-ai/deep-swe"
+              :href="isRadarBench ? 'https://codexradar.com/#intelligence-efficiency' : 'https://github.com/datacurve-ai/deep-swe'"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 dark:border-dark-600 dark:bg-dark-900/70 dark:text-gray-300"
@@ -26,7 +26,7 @@
             </a>
           </div>
           <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
-            {{ t('channelStatus.modelIq.description') }}
+            {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.description' : 'channelStatus.modelIq.description') }}
           </p>
         </div>
 
@@ -64,6 +64,9 @@
     </div>
 
     <div v-else class="p-5">
+      <p v-if="(snapshot?.metadata?.failed_series ?? 0) > 0" data-test="radar-bench-partial" class="mb-4 text-sm text-amber-700 dark:text-amber-300">
+        {{ t('channelStatus.modelIq.radarBench.partial', { failed: snapshot?.metadata?.failed_series ?? 0, total: snapshot?.metadata?.requested_series ?? 0 }) }}
+      </p>
       <div
         v-if="comparisonSeries.length"
         class="mb-4 flex flex-wrap items-center justify-between gap-3"
@@ -81,7 +84,7 @@
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
             @click="sortMode = 'iq'"
           >
-            {{ t('channelStatus.modelIq.sortByIq') }}
+            {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.sortByScore' : 'channelStatus.modelIq.sortByIq') }}
           </button>
           <button
             type="button"
@@ -115,6 +118,7 @@
           </div>
           <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
             <span class="truncate" :title="series.passLabel">{{ series.passLabel }}</span>
+            <span v-if="isRadarBench" class="font-medium">{{ series.gradeStatusLabel }}</span>
             <span class="truncate" :title="series.sampledAtLabel">{{ series.sampledAtLabel }}</span>
           </div>
         </div>
@@ -124,10 +128,10 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {{ t('channelStatus.modelIq.overviewTrend') }}
+              {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.overviewTrend' : 'channelStatus.modelIq.overviewTrend') }}
             </div>
             <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('channelStatus.modelIq.overviewSubtitle') }}
+              {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.historyNotice' : 'channelStatus.modelIq.overviewSubtitle') }}
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -190,7 +194,7 @@
               {{ t('channelStatus.modelIq.reasoningTrends') }}
             </div>
             <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('channelStatus.modelIq.reasoningTrendsSubtitle') }}
+              {{ t(isRadarBench ? 'channelStatus.modelIq.radarBench.historyNotice' : 'channelStatus.modelIq.reasoningTrendsSubtitle') }}
             </div>
           </div>
         </div>
@@ -211,6 +215,7 @@
                 </div>
                 <div class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" :title="series.passLabel">
                   {{ series.passLabel }}
+                  <span v-if="isRadarBench"> · {{ series.gradeStatusLabel }}</span>
                 </div>
               </div>
               <div class="font-mono text-lg font-bold leading-none tabular-nums" :class="series.palette.scoreClass">
@@ -491,6 +496,7 @@ interface PreparedSeries extends SeriesSource {
   scoreLabel: string
   passLabel: string
   sampledAtLabel: string
+  gradeStatusLabel: string
   palette: SeriesPalette
   chartData: ChartData<'line', (number | null)[], string> | null
 }
@@ -657,6 +663,8 @@ const intelligenceCheckFeedbackLabel = computed(() => {
   return ''
 })
 
+const isRadarBench = computed(() => Boolean(props.snapshot?.benchmark))
+
 const comparisonSeries = computed<PreparedSeries[]>(() => {
   const sources: SeriesSource[] = []
   const primaryRuns = mergeRuns(props.snapshot?.recent_days ?? [], latest.value)
@@ -702,8 +710,9 @@ const comparisonSeries = computed<PreparedSeries[]>(() => {
     return {
       ...series,
       scoreLabel: formatScore(latestRun?.score ?? null),
-      passLabel: formatPass(latestRun?.passed ?? null, latestRun?.tasks ?? null),
-      sampledAtLabel: t('channelStatus.modelIq.sampledAt', { date: sampledAt }),
+      passLabel: isRadarBench.value ? formatCoverage(latestRun) : formatPass(latestRun?.passed ?? null, latestRun?.tasks ?? null),
+      sampledAtLabel: t(isRadarBench.value ? 'channelStatus.modelIq.radarBench.gradingDay' : 'channelStatus.modelIq.sampledAt', { date: sampledAt }),
+      gradeStatusLabel: t(`channelStatus.modelIq.status.${latestRun?.status ?? 'unknown'}`),
       palette,
       chartData: buildSingleSeriesChartData(series, palette),
     }
@@ -730,8 +739,10 @@ const statusLabel = computed(() => {
 const statusClass = computed(() => {
   switch (latest.value?.status) {
     case 'green':
+    case 'complete':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
     case 'yellow':
+    case 'provisional':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
     case 'red':
       return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
@@ -743,8 +754,10 @@ const statusClass = computed(() => {
 const statusDotClass = computed(() => {
   switch (latest.value?.status) {
     case 'green':
+    case 'complete':
       return 'bg-emerald-500'
     case 'yellow':
+    case 'provisional':
       return 'bg-amber-500'
     case 'red':
       return 'bg-red-500'
@@ -757,7 +770,7 @@ const updatedLabel = computed(() => {
   const updatedAt = props.snapshot?.monitored_at
   if (!updatedAt) return t('channelStatus.modelIq.updatedUnknown')
   const timezone = props.snapshot?.timezone || 'UTC'
-  return t('channelStatus.modelIq.updatedAt', {
+  return t(isRadarBench.value ? 'channelStatus.modelIq.radarBench.collectedAt' : 'channelStatus.modelIq.updatedAt', {
     time: new Date(updatedAt).toLocaleString(undefined, { timeZone: timezone }),
     timezone,
   })
@@ -776,6 +789,7 @@ const outputTokensLabel = computed(() => latest.value?.output_tokens == null
   ? t('channelStatus.modelIq.outputTokensEmpty')
   : t('channelStatus.modelIq.outputTokens', { tokens: formatNumber(latest.value.output_tokens) }))
 const probeLabel = computed(() => {
+  if (isRadarBench.value) return t('channelStatus.modelIq.radarBench.badge')
   const tasks = latest.value?.tasks
   if (tasks === null || tasks === undefined) return t('channelStatus.modelIq.testBadgeFallback')
   return t('channelStatus.modelIq.testBadge', { tasks })
@@ -789,7 +803,18 @@ const quotaLabel = computed(() => {
   })
 })
 
-const chipRows = computed<InfoChip[]>(() => [
+function formatCoverage(run: GptIntelligenceRun | null): string {
+  return t('channelStatus.modelIq.radarBench.coverageValue', {
+    covered: run?.coverage ?? '-', tasks: run?.required_tasks ?? '-',
+  })
+}
+
+const chipRows = computed<InfoChip[]>(() => isRadarBench.value ? [
+  { key: 'model', label: t('channelStatus.modelIq.model'), value: modelLabel.value, subValue: reasoningLabel.value, icon: 'cpu' },
+  { key: 'coverage', label: t('channelStatus.modelIq.radarBench.coverage'), value: formatCoverage(latest.value), subValue: statusLabel.value, icon: 'database' },
+  { key: 'grading-day', label: t('channelStatus.modelIq.radarBench.gradingDayLabel'), value: dateLabel.value, subValue: t('channelStatus.modelIq.radarBench.utcDay'), icon: 'clock' },
+  { key: 'grade-count', label: t('channelStatus.modelIq.radarBench.gradedRuns'), value: latest.value?.graded_runs_count == null ? '-' : formatNumber(latest.value.graded_runs_count), subValue: t('channelStatus.modelIq.radarBench.scoreMax', { max: latest.value?.score_max ?? 150 }), icon: 'database' },
+] : [
   {
     key: 'model',
     label: t('channelStatus.modelIq.model'),
@@ -944,7 +969,7 @@ const seriesChartOptions = computed<ChartOptions<'line'>>(() => {
       },
       tooltip: {
         callbacks: {
-          label: (item) => `${t('channelStatus.modelIq.score')}: ${formatScore(readTooltipNumber(item.raw))}`,
+          label: (item) => `${t(isRadarBench.value ? 'channelStatus.modelIq.radarBench.score' : 'channelStatus.modelIq.score')}: ${formatScore(readTooltipNumber(item.raw))}`,
         },
       },
     },

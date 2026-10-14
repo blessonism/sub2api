@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游二开与生产部署边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "外部指标快照契约与缓存隔离"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "DTO 运行时解析与 i18n overlay"}
+{"file": ".trellis/tasks/10-14-radar-stale-data/research/latest-source.md", "reason": "新 RadarBench 公开入口与评分契约"}

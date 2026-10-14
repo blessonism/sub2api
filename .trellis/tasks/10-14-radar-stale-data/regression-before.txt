@@ -1,0 +1,33 @@
+2026/10/14 11:13:58 Timezone initialized: UTC (UTC offset: +00:00)
+2026/10/14 11:13:58 efficiency_fetch_failed: decode intelligence efficiency: unexpected end of JSON input
+--- FAIL: TestGptIntelligenceServiceFetchSnapshot_LargeEfficiencyDiscoversNewModels (0.01s)
+    gpt_intelligence_service_test.go:127:
+                Error Trace:    /Users/suki/code/sub2api/backend/internal/service/gpt_intelligence_service_test.go:127
+                Error:          Not equal:
+                                expected: "public_json_current+efficiency"
+                                actual  : "public_json_current"
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1 +1 @@
+                                -public_json_current+efficiency
+                                +public_json_current
+                Test:           TestGptIntelligenceServiceFetchSnapshot_LargeEfficiencyDiscoversNewModels
+--- FAIL: TestGptIntelligenceServiceFetchEfficiency_BodyLimit (0.01s)
+    --- FAIL: TestGptIntelligenceServiceFetchEfficiency_BodyLimit/over_limit (0.01s)
+        gpt_intelligence_service_test.go:150:
+                Error Trace:    /Users/suki/code/sub2api/backend/internal/service/gpt_intelligence_service_test.go:150
+                Error:          An error is expected but got nil.
+                Test:           TestGptIntelligenceServiceFetchEfficiency_BodyLimit/over_limit
+--- FAIL: TestMergeGptIntelligenceEfficiency_PrefersNewerMatchingSeries (0.00s)
+    --- FAIL: TestMergeGptIntelligenceEfficiency_PrefersNewerMatchingSeries/newer (0.00s)
+        gpt_intelligence_service_test.go:183:
+                Error Trace:    /Users/suki/code/sub2api/backend/internal/service/gpt_intelligence_service_test.go:183
+                Error:          Not equal:
+                                expected: true
+                                actual  : false
+                Test:           TestMergeGptIntelligenceEfficiency_PrefersNewerMatchingSeries/newer
+FAIL
+FAIL    github.com/Wei-Shaw/sub2api/internal/service    2.406s
+FAIL

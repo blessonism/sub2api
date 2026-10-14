@@ -1,0 +1,173 @@
+{
+  "checked_on": "2026-10-14",
+  "client_timezone": "Asia/Singapore",
+  "latest_verified_grading_day_utc": "2026-10-13",
+  "all_configurations_exhaustively_checked": false,
+  "observations": [
+    {
+      "url": "https://codexradar.com/api/radar-bench-score?view=summary&selection=user-selected-v1&model=gpt-5.6-sol&effort=max",
+      "response_sha256": "5fc76880d8a928b0a704a4f72bcfea573dbb882a77ab647f935d1caeacd9fe6e",
+      "schema": "radar-bench-public-summary-v5-150-daily-graded-count",
+      "benchmark": "radar-bench-final64-20261004",
+      "score_version": "radar-bench-v2-150",
+      "score_max": 150,
+      "model": "gpt-5.6-sol",
+      "effort": "max",
+      "score": 75.85923493457054,
+      "coverage": 49,
+      "required_tasks": 64,
+      "score_status": "provisional",
+      "graded_runs_count": 52,
+      "history_state": "available",
+      "updated_bucket": "2026-10-13T00:00:00.000Z",
+      "history_points": [
+        {
+          "at": "2026-10-09T00:00:00.000Z",
+          "score": 84.21043144117093,
+          "coverage": 29,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-11T00:00:00.000Z",
+          "score": 89.47360328805755,
+          "coverage": 34,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-13T00:00:00.000Z",
+          "score": 75.85923493457054,
+          "coverage": 49,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        }
+      ]
+    },
+    {
+      "url": "https://codexradar.com/api/radar-bench-score?view=summary&selection=user-selected-v1&model=gpt-6-astra&effort=max",
+      "response_sha256": "acb51e060e1af47348cc7fa987cd7e119204c32f9f6f5191b4623500211cfb6b",
+      "schema": "radar-bench-public-summary-v5-150-daily-graded-count",
+      "benchmark": "radar-bench-final64-20261004",
+      "score_version": "radar-bench-v2-150",
+      "score_max": 150,
+      "model": "gpt-6-astra",
+      "effort": "max",
+      "score": 113.67307692307693,
+      "coverage": 63,
+      "required_tasks": 64,
+      "score_status": "provisional",
+      "graded_runs_count": 66,
+      "history_state": "available",
+      "updated_bucket": "2026-10-13T00:00:00.000Z",
+      "history_points": [
+        {
+          "at": "2026-10-09T00:00:00.000Z",
+          "score": 113.67307692307693,
+          "coverage": 63,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-13T00:00:00.000Z",
+          "score": 113.67307692307693,
+          "coverage": 63,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        }
+      ]
+    },
+    {
+      "url": "https://codexradar.com/api/radar-bench-score?view=summary&selection=user-selected-v1&model=gpt-6.1-sol&effort=max",
+      "response_sha256": "e87e99cb5c9aaec6f030573543049a3ff723be55ae2e71bbff947fd1e581eb3d",
+      "schema": "radar-bench-public-summary-v5-150-daily-graded-count",
+      "benchmark": "radar-bench-final64-20261004",
+      "score_version": "radar-bench-v2-150",
+      "score_max": 150,
+      "model": "gpt-6.1-sol",
+      "effort": "max",
+      "score": 106.7214965328173,
+      "coverage": 53,
+      "required_tasks": 64,
+      "score_status": "provisional",
+      "graded_runs_count": 54,
+      "history_state": "available",
+      "updated_bucket": "2026-10-13T00:00:00.000Z",
+      "history_points": [
+        {
+          "at": "2026-10-09T00:00:00.000Z",
+          "score": 114.09858874975156,
+          "coverage": 43,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-12T00:00:00.000Z",
+          "score": 114.91452991452994,
+          "coverage": 44,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-13T00:00:00.000Z",
+          "score": 106.7214965328173,
+          "coverage": 53,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        }
+      ]
+    },
+    {
+      "url": "https://codexradar.com/api/radar-bench-score?view=summary&selection=user-selected-v1&model=gpt-6.1-sol&effort=ultra",
+      "response_sha256": "44d14c8485aaf720600311653b3c0325476ede8bed5342745d76304e389f884b",
+      "schema": "radar-bench-public-summary-v5-150-daily-graded-count",
+      "benchmark": "radar-bench-final64-20261004",
+      "score_version": "radar-bench-v2-150",
+      "score_max": 150,
+      "model": "gpt-6.1-sol",
+      "effort": "ultra",
+      "score": 111.52281652695919,
+      "coverage": 46,
+      "required_tasks": 64,
+      "score_status": "provisional",
+      "graded_runs_count": 47,
+      "history_state": "available",
+      "updated_bucket": "2026-10-13T00:00:00.000Z",
+      "history_points": [
+        {
+          "at": "2026-10-09T00:00:00.000Z",
+          "score": 118.71570172114636,
+          "coverage": 35,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-10T00:00:00.000Z",
+          "score": 115.41804334000341,
+          "coverage": 36,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-12T00:00:00.000Z",
+          "score": 113.29077790105586,
+          "coverage": 38,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        },
+        {
+          "at": "2026-10-13T00:00:00.000Z",
+          "score": 111.52281652695919,
+          "coverage": 46,
+          "required_tasks": 64,
+          "score_status": "provisional"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "部分请求超时或连接中断；不把未读配置说成没有更新。",
+    "summary 使用 UTC 判分日桶；不是判分精确时刻，也不是抓取时间。",
+    "新雷达Bench分数与旧IQ分数不是同一个评分体系。"
+  ]
+}

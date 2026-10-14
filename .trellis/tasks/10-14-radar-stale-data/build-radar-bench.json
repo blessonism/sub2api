@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-10-14T12:37:46.977939+00:00",
+  "result": "passed",
+  "target": "linux/amd64",
+  "embed_frontend": true,
+  "command": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=2 go build -p 1 -tags embed -o /tmp/sub2api-radar-build-check ./cmd/server",
+  "binary_sha256": "eeff2f4608c6f093deed4d0a690a0be12ee98c1ae27ec3889fa8fda9eac50cdf",
+  "frontend_production_build": "passed",
+  "frontend_index_sha256": "1542c7f9a35812009490d340292a5e14b5283cc321c92423704c2084a34f6f50",
+  "frontend_asset_count": 195
+}

@@ -98,11 +98,17 @@ When adding a frontend API for external metrics displayed inside user pages:
 - Parse unknown API data with runtime guards before exposing it to views.
 - Preserve nullable unknown fields as `null`; do not convert unavailable external data to zero.
 - If a legacy vendor wrapper is supported, keep it in the parser for compatibility tests only. The runtime fetch path should still use the backend route.
+- RadarBench 使用可选 `benchmark` 标识评分口径，解析 `score_max`、`coverage`、`required_tasks`、`graded_runs_count`、`provisional` / `complete` 和 metadata.requested_series/failed_series；未知数字保持 null，0 分保留。
+- 模型与档位范围由后端按公开目录和有效成绩决定；前端不设型号白名单，不主动排除旧模型。
+- `coverage` 是覆盖数，不能显示为通过题数。每个系列展示覆盖与暂定/完整状态，满分及累计有效判分使用来源字段。
+- `date` 是真实 UTC 判分日，不是采集时间；空日期保持未知。`monitored_at` 使用“读取于”文案。只绘制当前 RadarBench 历史，不与旧 IQ 曲线拼接。
+- 部分读取失败用 failed_series/requested_series 提示，不将失败档位描述为没有成绩。RadarBench 标题、说明、来源链接、日期和状态文案同步 zh/en custom.ts。
 
 Required checks:
 
 - API test verifies the backend endpoint path, abort signal, and timeout forwarding.
 - Parser test covers backend-normalized payloads, legacy wrapped payloads, invalid payload rejection, and nullable optional fields.
+- RadarBench API/组件回归验证旧型号有成绩仍展示、0 分保留、覆盖与通过数不同、判分日与读取时间不同，并验证满分/状态/部分失败提示和 zh/en key 完整性。
 
 ### Pattern: Admin lottery campaign API types
 
