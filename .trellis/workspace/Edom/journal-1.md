@@ -169,3 +169,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 同步官方 v0.2.16 并修复完整检查失败
+
+**Date**: 2026-10-14
+**Task**: 同步官方 v0.2.16 并修复完整检查失败
+**Branch**: `custom/main`
+
+### Summary
+
+保留二开并整合固定官方 v0.2.16，修复既有前后端测试、支付履约、倍率缓存内存泄漏、集成夹具隔离及 lint 问题。前端 405 文件/3144 测试通过，后端 unit 57 包、integration 51 包通过，lint 0 issues，普通与 embed 构建通过。本地 custom/main 已快进，当前任务已归档；未推送、未部署，7 项原有未跟踪路径保留。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8983b05ff58c71a73beb405f9034158b8f7e9039` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
