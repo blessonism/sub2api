@@ -146,6 +146,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
+		SetSystemPromptInjection(groupIn.SystemPromptInjection.WithDefaults()).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).
@@ -338,6 +339,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
+		SetSystemPromptInjection(groupIn.SystemPromptInjection.WithDefaults()).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).

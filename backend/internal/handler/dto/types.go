@@ -201,6 +201,7 @@ type AdminGroup struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	DefaultMappedModel          string                                   `json:"default_mapped_model"`
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	SystemPromptInjection       service.GroupSystemPromptInjection       `json:"system_prompt_injection"`
 	ModelAllowlist              service.GroupModelAllowlist              `json:"model_allowlist"`
 	// 固定账号获取 Codex Model Manifest 配置（仅 openai 平台使用）。
 	CodexModelsManifestConfig domain.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`

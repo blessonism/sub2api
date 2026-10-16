@@ -30289,6 +30289,7 @@ type GroupMutation struct {
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
+	system_prompt_injection                 *domain.GroupSystemPromptInjection
 	model_allowlist                         *domain.GroupModelAllowlist
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
 	openai_scheduler_overrides              *domain.GroupOpenAISchedulerOverrides
@@ -33483,6 +33484,42 @@ func (m *GroupMutation) ResetMessagesDispatchModelConfig() {
 	m.messages_dispatch_model_config = nil
 }
 
+// SetSystemPromptInjection sets the "system_prompt_injection" field.
+func (m *GroupMutation) SetSystemPromptInjection(dspi domain.GroupSystemPromptInjection) {
+	m.system_prompt_injection = &dspi
+}
+
+// SystemPromptInjection returns the value of the "system_prompt_injection" field in the mutation.
+func (m *GroupMutation) SystemPromptInjection() (r domain.GroupSystemPromptInjection, exists bool) {
+	v := m.system_prompt_injection
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPromptInjection returns the old "system_prompt_injection" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSystemPromptInjection(ctx context.Context) (v domain.GroupSystemPromptInjection, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPromptInjection is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPromptInjection requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPromptInjection: %w", err)
+	}
+	return oldValue.SystemPromptInjection, nil
+}
+
+// ResetSystemPromptInjection resets all changes to the "system_prompt_injection" field.
+func (m *GroupMutation) ResetSystemPromptInjection() {
+	m.system_prompt_injection = nil
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (m *GroupMutation) SetModelAllowlist(dma domain.GroupModelAllowlist) {
 	m.model_allowlist = &dma
@@ -34276,7 +34313,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 71)
+	fields := make([]string, 0, 72)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -34460,6 +34497,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.messages_dispatch_model_config != nil {
 		fields = append(fields, group.FieldMessagesDispatchModelConfig)
 	}
+	if m.system_prompt_injection != nil {
+		fields = append(fields, group.FieldSystemPromptInjection)
+	}
 	if m.model_allowlist != nil {
 		fields = append(fields, group.FieldModelAllowlist)
 	}
@@ -34620,6 +34660,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultMappedModel()
 	case group.FieldMessagesDispatchModelConfig:
 		return m.MessagesDispatchModelConfig()
+	case group.FieldSystemPromptInjection:
+		return m.SystemPromptInjection()
 	case group.FieldModelAllowlist:
 		return m.ModelAllowlist()
 	case group.FieldCodexModelsManifestConfig:
@@ -34771,6 +34813,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultMappedModel(ctx)
 	case group.FieldMessagesDispatchModelConfig:
 		return m.OldMessagesDispatchModelConfig(ctx)
+	case group.FieldSystemPromptInjection:
+		return m.OldSystemPromptInjection(ctx)
 	case group.FieldModelAllowlist:
 		return m.OldModelAllowlist(ctx)
 	case group.FieldCodexModelsManifestConfig:
@@ -35226,6 +35270,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMessagesDispatchModelConfig(v)
+		return nil
+	case group.FieldSystemPromptInjection:
+		v, ok := value.(domain.GroupSystemPromptInjection)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPromptInjection(v)
 		return nil
 	case group.FieldModelAllowlist:
 		v, ok := value.(domain.GroupModelAllowlist)
@@ -36008,6 +36059,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMessagesDispatchModelConfig:
 		m.ResetMessagesDispatchModelConfig()
+		return nil
+	case group.FieldSystemPromptInjection:
+		m.ResetSystemPromptInjection()
 		return nil
 	case group.FieldModelAllowlist:
 		m.ResetModelAllowlist()

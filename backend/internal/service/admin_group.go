@@ -368,6 +368,7 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 	*input = CreateGroupInput{
 		Name: input.Name, Description: input.Description, I18n: input.I18n, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		SystemPromptInjection: input.SystemPromptInjection,
 	}
 }
 
@@ -375,7 +376,7 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
+	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n, SystemPromptInjection: input.SystemPromptInjection}
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -412,6 +413,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	reasoningEffortMappings, err := NormalizeReasoningEffortMappings(platform, input.ReasoningEffortMappings)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
+	}
+	systemPromptInjection, err := normalizeGroupSystemPromptInjection(platform, input.SystemPromptInjection)
+	if err != nil {
+		return nil, err
 	}
 	modelAllowlist, err := normalizeGroupModelAllowlist(input.ModelAllowlist)
 	if err != nil {
@@ -622,6 +627,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
+		SystemPromptInjection:           systemPromptInjection,
 		ModelAllowlist:                  modelAllowlist,
 		CodexModelsManifestConfig:       normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
@@ -1039,6 +1045,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
+	if input.SystemPromptInjection != nil {
+		group.SystemPromptInjection = *input.SystemPromptInjection
+	}
+	systemPromptInjection, err := normalizeGroupSystemPromptInjection(group.Platform, group.SystemPromptInjection)
+	if err != nil {
+		return nil, err
+	}
+	group.SystemPromptInjection = systemPromptInjection
 	if input.ModelAllowlist != nil {
 		modelAllowlist, err := normalizeGroupModelAllowlist(*input.ModelAllowlist)
 		if err != nil {

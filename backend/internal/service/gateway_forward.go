@@ -93,6 +93,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	ctx, parsed, err = prepareGroupSystemPromptParsed(ctx, c, parsed)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil && groupSystemPromptConfig(ctx, c).Enabled {
+		// 保存本次尝试的实际视图；调用方 canonical body 保持未注入，
+		// usage 指纹与推理档位仍从最终上游请求取得。
+		c.Set("parsed_request", parsed)
+	}
 	// API-key mappings and OAuth native IDs are resolved before mimicry.
 	validationModel := parsed.Model
 	if account != nil {
@@ -136,6 +145,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				logger.LegacyPrintf("service.gateway", "Passthrough model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
 				passthroughModel = mappedModel
 			}
+		}
+		passthroughBody, promptErr := injectGroupSystemPromptForForward(ctx, c, passthroughBody, SystemPromptProtocolMessages)
+		if promptErr != nil {
+			return nil, promptErr
 		}
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
@@ -273,6 +286,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 保证真实 Claude Code 客户端注入的指纹同样被清洗。
 	if next, ok := s.normalizeClientDatelineIfEnabled(ctx, account, body); ok {
 		if err := replaceBody(next); err != nil {
+			return nil, err
+		}
+	}
+
+	if groupSystemPromptConfig(ctx, c).Enabled {
+		if next, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages); promptErr != nil {
+			return nil, promptErr
+		} else if err := replaceBody(next); err != nil {
 			return nil, err
 		}
 	}

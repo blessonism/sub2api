@@ -65,7 +65,10 @@ func (s *GatewayService) forwardBedrock(
 ) (*ForwardResult, error) {
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
-	body := parsed.Body.Bytes()
+	body, promptErr := injectGroupSystemPromptForForward(ctx, c, parsed.Body.Bytes(), SystemPromptProtocolMessages)
+	if promptErr != nil {
+		return nil, promptErr
+	}
 
 	region := bedrockRuntimeRegion(account)
 	mappedModel, ok := ResolveBedrockModelID(account, reqModel)

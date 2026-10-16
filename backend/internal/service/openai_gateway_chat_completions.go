@@ -115,6 +115,16 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// /v1/chat/completions URL. Detect it before protocol routing so adaptive
 	// accounts never forward the body unchanged to a Chat Completions endpoint.
 	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+	promptProtocol := SystemPromptProtocolChatCompletions
+	if isResponsesShape {
+		promptProtocol = SystemPromptProtocolResponses
+	}
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, promptProtocol)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	inbound := APIProtocolChatCompletions
 	if isResponsesShape {
 		inbound = APIProtocolResponses

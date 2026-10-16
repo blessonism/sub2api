@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -663,6 +664,31 @@ func (c *openAIWSClientFrameConn) Close() error {
 	return nil
 }
 
+// session.update 的指令会由上游继承到后续 response.create；replace 必须先
+// 清理该来源，但控制帧不能加入分组正文，正文仍只在创建响应时注入一次。
+func prepareGroupSystemPromptWSSessionUpdate(payload []byte, cfg GroupSystemPromptInjection) ([]byte, error) {
+	if !cfg.Enabled || cfg.Mode != "replace" || strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "session.update" {
+		return payload, nil
+	}
+	prepared, err := PrepareGroupSystemPromptBody(payload, SystemPromptProtocolResponses, cfg)
+	if err != nil {
+		return nil, err
+	}
+	var frame map[string]json.RawMessage
+	if err := json.Unmarshal(prepared, &frame); err != nil {
+		return nil, err
+	}
+	session := frame["session"]
+	if !gjson.ParseBytes(session).IsObject() {
+		return prepared, nil
+	}
+	frame["session"], err = PrepareGroupSystemPromptBody(session, SystemPromptProtocolResponses, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(frame)
+}
+
 func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	ctx context.Context,
 	c *gin.Context,
@@ -688,6 +714,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	groupPrompt := groupSystemPromptConfig(ctx, c)
+	originalFirstClientMessage := firstClientMessage
+	if strings.TrimSpace(gjson.GetBytes(firstClientMessage, "type").String()) == "response.create" {
+		prepared, promptErr := PrepareGroupSystemPromptBody(firstClientMessage, SystemPromptProtocolResponses, groupPrompt)
+		if promptErr != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+		}
+		firstClientMessage = prepared
+	} else if prepared, promptErr := prepareGroupSystemPromptWSSessionUpdate(firstClientMessage, groupPrompt); promptErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket session system prompt payload", promptErr)
+	} else {
+		firstClientMessage = prepared
+	}
 	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(firstClientMessage, account)
 		if liteErr != nil {
@@ -695,7 +734,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
-	originalFirstClientMessage := firstClientMessage
 	if next, policyErr := applyOpenAIWSReasoningEffortPolicy(firstClientMessage, hooks); policyErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
 	} else {
@@ -997,7 +1035,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}()
 			}
 			responsesLite := isResponseCreate && isOpenAIResponsesLiteWebSocketPayload(payload)
+			if eventType == "session.update" {
+				prepared, promptErr := prepareGroupSystemPromptWSSessionUpdate(payload, groupPrompt)
+				if promptErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket session system prompt payload", promptErr)
+				}
+				payload = prepared
+			}
 			if isResponseCreate {
+				prepared, promptErr := PrepareGroupSystemPromptBody(payload, SystemPromptProtocolResponses, groupPrompt)
+				if promptErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+				}
+				payload = prepared
 				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account, responsesLite); normalizeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
 				} else if compatibilityChanged {
@@ -1111,6 +1161,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
+				injected, promptErr := InjectGroupSystemPromptBody(out, SystemPromptProtocolResponses, groupPrompt)
+				if promptErr != nil {
+					return out, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+				}
+				out = injected
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
@@ -1135,6 +1190,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		},
 	}
 	upstreamFirstMessageSent := false
+	if strings.TrimSpace(gjson.GetBytes(firstClientMessage, "type").String()) == "response.create" {
+		injected, promptErr := InjectGroupSystemPromptBody(firstClientMessage, SystemPromptProtocolResponses, groupPrompt)
+		if promptErr != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+		}
+		firstClientMessage = injected
+	}
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()

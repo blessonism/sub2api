@@ -200,6 +200,12 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 字段，上游 400 "The `reasoning_content` in the thinking mode must be
 	// passed back to the API"。在共用出站点补空格占位，真实明文不覆盖。
 	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
+
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolChatCompletions)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	body = wireBody
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()

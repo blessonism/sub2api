@@ -186,6 +186,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	debugEnabled := isOpenAIWSModeDebugEnabled()
 	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	groupPrompt := groupSystemPromptConfig(ctx, c)
 
 	type openAIWSClientPayload struct {
 		payloadRaw               []byte
@@ -261,6 +262,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				fmt.Sprintf("unsupported websocket request type: %s", eventType),
 				nil,
 			)
+		}
+		// trimmed 保留原始帧供会话哈希及账号故障切换使用，清理仅作用于
+		// 本次转发副本；正文留到真实 WS write 或 HTTP builder 才注入。
+		if prepared, promptErr := PrepareGroupSystemPromptBody(normalized, SystemPromptProtocolResponses, groupPrompt); promptErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+		} else {
+			normalized = prepared
 		}
 		requestedReasoningEffort := CanonicalRequestedReasoningEffort(normalized, strings.TrimSpace(values[1].String()))
 		if next, policyErr := applyOpenAIWSReasoningEffortPolicy(normalized, hooks); policyErr != nil {
@@ -963,7 +971,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
-		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
+		// 不修改 payload：被上游拒绝后的字段归一化和重试仍从未注入副本开始。
+		outboundPayload, promptErr := InjectGroupSystemPromptBody(payload, SystemPromptProtocolResponses, groupPrompt)
+		if promptErr != nil {
+			return nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket system prompt payload", promptErr)
+		}
+		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(outboundPayload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
 				fmt.Errorf("write upstream websocket request: %w", err),

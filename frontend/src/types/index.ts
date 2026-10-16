@@ -698,6 +698,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  // 管理员自定义的分组系统指令，不在用户侧 Group 中暴露。
+  system_prompt_injection?: GroupSystemPromptInjection
   time_rate_priority: TimeRatePriority
   time_rate_periods: GroupTimeRatePeriod[]
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
@@ -735,6 +737,12 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+}
+
+export interface GroupSystemPromptInjection {
+  enabled: boolean
+  mode: 'prepend' | 'append' | 'replace'
+  content: string
 }
 
 export interface ModelAllowlist {
@@ -879,6 +887,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+  system_prompt_injection?: GroupSystemPromptInjection
   name: string
   description?: string | null
   i18n?: GroupI18n
@@ -948,6 +957,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+  system_prompt_injection?: GroupSystemPromptInjection
   name?: string
   description?: string | null
   i18n?: GroupI18n

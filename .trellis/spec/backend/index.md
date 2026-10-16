@@ -18,6 +18,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Active |
+| [分组 System Prompt 注入](./group-system-prompt-injection.md) | 分组配置、认证缓存、协议转换与 HTTP/WS 注入契约 | Active |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 
 ---

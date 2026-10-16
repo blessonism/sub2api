@@ -180,6 +180,12 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	// 地址而非 CC/Responses 地址），详见 helper 注释。
 	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, account.GetAnthropicProtocolBaseURL(), body)
 
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+	if promptErr != nil {
+		return nil, nil, promptErr
+	}
+	body = wireBody
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err

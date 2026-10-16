@@ -72,6 +72,23 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	}
 	setOpenAIWSTurnMetadata(payload, turnMetadata)
 	applyStagedCodexFingerprintClientMetadata(c, account, payload)
+	if groupSystemPromptConfig(ctx, c).Enabled {
+		// buildOpenAIWSCreatePayload 的副本只属于本次账号尝试；保留 reqBody
+		// 供下一次重试和 HTTP fallback 重新生成，预热也复用这份最终内容。
+		body, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("encode websocket system prompt payload: %w", marshalErr)
+		}
+		injected, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+		if promptErr != nil {
+			return nil, promptErr
+		}
+		var outbound map[string]any
+		if err := decodeOpenAIJSONUseNumber(injected, &outbound); err != nil {
+			return nil, fmt.Errorf("decode websocket system prompt payload: %w", err)
+		}
+		payload = outbound
+	}
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
 	previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	promptCacheKey := strings.TrimSpace(clientPromptCacheKey)

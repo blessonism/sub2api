@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "二开分支与实现边界"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端行为契约"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型与 i18n overlay"}
+{"file": ".trellis/spec/backend/group-system-prompt-injection.md", "reason": "分组提示词端到端契约"}

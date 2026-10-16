@@ -664,6 +664,12 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <SystemPromptInjectionFields
+          v-if="supportsSystemPromptInjection(createForm.platform)"
+          ref="createSystemPromptInjectionRef"
+          id-prefix="create-group-system-prompt"
+          v-model="createForm.system_prompt_injection"
+        />
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
           ref="createReasoningEffortPolicyRef"
@@ -2524,6 +2530,12 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <SystemPromptInjectionFields
+          v-if="supportsSystemPromptInjection(editForm.platform)"
+          ref="editSystemPromptInjectionRef"
+          id-prefix="edit-group-system-prompt"
+          v-model="editForm.system_prompt_injection"
+        />
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
           ref="editReasoningEffortPolicyRef"
@@ -4767,6 +4779,11 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
+import SystemPromptInjectionFields from "@/components/admin/group/SystemPromptInjectionFields.vue";
+import {
+  normalizeSystemPromptInjection,
+  supportsSystemPromptInjection,
+} from "./groupsSystemPromptInjection";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -5407,6 +5424,9 @@ type ReasoningEffortPolicyFieldsExpose = {
   validate: () => boolean;
   resetValidation: () => void;
 };
+type SystemPromptInjectionFieldsExpose = { validate: () => boolean };
+const createSystemPromptInjectionRef = ref<SystemPromptInjectionFieldsExpose | null>(null);
+const editSystemPromptInjectionRef = ref<SystemPromptInjectionFieldsExpose | null>(null);
 const createReasoningEffortPolicyRef = ref<ReasoningEffortPolicyFieldsExpose | null>(null);
 const editReasoningEffortPolicyRef = ref<ReasoningEffortPolicyFieldsExpose | null>(null);
 const modelsListCandidatesTracker = createModelsListCandidatesTracker();
@@ -5432,6 +5452,7 @@ const editCodexManifestConfig = ref<CodexModelsManifestConfig>(createCodexManife
 const editCodexManifestAccountNames = ref<Record<number, string>>({});
 
 const createForm = reactive({
+  system_prompt_injection: normalizeSystemPromptInjection("anthropic"),
   name: "",
   description: "",
   i18n: {} as GroupI18n,
@@ -5799,6 +5820,7 @@ const convertApiFormatToRoutingRules = async (
 };
 
 const editForm = reactive({
+  system_prompt_injection: normalizeSystemPromptInjection("anthropic"),
   name: "",
   description: "",
   i18n: {} as GroupI18n,
@@ -6317,6 +6339,7 @@ const closeCreateModal = () => {
   createForm.max_reasoning_effort = "";
   createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
+  createForm.system_prompt_injection = normalizeSystemPromptInjection("anthropic");
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
@@ -6398,6 +6421,13 @@ const handleCreateGroup = async () => {
   ) {
     return;
   }
+  if (
+    supportsSystemPromptInjection(createForm.platform) &&
+    createSystemPromptInjectionRef.value &&
+    !createSystemPromptInjectionRef.value.validate()
+  ) {
+    return;
+  }
   if (!validateProfitControlForm(createForm)) {
     return;
   }
@@ -6422,6 +6452,10 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      system_prompt_injection: normalizeSystemPromptInjection(
+        createForm.platform,
+        createForm.system_prompt_injection,
+      ),
       openai_scheduler_overrides: serializeOpenAISchedulerOverrides(
         createForm.openai_scheduler_overrides,
       ),
@@ -6532,6 +6566,10 @@ const handleCreateGroup = async () => {
           name: createForm.name,
           description: createForm.description,
           i18n: createForm.i18n,
+          system_prompt_injection: normalizeSystemPromptInjection(
+            createForm.platform,
+            createForm.system_prompt_injection,
+          ),
           platform: createForm.platform,
         }
       : requestData;
@@ -6565,6 +6603,10 @@ const handleEdit = async (group: AdminGroup) => {
     ]),
   );
   editForm.platform = group.platform;
+  editForm.system_prompt_injection = normalizeSystemPromptInjection(
+    group.platform,
+    group.system_prompt_injection,
+  );
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.visible_rate_multiplier = group.visible_rate_multiplier ?? null;
   editForm.is_exclusive = group.is_exclusive;
@@ -6695,6 +6737,7 @@ const closeEditModal = () => {
   editForm.max_reasoning_effort = "";
   editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
+  editForm.system_prompt_injection = normalizeSystemPromptInjection("anthropic");
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
@@ -6742,6 +6785,13 @@ const handleUpdateGroup = async () => {
   ) {
     return;
   }
+  if (
+    supportsSystemPromptInjection(editForm.platform) &&
+    editSystemPromptInjectionRef.value &&
+    !editSystemPromptInjectionRef.value.validate()
+  ) {
+    return;
+  }
   if (!validateProfitControlForm(editForm)) {
     return;
   }
@@ -6770,6 +6820,10 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      system_prompt_injection: normalizeSystemPromptInjection(
+        editForm.platform,
+        editForm.system_prompt_injection,
+      ),
       openai_scheduler_overrides: serializeOpenAISchedulerOverrides(
         editForm.openai_scheduler_overrides,
       ),
@@ -6895,6 +6949,10 @@ const handleUpdateGroup = async () => {
           name: editForm.name,
           description: editForm.description,
           i18n: editForm.i18n,
+          system_prompt_injection: normalizeSystemPromptInjection(
+            editForm.platform,
+            editForm.system_prompt_injection,
+          ),
         }
       : payload;
     await adminAPI.groups.update(editingGroup.value.id, requestData);
@@ -7187,6 +7245,9 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    if (!supportsSystemPromptInjection(newVal)) {
+      createForm.system_prompt_injection.enabled = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -7244,6 +7305,9 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (!supportsSystemPromptInjection(newVal)) {
+      editForm.system_prompt_injection.enabled = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }

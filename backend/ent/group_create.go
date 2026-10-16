@@ -828,6 +828,20 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
+// SetSystemPromptInjection sets the "system_prompt_injection" field.
+func (_c *GroupCreate) SetSystemPromptInjection(v domain.GroupSystemPromptInjection) *GroupCreate {
+	_c.mutation.SetSystemPromptInjection(v)
+	return _c
+}
+
+// SetNillableSystemPromptInjection sets the "system_prompt_injection" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSystemPromptInjection(v *domain.GroupSystemPromptInjection) *GroupCreate {
+	if v != nil {
+		_c.SetSystemPromptInjection(*v)
+	}
+	return _c
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_c *GroupCreate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupCreate {
 	_c.mutation.SetModelAllowlist(v)
@@ -1241,6 +1255,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
 	}
+	if _, ok := _c.mutation.SystemPromptInjection(); !ok {
+		v := group.DefaultSystemPromptInjection
+		_c.mutation.SetSystemPromptInjection(v)
+	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		v := group.DefaultModelAllowlist
 		_c.mutation.SetModelAllowlist(v)
@@ -1464,6 +1482,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "Group.messages_dispatch_model_config"`)}
+	}
+	if _, ok := _c.mutation.SystemPromptInjection(); !ok {
+		return &ValidationError{Name: "system_prompt_injection", err: errors.New(`ent: missing required field "Group.system_prompt_injection"`)}
 	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		return &ValidationError{Name: "model_allowlist", err: errors.New(`ent: missing required field "Group.model_allowlist"`)}
@@ -1775,6 +1796,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
+	}
+	if value, ok := _c.mutation.SystemPromptInjection(); ok {
+		_spec.SetField(group.FieldSystemPromptInjection, field.TypeJSON, value)
+		_node.SystemPromptInjection = value
 	}
 	if value, ok := _c.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
@@ -2959,6 +2984,18 @@ func (u *GroupUpsert) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDisp
 // UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldMessagesDispatchModelConfig)
+	return u
+}
+
+// SetSystemPromptInjection sets the "system_prompt_injection" field.
+func (u *GroupUpsert) SetSystemPromptInjection(v domain.GroupSystemPromptInjection) *GroupUpsert {
+	u.Set(group.FieldSystemPromptInjection, v)
+	return u
+}
+
+// UpdateSystemPromptInjection sets the "system_prompt_injection" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSystemPromptInjection() *GroupUpsert {
+	u.SetExcluded(group.FieldSystemPromptInjection)
 	return u
 }
 
@@ -4300,6 +4337,20 @@ func (u *GroupUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesD
 func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetSystemPromptInjection sets the "system_prompt_injection" field.
+func (u *GroupUpsertOne) SetSystemPromptInjection(v domain.GroupSystemPromptInjection) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptInjection(v)
+	})
+}
+
+// UpdateSystemPromptInjection sets the "system_prompt_injection" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSystemPromptInjection() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptInjection()
 	})
 }
 
@@ -5830,6 +5881,20 @@ func (u *GroupUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessages
 func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetSystemPromptInjection sets the "system_prompt_injection" field.
+func (u *GroupUpsertBulk) SetSystemPromptInjection(v domain.GroupSystemPromptInjection) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptInjection(v)
+	})
+}
+
+// UpdateSystemPromptInjection sets the "system_prompt_injection" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSystemPromptInjection() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptInjection()
 	})
 }
 

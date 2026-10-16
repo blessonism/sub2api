@@ -2199,6 +2199,20 @@ export default {
       "balanceReductionFailed": "Failed to reduce user balances"
     },
     "groups": {
+      "systemPromptInjection": {
+        "title": "System Prompt Injection",
+        "hint": "Inject custom system instructions for this group. Turning this off keeps the content. Existing global prompt settings still apply.",
+        "mode": "Injection mode",
+        "prepend": "Prepend",
+        "append": "Append",
+        "replace": "Replace",
+        "prependHint": "Keep client system instructions and place this content at the start of the system instruction sequence.",
+        "appendHint": "Keep client system instructions and place this content at the end of the system instruction sequence.",
+        "replaceHint": "Remove client instructions, system, and developer instructions, then use this content. Keep other messages and tool data.",
+        "content": "Custom System Prompt",
+        "placeholder": "Enter the system instructions for this group",
+        "contentRequired": "System prompt content cannot be empty or whitespace when injection is enabled."
+      },
       "timeRate": {
         "action": "Time rates",
         "title": "Group time-rate strategy",

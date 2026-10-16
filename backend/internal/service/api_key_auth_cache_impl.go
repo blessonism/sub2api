@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// v24：分组模型白名单进入认证快照。
-const apiKeyAuthSnapshotVersion = 24
+// v25：分组自定义系统提示词进入认证快照。
+const apiKeyAuthSnapshotVersion = 25
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -426,6 +426,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			FreeOpenAIFast:                  apiKey.Group.FreeOpenAIFast,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
+			SystemPromptInjection:           apiKey.Group.SystemPromptInjection.WithDefaults(),
 			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
 			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
 			OpenAISchedulerOverrides:        apiKey.Group.OpenAISchedulerOverrides,
@@ -532,6 +533,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
+			SystemPromptInjection:           snapshot.Group.SystemPromptInjection.WithDefaults(),
 			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
 			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			OpenAISchedulerOverrides:        snapshot.Group.OpenAISchedulerOverrides,

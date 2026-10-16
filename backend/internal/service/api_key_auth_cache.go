@@ -108,6 +108,7 @@ type APIKeyAuthGroupSnapshot struct {
 	FreeOpenAIFast              bool                              `json:"free_openai_fast"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+	SystemPromptInjection       GroupSystemPromptInjection        `json:"system_prompt_injection"`
 	ModelAllowlist              GroupModelAllowlist               `json:"model_allowlist,omitempty"`
 	CodexModelsManifestConfig   GroupCodexModelsManifestConfig    `json:"codex_models_manifest_config,omitempty"`
 	OpenAISchedulerOverrides    GroupOpenAISchedulerOverrides     `json:"openai_scheduler_overrides,omitempty"`

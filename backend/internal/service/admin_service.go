@@ -359,6 +359,7 @@ type CreateGroupInput struct {
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+	SystemPromptInjection       GroupSystemPromptInjection
 	ModelAllowlist              GroupModelAllowlist
 	CodexModelsManifestConfig   GroupCodexModelsManifestConfig
 	ModelsListConfig            GroupModelsListConfig
@@ -449,6 +450,7 @@ type UpdateGroupInput struct {
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
+	SystemPromptInjection       *GroupSystemPromptInjection
 	ModelAllowlist              *GroupModelAllowlist
 	CodexModelsManifestConfig   *GroupCodexModelsManifestConfig
 	ModelsListConfig            *GroupModelsListConfig

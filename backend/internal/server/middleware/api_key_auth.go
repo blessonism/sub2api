@@ -177,6 +177,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			}
 		}
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
+		ctx = service.WithGroupSystemPromptInjection(ctx, apiKey.Group)
 		c.Request = c.Request.WithContext(ctx)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────

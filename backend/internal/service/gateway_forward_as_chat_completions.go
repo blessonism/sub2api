@@ -35,6 +35,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 ) (*ForwardResult, error) {
 	startTime := time.Now()
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolChatCompletions)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &ccReq); err != nil {
@@ -105,6 +111,11 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+	}
+
+	anthropicBody, err = injectGroupSystemPromptForForward(ctx, c, anthropicBody, SystemPromptProtocolMessages)
+	if err != nil {
+		return nil, err
 	}
 
 	// 7. Enforce cache_control block limit

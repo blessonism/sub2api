@@ -138,6 +138,8 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
+	// FieldSystemPromptInjection holds the string denoting the system_prompt_injection field in the database.
+	FieldSystemPromptInjection = "system_prompt_injection"
 	// FieldModelAllowlist holds the string denoting the model_allowlist field in the database.
 	FieldModelAllowlist = "model_allowlist"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
@@ -294,6 +296,7 @@ var Columns = []string{
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
+	FieldSystemPromptInjection,
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
 	FieldOpenaiSchedulerOverrides,
@@ -435,6 +438,8 @@ var (
 	DefaultMappedModelValidator func(string) error
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
+	// DefaultSystemPromptInjection holds the default value on creation for the "system_prompt_injection" field.
+	DefaultSystemPromptInjection domain.GroupSystemPromptInjection
 	// DefaultModelAllowlist holds the default value on creation for the "model_allowlist" field.
 	DefaultModelAllowlist domain.GroupModelAllowlist
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.

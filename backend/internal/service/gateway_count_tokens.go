@@ -23,6 +23,12 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	promptCtx, promptParsed, promptErr := prepareGroupSystemPromptParsed(ctx, c, parsed)
+	if promptErr != nil {
+		return promptErr
+	}
+	ctx, parsed = promptCtx, promptParsed
+
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {
@@ -49,6 +55,10 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				passthroughModel = mappedModel
 				logger.LegacyPrintf("service.gateway", "CountTokens passthrough model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
 			}
+		}
+		passthroughBody, promptErr := injectGroupSystemPromptForForward(ctx, c, passthroughBody, SystemPromptProtocolMessages)
+		if promptErr != nil {
+			return promptErr
 		}
 		return s.forwardCountTokensAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody, passthroughModel)
 	}
@@ -101,6 +111,14 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		// 不再剥离客户端 system 断点之后，「客户端 system + 客户端 messages +
 		// 上面刚注入的 tools[-1]」可以直接顶到 5 块，而上游对超限是 400。
 		if err := replaceBody(enforceCacheControlLimit(body)); err != nil {
+			return err
+		}
+	}
+
+	if groupSystemPromptConfig(ctx, c).Enabled {
+		if next, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages); promptErr != nil {
+			return promptErr
+		} else if err := replaceBody(next); err != nil {
 			return err
 		}
 	}

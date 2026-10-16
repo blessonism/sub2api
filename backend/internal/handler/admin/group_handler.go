@@ -169,7 +169,8 @@ type simpleModeGroupResponse struct {
 	Platform    string `json:"platform"`
 	Status      string `json:"status"`
 
-	I18n service.GroupI18n `json:"i18n,omitempty"`
+	I18n                  service.GroupI18n                  `json:"i18n,omitempty"`
+	SystemPromptInjection service.GroupSystemPromptInjection `json:"system_prompt_injection"`
 
 	AccountCount            int64     `json:"account_count,omitempty"`
 	ActiveAccountCount      int64     `json:"active_account_count,omitempty"`
@@ -185,10 +186,11 @@ func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
 	}
 	return &simpleModeGroupResponse{
 		ID: group.ID, Name: group.Name, Description: group.Description, Platform: group.Platform,
-		Status:             group.Status,
-		I18n:               group.I18n,
-		AccountCount:       group.AccountCount,
-		ActiveAccountCount: group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
+		Status:                group.Status,
+		I18n:                  group.I18n,
+		SystemPromptInjection: group.SystemPromptInjection.WithDefaults(),
+		AccountCount:          group.AccountCount,
+		ActiveAccountCount:    group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
 		SortOrder: group.SortOrder, CreatedAt: group.CreatedAt, UpdatedAt: group.UpdatedAt,
 	}
 }
@@ -197,7 +199,7 @@ func sanitizeCreateGroupRequestForSimpleMode(req *CreateGroupRequest) {
 	if req == nil {
 		return
 	}
-	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n, Platform: req.Platform}
+	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n, Platform: req.Platform, SystemPromptInjection: req.SystemPromptInjection}
 	allowed.RateMultiplier = 1
 	allowed.SubscriptionType = service.SubscriptionTypeStandard
 	*req = allowed
@@ -207,7 +209,7 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	if req == nil {
 		return
 	}
-	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n}
+	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n, SystemPromptInjection: req.SystemPromptInjection}
 }
 
 func (h *GroupHandler) GetGroupModelAllowlistCandidates(c *gin.Context) {
@@ -290,6 +292,7 @@ type CreateGroupRequest struct {
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	SystemPromptInjection       service.GroupSystemPromptInjection        `json:"system_prompt_injection"`
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
 	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
@@ -370,6 +373,7 @@ type UpdateGroupRequest struct {
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	SystemPromptInjection       *service.GroupSystemPromptInjection        `json:"system_prompt_injection"`
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
 	// 固定账号 manifest 配置；nil 表示不修改。
 	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
@@ -763,6 +767,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		SystemPromptInjection:           req.SystemPromptInjection,
 		ModelAllowlist:                  req.ModelAllowlist,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		OpenAISchedulerOverrides:        req.OpenAISchedulerOverrides,
@@ -918,6 +923,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		SystemPromptInjection:           req.SystemPromptInjection,
 		ModelAllowlist:                  req.ModelAllowlist,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		OpenAISchedulerOverrides:        req.OpenAISchedulerOverrides,

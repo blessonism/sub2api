@@ -1398,3 +1398,11 @@ UNION ALL SELECT balance_delta FROM admin_usage_calibrations WHERE NOT EXISTS (.
 #### 7. Wrong vs Correct
 - Wrong：`_, _ = integrationDB.ExecContext(ctx, "DELETE FROM users")`。
 - Correct：隔离数据库中级联清理、断言成功，并在每个测试完成后清除夹具。
+
+### Scenario: 分组系统提示词配置与简单模式字段白名单
+
+- 分组管理字段 `system_prompt_injection` 包含 `enabled`、`mode`、`content`，默认关闭、`append`、空串；只有 `openai` / `anthropic` 分组可开启。
+- 简单模式同样支持此配置。新增可编辑字段时，同时检查 handler 请求白名单、service 输入白名单、`simpleModeGroupResponse` 和前端简单模式提交分支，不能只接通完整管理模式。
+- 更新省略字段保持原配置，关闭只改变开关，正文按原样保留；开启时拒绝空白正文。配置只通过管理员分组 DTO 返回，用户侧分组及嵌套 DTO 不携带正文。
+- 持久化、认证显式字段投影、认证快照构建/恢复和调度缓存必须保留配置；认证快照 schema 变更必须提升版本，并扩展分组认证缓存失效 outbox trigger。
+- 回归覆盖完整模式及简单模式的创建/更新、省略、关闭保留、空白拒绝、管理员回显和用户 DTO 隔离。数据库默认值、投影、复制与缓存失效须通过真实 repository integration 验证；环境跳过不能记为通过。

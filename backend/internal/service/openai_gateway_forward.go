@@ -58,6 +58,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	normalizedBody, normalized, err := normalizeOpenAICodexCompactReasoningEffortForAccount(c, account, body)
 	if err != nil {
 		return nil, err
@@ -1404,6 +1410,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	body = wireBody
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

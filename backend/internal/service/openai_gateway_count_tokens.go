@@ -55,6 +55,17 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 		return fmt.Errorf("responses input_tokens: missing account")
 	}
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
+	body, promptErr = injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return promptErr
+	}
+
 	prepared, err := prepareNativeOpenAIInputTokensCountRequest(body, account)
 	if err != nil {
 		writeOpenAIResponsesInputTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -264,6 +275,12 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		return fmt.Errorf("count_tokens: missing account")
 	}
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+	if promptErr != nil {
+		return promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	// 多协议 API Key 供应商（国产厂商与聚合平台，全部协议，含 anthropic）：一律本地估算，不发上游请求。
 	// 依据（2026-08 核实）：三家的 Anthropic 兼容层均未提供
 	// /v1/messages/count_tokens——DeepSeek 官方 anthropic_api 文档无此端点
@@ -272,7 +289,11 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	// 只会常态 404，且错误还会流入账号处置逻辑误伤整账号调度；Claude Code
 	// 高频调用此端点，本地 tiktoken 估算是与 Grok 一致的既有方案。
 	if account.IsMultiProtocolAPIKey() {
-		estimated, err := estimateAnthropicCountTokensLocally(body)
+		countBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+		if promptErr != nil {
+			return promptErr
+		}
+		estimated, err := estimateAnthropicCountTokensLocally(countBody)
 		if err != nil {
 			writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 			return fmt.Errorf("count_tokens: estimate cn provider input tokens: %w", err)
@@ -297,6 +318,16 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	if err != nil {
 		writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return fmt.Errorf("marshal openai input_tokens body: %w", err)
+	}
+
+	if groupSystemPromptConfig(ctx, c).Enabled {
+		upstreamBody, err = injectGroupSystemPromptForForward(ctx, c, upstreamBody, SystemPromptProtocolResponses)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(upstreamBody, &prepared.Request); err != nil {
+			return fmt.Errorf("parse injected count_tokens request: %w", err)
+		}
 	}
 
 	logger.L().Debug("openai count_tokens: model mapping applied",

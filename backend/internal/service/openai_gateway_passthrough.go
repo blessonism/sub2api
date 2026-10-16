@@ -151,7 +151,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	if account != nil && account.UsesOpenAICodexProtocol() {
-		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
+		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" && (rejectReason != "instructions_empty" || !groupSystemPromptConfig(ctx, c).Enabled) {
 			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
 			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 			logOpenAIPassthroughInstructionsRejected(ctx, c, account, reqModel, rejectReason, body)
@@ -610,6 +610,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	body = wireBody
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

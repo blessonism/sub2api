@@ -37,6 +37,12 @@ func (s *GatewayService) ForwardAsResponses(
 ) (*ForwardResult, error) {
 	startTime := time.Now()
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngress(body)
 	if err != nil {
 		return nil, err
@@ -116,6 +122,11 @@ func (s *GatewayService) ForwardAsResponses(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+	}
+
+	anthropicBody, err = injectGroupSystemPromptForForward(ctx, c, anthropicBody, SystemPromptProtocolMessages)
+	if err != nil {
+		return nil, err
 	}
 
 	// 7. Enforce cache_control block limit
