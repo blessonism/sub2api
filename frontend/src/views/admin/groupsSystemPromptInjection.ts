@@ -1,9 +1,10 @@
 import type { GroupPlatform, GroupSystemPromptInjection } from '@/types'
+import { getPlatformSpec } from '@/constants/platformCatalog'
 
 export const supportsSystemPromptInjection = (platform: GroupPlatform): boolean =>
-  platform === 'openai' || platform === 'anthropic'
+  platform === 'composite' || !!getPlatformSpec(platform)
 
-/** 创建独立的表单/提交快照，同时禁止在其他平台开启。 */
+/** 创建独立的表单/提交快照，覆盖登记平台及组合分组。 */
 export function normalizeSystemPromptInjection(
   platform: GroupPlatform,
   config?: GroupSystemPromptInjection

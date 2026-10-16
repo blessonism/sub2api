@@ -159,7 +159,7 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 		return
 	}
 
-	estimated, err := service.EstimateGrokCountTokens(parsedReq.Body.Bytes())
+	estimated, err := service.EstimateGrokCountTokensForGroup(c.Request.Context(), c, parsedReq.Body.Bytes())
 	if err != nil {
 		requestLogger(c, "handler.openai_gateway.grok_count_tokens").Warn("grok_count_tokens.local_estimate_failed", zap.Error(err))
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")

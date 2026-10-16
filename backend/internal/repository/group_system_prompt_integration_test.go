@@ -17,12 +17,20 @@ import (
 )
 
 func TestGroupSystemPromptPersistenceProjectionAndCache(t *testing.T) {
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformDeepseek, service.PlatformGemini, service.PlatformTypeSafe, service.PlatformComposite} {
+		t.Run(platform, func(t *testing.T) {
+			testGroupSystemPromptPersistenceProjectionAndCache(t, platform)
+		})
+	}
+}
+
+func testGroupSystemPromptPersistenceProjectionAndCache(t *testing.T, platform string) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	client := tx.Client()
 	repo := newGroupRepositoryWithSQL(client, tx)
 	suffix := time.Now().UnixNano()
-	group := &service.Group{Name: fmt.Sprintf("system-prompt-%d", suffix), Platform: service.PlatformOpenAI, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	group := &service.Group{Name: fmt.Sprintf("system-prompt-%d", suffix), Platform: platform, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
 	require.NoError(t, repo.Create(ctx, group))
 	loaded, err := repo.GetByIDLite(ctx, group.ID)
 	require.NoError(t, err)

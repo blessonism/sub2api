@@ -45,6 +45,25 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			return err
 		}
 	}
+	if account != nil && groupSystemPromptConfig(ctx, c).Enabled &&
+		(account.Platform == PlatformGemini || account.Platform == PlatformAntigravity) {
+		body, err := convertClaudeMessagesToGeminiGenerateContent(parsed.Body.Bytes())
+		if err != nil {
+			return err
+		}
+		if account.Platform == PlatformAntigravity {
+			body, err = injectIdentityPatchToGeminiRequest(body)
+			if err != nil {
+				return err
+			}
+		}
+		body, err = injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolGemini)
+		if err != nil {
+			return err
+		}
+		c.JSON(http.StatusOK, gin.H{"input_tokens": estimateGeminiCountTokens(body)})
+		return nil
+	}
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()

@@ -3,7 +3,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 import SystemPromptInjectionFields from '../SystemPromptInjectionFields.vue'
-import type { GroupSystemPromptInjection } from '@/types'
+import type { GroupPlatform, GroupSystemPromptInjection } from '@/types'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
 
@@ -15,11 +15,12 @@ const SelectStub = defineComponent({
   template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>'
 })
 
-function mountFields(locale: 'en' | 'zh' = 'zh') {
+function mountFields(locale: 'en' | 'zh' = 'zh', platform?: GroupPlatform) {
   const config = reactive<GroupSystemPromptInjection>({ enabled: false, mode: 'append', content: '' })
   const host = defineComponent({
     setup: () => () => h(SystemPromptInjectionFields, {
       idPrefix: 'test',
+      platform,
       modelValue: config,
       'onUpdate:modelValue': (value: GroupSystemPromptInjection) => Object.assign(config, value)
     })
@@ -44,6 +45,11 @@ function mountFields(locale: 'en' | 'zh' = 'zh') {
 }
 
 describe('SystemPromptInjectionFields', () => {
+  it.each(['zh', 'en'] as const)('explains per-question instructions for TypeSafe in %s', locale => {
+    const { wrapper } = mountFields(locale, 'typesafe')
+    expect(wrapper.text()).toContain({ zh, en }[locale].admin.groups.systemPromptInjection.typesafeHint)
+  })
+
   it('keeps content and mode across consecutive toggle and content updates', async () => {
     const { wrapper, config } = mountFields()
     expect(wrapper.find('textarea').exists()).toBe(false)

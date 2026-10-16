@@ -596,7 +596,11 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		return nil, fmt.Errorf("get grok access token: %w", err)
 	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity, s.cfg, s.settingService)
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, responsesBody, SystemPromptProtocolResponses)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, wireBody, token, cacheIdentity, s.cfg, s.settingService)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, fmt.Errorf("build grok responses bridge request: %w", err)

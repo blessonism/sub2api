@@ -97,20 +97,6 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
-	if account.Platform == PlatformGrok {
-		if account.IsGrokOAuth() {
-			if eligible, reason := grokChatResponsesBridgeEligibility(body); eligible {
-				return s.forwardGrokChatCompletionsViaResponses(ctx, c, account, body, promptCacheKey, defaultMappedModel)
-			} else {
-				logger.L().Debug("grok chat_completions: using raw fallback",
-					zap.Int64("account_id", account.ID),
-					zap.String("reason", reason),
-				)
-			}
-		}
-		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
-	}
-
 	// Cursor compatibility: some clients send a Responses-shaped body to the
 	// /v1/chat/completions URL. Detect it before protocol routing so adaptive
 	// accounts never forward the body unchanged to a Chat Completions endpoint.
@@ -124,6 +110,20 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return nil, promptErr
 	}
 	ctx, body = promptCtx, promptBody
+
+	if account.Platform == PlatformGrok {
+		if account.IsGrokOAuth() {
+			if eligible, reason := grokChatResponsesBridgeEligibility(body); eligible {
+				return s.forwardGrokChatCompletionsViaResponses(ctx, c, account, body, promptCacheKey, defaultMappedModel)
+			} else {
+				logger.L().Debug("grok chat_completions: using raw fallback",
+					zap.Int64("account_id", account.ID),
+					zap.String("reason", reason),
+				)
+			}
+		}
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
 
 	inbound := APIProtocolChatCompletions
 	if isResponsesShape {

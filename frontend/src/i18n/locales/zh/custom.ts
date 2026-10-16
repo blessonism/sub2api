@@ -2216,15 +2216,16 @@ export default {
     },
     "groups": {
       "systemPromptInjection": {
+        "typesafeHint": "TypeSafe System One 会对每个独立问题的 instructions 应用所选模式，保留 state 输入数据和 criteria。",
         "title": "System Prompt 注入",
-        "hint": "为此分组注入自定义系统提示词。关闭后保留正文，现有全局提示词设置继续生效。",
+        "hint": "适用于所有平台及组合分组，为此分组注入自定义系统提示词。关闭后保留正文，现有全局提示词设置继续生效。",
         "mode": "注入模式",
         "prepend": "前置",
         "append": "追加",
         "replace": "替换",
         "prependHint": "保留客户端系统指令，将此正文放在系统指令序列开头。",
         "appendHint": "保留客户端系统指令，将此正文放在系统指令序列末尾。",
-        "replaceHint": "清除客户端的 instructions、system 和 developer 指令后使用此正文，保留其他消息和工具数据。",
+        "replaceHint": "清除客户端的系统指令（含 instructions、system、developer 和 Gemini systemInstruction）后使用此正文，保留其他消息和工具数据。",
         "content": "自定义 System Prompt",
         "placeholder": "填写此分组使用的系统提示词",
         "contentRequired": "开启注入时，系统提示词不能为空或只有空白。"

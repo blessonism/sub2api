@@ -6,6 +6,9 @@
           {{ t('admin.groups.systemPromptInjection.title') }}
         </label>
         <p class="input-hint mb-0">{{ t('admin.groups.systemPromptInjection.hint') }}</p>
+        <p v-if="platform === 'typesafe'" class="input-hint mb-0">
+          {{ t('admin.groups.systemPromptInjection.typesafeHint') }}
+        </p>
       </div>
       <button
         type="button"
@@ -74,11 +77,12 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
-import type { GroupSystemPromptInjection } from '@/types'
+import type { GroupPlatform, GroupSystemPromptInjection } from '@/types'
 
 const props = defineProps<{
   idPrefix: string
   modelValue: GroupSystemPromptInjection
+  platform?: GroupPlatform
 }>()
 const emit = defineEmits<{
   (event: 'update:modelValue', value: GroupSystemPromptInjection): void

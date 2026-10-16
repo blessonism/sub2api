@@ -2200,15 +2200,16 @@ export default {
     },
     "groups": {
       "systemPromptInjection": {
+        "typesafeHint": "For TypeSafe System One, apply the selected mode to each question’s instructions while keeping state input data and criteria.",
         "title": "System Prompt Injection",
-        "hint": "Inject custom system instructions for this group. Turning this off keeps the content. Existing global prompt settings still apply.",
+        "hint": "Inject custom system instructions for any platform or composite group. Turning this off keeps the content. Existing global prompt settings still apply.",
         "mode": "Injection mode",
         "prepend": "Prepend",
         "append": "Append",
         "replace": "Replace",
         "prependHint": "Keep client system instructions and place this content at the start of the system instruction sequence.",
         "appendHint": "Keep client system instructions and place this content at the end of the system instruction sequence.",
-        "replaceHint": "Remove client instructions, system, and developer instructions, then use this content. Keep other messages and tool data.",
+        "replaceHint": "Remove client system instructions (including instructions, system, developer, and Gemini systemInstruction), then use this content. Keep other messages and tool data.",
         "content": "Custom System Prompt",
         "placeholder": "Enter the system instructions for this group",
         "contentRequired": "System prompt content cannot be empty or whitespace when injection is enabled."

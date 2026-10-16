@@ -43,6 +43,12 @@ func WithForwardGeminiSession(groupID int64, sessionHash string) ForwardGeminiOp
 
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool, options ...ForwardGeminiOption) (*ForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolGemini)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
 	startTime := time.Now()
 	forwardOpts := forwardGeminiOptions{}
 	for _, apply := range options {
@@ -72,8 +78,19 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	case "generateContent", "streamGenerateContent":
 		// ok
 	case "countTokens":
-		// 直接返回空值，不透传上游
-		c.JSON(http.StatusOK, map[string]any{"totalTokens": 0})
+		totalTokens := 0
+		if groupSystemPromptConfig(ctx, c).Enabled {
+			identityBody, err := injectIdentityPatchToGeminiRequest(unwrapGroupSystemPromptGeminiBody(body))
+			if err != nil {
+				return nil, err
+			}
+			wireBody, err := injectGroupSystemPromptForForward(ctx, c, identityBody, SystemPromptProtocolGemini)
+			if err != nil {
+				return nil, err
+			}
+			totalTokens = estimateGeminiCountTokens(wireBody)
+		}
+		c.JSON(http.StatusOK, map[string]any{"totalTokens": totalTokens})
 		return &ForwardResult{
 			RequestID:    "",
 			Usage:        ClaudeUsage{},
@@ -206,6 +223,9 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 				logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)", mappedModel, fallbackModel, account.Name)
 
 				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, injectedBody)
+				if err == nil {
+					fallbackWrapped, err = injectGroupSystemPromptForForward(ctx, c, fallbackWrapped, SystemPromptProtocolGemini)
+				}
 				if err == nil {
 					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
 					if err == nil {

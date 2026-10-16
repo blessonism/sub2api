@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -27,8 +28,8 @@ func TestNormalizeGroupSystemPromptInjection(t *testing.T) {
 		{name: "replace", platform: PlatformAnthropic, config: GroupSystemPromptInjection{Enabled: true, Mode: "replace", Content: "custom"}, wantMode: "replace"},
 		{name: "invalid mode even disabled", platform: PlatformOpenAI, config: GroupSystemPromptInjection{Mode: "invalid"}, wantErr: true},
 		{name: "blank enabled", platform: PlatformOpenAI, config: GroupSystemPromptInjection{Enabled: true, Content: "\n\t　"}, wantErr: true},
-		{name: "unsupported platform", platform: PlatformGemini, config: GroupSystemPromptInjection{Enabled: true, Content: "custom"}, wantErr: true},
-		{name: "composite unsupported", platform: PlatformComposite, config: GroupSystemPromptInjection{Enabled: true, Content: "custom"}, wantErr: true},
+		{name: "unknown platform", platform: "unknown", config: GroupSystemPromptInjection{Enabled: true, Content: "custom"}, wantErr: true},
+		{name: "composite", platform: PlatformComposite, config: GroupSystemPromptInjection{Enabled: true, Content: "custom"}, wantMode: "append"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,12 +96,12 @@ func TestAdminGroupSystemPromptInjectionRejectsInvalidWrites(t *testing.T) {
 
 	repo.getByID = &Group{ID: 7, Platform: PlatformAnthropic, SystemPromptInjection: GroupSystemPromptInjection{Enabled: true, Mode: "append", Content: "valid"}}
 	_, err = svc.UpdateGroup(ctx, 7, &UpdateGroupInput{Platform: PlatformGemini})
-	require.Error(t, err, "切换到不支持的平台时必须先关闭注入")
-	require.Nil(t, repo.updated)
+	require.NoError(t, err, "切换到已登记平台时保留启用状态")
+	require.True(t, repo.updated.SystemPromptInjection.Enabled)
 }
 
 func TestAdminGroupSystemPromptInjectionSimpleMode(t *testing.T) {
-	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic} {
+	for _, platform := range domain.ConcretePlatformIDs() {
 		t.Run(platform, func(t *testing.T) {
 			ctx := context.Background()
 			repo := &groupRepoStubForAdmin{createID: 52}

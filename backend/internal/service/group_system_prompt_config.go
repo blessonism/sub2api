@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -15,8 +16,8 @@ func normalizeGroupSystemPromptInjection(platform string, cfg GroupSystemPromptI
 		return cfg, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_INJECTION", "system prompt injection mode must be prepend, append or replace")
 	}
 	if cfg.Enabled {
-		if platform != PlatformOpenAI && platform != PlatformAnthropic {
-			return cfg, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_INJECTION", "system prompt injection is only supported for openai and anthropic groups")
+		if !domain.IsGroupPlatform(platform) {
+			return cfg, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_INJECTION", "system prompt injection requires a registered group platform")
 		}
 		if strings.TrimSpace(cfg.Content) == "" {
 			return cfg, infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_INJECTION", "system prompt injection content cannot be blank when enabled")

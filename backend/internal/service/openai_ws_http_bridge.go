@@ -495,6 +495,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		var upstreamReq *http.Request
 		var buildErr error
 		if account.Platform == PlatformGrok {
+			requestBody, buildErr = injectGroupSystemPromptForForward(ctx, c, requestBody, SystemPromptProtocolResponses)
+			if buildErr != nil {
+				return nil, buildErr
+			}
 			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg, s.settingService)
 		} else {
 			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, requestBody, token)

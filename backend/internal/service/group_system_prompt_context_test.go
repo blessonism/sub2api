@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -24,13 +25,14 @@ func TestGroupSystemPromptContextFreezesOriginalGroup(t *testing.T) {
 	require.Equal(t, "new configuration", groupSystemPromptConfig(newRequest, c).Content)
 }
 
-func TestGroupSystemPromptUnsupportedGroupDoesNotInheritTargetPolicy(t *testing.T) {
-	for _, platform := range []string{PlatformComposite, PlatformGemini, PlatformGrok, PlatformAntigravity} {
+func TestGroupSystemPromptAllPlatformsKeepOriginalPolicy(t *testing.T) {
+	for _, platform := range append(domain.ConcretePlatformIDs(), PlatformComposite) {
 		t.Run(platform, func(t *testing.T) {
-			group := &Group{Platform: platform, SystemPromptInjection: GroupSystemPromptInjection{Enabled: true, Mode: "append", Content: "unsupported"}}
+			group := &Group{Platform: platform, SystemPromptInjection: GroupSystemPromptInjection{Enabled: true, Mode: "append", Content: "original group"}}
 			ctx := WithGroupSystemPromptInjection(context.Background(), group)
-			ctx = context.WithValue(ctx, ctxkey.Group, &Group{Platform: PlatformOpenAI, SystemPromptInjection: group.SystemPromptInjection})
-			require.False(t, groupSystemPromptConfig(ctx, nil).Enabled)
+			ctx = context.WithValue(ctx, ctxkey.Group, &Group{Platform: PlatformOpenAI, SystemPromptInjection: GroupSystemPromptInjection{Enabled: true, Mode: "replace", Content: "target policy"}})
+			require.True(t, groupSystemPromptConfig(ctx, nil).Enabled)
+			require.Equal(t, "original group", groupSystemPromptConfig(ctx, nil).Content)
 		})
 	}
 }

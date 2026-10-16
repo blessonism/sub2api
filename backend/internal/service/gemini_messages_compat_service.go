@@ -553,6 +553,12 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	var req struct {
 		Model  string `json:"model"`
 		Stream bool   `json:"stream"`
@@ -570,7 +576,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		mappedModel = account.GetMappedModel(req.Model)
 	}
 
-	geminiReq, err := convertClaudeMessagesToGeminiGenerateContent(body)
+	geminiReq, err := convertClaudeMessagesToGeminiForForward(ctx, c, body)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
@@ -799,7 +805,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 					stageName = "thinking+tools"
 					signatureRetryStage = 2
 				}
-				retryGeminiReq, txErr := convertClaudeMessagesToGeminiGenerateContent(strippedClaudeBody)
+				retryGeminiReq, txErr := convertClaudeMessagesToGeminiForForward(ctx, c, strippedClaudeBody)
 				if txErr == nil {
 					logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
 					geminiReq = retryGeminiReq
@@ -1088,6 +1094,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
 
+	promptCtx, promptBody, promptErr := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolGemini)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	ctx, body = promptCtx, promptBody
+
 	if strings.TrimSpace(originalModel) == "" {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Missing model in URL")
 	}
@@ -1097,6 +1109,13 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	if len(body) == 0 {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
 	}
+
+	// canonical 客户端清理已完成；从本次尝试的基础报文生成一次最终系统指令。
+	wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolGemini)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	body = wireBody
 
 	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）
 	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
@@ -1278,7 +1297,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			// countTokens 不因上游链路故障而失败：本地估算兜底，不换号。
 			var failoverErr *UpstreamFailoverError
 			if action == "countTokens" && errors.As(transportErr, &failoverErr) {
-				estimated := estimateGeminiCountTokens(body)
+				estimated := estimateGeminiCountTokensForGroup(ctx, c, body)
 				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimated})
 				return &ForwardResult{
 					RequestID:     "",
@@ -1358,7 +1377,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				continue
 			}
 			if action == "countTokens" {
-				estimated := estimateGeminiCountTokens(body)
+				estimated := estimateGeminiCountTokensForGroup(ctx, c, body)
 				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimated})
 				return &ForwardResult{
 					RequestID:     "",
@@ -1407,7 +1426,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		// This avoids Gemini SDKs failing hard during preflight token counting.
 		// Checked before error policy so it always works regardless of custom error codes.
 		if action == "countTokens" && isOAuth && isGeminiInsufficientScope(resp.Header, respBody) {
-			estimated := estimateGeminiCountTokens(body)
+			estimated := estimateGeminiCountTokensForGroup(ctx, c, body)
 			c.JSON(http.StatusOK, map[string]any{"totalTokens": estimated})
 			return &ForwardResult{
 				RequestID:       requestID,

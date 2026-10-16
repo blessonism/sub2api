@@ -32,6 +32,14 @@ func (e *SystemOneUpstreamError) Error() string {
 
 func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, account *Account, body []byte) (*SystemOneForwardResult, error) {
 	started := time.Now()
+	ctx, body, err := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolSystemOne)
+	if err != nil {
+		return nil, err
+	}
+	body, err = injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolSystemOne)
+	if err != nil {
+		return nil, err
+	}
 	if account == nil || !account.IsTypeSafe() || account.Type != AccountTypeAPIKey {
 		return nil, errors.New("invalid typesafe account")
 	}

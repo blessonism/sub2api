@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +19,7 @@ func WithGroupSystemPromptInjection(ctx context.Context, group *Group) context.C
 		return ctx
 	}
 	var cfg GroupSystemPromptInjection
-	if group != nil && (group.Platform == PlatformOpenAI || group.Platform == PlatformAnthropic) {
+	if group != nil && domain.IsGroupPlatform(group.Platform) {
 		cfg = group.SystemPromptInjection
 	}
 	return context.WithValue(ctx, groupSystemPromptContextKey{}, cfg)

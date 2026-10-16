@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "分支边界、原工作树保留与部署限制"}
+{"file": ".trellis/spec/backend/group-system-prompt-injection.md", "reason": "现有协议、快照和重试注入契约"}

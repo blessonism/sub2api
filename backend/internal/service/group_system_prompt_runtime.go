@@ -12,6 +12,8 @@ const (
 	SystemPromptProtocolResponses       = "responses"
 	SystemPromptProtocolChatCompletions = "chat_completions"
 	SystemPromptProtocolMessages        = "messages"
+	SystemPromptProtocolGemini          = "gemini"
+	SystemPromptProtocolSystemOne       = "systemone"
 )
 
 // PrepareGroupSystemPromptBody 在协议转换前清理客户端指令，不写入分组正文。
@@ -25,6 +27,12 @@ func PrepareGroupSystemPromptBody(body []byte, protocol string, cfg GroupSystemP
 	}
 	if cfg.Mode != "replace" {
 		return body, nil
+	}
+	if protocol == SystemPromptProtocolSystemOne {
+		return prepareGroupSystemPromptSystemOne(payload)
+	}
+	if protocol == SystemPromptProtocolGemini {
+		return prepareGroupSystemPromptGemini(payload, cfg)
 	}
 	delete(payload, "instructions")
 	identity := json.RawMessage(nil)
@@ -72,6 +80,10 @@ func InjectGroupSystemPromptBody(body []byte, protocol string, cfg GroupSystemPr
 	}
 	prepend := cfg.Mode == "prepend"
 	switch protocol {
+	case SystemPromptProtocolSystemOne:
+		return injectGroupSystemPromptSystemOne(payload, cfg)
+	case SystemPromptProtocolGemini:
+		return injectGroupSystemPromptGemini(payload, cfg)
 	case SystemPromptProtocolResponses:
 		var items []json.RawMessage
 		raw := payload["input"]
@@ -140,7 +152,7 @@ func InjectGroupSystemPromptBody(body []byte, protocol string, cfg GroupSystemPr
 
 func parseGroupSystemPromptBody(body []byte, protocol, mode string) (map[string]json.RawMessage, error) {
 	switch protocol {
-	case SystemPromptProtocolResponses, SystemPromptProtocolChatCompletions, SystemPromptProtocolMessages:
+	case SystemPromptProtocolResponses, SystemPromptProtocolChatCompletions, SystemPromptProtocolMessages, SystemPromptProtocolGemini, SystemPromptProtocolSystemOne:
 	default:
 		return nil, fmt.Errorf("unsupported system prompt protocol %q", protocol)
 	}
@@ -155,6 +167,15 @@ func parseGroupSystemPromptBody(body []byte, protocol, mode string) (map[string]
 	}
 	if payload == nil {
 		return nil, fmt.Errorf("system prompt request must be a JSON object")
+	}
+	if protocol == SystemPromptProtocolSystemOne {
+		return payload, validateGroupSystemPromptSystemOne(payload)
+	}
+	if protocol == SystemPromptProtocolGemini {
+		if err := validateGroupSystemPromptGemini(payload); err != nil {
+			return nil, err
+		}
+		return payload, nil
 	}
 	// 这里只校验本协议需要拼接的字段。其他字段交给已有入口和上游处理，
 	// 不能因开启注入而收紧无关扩展字段的兼容性。

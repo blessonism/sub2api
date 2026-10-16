@@ -668,6 +668,7 @@
           v-if="supportsSystemPromptInjection(createForm.platform)"
           ref="createSystemPromptInjectionRef"
           id-prefix="create-group-system-prompt"
+          :platform="createForm.platform"
           v-model="createForm.system_prompt_injection"
         />
         <ReasoningEffortPolicyFields
@@ -2534,6 +2535,7 @@
           v-if="supportsSystemPromptInjection(editForm.platform)"
           ref="editSystemPromptInjectionRef"
           id-prefix="edit-group-system-prompt"
+          :platform="editForm.platform"
           v-model="editForm.system_prompt_injection"
         />
         <ReasoningEffortPolicyFields

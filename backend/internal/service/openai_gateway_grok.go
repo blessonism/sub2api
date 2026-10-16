@@ -110,7 +110,11 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	upstreamStart := time.Now()
 	var resp *http.Response
 	for attempt := 0; ; attempt++ {
-		upstreamReq, buildErr := buildGrokResponsesRequest(upstreamCtx, c, account, patchedBody, token, cacheIdentity, s.cfg, s.settingService)
+		wireBody, promptErr := injectGroupSystemPromptForForward(ctx, c, patchedBody, SystemPromptProtocolResponses)
+		if promptErr != nil {
+			return nil, promptErr
+		}
+		upstreamReq, buildErr := buildGrokResponsesRequest(upstreamCtx, c, account, wireBody, token, cacheIdentity, s.cfg, s.settingService)
 		if buildErr != nil {
 			return nil, buildErr
 		}

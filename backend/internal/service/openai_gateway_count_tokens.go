@@ -229,6 +229,19 @@ func EstimateGrokCountTokens(body []byte) (int, error) {
 	return estimateAnthropicCountTokensLocally(body)
 }
 
+// EstimateGrokCountTokensForGroup 与实际转发使用同一份原分组注入策略。
+func EstimateGrokCountTokensForGroup(ctx context.Context, c *gin.Context, body []byte) (int, error) {
+	ctx, body, err := prepareGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+	if err != nil {
+		return 0, err
+	}
+	body, err = injectGroupSystemPromptForForward(ctx, c, body, SystemPromptProtocolMessages)
+	if err != nil {
+		return 0, err
+	}
+	return EstimateGrokCountTokens(body)
+}
+
 // estimateAnthropicCountTokensLocally 走 Anthropic→Responses→tiktoken 链本地估算
 // count_tokens，不发任何上游请求（上游无兼容端点的平台使用）。
 func estimateAnthropicCountTokensLocally(body []byte) (int, error) {

@@ -465,6 +465,13 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
+	// 每次调用的基础报文独立；内部智能重试复用这份 wire body，不能再次追加。
+	wireBody, promptErr := injectGroupSystemPromptForForward(p.ctx, p.c, p.body, SystemPromptProtocolGemini)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	p.body = wireBody
+
 	// 预检查：模型限流 + overages 启用 + 积分未耗尽 → 直接注入 AI Credits
 	overagesInjected := false
 	if p.requestedModel != "" && p.account.Platform == PlatformAntigravity &&

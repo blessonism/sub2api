@@ -3,6 +3,9 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import GroupsView from '@/views/admin/GroupsView.vue'
+import { listPlatformIds } from '@/constants/platformCatalog'
+
+const groupPlatforms = [...listPlatformIds(), 'composite'] as GroupPlatform[]
 
 const { list, create, update, authState } = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), authState: { isSimpleMode: false }
@@ -198,7 +201,7 @@ describe('GroupsView system prompt injection', () => {
     expect(wrapper.get('[data-testid="system-prompt-toggle"]').attributes('aria-checked')).toBe('true')
   })
 
-  it.each(['openai', 'anthropic'] as const)('submits edited %s config and validates whitespace', async platform => {
+  it.each(groupPlatforms)('submits edited %s config and validates whitespace', async platform => {
     list.mockResolvedValue({ items: [{ ...sourceGroup, platform }], total: 1 })
     const wrapper = mountView()
     await openEdit(wrapper)
@@ -214,22 +217,21 @@ describe('GroupsView system prompt injection', () => {
     }))
   })
 
-  it.each(['composite', 'gemini', 'antigravity', 'grok'] satisfies GroupPlatform[])('disables injection on %s and preserves the draft on platform switches', async platform => {
+  it.each(groupPlatforms)('keeps injection enabled on %s and preserves the draft on platform switches', async platform => {
     const wrapper = mountView()
     await openCreate(wrapper)
     await wrapper.get('[data-testid="system-prompt-toggle"]').trigger('click')
     await wrapper.get('[data-testid="system-prompt-content"]').setValue('retained')
     await wrapper.get('[data-tour="group-form-platform"]').setValue(platform)
-    expect(wrapper.find('[data-testid="system-prompt-toggle"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="system-prompt-toggle"]').attributes('aria-checked')).toBe('true')
     await wrapper.get('[data-tour="group-form-platform"]').setValue('openai')
-    expect(wrapper.get('[data-testid="system-prompt-toggle"]').attributes('aria-checked')).toBe('false')
-    await wrapper.get('[data-testid="system-prompt-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="system-prompt-toggle"]').attributes('aria-checked')).toBe('true')
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="system-prompt-content"]').element.value).toBe('retained')
     await wrapper.get('[data-tour="group-form-platform"]').setValue(platform)
     await wrapper.get('#create-group-form').trigger('submit')
     await flushPromises()
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      system_prompt_injection: { enabled: false, mode: 'append', content: 'retained' }
+      system_prompt_injection: { enabled: true, mode: 'append', content: 'retained' }
     }))
   })
 
@@ -244,7 +246,7 @@ describe('GroupsView system prompt injection', () => {
     }))
   })
 
-  it('disables a stale enabled config for an unsupported group while keeping the content', async () => {
+  it('loads and saves an enabled composite group configuration', async () => {
     list.mockResolvedValue({ items: [{
       ...sourceGroup,
       platform: 'composite',
@@ -252,11 +254,11 @@ describe('GroupsView system prompt injection', () => {
     }], total: 1 })
     const wrapper = mountView()
     await openEdit(wrapper)
-    expect(wrapper.find('[data-testid="system-prompt-toggle"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="system-prompt-toggle"]').attributes('aria-checked')).toBe('true')
     await wrapper.get('#edit-group-form').trigger('submit')
     await flushPromises()
     expect(update).toHaveBeenCalledWith(42, expect.objectContaining({
-      system_prompt_injection: { enabled: false, mode: 'prepend', content: 'retained' }
+      system_prompt_injection: { enabled: true, mode: 'prepend', content: 'retained' }
     }))
   })
 
