@@ -1,0 +1,25 @@
+{
+  "version": "0.2.16",
+  "date": "2026-10-16T13:52:25Z",
+  "command": [
+    "go",
+    "build",
+    "-p",
+    "1",
+    "-tags",
+    "embed",
+    "-trimpath",
+    "-ldflags",
+    "-s -w -X main.Version=0.2.16 -X main.Commit=7f4d33b06144 -X main.Date=2026-10-16T13:52:25Z -X main.BuildType=release",
+    "-o",
+    "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-7f4d33b06144-9qqh_rzg/runtime/sub2api",
+    "./cmd/server"
+  ],
+  "env": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux",
+    "GOARCH": "amd64",
+    "GOMAXPROCS": "2",
+    "GOPROXY": "https://goproxy.cn,direct"
+  }
+}

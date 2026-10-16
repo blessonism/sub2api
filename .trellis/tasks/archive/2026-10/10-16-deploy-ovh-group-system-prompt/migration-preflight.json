@@ -1,0 +1,10 @@
+{
+  "checksum_algorithm": "SHA256(strings.TrimSpace(content)) matching migrations_runner.go",
+  "applied": 346,
+  "target": 347,
+  "mismatches": [],
+  "pending": [
+    "245_group_system_prompt_injection.sql"
+  ],
+  "new_migration_sha256": "0ab20243a72d53d8ac19968efec671b7a5eaa420b8f067b7bf0fa905883de1dd"
+}

@@ -1,0 +1,8 @@
+{
+  "runtime_matches_effective_compose": true,
+  "different_env_keys": [],
+  "actual_env_canonical_sha256": "2a96a8d2e484333784ff22f291fdf7a338d03fb3c0fb3d73d53db9947c411efd",
+  "expected_env_canonical_sha256": "2a96a8d2e484333784ff22f291fdf7a338d03fb3c0fb3d73d53db9947c411efd",
+  "environment_key_count": 56,
+  "comparison_method": "实际运行环境按 key/value 规范化后，与当前未修改的 Compose 定义和原运行时镜像合并结果比对；旧快照的有序数组哈希不直接作为值比较证据。"
+}

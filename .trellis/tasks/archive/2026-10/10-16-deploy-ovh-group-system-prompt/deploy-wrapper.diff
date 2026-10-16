@@ -1,0 +1,109 @@
+--- deploy/ovh-safe-deploy.sh
++++ temporary/ovh-safe-deploy-pinned.sh
+@@ -5,7 +5,7 @@
+ set -euo pipefail
+ 
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
++REPO_ROOT='/Users/suki/code/sub2api'
+ 
+ SSH_HOST="${SSH_HOST:-ovh}"
+ PLATFORM="${SUB2API_PLATFORM:-linux/amd64}"
+@@ -104,18 +104,18 @@
+ 
+ [[ "$REV" == "$SHORT_HEAD" ]] || fail "requested rev $REV does not match checked-out HEAD $SHORT_HEAD"
+ 
+-if [[ -n "$(git status --porcelain)" ]]; then
+-  fail "working tree is not clean; deploy from a clean checkout of custom/main"
+-fi
+-
+-git fetch origin custom/main
+-REMOTE_REV="$(git rev-parse --short=12 origin/custom/main)"
+-[[ "$REV" == "$REMOTE_REV" ]] || fail "HEAD $REV is not origin/custom/main $REMOTE_REV"
+-
+-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+-if [[ "$BRANCH" != "custom/main" && -z "${CI:-}" ]]; then
+-  fail "deploy from custom/main; current branch is $BRANCH"
+-fi
++# 发布用户明确指定的本地 custom/main 固定提交；无 Git push。
++EXPECTED_FULL_HEAD=7f4d33b061444a8c93778da289c0abf366bbcdf4
++[[ "$FULL_HEAD" == "$EXPECTED_FULL_HEAD" ]] || fail "local HEAD changed"
++[[ "$(git rev-parse custom/main)" == "$EXPECTED_FULL_HEAD" ]] || fail "custom/main changed"
++[[ "$(git branch --show-current)" == custom/main ]] || fail "local branch changed"
++# 工作树原有 journal/任务文件不参与构建；实际构建输入来自固定 SHA 的 git archive。
++git diff --quiet "$EXPECTED_FULL_HEAD" -- backend frontend deploy docs/legal || fail "tracked build inputs changed"
++git diff --cached --quiet || fail "index changed"
++[[ "$SKIP_BUILD" -eq 1 ]] || fail "fixed release requires --skip-build"
++LOCAL_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
++[[ "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" == "$PLATFORM" ]] || fail "image platform mismatch"
++[[ "$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$EXPECTED_FULL_HEAD" ]] || fail "image revision mismatch"
+ 
+ echo "Target image: $IMAGE"
+ echo "Target commit: $FULL_HEAD"
+@@ -153,19 +153,28 @@
+ docker save "$IMAGE" | ssh "$SSH_HOST" 'docker load'
+ 
+ ssh "$SSH_HOST" \
+-  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' bash -s" <<'REMOTE'
++  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' EXPECTED_IMAGE_ID='$LOCAL_IMAGE_ID' bash -s" <<'REMOTE'
+ set -euo pipefail
+ 
+ IMAGE="${IMAGE_REPO}:${REV}"
+-docker image inspect "$IMAGE" >/dev/null
++[[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$EXPECTED_IMAGE_ID" ]] || { echo 'Loaded image ID mismatch' >&2; exit 1; }
+ 
+ cd "$DEPLOY_DIR"
+ OLD_IMAGE="$(docker inspect "$CONTAINER_NAME" --format "{{.Config.Image}}")"
++[[ "$OLD_IMAGE" == sub2api-custom:eb5bff47e499 ]] || { echo 'Production image changed since preflight' >&2; exit 1; }
++[[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7 ]] || { echo 'Production image ID changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/docker-compose.override.yml' | awk '{print $1}')" == 796949208f39e9020a4ec203df00a43d34c7613fee12b0cc52afccab84f85b7f ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/docker-compose.yml' | awk '{print $1}')" == e4a2b37f4ecb603274478f7c4d383564609b27c3429d109fb910fa41e8606fe0 ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/.env' | awk '{print $1}')" == d9a82773c3c7f9e9d987c47e632f6f457f63e769551bbbc4a4c79b24235c47c6 ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++
++[[ -s '/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/database.dump' ]] || { echo 'Verified database backup missing' >&2; exit 1; }
++[[ -s '/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/deployment-config.tar.gz' ]] || { echo 'Configuration backup missing' >&2; exit 1; }
+ STAMP="$(date +%Y%m%d-%H%M%S)"
+ mkdir -p "$BACKUP_DIR"
+ OLD_IMAGE_SAFE="$(printf "%s" "$OLD_IMAGE" | tr "/:" "__")"
+ BACKUP_FILE="${BACKUP_DIR}/docker-compose.override.predeploy-${OLD_IMAGE_SAFE}-to-${REV}-${STAMP}.yml"
+ cp docker-compose.override.yml "$BACKUP_FILE"
++chmod 600 "$BACKUP_FILE"
+ 
+ TMP_FILE="$(mktemp)"
+ if ! awk -v image="$IMAGE" '
+@@ -185,23 +194,26 @@
+   exit 1
+ fi
+ 
+-mv "$TMP_FILE" docker-compose.override.yml
+-docker compose config --quiet
+-
+ rollback() {
+   echo "Rolling back to $OLD_IMAGE using $BACKUP_FILE" >&2
+   cp "$BACKUP_FILE" docker-compose.override.yml
+   docker compose config --quiet
+-  docker compose up -d "$CONTAINER_NAME" || true
+-}
+-
+-if ! docker compose up -d "$CONTAINER_NAME"; then
++  docker compose up -d --no-deps --pull never "$CONTAINER_NAME" || true
++}
++
++mv "$TMP_FILE" docker-compose.override.yml
++if ! docker compose config --quiet; then
+   rollback
+   exit 1
+ fi
+ 
+-for _ in $(seq 1 30); do
+-  if curl -fsS --max-time 5 "$HEALTH_URL"; then
++if ! docker compose up -d --no-deps --pull never "$CONTAINER_NAME"; then
++  rollback
++  exit 1
++fi
++
++for _ in $(seq 1 60); do
++  if [[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == "$EXPECTED_IMAGE_ID" ]] && curl -fsS --max-time 5 "$HEALTH_URL"; then
+     echo ""
+     echo "Deployment healthy"
+     echo "New image: $IMAGE"

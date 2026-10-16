@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "image": "sub2api-custom:7f4d33b06144",
+  "image_id": "sha256:efecdab31e4c6b029a164b89f3e131e87761c22693292d6008d71bad77d72cdb",
+  "health": "healthy",
+  "migrations": 347,
+  "existing_groups_default_closed": true,
+  "durable_trigger_updated": true,
+  "unchanged_other_containers": [
+    "sub4api",
+    "sub4api-postgres",
+    "sub4api-redis",
+    "sub2api-caddy",
+    "sub2api-databasus",
+    "sub2api-redis",
+    "sub2api-postgres"
+  ],
+  "environment_definitions_unchanged": true,
+  "runtime_environment_matches_effective_compose": true,
+  "environment_validation": {
+    "runtime_matches_effective_compose": true,
+    "different_env_keys": [],
+    "actual_env_canonical_sha256": "2a96a8d2e484333784ff22f291fdf7a338d03fb3c0fb3d73d53db9947c411efd",
+    "expected_env_canonical_sha256": "2a96a8d2e484333784ff22f291fdf7a338d03fb3c0fb3d73d53db9947c411efd",
+    "environment_key_count": 56,
+    "comparison_method": "实际运行环境按 key/value 规范化后，与当前未修改的 Compose 定义和原运行时镜像合并结果比对；旧快照的有序数组哈希不直接作为值比较证据。"
+  },
+  "override_only_image_changed": true,
+  "override_backup": "/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_eb5bff47e499-to-7f4d33b06144-20261016-215640.yml",
+  "http": {
+    "/": {
+      "http": 200
+    },
+    "/setup/status": {
+      "http": 200,
+      "needs_setup": false
+    },
+    "/api/v1/settings/public": {
+      "http": 200,
+      "code": 0
+    },
+    "/api/v1/admin/groups": {
+      "http": 401
+    },
+    "/v1/models": {
+      "http": 401
+    }
+  }
+}

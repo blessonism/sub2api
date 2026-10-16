@@ -1,0 +1,21 @@
+{
+  "directory": "/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z",
+  "database": {
+    "path": "/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/database.dump",
+    "bytes": 714612702,
+    "sha256": "dbca9a3358bbba2d51e1a272fd4edff5f79d4e895f3da84ae6ca2322b56282f3",
+    "pg_restore_full_parse": "passed"
+  },
+  "config": {
+    "path": "/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/deployment-config.tar.gz",
+    "bytes": 10274
+  },
+  "app_data": {
+    "path": "/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/app-data.tar.gz",
+    "bytes": 15969
+  },
+  "permissions": {
+    "directory": "0o700",
+    "database": "0o600"
+  }
+}

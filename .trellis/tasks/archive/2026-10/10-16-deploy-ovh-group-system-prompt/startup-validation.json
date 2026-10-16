@@ -1,0 +1,6 @@
+{
+  "restart_count": 0,
+  "docker_health": "healthy",
+  "fatal_or_panic_lines": 0,
+  "migration_failure_lines": 0
+}

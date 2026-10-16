@@ -1,0 +1,18 @@
+Target image: sub2api-custom:7f4d33b06144
+Target commit: 7f4d33b061444a8c93778da289c0abf366bbcdf4
+SSH host: ovh
+Platform: linux/amd64
+
+This will build outside OVH, load the image via SSH, back up override, switch only sub2api, and health-check http://127.0.0.1:8080/health.
+It will not restart PostgreSQL, Redis, Caddy/Nginx, or modify .env/DNS/firewall.
+Loaded image: sub2api-custom:7f4d33b06144
+ Container sub2api Recreate 
+ Container sub2api Recreated 
+ Container sub2api Starting 
+ Container sub2api Started 
+curl: (56) Recv failure: Connection reset by peer
+{"status":"ok"}
+Deployment healthy
+New image: sub2api-custom:7f4d33b06144
+Old image: sub2api-custom:eb5bff47e499
+Override backup: /opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_eb5bff47e499-to-7f4d33b06144-20261016-215640.yml

@@ -1,0 +1,15 @@
+{
+  "commit": "7f4d33b061444a8c93778da289c0abf366bbcdf4",
+  "image": "sub2api-custom:7f4d33b06144",
+  "image_id": "sha256:efecdab31e4c6b029a164b89f3e131e87761c22693292d6008d71bad77d72cdb",
+  "platform": "linux/amd64",
+  "version_output": "2026-10-16T13:55:15.846Z\tINFO\tstdlog\tSub2API 0.2.16 (commit: 7f4d33b06144, built: 2026-10-16T13:52:25Z)\t{\"service\": \"sub2api\", \"env\": \"bootstrap\", \"legacy_stdlog\": true}",
+  "bytes": 130338200,
+  "binary_sha256": "d4247d2bcd1b4a735139c607103540350e2afc7f1e133c232ad2104a1e6ea0d6",
+  "runtime_base_image_id": "sha256:1993f021886731dff5019c0b03f7174539cb149ca28e0a0626051d7bc437fde7",
+  "runtime_config_unchanged": true,
+  "all_base_layers_unchanged": true,
+  "frontend_build": "passed",
+  "backend_cross_compile": "passed",
+  "ovh_build_executed": false
+}
