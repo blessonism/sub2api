@@ -1,0 +1,20 @@
+{
+  "image": "sub2api-custom:a28f537673bd",
+  "image_id": "sha256:3ee13c4c8695c3ec53d5f0bc88900cc1022e7eea545669207f3e4f1b5f308c6e",
+  "platform": "linux/amd64",
+  "commit": "a28f537673bd3084b38d2bed7c598f63dafaa364",
+  "version": "2026-10-16T18:21:53.311Z\tINFO\tstdlog\tSub2API 0.2.16 (commit: a28f537673bd, built: 2026-10-16T18:18:53Z)\t{\"service\": \"sub2api\", \"env\": \"bootstrap\", \"legacy_stdlog\": true}",
+  "runtime_config_keys_unchanged": [
+    "Env",
+    "Entrypoint",
+    "Cmd",
+    "Healthcheck",
+    "User",
+    "WorkingDir",
+    "ExposedPorts",
+    "StopSignal"
+  ],
+  "only_one_new_binary_layer": true,
+  "frontend_build": "passed",
+  "backend_build": "passed"
+}

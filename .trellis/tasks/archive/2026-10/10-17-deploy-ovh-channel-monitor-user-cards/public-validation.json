@@ -1,0 +1,69 @@
+{
+  "status": "passed",
+  "origin": "https://api.edom37.online",
+  "vantage_point": "OVH via public hostname and TLS",
+  "tls_verified": true,
+  "health": {
+    "status": "ok"
+  },
+  "homepage_matches_release": true,
+  "v1_metrics_bundle_matches": true,
+  "borderless_shadow_css_matches": true,
+  "admin_linked_group_bundle_matches": true,
+  "assets": [
+    {
+      "path": "/assets/ChannelMonitorView-Rdu0mc8S.js",
+      "sha256": "2b373d78669f90440f17a3ce92d3adea5ac68aa8348932ecf7c507a7b8336b8e",
+      "bytes": 89154,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/ChannelStatusView-B3gyLhZC.js",
+      "sha256": "4024beb863a2518ce6d6b0dee2cb03d2ba9d855c2d46529de042f1367d9c8f7c",
+      "bytes": 118201,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/ChannelStatusView-zOghIp6a.css",
+      "sha256": "740298c96f18d3a8dc8fa3109c2ea764e8196b433681f89947073d3b4e09affe",
+      "bytes": 9317,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/index-DGsh0sw3.js",
+      "sha256": "903a02364ebb9b44edc2c6e1eb529292a7681757d96ee4d9d286a5dc95989be0",
+      "bytes": 215040,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/index-luj5zisz.css",
+      "sha256": "4dfea3284ab9ed108608df6f7e244207849151a9ecbfac43a08638162f2a82e7",
+      "bytes": 297733,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/vendor-i18n-CZU_U-gD.js",
+      "sha256": "95c9794a34a0706bfbadf34ede62b896664a9dd6dd93e23422fd44f9d1964a9e",
+      "bytes": 63323,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/vendor-misc-BLoOIe9_.js",
+      "sha256": "da9b69c2fcf6f3b95287b64205098aa967540065356ca65c48da89d81a5c3b25",
+      "bytes": 279017,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/vendor-misc-DB0Q8XAf.css",
+      "sha256": "4b398481a7ce8375af4d9f58f39410c73a0b70726fe513686d3d51c10ad76cb5",
+      "bytes": 3938,
+      "matches_release": true
+    },
+    {
+      "path": "/assets/vendor-vue-BJjgRSer.js",
+      "sha256": "bcee404ba3846db9bd7f00a7b3efae7fe6e7cc413a0adc046e64b69fe189e5ae",
+      "bytes": 116585,
+      "matches_release": true
+    }
+  ]
+}

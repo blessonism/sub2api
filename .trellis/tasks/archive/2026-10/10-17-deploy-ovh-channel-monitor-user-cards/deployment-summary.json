@@ -1,0 +1,10 @@
+{
+  "commit": "a28f537673bd3084b38d2bed7c598f63dafaa364",
+  "image": "sub2api-custom:a28f537673bd",
+  "previous_image": "sub2api-custom:10f2f9a00dca",
+  "override_backup": "/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_10f2f9a00dca-to-a28f537673bd-20261017-022420.yml",
+  "used_standard_script_copy": true,
+  "source_pinned_local_commit": true,
+  "built_on_ovh": false,
+  "git_push": false
+}

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游二开分支与生产部署边界"}
+{"file": ".agents/skills/sub2api-ovh-production-deploy/SKILL.md", "reason": "OVH 部署、回滚与外部构建流程"}
+{"file": ".trellis/spec/backend/channel-monitor-v1-display.md", "reason": "本次分组迁移与用户展示契约"}

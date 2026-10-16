@@ -1,0 +1,22 @@
+{
+  "directory": "/opt/sub2api-backups/predeploy-a28f537673bd-20261016T181826Z",
+  "directory_mode": "0o700",
+  "database_restore_parse": "passed",
+  "files": {
+    "app-data.tar.gz": {
+      "bytes": 31235446,
+      "mode": "0o600",
+      "sha256": "76d94324bf6bc8ec16369977cad615ab2507f80f28484978aa19c9e44d635003"
+    },
+    "database.dump": {
+      "bytes": 714718605,
+      "mode": "0o600",
+      "sha256": "c8eabd2ae80f8d8174f657f7354b433891b2840c5249a5681b443902cc29e7f8"
+    },
+    "deployment-config.tar.gz": {
+      "bytes": 10257,
+      "mode": "0o600",
+      "sha256": "ee6c12da1c6ae37f3dbff519ce2220bbf27c14c1cc2ca95ea13fc60503c1afcd"
+    }
+  }
+}

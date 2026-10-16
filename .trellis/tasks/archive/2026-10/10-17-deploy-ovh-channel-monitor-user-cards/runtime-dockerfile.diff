@@ -1,0 +1,51 @@
+--- deploy/Dockerfile (runtime stage)
++++ temporary/runtime/Dockerfile
+@@ -1,43 +1,5 @@
+-FROM ${ALPINE_IMAGE}
+-
+-# Labels
+-LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
+-LABEL description="Sub2API - AI API Gateway Platform"
+-LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
+-
+-# Install runtime dependencies
+-RUN apk add --no-cache \
+-    ca-certificates \
+-    tzdata \
+-    curl \
+-    su-exec \
+-    && rm -rf /var/cache/apk/*
+-
+-# Create non-root user
+-RUN addgroup -g 1000 sub2api && \
+-    adduser -u 1000 -G sub2api -s /bin/sh -D sub2api
+-
+-# Set working directory
+-WORKDIR /app
+-
+-# Copy binary and runtime fallback resources from builder
+-COPY --from=backend-builder /app/sub2api /app/sub2api
+-COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
+-
+-# Create data directory
+-RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
+-
+-# Copy entrypoint script (fixes volume permissions then drops to sub2api)
+-COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
+-RUN chmod +x /app/docker-entrypoint.sh
+-
+-# Expose port (can be overridden by SERVER_PORT env var)
+-EXPOSE 8080
+-
+-# Health check
+-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+-    CMD wget -q -T 5 -O /dev/null http://localhost:${SERVER_PORT:-8080}/health || exit 1
+-
+-# Run the application (entrypoint fixes /app/data ownership then execs as sub2api)
+-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+-CMD ["/app/sub2api"]
++# 本机构建：复用与 OVH 当前生产 ID 一致的运行时，仅替换新程序。
++FROM sub2api-custom:10f2f9a00dca
++LABEL org.opencontainers.image.revision="a28f537673bd3084b38d2bed7c598f63dafaa364"
++LABEL org.opencontainers.image.version="0.2.16"
++COPY --chown=1000:1000 sub2api /app/sub2api

@@ -1,0 +1,11 @@
+{
+  "commit": "a28f537673bd3084b38d2bed7c598f63dafaa364",
+  "rev": "a28f537673bd",
+  "build_root": "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-a28f537673bd-mukwza4p",
+  "source": "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-a28f537673bd-mukwza4p/source",
+  "runtime": "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-a28f537673bd-mukwza4p/runtime",
+  "source_files_verified": 5642,
+  "archive_sha256": "a3d7494fc54ffd4ff42bd67b0d7e8a2cc9358744cf4f939f2e3103f012b67e06",
+  "current_production_image": "sub2api-custom:10f2f9a00dca",
+  "current_production_image_id": "sha256:c4d1904fae842bd21927d4329b9cd0767225b443a44464d40e4948c5c7c0f882"
+}
