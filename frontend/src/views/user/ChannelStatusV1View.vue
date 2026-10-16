@@ -120,7 +120,8 @@ async function reload(silent = false) {
   try {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
-    items.value = res.items || []
+    // 固定按配置 ID 排列，探测更新和响应顺序变化不移动卡片。
+    items.value = [...(res.items || [])].sort((a, b) => a.id - b.id)
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return

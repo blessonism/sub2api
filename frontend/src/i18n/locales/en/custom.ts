@@ -101,6 +101,7 @@ export default {
     "tps5m": "Avg TPS · last 5m",
     "tpsHint": "Average output speed of text requests for the linked group and primary model over the last 5 minutes, using full request duration.",
     "cacheHint": "Cache read tokens as a share of total input tokens for the linked group and primary model over the last 24 hours.",
+    "cacheUnavailableHint": "Statistics are temporarily unavailable; showing 0.0% as a fallback.",
     "recentProbes": "Recent probes",
     "probeCount": "Last {n} probes; oldest to newest",
     "rateHint": "Your visible multiplier",

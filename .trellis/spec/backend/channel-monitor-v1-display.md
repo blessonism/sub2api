@@ -40,7 +40,7 @@
 
 - 独立 `ChannelMonitorDisplayService` / repository 批量读取 `usage_logs`，范围为关联分组 + 主模型，包含该范围所有用户。
 - 模型归一化复用 `channelMonitorV2ModelSQL`：非空 trimmed requested_model 优先，再回退 trimmed model 和 unknown。
-- 缓存率：最近 `[now-24h, now)` 内 `SUM(cache_read_tokens) / SUM(input_tokens + cache_creation_tokens + cache_read_tokens)`；无有效分母为 null，真实零为 0。
+- 缓存率：最近 `[now-24h, now)` 内 `SUM(cache_read_tokens) / SUM(input_tokens + cache_creation_tokens + cache_read_tokens)`；无有效分母按 0 返回，真实零为 0。
 - TPS：最近 `[now-5m, now)` 内 `AVG(output_tokens * 1000.0 / duration_ms)`，使用请求完整耗时；有效样本通过与运维共用的 `usageOutputTPSValidSQL` 过滤。正输出、正耗时，排除图像；仅 sync/stream/ws_v2/cyber_blocked 类型。无有效样本为 null。
 - SQL 使用分组与时间条件配合现有 group/created_at 索引，不增加 usage log 索引或改变运维口径。
 - 聚合结果按分组/模型缓存 30 秒。无样本结果也缓存；查询失败不缓存。相同及重叠批次按 key 共享在途查询，未在途 key 合为批量 SQL。
@@ -52,7 +52,9 @@
 
 - `MonitorCard.vue` 展示平台、名称、主模型、倍率、状态、主模型相对探测时间、三列指标、TPS 与最近 60 次探测。整卡 button 打开原详情。
 - 7/15/30 日可用率继续使用原主动探测结果；状态条从左到右为旧到新，缺少历史时左侧补位，限流保留黄色语义。
-- 未知值显示 `—`，真实零不能变成未知。响应时间自动切换 ms/s，Ping 留在提示中。
+- 倍率默认保留两位小数；四舍五入到三位后第三位非零则保留第三位（0.18x / 0.185x）。极小非零倍率继续保留有效数字，不能显示成免费。
+- 缓存率始终显示数字，无有效分母显示 `0.0%`；接口 null（未关联/权限不可用/统计失败）也显示 `0.0%`，提示明确这是统计暂不可用的占位。其他未知指标仍显示 `—`。响应时间自动切换 ms/s，Ping 留在提示中。
+- 桌面 xl 起每行四列，md 起两列、手机一列；骨架使用相同列数。启用监控查询和页面列表均固定按 ID 升序，不能随探测状态、延迟、更新时间或数据库返回顺序重新排列。
 - 保留原自动刷新、配额展示和详情入口；新增文案在 zh/en custom overlay。
 - 卡片与加载骨架不显示外边框；使用轻柔阴影区分层次，深浅主题及悬停分别调整强度。内部指标分隔线和键盘焦点提示保留。
 - 容器内指标和超长倍率允许省略，完整数值保留在提示中；深色 scoped 样式使用完整 global selector，避免背景变量仅落到根节点。
@@ -68,13 +70,14 @@
 | 分组未关联、不可用或当前用户无权限 | 新倍率/统计为 null；保留探测结果 |
 | 分组权限查询失败 | 新倍率/统计为 null；列表仍成功返回 |
 | 统计超时或失败 | 保留已解析倍率，缓存率/TPS 为 null；失败不缓存 |
-| 缓存率无有效分母，或 TPS 无有效样本 | 对应指标为 null；有效的 0 必须返回 0 |
+| 缓存率无有效分母 | 返回 0，卡片显示 0.0% |
+| TPS 无有效样本 | 返回 null；有效的 0 必须返回 0 |
 | 纯配额监控 | 不查询模型统计；沿用配额与历史展示 |
 
 ## 5. 正常、基线与异常用例
 
 - 正常：主模型 A 关联分组 1；只汇总分组 1 / A 的所有用户用量，倍率仍按当前用户计算。
-- 基线：存量监控未选分组；响应时间、可用率和状态条继续显示，新指标显示 `—`。
+- 基线：存量监控未选分组；响应时间、可用率和状态条继续显示，倍率与 TPS 显示 `—`，缓存率显示 `0.0%` 并提示统计暂不可用。
 - 异常：用户切换或分组权限撤销；即使统计缓存命中，也必须重新校验权限，不能泄漏倍率或聚合结果。
 
 ## 6. 必需测试与断言
@@ -82,7 +85,8 @@
 - `backend/internal/repository/channel_monitor_display_integration_test.go`：真实 PostgreSQL 分组关联生命周期、模型与时间过滤、缓存比例、逐请求 TPS 和有效样本过滤。
 - `backend/internal/service/channel_monitor_display_test.go`：权限与倍率规则、缓存过期/无样本/失败、重叠并发合并和调用者取消。
 - `backend/internal/handler/channel_monitor_user_display_test.go`：nullable JSON、认证身份、配额与 TPS 独立性。
-- `frontend/src/components/user/__tests__/MonitorCard.display.spec.ts`：卡片指标、缺失/零值、中英文、相对时间、窗口切换、状态条及详情。
+- `frontend/src/components/user/__tests__/MonitorCard.display.spec.ts`：卡片指标、倍率两/三位精度、缺失缓存占位提示、零值、中英文、相对时间、窗口切换、状态条及详情。
+- `frontend/src/views/user/__tests__/ChannelStatusV1View.refresh.spec.ts`：响应乱序及状态变化后的稳定 ID 顺序。
 - `frontend/src/components/admin/monitor/__tests__/MonitorFormDialog.group.spec.ts`：新增带入、编辑绑定/解绑和分组查询失败。
 
 ## 7. 错误与正确实现示例

@@ -2,10 +2,10 @@
   <div>
     <div
       v-if="loading && items.length === 0"
-      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
     >
       <div
-        v-for="i in 6"
+        v-for="i in 4"
         :key="i"
         class="p-5 rounded-2xl min-h-[310px] bg-white/70 dark:bg-dark-800/60 shadow-sm dark:shadow-black/20 animate-pulse"
       >
@@ -34,7 +34,7 @@
 
     <div
       v-else
-      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
     >
       <MonitorCard
         v-for="item in items"

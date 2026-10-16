@@ -32,7 +32,7 @@ function card(overrides: Partial<UserMonitorView> = {}, locale = 'zh') {
 describe('V1 monitor display card', () => {
  it.each(['zh', 'en'])('shows real metrics and preserves details entry (%s)', async locale => {
   const wrapper = card({}, locale)
-  expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('0.250x')
+  expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('0.25x')
   expect(wrapper.get('[data-testid="monitor-latency"]').text()).toBe('3.0s')
   expect(wrapper.get('[data-testid="monitor-availability"]').text()).toBe('89.1%')
   expect(wrapper.get('[data-testid="monitor-cache"]').text()).toBe('62.3%')
@@ -48,12 +48,17 @@ describe('V1 monitor display card', () => {
  })
  it('distinguishes unknown data from measured zero', async () => {
   const wrapper = card({ primary_checked_at: null, visible_rate_multiplier: null, cache_rate_24h: null, output_tps_5m: null, primary_latency_ms: null })
-  for (const name of ['rate', 'cache', 'tps', 'latency']) expect(wrapper.get(`[data-testid="monitor-${name}"]`).text()).toBe('—')
+  for (const name of ['rate', 'tps', 'latency']) expect(wrapper.get(`[data-testid="monitor-${name}"]`).text()).toBe('—')
+  expect(wrapper.get('[data-testid="monitor-cache"]').text()).toBe('0.0%')
+  expect(wrapper.get('[data-testid="monitor-cache"]').element.closest('.metric-column')?.getAttribute('title')).toContain('暂不可用')
   await wrapper.setProps({ item: { ...item, visible_rate_multiplier: 0, cache_rate_24h: 0, output_tps_5m: 0, primary_latency_ms: 25 } })
-  expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('0.000x')
+  expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('0.00x')
   expect(wrapper.get('[data-testid="monitor-cache"]').text()).toBe('0.0%')
   expect(wrapper.get('[data-testid="monitor-tps"]').text()).toBe('0.0 TPS')
   expect(wrapper.get('[data-testid="monitor-latency"]').text()).toBe('25ms')
+ })
+ it.each([[0.18, '0.18x'], [0.185, '0.185x'], [1, '1.00x'], [0.003, '0.003x'], [0.1801, '0.18x'], [0.0001, '0.000100x']])('formats multiplier %s as %s', (value, label) => {
+  expect(card({ visible_rate_multiplier: Number(value) }).get('[data-testid="monitor-rate"]').text()).toBe(label)
  })
  it('preserves capacity, degradation, and failure semantics', () => {
   const capacity = card({ primary_status: 'error', primary_error_category: 'rate_or_capacity' })

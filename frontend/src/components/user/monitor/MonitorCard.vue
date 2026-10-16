@@ -5,12 +5,12 @@
     :aria-label="`${item.name} · ${statusLabel(item.primary_status, item.primary_error_category)}`"
     @click="emit('click')"
   >
-    <div class="flex min-w-0 items-start gap-3">
-      <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl" :class="[providerGradient(item.provider), providerTintClass]">
+    <div class="monitor-header flex min-w-0 items-start gap-3">
+      <span class="monitor-provider grid h-11 w-11 shrink-0 place-items-center rounded-xl" :class="[providerGradient(item.provider), providerTintClass]">
         <ProviderIcon :provider="item.provider" :size="26" />
       </span>
       <div class="min-w-0 flex-1 pt-0.5">
-        <div class="truncate text-base font-bold text-gray-900 dark:text-gray-100" :title="[item.name, item.group_name].filter(Boolean).join(' · ')">{{ item.name }}</div>
+        <div class="monitor-name truncate text-base font-bold text-gray-900 dark:text-gray-100" :title="[item.name, item.group_name].filter(Boolean).join(' · ')">{{ item.name }}</div>
         <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
           <span class="truncate" :title="formatMonitorModel(item.primary_model)">{{ formatMonitorModel(item.primary_model) }}</span>
           <span v-if="isGatewayGroup" class="shrink-0 rounded bg-primary-50 px-1 py-0.5 text-[10px] text-primary-700 dark:bg-primary-500/15 dark:text-primary-300">
@@ -20,7 +20,7 @@
         <span v-if="item.group_name" class="sr-only">{{ item.group_name }}</span>
       </div>
       <span
-        class="inline-flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-sm font-semibold tracking-wide text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+        class="monitor-rate inline-flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-sm font-semibold tracking-wide text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
         :title="t('channelStatus.card.rateHint')"
         data-testid="monitor-rate"
       >
@@ -53,7 +53,7 @@
         </div>
         <span class="metric-label">{{ t('channelStatus.card.availability', { days: window.replace('d', '') }) }}</span>
       </div>
-      <div class="metric-column" :title="t('channelStatus.card.cacheHint')">
+      <div class="metric-column" :title="cacheHint">
         <div class="metric-value text-gray-900 dark:text-gray-100">
           <Icon name="database" size="sm" class="shrink-0 text-blue-500" aria-hidden="true" />
           <span data-testid="monitor-cache">{{ cacheValue }}</span>
@@ -122,11 +122,17 @@ const rateValue = computed(() => {
   const value = props.item.visible_rate_multiplier
   if (value == null || !Number.isFinite(value)) return '—'
   // 非零小倍率保留有效数字，避免显示成免费。
-  return `${value !== 0 && Math.abs(value) < 0.0005 ? value.toPrecision(3) : value.toFixed(3)}x`
+  if (value !== 0 && Math.abs(value) < 0.0005) return `${value.toPrecision(3)}x`
+  const rounded = value.toFixed(3)
+  return `${rounded.endsWith('0') ? value.toFixed(2) : rounded}x`
 })
 const cacheValue = computed(() => {
   const value = props.item.cache_rate_24h
-  return value == null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1)}%`
+  return `${((value != null && Number.isFinite(value) ? value : 0) * 100).toFixed(1)}%`
+})
+const cacheHint = computed(() => {
+  const value = props.item.cache_rate_24h
+  return t(value == null || !Number.isFinite(value) ? 'channelStatus.card.cacheUnavailableHint' : 'channelStatus.card.cacheHint')
 })
 const tpsValue = computed(() => {
   const value = props.item.output_tps_5m
@@ -160,6 +166,17 @@ function latencyValue(value: number | null | undefined): string {
 .metric-value > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-label { color: #6b7280; font-size: 12px; line-height: 1.5; text-align: center; }
 :global(.dark .monitor-card .metric-label) { color: #9ca3af; }
-@container (max-width: 300px) { .metric-value { gap: 3px; } }
+@container (max-width: 300px) {
+  .metric-column { padding-inline: 2px; }
+  .metric-value { gap: 2px; font-size: clamp(12px, 6.2cqw, 16px); }
+  .metric-value > svg { width: 12px; height: 12px; }
+}
+@container (max-width: 220px) {
+  .monitor-header { gap: 8px; }
+  .monitor-provider { width: 32px; height: 32px; }
+  .monitor-name { font-size: 14px; }
+  .monitor-rate { gap: 2px; padding-inline: 6px; font-size: 12px; }
+  .metric-label { font-size: 11px; }
+}
 @media (prefers-reduced-motion: reduce) { .monitor-card { transition: none; } }
 </style>

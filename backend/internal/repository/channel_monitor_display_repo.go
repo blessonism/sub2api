@@ -24,13 +24,13 @@ func (r *channelMonitorDisplayRepository) BatchMetrics(ctx context.Context, keys
 	for _, key := range keys {
 		ids, models = append(ids, key.GroupID), append(models, key.Model)
 	}
-	// 先限定分组和时间，复用 group_id/created_at 索引；缺少样本保留 SQL NULL。
+	// 先限定分组和时间，复用 group_id/created_at 索引；无缓存分母返回 0；TPS 无样本仍保留 SQL NULL。
 	query := `WITH targets AS (
 		SELECT * FROM unnest($1::bigint[], $2::text[]) AS t(group_id, model)
 	)
 	SELECT t.group_id, t.model,
-		SUM(ul.cache_read_tokens)::double precision /
-			NULLIF(SUM(ul.input_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0),
+		COALESCE(SUM(ul.cache_read_tokens)::double precision /
+			NULLIF(SUM(ul.input_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0), 0),
 		AVG(ul.output_tokens * 1000.0 / NULLIF(ul.duration_ms, 0))
 			FILTER (WHERE ul.created_at >= $4 ` + usageOutputTPSValidSQL + `)
 	FROM targets t

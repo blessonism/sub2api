@@ -1,5 +1,6 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { UserMonitorView } from '@/api/channelMonitor'
 import ChannelStatusV1View from '../ChannelStatusV1View.vue'
 
 const { list } = vi.hoisted(() => ({ list: vi.fn() }))
@@ -26,6 +27,19 @@ beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); list.mockReset().mo
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); localStorage.clear() })
 
 describe('channel monitor refresh interval', () => {
+  it('keeps cards in ID order as probe results and response order change', async () => {
+    const first = { id: 1, primary_status: 'operational' } as UserMonitorView
+    const second = { id: 3, primary_status: 'error' } as UserMonitorView
+    list.mockResolvedValueOnce({ items: [second, first] })
+    wrapper = mountView(); await flushPromises()
+    const grid = () => wrapper.findComponent({ name: 'MonitorCardGrid' })
+    expect(grid().props('items').map((item: UserMonitorView) => item.id)).toEqual([1, 3])
+    list.mockResolvedValueOnce({ items: [{ ...first, primary_status: 'failed' }, { ...second, primary_status: 'operational' }] })
+    await wrapper.get('.refresh').trigger('click'); await flushPromises()
+    expect(grid().props('items').map((item: UserMonitorView) => item.id)).toEqual([1, 3])
+    expect(grid().props('items')[0].primary_status).toBe('failed')
+  })
+
   it('keeps automatic refresh disabled after reopening the page', async () => {
     wrapper = mountView(); await flushPromises()
     await wrapper.get('.disable').trigger('click')

@@ -101,6 +101,7 @@ export default {
     "tps5m": "近5分钟平均 TPS",
     "tpsHint": "关联分组主模型近 5 分钟文本请求的平均输出速度，按完整请求耗时计算。",
     "cacheHint": "关联分组主模型近 24 小时缓存读取 Token 占总输入 Token 的比例。",
+    "cacheUnavailableHint": "统计暂不可用，暂按 0.0% 展示。",
     "recentProbes": "近期探测状态",
     "probeCount": "最近 {n} 次探测；从左到右由旧到新",
     "rateHint": "当前用户可见倍率",

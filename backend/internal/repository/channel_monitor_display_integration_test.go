@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -127,7 +128,8 @@ func TestChannelMonitorDisplayMetricsAggregation(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, 0.7, *metrics[primary].CacheRate24h, 1e-9)
 	require.InDelta(t, 25.0, *metrics[primary].OutputTPS5m, 1e-9)
-	require.Nil(t, metrics[empty].CacheRate24h)
+	require.NotNil(t, metrics[empty].CacheRate24h)
+	require.Zero(t, *metrics[empty].CacheRate24h)
 	require.Nil(t, metrics[empty].OutputTPS5m)
 	require.Equal(t, 0.0, *metrics[zero].CacheRate24h)
 	require.Nil(t, metrics[zero].OutputTPS5m)
@@ -135,4 +137,36 @@ func TestChannelMonitorDisplayMetricsAggregation(t *testing.T) {
 	cancel()
 	_, err = repo.BatchMetrics(canceled, []service.ChannelMonitorMetricKey{primary}, now)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// 主动探测持续更新 last_checked_at；用户列表仍必须按配置 ID 固定排列。
+func TestChannelMonitorEnabledOrderSurvivesProbeUpdates(t *testing.T) {
+	ctx := context.Background()
+	repo := NewChannelMonitorRepository(integrationEntClient, integrationDB)
+	ids := make([]int64, 0, 3)
+	for i := 0; i < 3; i++ {
+		monitor := &service.ChannelMonitor{Name: fmt.Sprintf("stable-order-%d", i), Provider: service.MonitorProviderOpenAI,
+			APIMode: service.MonitorAPIModeResponses, Endpoint: "https://example.test", APIKey: "enc:test",
+			PrimaryModel: "gpt-test", Enabled: true, IntervalSeconds: 60}
+		require.NoError(t, repo.Create(ctx, monitor))
+		ids = append(ids, monitor.ID)
+		t.Cleanup(func() { _ = repo.Delete(ctx, monitor.ID) })
+	}
+	assertOrder := func() {
+		t.Helper()
+		monitors, err := repo.ListEnabled(ctx)
+		require.NoError(t, err)
+		found := make([]int64, 0, len(ids))
+		for _, monitor := range monitors {
+			if slices.Contains(ids, monitor.ID) {
+				found = append(found, monitor.ID)
+			}
+		}
+		require.Equal(t, ids, found)
+	}
+	assertOrder()
+	for _, id := range []int64{ids[1], ids[0], ids[2], ids[0]} {
+		require.NoError(t, repo.MarkChecked(ctx, id, time.Now()))
+		assertOrder()
+	}
 }
