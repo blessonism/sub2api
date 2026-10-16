@@ -20,6 +20,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [State Management](./state-management.md) | Local state, global state, server state | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | Active |
+| [V1 渠道监控展示](../backend/channel-monitor-v1-display.md) | 可空指标、倍率、状态条、配额和卡片展示契约 | Active |
 
 ---
 

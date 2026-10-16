@@ -32,9 +32,14 @@ export interface MonitorTimelinePoint {
 }
 
 export interface UserMonitorView {
+  primary_checked_at?: string | null
+  visible_rate_multiplier?: number | null
+  cache_rate_24h?: number | null
+  output_tps_5m?: number | null
   id: number
   name: string
   provider: Provider
+  group_id?: number | null
   group_name: string
   primary_model: string
   primary_status: MonitorStatus

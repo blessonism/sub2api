@@ -702,6 +702,7 @@ var (
 		{Name: "api_key_encrypted", Type: field.TypeString},
 		{Name: "primary_model", Type: field.TypeString, Size: 200},
 		{Name: "extra_models", Type: field.TypeJSON},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "interval_seconds", Type: field.TypeInt},
@@ -721,7 +722,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[22]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[23]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -730,7 +731,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[14], ChannelMonitorsColumns[17]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[15], ChannelMonitorsColumns[18]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -745,12 +746,12 @@ var (
 			{
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[13]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[14]},
 			},
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[22]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[23]},
 			},
 			{
 				Name:    "channelmonitor_account_id",

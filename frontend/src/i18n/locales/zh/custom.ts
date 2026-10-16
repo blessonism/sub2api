@@ -90,6 +90,23 @@ export default {
     "adminConsumptionNoTokenAllocationHint": "当前范围没有原始 Token 用量时，消费差额将整笔记入开始日期。"
   },
   "channelStatus": {
+    "card": {
+    "linkedGroup": "关联分组",
+    "noLinkedGroup": "不关联分组",
+    "linkedGroupHint": "倍率与用量按关联分组和主模型统计；已有监控请补选分组。",
+    "groupsLoadFailed": "分组加载失败，请重新打开后重试。",
+    "responseTime": "响应时间",
+    "availability": "{days} 日可用率",
+    "cache24h": "缓存 · 24h",
+    "tps5m": "近5分钟平均 TPS",
+    "tpsHint": "关联分组主模型近 5 分钟文本请求的平均输出速度，按完整请求耗时计算。",
+    "cacheHint": "关联分组主模型近 24 小时缓存读取 Token 占总输入 Token 的比例。",
+    "recentProbes": "近期探测状态",
+    "probeCount": "最近 {n} 次探测；从左到右由旧到新",
+    "rateHint": "当前用户可见倍率",
+    "pingHint": "Ping：{value}",
+    "unavailable": "暂无数据"
+},
     "modelIq": {
       "radarBench": {
         "title": "模型智力雷达",

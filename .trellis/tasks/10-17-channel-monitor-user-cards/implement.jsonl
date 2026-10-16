@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支与兼容边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "API 可空字段与 i18n overlay"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "现有统计及权限契约"}
+{"file": ".trellis/spec/backend/channel-monitor-v1-display.md", "reason": "V1 展示与聚合指标最终契约"}

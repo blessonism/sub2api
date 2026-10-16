@@ -127,3 +127,21 @@ func TestBuildTimelinePointsUsesEffectiveStatus(t *testing.T) {
 func monitorIntPtr(v int) *int {
 	return &v
 }
+
+func TestBuildUserViewPrimaryCheckedAtDoesNotUseMonitorTimestamp(t *testing.T) {
+	now := time.Now()
+	primary := now.Add(-time.Minute)
+	groupID := int64(7)
+	monitor := &ChannelMonitor{ID: 1, GroupID: &groupID, PrimaryModel: "primary", LastCheckedAt: &now}
+	view := buildUserViewFromSummary(monitor, MonitorStatusSummary{}, &ChannelMonitorLatest{CheckedAt: primary}, nil)
+	if view.PrimaryCheckedAt == nil || !view.PrimaryCheckedAt.Equal(primary) {
+		t.Fatalf("expected primary timestamp, got %v", view.PrimaryCheckedAt)
+	}
+	if view.GroupID == nil || *view.GroupID != groupID {
+		t.Fatal("missing linked group")
+	}
+	view = buildUserViewFromSummary(monitor, MonitorStatusSummary{}, nil, nil)
+	if view.PrimaryCheckedAt != nil {
+		t.Fatal("monitor timestamp must not stand in for a missing primary probe")
+	}
+}

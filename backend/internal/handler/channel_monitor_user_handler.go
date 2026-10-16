@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -9,11 +10,17 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	middleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
 
+type channelMonitorDisplayEnricher interface {
+	Enrich(context.Context, int64, []*service.UserMonitorView)
+}
+
 // ChannelMonitorUserHandler 渠道监控用户只读 handler。
 type ChannelMonitorUserHandler struct {
+	displayService         channelMonitorDisplayEnricher
 	monitorService         *service.ChannelMonitorService
 	settingService         *service.SettingService
 	gptIntelligenceService *service.GptIntelligenceService
@@ -25,11 +32,13 @@ func NewChannelMonitorUserHandler(
 	monitorService *service.ChannelMonitorService,
 	settingService *service.SettingService,
 	gptIntelligenceService *service.GptIntelligenceService,
+	displayService *service.ChannelMonitorDisplayService,
 ) *ChannelMonitorUserHandler {
 	if gptIntelligenceService == nil {
 		gptIntelligenceService = service.NewGptIntelligenceService()
 	}
 	return &ChannelMonitorUserHandler{
+		displayService:         displayService,
 		monitorService:         monitorService,
 		settingService:         settingService,
 		gptIntelligenceService: gptIntelligenceService,
@@ -58,17 +67,22 @@ func (h *ChannelMonitorUserHandler) quotaVisible(c *gin.Context) bool {
 // --- Response ---
 
 type channelMonitorUserListItem struct {
-	ID                   int64                                `json:"id"`
-	Name                 string                               `json:"name"`
-	Provider             string                               `json:"provider"`
-	GroupName            string                               `json:"group_name"`
-	PrimaryModel         string                               `json:"primary_model"`
-	PrimaryStatus        string                               `json:"primary_status"`
-	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
-	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
-	Availability7d       float64                              `json:"availability_7d"`
-	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
-	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
+	GroupID               *int64                               `json:"group_id"`
+	PrimaryCheckedAt      *time.Time                           `json:"primary_checked_at"`
+	VisibleRateMultiplier *float64                             `json:"visible_rate_multiplier"`
+	CacheRate24h          *float64                             `json:"cache_rate_24h"`
+	OutputTPS5m           *float64                             `json:"output_tps_5m"`
+	ID                    int64                                `json:"id"`
+	Name                  string                               `json:"name"`
+	Provider              string                               `json:"provider"`
+	GroupName             string                               `json:"group_name"`
+	PrimaryModel          string                               `json:"primary_model"`
+	PrimaryStatus         string                               `json:"primary_status"`
+	PrimaryLatencyMs      *int                                 `json:"primary_latency_ms"`
+	PrimaryPingLatencyMs  *int                                 `json:"primary_ping_latency_ms"`
+	Availability7d        float64                              `json:"availability_7d"`
+	ExtraModels           []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
+	Timeline              []channelMonitorUserTimelinePoint    `json:"timeline"`
 	// TargetKind: gateway_group 时前端卡片显示"分组"徽标（该卡片代表
 	// 经网关 failover 的分组级状态，而非单一上游）。
 	TargetKind string `json:"target_kind"`
@@ -132,19 +146,24 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		})
 	}
 	item := channelMonitorUserListItem{
-		ID:                   v.ID,
-		Name:                 v.Name,
-		Provider:             v.Provider,
-		GroupName:            v.GroupName,
-		PrimaryModel:         v.PrimaryModel,
-		PrimaryStatus:        v.PrimaryStatus,
-		PrimaryLatencyMs:     v.PrimaryLatencyMs,
-		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
-		Availability7d:       v.Availability7d,
-		ExtraModels:          extras,
-		Timeline:             timeline,
-		TargetKind:           v.TargetKind,
-		PrimaryErrorCategory: v.PrimaryErrorCategory,
+		GroupID:               v.GroupID,
+		PrimaryCheckedAt:      v.PrimaryCheckedAt,
+		VisibleRateMultiplier: v.VisibleRateMultiplier,
+		CacheRate24h:          v.CacheRate24h,
+		OutputTPS5m:           v.OutputTPS5m,
+		ID:                    v.ID,
+		Name:                  v.Name,
+		Provider:              v.Provider,
+		GroupName:             v.GroupName,
+		PrimaryModel:          v.PrimaryModel,
+		PrimaryStatus:         v.PrimaryStatus,
+		PrimaryLatencyMs:      v.PrimaryLatencyMs,
+		PrimaryPingLatencyMs:  v.PrimaryPingLatencyMs,
+		Availability7d:        v.Availability7d,
+		ExtraModels:           extras,
+		Timeline:              timeline,
+		TargetKind:            v.TargetKind,
+		PrimaryErrorCategory:  v.PrimaryErrorCategory,
 	}
 	if includeQuota {
 		item.LatestQuota = v.LatestQuota
@@ -187,6 +206,9 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if subject, ok := middleware.GetAuthSubjectFromContext(c); ok && h.displayService != nil {
+		h.displayService.Enrich(c.Request.Context(), subject.UserID, views)
 	}
 	includeQuota := h.quotaVisible(c)
 	items := make([]channelMonitorUserListItem, 0, len(views))

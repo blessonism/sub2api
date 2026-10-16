@@ -71,8 +71,9 @@ type channelMonitorRuntimeReader interface {
 
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
-	repo      ChannelMonitorRepository
-	encryptor SecretEncryptor
+	groupReader channelMonitorGroupReader
+	repo        ChannelMonitorRepository
+	encryptor   SecretEncryptor
 	// settings is optional; when nil, RunCheck fails closed for active probes
 	// (mode defaults to v2 / retired) so tests without settings never hit upstream.
 	settings channelMonitorRuntimeReader
@@ -159,6 +160,9 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := s.validateLinkedAccount(ctx, p.Provider, p.AccountID); err != nil {
 		return nil, err
 	}
+	if err := s.validateLinkedGroup(ctx, p.GroupID); err != nil {
+		return nil, err
+	}
 	checkMode := defaultCheckMode(p.CheckMode)
 	if err := validateTargetKind(p.TargetKind); err != nil {
 		return nil, err
@@ -175,6 +179,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
 		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
+		GroupID:          cloneInt64Pointer(p.GroupID),
 		GroupName:        strings.TrimSpace(p.GroupName),
 		Enabled:          p.Enabled,
 		IntervalSeconds:  p.IntervalSeconds,
@@ -235,6 +240,9 @@ func (s *ChannelMonitorService) Duplicate(
 		return nil, fmt.Errorf("clone duplicate channel monitor body override: %w", err)
 	}
 
+	if err := s.validateLinkedGroup(ctx, source.GroupID); err != nil {
+		return nil, err
+	}
 	duplicate := &ChannelMonitor{
 		Name:                 duplicateChannelMonitorName(source.Name),
 		Provider:             source.Provider,
@@ -243,6 +251,7 @@ func (s *ChannelMonitorService) Duplicate(
 		APIKey:               encryptedAPIKey,
 		PrimaryModel:         source.PrimaryModel,
 		ExtraModels:          append([]string{}, source.ExtraModels...),
+		GroupID:              cloneInt64Pointer(source.GroupID),
 		GroupName:            source.GroupName,
 		Enabled:              false,
 		IntervalSeconds:      source.IntervalSeconds,
@@ -434,6 +443,11 @@ func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provi
 
 // Update 更新监控。APIKey 字段：nil 或空字符串 = 不修改；非空 = 加密后覆盖。
 func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelMonitorUpdateParams) (*ChannelMonitor, error) {
+	if p.GroupID != nil && *p.GroupID != 0 {
+		if err := s.validateLinkedGroup(ctx, p.GroupID); err != nil {
+			return nil, err
+		}
+	}
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -969,6 +983,12 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 	}
 	if p.ExtraModels != nil {
 		existing.ExtraModels = normalizeModels(*p.ExtraModels)
+	}
+	if p.GroupID != nil {
+		existing.GroupID = nil
+		if *p.GroupID > 0 {
+			existing.GroupID = cloneInt64Pointer(p.GroupID)
+		}
 	}
 	if p.GroupName != nil {
 		existing.GroupName = strings.TrimSpace(*p.GroupName)

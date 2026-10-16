@@ -178,7 +178,20 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
+        <label class="input-label" for="monitor-metric-group">{{ t('channelStatus.card.linkedGroup') }}</label>
+        <Select
+          id="monitor-metric-group"
+          v-model="groupSelectValue"
+          :options="groupOptions"
+          :loading="groupsLoading"
+          :disabled="groupsLoading || groupsError"
+          :aria-label="t('channelStatus.card.linkedGroup')"
+          searchable
+        />
+        <p class="mt-1 text-xs" :class="groupsError ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">
+          {{ t(groupsError ? 'channelStatus.card.groupsLoadFailed' : 'channelStatus.card.linkedGroupHint') }}
+        </p>
+        <label class="input-label mt-3">{{ t('admin.channelMonitor.form.groupName') }}</label>
         <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
       </div>
 
@@ -268,6 +281,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { keysAPI } from '@/api/keys'
+import { getAll as getAllGroups } from '@/api/admin/groups'
 import { userGroupsAPI } from '@/api/groups'
 import type {
   BodyOverrideMode,
@@ -280,7 +294,7 @@ import type {
   UpdateParams,
 } from '@/api/admin/channelMonitor'
 import type { ChannelMonitorTemplate } from '@/api/admin/channelMonitorTemplate'
-import type { ApiKey } from '@/types'
+import type { ApiKey, AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Select from '@/components/common/Select.vue'
@@ -344,6 +358,28 @@ const editing = computed<ChannelMonitor | null>(() => props.monitor)
 
 const submitting = ref(false)
 
+const metricGroups = ref<AdminGroup[]>([])
+const groupsLoading = ref(false)
+const groupsError = ref(false)
+const groupSelectValue = computed<string>({
+  get: () => form.group_id == null ? '' : String(form.group_id),
+  set: value => { form.group_id = value ? Number(value) : null },
+})
+const groupOptions = computed(() => {
+  const options = metricGroups.value.map(group => ({ value: String(group.id), label: group.name }))
+  if (form.group_id != null && !options.some(option => option.value === String(form.group_id))) {
+    options.unshift({ value: String(form.group_id), label: `${t('channelStatus.card.linkedGroup')} #${form.group_id}` })
+  }
+  return [{ value: '', label: t('channelStatus.card.noLinkedGroup') }, ...options]
+})
+async function loadGroups() {
+  groupsLoading.value = true
+  groupsError.value = false
+  try { metricGroups.value = await getAllGroups() }
+  catch { groupsError.value = true }
+  finally { groupsLoading.value = false }
+}
+
 // API key picker
 const showKeyPicker = ref(false)
 const myKeysLoading = ref(false)
@@ -361,6 +397,7 @@ interface MonitorForm {
   api_key: string
   primary_model: string
   extra_models: string[]
+  group_id: number | null
   group_name: string
   interval_seconds: number
   jitter_seconds: number
@@ -383,6 +420,7 @@ const form = reactive<MonitorForm>({
   api_key: '',
   primary_model: '',
   extra_models: [],
+  group_id: null,
   group_name: '',
   interval_seconds: systemDefaultInterval.value,
   jitter_seconds: 0,
@@ -779,6 +817,7 @@ function resetForm() {
   form.api_key = ''
   form.primary_model = ''
   form.extra_models = []
+  form.group_id = null
   form.group_name = ''
   form.interval_seconds = systemDefaultInterval.value
   form.jitter_seconds = 0
@@ -802,6 +841,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.api_key = ''
   form.primary_model = m.primary_model
   form.extra_models = [...(m.extra_models || [])]
+  form.group_id = m.group_id ?? null
   form.group_name = m.group_name || ''
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
   form.jitter_seconds = m.jitter_seconds || 0
@@ -820,6 +860,7 @@ watch(
   ([show, m]) => {
     if (!show) return
     void loadTemplates()
+    void loadGroups()
     if (m) loadFromMonitor(m)
     else resetForm()
   },
@@ -856,6 +897,7 @@ async function openMyKeyPicker() {
 
 function pickMyKey(k: ApiKey) {
   form.api_key = k.key
+  form.group_id = k.group_id ?? null
   showKeyPicker.value = false
 }
 
@@ -871,6 +913,7 @@ function buildPayload(): CreateParams {
     api_key: usesProbePart.value ? form.api_key.trim() : '',
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
     extra_models: usesProbePart.value ? form.extra_models : [],
+    group_id: form.group_id,
     group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
@@ -902,7 +945,7 @@ async function handleSubmit() {
     const target = editing.value
     if (target) {
       const { api_key, ...rest } = buildPayload()
-      const req: UpdateParams = { ...rest }
+      const req: UpdateParams = { ...rest, group_id: form.group_id ?? 0 }
       // Only send api_key if user typed a new value
       if (api_key) req.api_key = api_key
       // template_id=null 用 clear_template=true 明确告诉后端清空（pointer 语义）

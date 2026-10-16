@@ -1058,6 +1058,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
+	NewChannelMonitorDisplayService,
 	ProvideChannelMonitorRunner,
 	NewGptIntelligenceService,
 	NewChannelMonitorQuotaFetcher,
@@ -1130,10 +1131,12 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache Lead
 // settingService gates RunCheck via channel_monitor_enabled + channel_monitor_mode.
 func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
+	groupRepo GroupRepository,
 	encryptor SecretEncryptor,
 	settingService *SettingService,
 ) *ChannelMonitorService {
 	svc := NewChannelMonitorService(repo, encryptor)
+	svc.SetGroupReader(groupRepo)
 	svc.SetRuntimeReader(settingService)
 	return svc
 }

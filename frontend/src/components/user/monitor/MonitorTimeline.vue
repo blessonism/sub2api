@@ -1,10 +1,12 @@
 <template>
-  <div class="mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60">
+  <div :class="compact ? 'pt-5' : 'mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60'">
     <div
-      class="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2"
+      class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+      :title="t('monitorCommon.nextUpdateIn', { n: countdownSeconds })"
     >
-      <span>{{ t('monitorCommon.history60pts', { n: length }) }}</span>
-      <span class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
+      <span>{{ t(compact ? 'channelStatus.card.recentProbes' : 'monitorCommon.history60pts', { n: length }) }}</span>
+      <Icon v-if="compact" name="chevronRight" size="sm" class="text-violet-400" aria-hidden="true" />
+      <span v-else class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
     </div>
 
     <div
@@ -13,7 +15,7 @@
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="grid items-end gap-px sm:gap-[2px] h-5 w-full min-w-0" :style="timelineGridStyle">
+    <div v-else class="grid w-full min-w-0 items-end gap-[2px]" :class="compact ? 'h-4' : 'h-5'" :style="timelineGridStyle" role="img" :aria-label="t('channelStatus.card.probeCount', { n: length })">
       <div
         v-for="(bar, idx) in displayBars"
         :key="idx"
@@ -25,6 +27,7 @@
     </div>
 
     <div
+      v-if="!compact"
       class="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-gray-400"
     >
       <span>{{ t('monitorCommon.past') }}</span>
@@ -37,6 +40,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MonitorTimelinePoint } from '@/api/channelMonitor'
+import Icon from '@/components/icons/Icon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 
 const props = withDefaults(defineProps<{
@@ -44,10 +48,12 @@ const props = withDefaults(defineProps<{
   countdownSeconds: number
   length?: number
   maintenance?: boolean
+  compact?: boolean
 }>(), {
   buckets: () => [],
   length: 60,
   maintenance: false,
+  compact: false,
 })
 
 const { t } = useI18n()
@@ -110,7 +116,7 @@ const displayBars = computed<Bar[]>(() => {
     bars.push({
       colorClass,
       heightPct,
-      title: `${relative} · ${label} · ${latency}ms`,
+      title: `${relative} · ${label} · ${latency}`,
     })
   }
 

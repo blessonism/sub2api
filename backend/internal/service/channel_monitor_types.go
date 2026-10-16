@@ -40,6 +40,7 @@ type ChannelMonitor struct {
 	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
 	PrimaryModel    string
 	ExtraModels     []string
+	GroupID         *int64
 	GroupName       string
 	Enabled         bool
 	IntervalSeconds int
@@ -94,6 +95,7 @@ type ChannelMonitorCreateParams struct {
 	APIKey           string
 	PrimaryModel     string
 	ExtraModels      []string
+	GroupID          *int64
 	GroupName        string
 	Enabled          bool
 	IntervalSeconds  int
@@ -121,6 +123,7 @@ type ChannelMonitorUpdateParams struct {
 	APIKey          *string // 空字符串表示不修改；非空字符串覆盖
 	PrimaryModel    *string
 	ExtraModels     *[]string
+	GroupID         *int64 // nil = 不更新；0 = 解绑
 	GroupName       *string
 	Enabled         *bool
 	IntervalSeconds *int
@@ -160,17 +163,23 @@ type CheckResult struct {
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
-	ID                   int64
-	Name                 string
-	Provider             string
-	GroupName            string
-	PrimaryModel         string
-	PrimaryStatus        string
-	PrimaryLatencyMs     *int
-	PrimaryPingLatencyMs *int    // 主模型最近一次 ping 延迟
-	Availability7d       float64 // 0-100
-	ExtraModels          []ExtraModelStatus
-	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
+	GroupID               *int64
+	CheckMode             string
+	PrimaryCheckedAt      *time.Time
+	VisibleRateMultiplier *float64
+	CacheRate24h          *float64
+	OutputTPS5m           *float64
+	ID                    int64
+	Name                  string
+	Provider              string
+	GroupName             string
+	PrimaryModel          string
+	PrimaryStatus         string
+	PrimaryLatencyMs      *int
+	PrimaryPingLatencyMs  *int    // 主模型最近一次 ping 延迟
+	Availability7d        float64 // 0-100
+	ExtraModels           []ExtraModelStatus
+	Timeline              []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
 	// TargetKind 探测目标形态：gateway_group 时前端卡片展示"分组"徽标
 	// （该卡片代表经网关 failover 的分组级状态，而非单一上游）。
 	TargetKind string

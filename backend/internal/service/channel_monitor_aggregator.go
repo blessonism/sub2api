@@ -236,6 +236,8 @@ func buildUserViewFromSummary(
 		ID:                   m.ID,
 		Name:                 m.Name,
 		Provider:             m.Provider,
+		GroupID:              cloneInt64Pointer(m.GroupID),
+		CheckMode:            defaultCheckMode(m.CheckMode),
 		GroupName:            m.GroupName,
 		PrimaryModel:         m.PrimaryModel,
 		PrimaryStatus:        summary.PrimaryStatus,
@@ -247,6 +249,8 @@ func buildUserViewFromSummary(
 		PrimaryErrorCategory: summary.PrimaryErrorCategory,
 	}
 	if primaryLatest != nil {
+		checkedAt := primaryLatest.CheckedAt
+		view.PrimaryCheckedAt = &checkedAt
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
 		view.LatestQuota = primaryLatest.Quota
 	}

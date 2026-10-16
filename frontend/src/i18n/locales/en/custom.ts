@@ -90,6 +90,23 @@ export default {
     "adminConsumptionNoTokenAllocationHint": "When the range has no original token usage, the whole spend delta is booked on the start date."
   },
   "channelStatus": {
+    "card": {
+    "linkedGroup": "Linked group",
+    "noLinkedGroup": "No linked group",
+    "linkedGroupHint": "Rates and usage use the linked group and primary model. Link an existing monitor to enable these metrics.",
+    "groupsLoadFailed": "Could not load groups. Reopen this dialog to retry.",
+    "responseTime": "Response time",
+    "availability": "{days}-day uptime",
+    "cache24h": "Cache · 24h",
+    "tps5m": "Avg TPS · last 5m",
+    "tpsHint": "Average output speed of text requests for the linked group and primary model over the last 5 minutes, using full request duration.",
+    "cacheHint": "Cache read tokens as a share of total input tokens for the linked group and primary model over the last 24 hours.",
+    "recentProbes": "Recent probes",
+    "probeCount": "Last {n} probes; oldest to newest",
+    "rateHint": "Your visible multiplier",
+    "pingHint": "Ping: {value}",
+    "unavailable": "No data"
+},
     "modelIq": {
       "radarBench": {
         "title": "Model Intelligence Radar",

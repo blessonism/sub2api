@@ -46,6 +46,7 @@ type channelMonitorCreateRequest struct {
 	APIKey           string            `json:"api_key" binding:"omitempty,max=2000"`
 	PrimaryModel     string            `json:"primary_model" binding:"max=200"`
 	ExtraModels      []string          `json:"extra_models"`
+	GroupID          *int64            `json:"group_id" binding:"omitempty,min=1"`
 	GroupName        string            `json:"group_name" binding:"max=100"`
 	Enabled          *bool             `json:"enabled"`
 	IntervalSeconds  int               `json:"interval_seconds" binding:"required,min=15,max=3600"`
@@ -73,6 +74,7 @@ type channelMonitorUpdateRequest struct {
 	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
 	PrimaryModel     *string            `json:"primary_model" binding:"omitempty,max=200"`
 	ExtraModels      *[]string          `json:"extra_models"`
+	GroupID          *int64             `json:"group_id" binding:"omitempty,min=0"`
 	GroupName        *string            `json:"group_name" binding:"omitempty,max=100"`
 	Enabled          *bool              `json:"enabled"`
 	IntervalSeconds  *int               `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
@@ -104,6 +106,7 @@ type channelMonitorResponse struct {
 	APIKeyDecryptFailed bool                                 `json:"api_key_decrypt_failed"`
 	PrimaryModel        string                               `json:"primary_model"`
 	ExtraModels         []string                             `json:"extra_models"`
+	GroupID             *int64                               `json:"group_id"`
 	GroupName           string                               `json:"group_name"`
 	Enabled             bool                                 `json:"enabled"`
 	IntervalSeconds     int                                  `json:"interval_seconds"`
@@ -190,6 +193,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		APIKeyDecryptFailed: m.APIKeyDecryptFailed,
 		PrimaryModel:        m.PrimaryModel,
 		ExtraModels:         extras,
+		GroupID:             m.GroupID,
 		GroupName:           m.GroupName,
 		Enabled:             m.Enabled,
 		IntervalSeconds:     m.IntervalSeconds,
@@ -393,6 +397,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		APIKey:           req.APIKey,
 		PrimaryModel:     req.PrimaryModel,
 		ExtraModels:      req.ExtraModels,
+		GroupID:          req.GroupID,
 		GroupName:        req.GroupName,
 		Enabled:          enabled,
 		IntervalSeconds:  req.IntervalSeconds,
@@ -490,6 +495,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		APIKey:           req.APIKey,
 		PrimaryModel:     req.PrimaryModel,
 		ExtraModels:      req.ExtraModels,
+		GroupID:          req.GroupID,
 		GroupName:        req.GroupName,
 		Enabled:          req.Enabled,
 		IntervalSeconds:  req.IntervalSeconds,

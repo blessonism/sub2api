@@ -79,6 +79,8 @@ func (ChannelMonitor) Fields() []ent.Field {
 		field.JSON("extra_models", []string{}).
 			Default([]string{}).
 			Comment("Additional model names to test alongside primary_model"),
+		// 统计与倍率的稳定分组关联，外键由 SQL 迁移管理。
+		field.Int64("group_id").Optional().Nillable(),
 		field.String("group_name").
 			Optional().
 			Default("").

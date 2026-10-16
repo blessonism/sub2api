@@ -102,6 +102,7 @@ export interface ChannelMonitor {
   api_key_decrypt_failed?: boolean
   primary_model: string
   extra_models: string[]
+  group_id?: number | null
   group_name: string
   enabled: boolean
   interval_seconds: number
@@ -178,6 +179,8 @@ export interface CreateParams {
   target_kind?: TargetKind
   primary_model: string
   extra_models?: string[]
+  /** 稳定分组关联；更新时 0 解绑，null/省略不修改。 */
+  group_id?: number | null
   group_name?: string
   enabled?: boolean
   interval_seconds: number

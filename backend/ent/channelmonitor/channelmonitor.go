@@ -39,6 +39,8 @@ const (
 	FieldPrimaryModel = "primary_model"
 	// FieldExtraModels holds the string denoting the extra_models field in the database.
 	FieldExtraModels = "extra_models"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// FieldGroupName holds the string denoting the group_name field in the database.
 	FieldGroupName = "group_name"
 	// FieldEnabled holds the string denoting the enabled field in the database.
@@ -105,6 +107,7 @@ var Columns = []string{
 	FieldAPIKeyEncrypted,
 	FieldPrimaryModel,
 	FieldExtraModels,
+	FieldGroupID,
 	FieldGroupName,
 	FieldEnabled,
 	FieldIntervalSeconds,
@@ -268,6 +271,11 @@ func ByAPIKeyEncrypted(opts ...sql.OrderTermOption) OrderOption {
 // ByPrimaryModel orders the results by the primary_model field.
 func ByPrimaryModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPrimaryModel, opts...).ToFunc()
+}
+
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
 // ByGroupName orders the results by the group_name field.
