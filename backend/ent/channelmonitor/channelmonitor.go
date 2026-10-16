@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -41,6 +42,8 @@ const (
 	FieldExtraModels = "extra_models"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldDisplayOverrides holds the string denoting the display_overrides field in the database.
+	FieldDisplayOverrides = "display_overrides"
 	// FieldGroupName holds the string denoting the group_name field in the database.
 	FieldGroupName = "group_name"
 	// FieldEnabled holds the string denoting the enabled field in the database.
@@ -108,6 +111,7 @@ var Columns = []string{
 	FieldPrimaryModel,
 	FieldExtraModels,
 	FieldGroupID,
+	FieldDisplayOverrides,
 	FieldGroupName,
 	FieldEnabled,
 	FieldIntervalSeconds,
@@ -159,6 +163,8 @@ var (
 	PrimaryModelValidator func(string) error
 	// DefaultExtraModels holds the default value on creation for the "extra_models" field.
 	DefaultExtraModels []string
+	// DefaultDisplayOverrides holds the default value on creation for the "display_overrides" field.
+	DefaultDisplayOverrides domain.ChannelMonitorDisplayOverrides
 	// DefaultGroupName holds the default value on creation for the "group_name" field.
 	DefaultGroupName string
 	// GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.

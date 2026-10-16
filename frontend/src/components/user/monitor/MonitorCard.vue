@@ -21,11 +21,11 @@
       </div>
       <span
         class="monitor-rate inline-flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-sm font-semibold tracking-wide text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-        :title="t('channelStatus.card.rateHint')"
+        :title="metricHint('visible_rate_multiplier', t('channelStatus.card.rateHint'))"
         data-testid="monitor-rate"
       >
         <Icon name="sparkles" size="xs" class="shrink-0" aria-hidden="true" />
-        <span class="truncate" :title="rateValue">{{ rateValue }}</span>
+        <span class="truncate" :title="metricHint('visible_rate_multiplier', rateValue)">{{ rateValue }}</span>
       </span>
     </div>
     <div class="mt-4 flex items-center justify-between gap-2 text-sm">
@@ -39,14 +39,14 @@
       </span>
     </div>
     <div class="mt-5 grid grid-cols-3 divide-x divide-gray-100 border-y border-gray-100 py-4 dark:divide-dark-700 dark:border-dark-700">
-      <div class="metric-column" :title="t('channelStatus.card.pingHint', { value: latencyValue(item.primary_ping_latency_ms) })">
+      <div class="metric-column" :title="metricHint('primary_latency_ms', t('channelStatus.card.pingHint', { value: latencyValue(item.primary_ping_latency_ms) }))">
         <div class="metric-value text-gray-900 dark:text-gray-100">
           <Icon name="bolt" size="sm" class="shrink-0 text-amber-500" aria-hidden="true" />
           <span :title="latencyValue(item.primary_latency_ms)" data-testid="monitor-latency">{{ latencyValue(item.primary_latency_ms) }}</span>
         </div>
         <span class="metric-label">{{ t('channelStatus.card.responseTime') }}</span>
       </div>
-      <div class="metric-column">
+      <div class="metric-column" :title="metricHint(window === '7d' ? 'availability_7d' : window === '15d' ? 'availability_15d' : 'availability_30d')">
         <div class="metric-value text-emerald-700 dark:text-emerald-400">
           <Icon name="checkCircle" size="sm" class="shrink-0" aria-hidden="true" />
           <span data-testid="monitor-availability">{{ availabilityValue == null ? '—' : `${availabilityValue.toFixed(1)}%` }}</span>
@@ -61,7 +61,7 @@
         <span class="metric-label">{{ t('channelStatus.card.cache24h') }}</span>
       </div>
     </div>
-    <div class="mt-4 flex items-center justify-between gap-2 text-sm" :title="t('channelStatus.card.tpsHint')">
+    <div class="mt-4 flex items-center justify-between gap-2 text-sm" :title="metricHint('output_tps_5m', t('channelStatus.card.tpsHint'))">
       <span class="inline-flex min-w-0 items-center gap-1.5 text-gray-500 dark:text-gray-400">
         <Icon name="bolt" size="sm" class="shrink-0 text-violet-500" aria-hidden="true" />
         {{ t('channelStatus.card.tps5m') }}
@@ -77,6 +77,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView } from '@/api/channelMonitor'
+import type { MonitorDisplayOverrides } from '@/api/admin/channelMonitor'
 import { useChannelMonitorFormat, providerGradient } from '@/composables/useChannelMonitorFormat'
 import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
 import Icon from '@/components/icons/Icon.vue'
@@ -132,12 +133,15 @@ const cacheValue = computed(() => {
 })
 const cacheHint = computed(() => {
   const value = props.item.cache_rate_24h
-  return t(value == null || !Number.isFinite(value) ? 'channelStatus.card.cacheUnavailableHint' : 'channelStatus.card.cacheHint')
+  return metricHint('cache_rate_24h', t(value == null || !Number.isFinite(value) ? 'channelStatus.card.cacheUnavailableHint' : 'channelStatus.card.cacheHint'))
 })
 const tpsValue = computed(() => {
   const value = props.item.output_tps_5m
   return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(1)} TPS`
 })
+function metricHint(key: keyof MonitorDisplayOverrides, hint = ''): string {
+  return props.item.display_overrides?.[key] != null ? `${t('channelStatus.card.manualValueHint')} ${hint}`.trim() : hint
+}
 function latencyValue(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
   return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`

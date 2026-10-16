@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChannelMonitorUpdate is the builder for updating ChannelMonitor entities.
@@ -213,6 +214,20 @@ func (_u *ChannelMonitorUpdate) AddGroupID(v int64) *ChannelMonitorUpdate {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *ChannelMonitorUpdate) ClearGroupID() *ChannelMonitorUpdate {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (_u *ChannelMonitorUpdate) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpdate {
+	_u.mutation.SetDisplayOverrides(v)
+	return _u
+}
+
+// SetNillableDisplayOverrides sets the "display_overrides" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableDisplayOverrides(v *domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetDisplayOverrides(*v)
+	}
 	return _u
 }
 
@@ -653,6 +668,9 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.GroupIDCleared() {
 		_spec.ClearField(channelmonitor.FieldGroupID, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.DisplayOverrides(); ok {
+		_spec.SetField(channelmonitor.FieldDisplayOverrides, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.GroupName(); ok {
 		_spec.SetField(channelmonitor.FieldGroupName, field.TypeString, value)
 	}
@@ -1018,6 +1036,20 @@ func (_u *ChannelMonitorUpdateOne) AddGroupID(v int64) *ChannelMonitorUpdateOne 
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *ChannelMonitorUpdateOne) ClearGroupID() *ChannelMonitorUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (_u *ChannelMonitorUpdateOne) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpdateOne {
+	_u.mutation.SetDisplayOverrides(v)
+	return _u
+}
+
+// SetNillableDisplayOverrides sets the "display_overrides" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableDisplayOverrides(v *domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetDisplayOverrides(*v)
+	}
 	return _u
 }
 
@@ -1487,6 +1519,9 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if _u.mutation.GroupIDCleared() {
 		_spec.ClearField(channelmonitor.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.DisplayOverrides(); ok {
+		_spec.SetField(channelmonitor.FieldDisplayOverrides, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.GroupName(); ok {
 		_spec.SetField(channelmonitor.FieldGroupName, field.TypeString, value)

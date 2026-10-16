@@ -87,7 +87,19 @@ export interface MonitorQuotaSnapshot {
   fetched_at: string
 }
 
+/** 仅覆盖用户卡片；省略/null 的单项使用自动值，0 是有效手动值。 */
+export interface MonitorDisplayOverrides {
+  visible_rate_multiplier?: number | null
+  primary_latency_ms?: number | null
+  cache_rate_24h?: number | null
+  output_tps_5m?: number | null
+  availability_7d?: number | null
+  availability_15d?: number | null
+  availability_30d?: number | null
+}
+
 export interface ChannelMonitor {
+  display_overrides?: MonitorDisplayOverrides
   id: number
   name: string
   provider: Provider
@@ -162,6 +174,8 @@ export interface ListResponse {
 }
 
 export interface CreateParams {
+  /** 展示覆盖：{} 全部自动；更新时省略/null 保持原配置。 */
+  display_overrides?: MonitorDisplayOverrides | null
   name: string
   provider: Provider
   api_mode?: APIMode

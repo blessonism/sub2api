@@ -67,22 +67,23 @@ func (h *ChannelMonitorUserHandler) quotaVisible(c *gin.Context) bool {
 // --- Response ---
 
 type channelMonitorUserListItem struct {
-	GroupID               *int64                               `json:"group_id"`
-	PrimaryCheckedAt      *time.Time                           `json:"primary_checked_at"`
-	VisibleRateMultiplier *float64                             `json:"visible_rate_multiplier"`
-	CacheRate24h          *float64                             `json:"cache_rate_24h"`
-	OutputTPS5m           *float64                             `json:"output_tps_5m"`
-	ID                    int64                                `json:"id"`
-	Name                  string                               `json:"name"`
-	Provider              string                               `json:"provider"`
-	GroupName             string                               `json:"group_name"`
-	PrimaryModel          string                               `json:"primary_model"`
-	PrimaryStatus         string                               `json:"primary_status"`
-	PrimaryLatencyMs      *int                                 `json:"primary_latency_ms"`
-	PrimaryPingLatencyMs  *int                                 `json:"primary_ping_latency_ms"`
-	Availability7d        float64                              `json:"availability_7d"`
-	ExtraModels           []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
-	Timeline              []channelMonitorUserTimelinePoint    `json:"timeline"`
+	DisplayOverrides      domain.ChannelMonitorDisplayOverrides `json:"display_overrides"`
+	GroupID               *int64                                `json:"group_id"`
+	PrimaryCheckedAt      *time.Time                            `json:"primary_checked_at"`
+	VisibleRateMultiplier *float64                              `json:"visible_rate_multiplier"`
+	CacheRate24h          *float64                              `json:"cache_rate_24h"`
+	OutputTPS5m           *float64                              `json:"output_tps_5m"`
+	ID                    int64                                 `json:"id"`
+	Name                  string                                `json:"name"`
+	Provider              string                                `json:"provider"`
+	GroupName             string                                `json:"group_name"`
+	PrimaryModel          string                                `json:"primary_model"`
+	PrimaryStatus         string                                `json:"primary_status"`
+	PrimaryLatencyMs      *int                                  `json:"primary_latency_ms"`
+	PrimaryPingLatencyMs  *int                                  `json:"primary_ping_latency_ms"`
+	Availability7d        float64                               `json:"availability_7d"`
+	ExtraModels           []dto.ChannelMonitorExtraModelStatus  `json:"extra_models"`
+	Timeline              []channelMonitorUserTimelinePoint     `json:"timeline"`
 	// TargetKind: gateway_group 时前端卡片显示"分组"徽标（该卡片代表
 	// 经网关 failover 的分组级状态，而非单一上游）。
 	TargetKind string `json:"target_kind"`
@@ -147,6 +148,7 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 	}
 	item := channelMonitorUserListItem{
 		GroupID:               v.GroupID,
+		DisplayOverrides:      v.PublicDisplayOverrides(),
 		PrimaryCheckedAt:      v.PrimaryCheckedAt,
 		VisibleRateMultiplier: v.VisibleRateMultiplier,
 		CacheRate24h:          v.CacheRate24h,

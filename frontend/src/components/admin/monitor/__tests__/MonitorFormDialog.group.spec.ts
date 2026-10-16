@@ -74,3 +74,31 @@ describe('MonitorFormDialog linked group', () => {
   expect(mocks.update).toHaveBeenCalledWith(1, expect.objectContaining({ group_id: 7 }))
  })
 })
+
+
+describe('MonitorFormDialog display overrides', () => {
+ it('edits percentages, preserves zero, clears individual values and restores automatic values', async () => {
+  const wrapper = dialog({ ...existing, display_overrides: { visible_rate_multiplier: 0, cache_rate_24h: 0.625, output_tps_5m: 25, primary_latency_ms: 850, availability_7d: 90, availability_15d: 95, availability_30d: 99 } })
+  await flushPromises()
+  const input = (key: string) => wrapper.get<HTMLInputElement>(`[data-testid="monitor-override-${key}"]`)
+  expect(input('visible_rate_multiplier').element.value).toBe('0')
+  expect(input('cache_rate_24h').element.value).toBe('62.5')
+  await input('cache_rate_24h').setValue('50')
+  await input('primary_latency_ms').setValue('0')
+  await input('availability_15d').setValue('0')
+  await input('output_tps_5m').setValue('')
+  await wrapper.get('form').trigger('submit'); await flushPromises()
+  const saved = mocks.update.mock.calls.at(-1)?.[1].display_overrides
+  expect(saved).toEqual({ visible_rate_multiplier: 0, cache_rate_24h: 0.5, primary_latency_ms: 0, availability_7d: 90, availability_15d: 0, availability_30d: 99 })
+  await wrapper.get('[data-testid="monitor-overrides-reset"]').trigger('click')
+  await wrapper.get('form').trigger('submit'); await flushPromises()
+  expect(mocks.update).toHaveBeenLastCalledWith(1, expect.objectContaining({ display_overrides: {} }))
+ })
+ it('starts new monitors in automatic mode and resets when switching monitors', async () => {
+  const wrapper = dialog({ ...existing, display_overrides: { visible_rate_multiplier: 0.185 } })
+  await flushPromises()
+  await wrapper.setProps({ monitor: null })
+  await flushPromises()
+  expect(wrapper.get<HTMLInputElement>('[data-testid="monitor-override-visible_rate_multiplier"]').element.value).toBe('')
+ })
+})

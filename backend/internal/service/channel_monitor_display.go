@@ -61,6 +61,24 @@ func (s *ChannelMonitorDisplayService) Enrich(ctx context.Context, userID int64,
 	for _, view := range views {
 		view.VisibleRateMultiplier, view.CacheRate24h, view.OutputTPS5m = nil, nil, nil
 	}
+	// 即使统计查询失败，已经过分组权限校验的手动展示值仍然生效。
+	defer func() {
+		for _, view := range views {
+			if view.VisibleRateMultiplier == nil {
+				continue
+			}
+			o := view.DisplayOverrides
+			if o.VisibleRateMultiplier != nil {
+				view.VisibleRateMultiplier = o.VisibleRateMultiplier
+			}
+			if o.CacheRate24h != nil {
+				view.CacheRate24h = o.CacheRate24h
+			}
+			if o.OutputTPS5m != nil {
+				view.OutputTPS5m = o.OutputTPS5m
+			}
+		}
+	}()
 	if s == nil || s.groups == nil || userID <= 0 || len(views) == 0 {
 		return
 	}

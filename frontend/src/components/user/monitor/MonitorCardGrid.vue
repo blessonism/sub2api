@@ -78,6 +78,8 @@ function resolveAvailability(item: UserMonitorView): number | null {
   if (props.window === '7d') {
     return item.availability_7d ?? null
   }
+  const manual = item.display_overrides?.[props.window === '15d' ? 'availability_15d' : 'availability_30d']
+  if (manual != null) return manual
   const detail = props.detailCache[item.id]
   if (!detail) return null
   const primary = detail.models.find(m => m.model === item.primary_model)

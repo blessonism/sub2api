@@ -2,6 +2,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
@@ -81,6 +82,8 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Comment("Additional model names to test alongside primary_model"),
 		// 统计与倍率的稳定分组关联，外键由 SQL 迁移管理。
 		field.Int64("group_id").Optional().Nillable(),
+		field.JSON("display_overrides", domain.ChannelMonitorDisplayOverrides{}).
+			Default(domain.ChannelMonitorDisplayOverrides{}),
 		field.String("group_name").
 			Optional().
 			Default("").

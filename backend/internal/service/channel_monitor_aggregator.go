@@ -237,6 +237,7 @@ func buildUserViewFromSummary(
 		Name:                 m.Name,
 		Provider:             m.Provider,
 		GroupID:              cloneInt64Pointer(m.GroupID),
+		DisplayOverrides:     m.DisplayOverrides,
 		CheckMode:            defaultCheckMode(m.CheckMode),
 		GroupName:            m.GroupName,
 		PrimaryModel:         m.PrimaryModel,
@@ -253,6 +254,12 @@ func buildUserViewFromSummary(
 		view.PrimaryCheckedAt = &checkedAt
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
 		view.LatestQuota = primaryLatest.Quota
+	}
+	if view.DisplayOverrides.PrimaryLatencyMs != nil {
+		view.PrimaryLatencyMs = view.DisplayOverrides.PrimaryLatencyMs
+	}
+	if view.DisplayOverrides.Availability7d != nil {
+		view.Availability7d = *view.DisplayOverrides.Availability7d
 	}
 	return view
 }

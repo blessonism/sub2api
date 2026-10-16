@@ -6,6 +6,7 @@
 import { apiClient } from './client'
 import type {
   MonitorQuotaSnapshot,
+  MonitorDisplayOverrides,
   Provider,
   MonitorStatus,
   TargetKind,
@@ -32,6 +33,7 @@ export interface MonitorTimelinePoint {
 }
 
 export interface UserMonitorView {
+  display_overrides?: MonitorDisplayOverrides
   primary_checked_at?: string | null
   visible_rate_multiplier?: number | null
   cache_rate_24h?: number | null

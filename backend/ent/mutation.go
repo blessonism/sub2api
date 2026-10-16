@@ -16738,6 +16738,7 @@ type ChannelMonitorMutation struct {
 	appendextra_models      []string
 	group_id                *int64
 	addgroup_id             *int64
+	display_overrides       *domain.ChannelMonitorDisplayOverrides
 	group_name              *string
 	enabled                 *bool
 	interval_seconds        *int
@@ -17413,6 +17414,42 @@ func (m *ChannelMonitorMutation) ResetGroupID() {
 	delete(m.clearedFields, channelmonitor.FieldGroupID)
 }
 
+// SetDisplayOverrides sets the "display_overrides" field.
+func (m *ChannelMonitorMutation) SetDisplayOverrides(dmdo domain.ChannelMonitorDisplayOverrides) {
+	m.display_overrides = &dmdo
+}
+
+// DisplayOverrides returns the value of the "display_overrides" field in the mutation.
+func (m *ChannelMonitorMutation) DisplayOverrides() (r domain.ChannelMonitorDisplayOverrides, exists bool) {
+	v := m.display_overrides
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayOverrides returns the old "display_overrides" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldDisplayOverrides(ctx context.Context) (v domain.ChannelMonitorDisplayOverrides, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayOverrides is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayOverrides requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayOverrides: %w", err)
+	}
+	return oldValue.DisplayOverrides, nil
+}
+
+// ResetDisplayOverrides resets all changes to the "display_overrides" field.
+func (m *ChannelMonitorMutation) ResetDisplayOverrides() {
+	m.display_overrides = nil
+}
+
 // SetGroupName sets the "group_name" field.
 func (m *ChannelMonitorMutation) SetGroupName(s string) {
 	m.group_name = &s
@@ -18067,7 +18104,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -18106,6 +18143,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.group_id != nil {
 		fields = append(fields, channelmonitor.FieldGroupID)
+	}
+	if m.display_overrides != nil {
+		fields = append(fields, channelmonitor.FieldDisplayOverrides)
 	}
 	if m.group_name != nil {
 		fields = append(fields, channelmonitor.FieldGroupName)
@@ -18171,6 +18211,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.ExtraModels()
 	case channelmonitor.FieldGroupID:
 		return m.GroupID()
+	case channelmonitor.FieldDisplayOverrides:
+		return m.DisplayOverrides()
 	case channelmonitor.FieldGroupName:
 		return m.GroupName()
 	case channelmonitor.FieldEnabled:
@@ -18226,6 +18268,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldExtraModels(ctx)
 	case channelmonitor.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case channelmonitor.FieldDisplayOverrides:
+		return m.OldDisplayOverrides(ctx)
 	case channelmonitor.FieldGroupName:
 		return m.OldGroupName(ctx)
 	case channelmonitor.FieldEnabled:
@@ -18345,6 +18389,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case channelmonitor.FieldDisplayOverrides:
+		v, ok := value.(domain.ChannelMonitorDisplayOverrides)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayOverrides(v)
 		return nil
 	case channelmonitor.FieldGroupName:
 		v, ok := value.(string)
@@ -18605,6 +18656,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case channelmonitor.FieldDisplayOverrides:
+		m.ResetDisplayOverrides()
 		return nil
 	case channelmonitor.FieldGroupName:
 		m.ResetGroupName()

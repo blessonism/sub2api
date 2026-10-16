@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChannelMonitor is the model entity for the ChannelMonitor schema.
@@ -45,6 +46,8 @@ type ChannelMonitor struct {
 	ExtraModels []string `json:"extra_models,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
+	// DisplayOverrides holds the value of the "display_overrides" field.
+	DisplayOverrides domain.ChannelMonitorDisplayOverrides `json:"display_overrides,omitempty"`
 	// GroupName holds the value of the "group_name" field.
 	GroupName string `json:"group_name,omitempty"`
 	// Enabled holds the value of the "enabled" field.
@@ -118,7 +121,7 @@ func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case channelmonitor.FieldExtraModels, channelmonitor.FieldExtraHeaders, channelmonitor.FieldBodyOverride:
+		case channelmonitor.FieldExtraModels, channelmonitor.FieldDisplayOverrides, channelmonitor.FieldExtraHeaders, channelmonitor.FieldBodyOverride:
 			values[i] = new([]byte)
 		case channelmonitor.FieldEnabled:
 			values[i] = new(sql.NullBool)
@@ -230,6 +233,14 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
+			}
+		case channelmonitor.FieldDisplayOverrides:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field display_overrides", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.DisplayOverrides); err != nil {
+					return fmt.Errorf("unmarshal field display_overrides: %w", err)
+				}
 			}
 		case channelmonitor.FieldGroupName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -389,6 +400,9 @@ func (_m *ChannelMonitor) String() string {
 		builder.WriteString("group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("display_overrides=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DisplayOverrides))
 	builder.WriteString(", ")
 	builder.WriteString("group_name=")
 	builder.WriteString(_m.GroupName)

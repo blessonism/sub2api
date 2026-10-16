@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -34,16 +35,20 @@ func TestChannelMonitorLinkedGroupLifecycle(t *testing.T) {
 	params := service.ChannelMonitorCreateParams{Name: "linked", Provider: service.MonitorProviderOpenAI,
 		APIMode: service.MonitorAPIModeResponses, Endpoint: "https://93.184.216.34", APIKey: "test",
 		PrimaryModel: "gpt-test", GroupName: "display only", GroupID: &group.ID, IntervalSeconds: 60}
+	manualZero, cache, tps, availability, latency := 0.0, .625, 42.5, 98.5, 850
+	params.DisplayOverrides = domain.ChannelMonitorDisplayOverrides{VisibleRateMultiplier: &manualZero, CacheRate24h: &cache, OutputTPS5m: &tps, PrimaryLatencyMs: &latency, Availability7d: &availability, Availability15d: &availability, Availability30d: &availability}
 	created, err := svc.Create(ctx, params)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = repo.Delete(ctx, created.ID) })
 	loaded, err := repo.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, &group.ID, loaded.GroupID)
+	require.Equal(t, params.DisplayOverrides, loaded.DisplayOverrides)
 	copy, err := svc.Duplicate(ctx, created.ID, 0, "test", "copy-linked")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = repo.Delete(ctx, copy.ID) })
 	require.Equal(t, &group.ID, copy.GroupID)
+	require.Equal(t, params.DisplayOverrides, copy.DisplayOverrides)
 	require.Equal(t, "display only", copy.GroupName)
 	require.False(t, copy.Enabled)
 	_, err = svc.Update(ctx, created.ID, service.ChannelMonitorUpdateParams{GroupID: &other.ID})
@@ -55,9 +60,17 @@ func TestChannelMonitorLinkedGroupLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, loaded.GroupID)
 	require.Equal(t, "display only", loaded.GroupName)
+	require.Equal(t, params.DisplayOverrides, loaded.DisplayOverrides, "omitted overrides must be preserved")
+	automatic := domain.ChannelMonitorDisplayOverrides{}
+	_, err = svc.Update(ctx, created.ID, service.ChannelMonitorUpdateParams{DisplayOverrides: &automatic})
+	require.NoError(t, err)
+	loaded, err = repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, automatic, loaded.DisplayOverrides)
 	loaded, err = repo.GetByID(ctx, copy.ID)
 	require.NoError(t, err)
 	require.Equal(t, &group.ID, loaded.GroupID, "copy must be independent")
+	require.Equal(t, params.DisplayOverrides, loaded.DisplayOverrides, "resetting the original must not reset its copy")
 	// 删除统计分组不删除监控，FK 自动解绑。
 	_, err = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id=$1", group.ID)
 	require.NoError(t, err)

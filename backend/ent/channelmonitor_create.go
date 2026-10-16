@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChannelMonitorCreate is the builder for creating a ChannelMonitor entity.
@@ -155,6 +156,20 @@ func (_c *ChannelMonitorCreate) SetGroupID(v int64) *ChannelMonitorCreate {
 func (_c *ChannelMonitorCreate) SetNillableGroupID(v *int64) *ChannelMonitorCreate {
 	if v != nil {
 		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (_c *ChannelMonitorCreate) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorCreate {
+	_c.mutation.SetDisplayOverrides(v)
+	return _c
+}
+
+// SetNillableDisplayOverrides sets the "display_overrides" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableDisplayOverrides(v *domain.ChannelMonitorDisplayOverrides) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetDisplayOverrides(*v)
 	}
 	return _c
 }
@@ -375,6 +390,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultExtraModels
 		_c.mutation.SetExtraModels(v)
 	}
+	if _, ok := _c.mutation.DisplayOverrides(); !ok {
+		v := channelmonitor.DefaultDisplayOverrides
+		_c.mutation.SetDisplayOverrides(v)
+	}
 	if _, ok := _c.mutation.GroupName(); !ok {
 		v := channelmonitor.DefaultGroupName
 		_c.mutation.SetGroupName(v)
@@ -471,6 +490,9 @@ func (_c *ChannelMonitorCreate) check() error {
 	}
 	if _, ok := _c.mutation.ExtraModels(); !ok {
 		return &ValidationError{Name: "extra_models", err: errors.New(`ent: missing required field "ChannelMonitor.extra_models"`)}
+	}
+	if _, ok := _c.mutation.DisplayOverrides(); !ok {
+		return &ValidationError{Name: "display_overrides", err: errors.New(`ent: missing required field "ChannelMonitor.display_overrides"`)}
 	}
 	if v, ok := _c.mutation.GroupName(); ok {
 		if err := channelmonitor.GroupNameValidator(v); err != nil {
@@ -588,6 +610,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(channelmonitor.FieldGroupID, field.TypeInt64, value)
 		_node.GroupID = &value
+	}
+	if value, ok := _c.mutation.DisplayOverrides(); ok {
+		_spec.SetField(channelmonitor.FieldDisplayOverrides, field.TypeJSON, value)
+		_node.DisplayOverrides = value
 	}
 	if value, ok := _c.mutation.GroupName(); ok {
 		_spec.SetField(channelmonitor.FieldGroupName, field.TypeString, value)
@@ -891,6 +917,18 @@ func (u *ChannelMonitorUpsert) AddGroupID(v int64) *ChannelMonitorUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *ChannelMonitorUpsert) ClearGroupID() *ChannelMonitorUpsert {
 	u.SetNull(channelmonitor.FieldGroupID)
+	return u
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (u *ChannelMonitorUpsert) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldDisplayOverrides, v)
+	return u
+}
+
+// UpdateDisplayOverrides sets the "display_overrides" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateDisplayOverrides() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldDisplayOverrides)
 	return u
 }
 
@@ -1294,6 +1332,20 @@ func (u *ChannelMonitorUpsertOne) UpdateGroupID() *ChannelMonitorUpsertOne {
 func (u *ChannelMonitorUpsertOne) ClearGroupID() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (u *ChannelMonitorUpsertOne) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetDisplayOverrides(v)
+	})
+}
+
+// UpdateDisplayOverrides sets the "display_overrides" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateDisplayOverrides() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateDisplayOverrides()
 	})
 }
 
@@ -1890,6 +1942,20 @@ func (u *ChannelMonitorUpsertBulk) UpdateGroupID() *ChannelMonitorUpsertBulk {
 func (u *ChannelMonitorUpsertBulk) ClearGroupID() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetDisplayOverrides sets the "display_overrides" field.
+func (u *ChannelMonitorUpsertBulk) SetDisplayOverrides(v domain.ChannelMonitorDisplayOverrides) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetDisplayOverrides(v)
+	})
+}
+
+// UpdateDisplayOverrides sets the "display_overrides" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateDisplayOverrides() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateDisplayOverrides()
 	})
 }
 

@@ -100,3 +100,27 @@ func TestChannelMonitorUserListUsesAuthenticatedIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestChannelMonitorUserDisplayOverridesMetadataRespectsGroupPermission(t *testing.T) {
+	zero, availability, latency := 0.0, 99.0, 850
+	view := &service.UserMonitorView{DisplayOverrides: domain.ChannelMonitorDisplayOverrides{VisibleRateMultiplier: &zero, CacheRate24h: &zero, OutputTPS5m: &zero, PrimaryLatencyMs: &latency, Availability15d: &availability}}
+	for _, allowed := range []bool{false, true} {
+		if allowed {
+			view.VisibleRateMultiplier = &zero
+		}
+		data, err := json.Marshal(userMonitorViewToItem(view, false))
+		require.NoError(t, err)
+		var item struct {
+			Overrides map[string]any `json:"display_overrides"`
+		}
+		require.NoError(t, json.Unmarshal(data, &item))
+		require.Equal(t, 99.0, item.Overrides["availability_15d"])
+		for _, key := range []string{"visible_rate_multiplier", "cache_rate_24h", "output_tps_5m"} {
+			if allowed {
+				require.Equal(t, 0.0, item.Overrides[key])
+			} else {
+				require.NotContains(t, item.Overrides, key)
+			}
+		}
+	}
+}

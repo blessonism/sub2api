@@ -148,6 +148,9 @@ func (s *ChannelMonitorService) Get(ctx context.Context, id int64) (*ChannelMoni
 
 // Create 创建监控（内部加密 api_key）。
 func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCreateParams) (*ChannelMonitor, error) {
+	if err := validateMonitorDisplayOverrides(p.DisplayOverrides); err != nil {
+		return nil, err
+	}
 	if err := validateCreateParams(p); err != nil {
 		return nil, err
 	}
@@ -180,6 +183,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
 		GroupID:          cloneInt64Pointer(p.GroupID),
+		DisplayOverrides: p.DisplayOverrides,
 		GroupName:        strings.TrimSpace(p.GroupName),
 		Enabled:          p.Enabled,
 		IntervalSeconds:  p.IntervalSeconds,
@@ -252,6 +256,7 @@ func (s *ChannelMonitorService) Duplicate(
 		PrimaryModel:         source.PrimaryModel,
 		ExtraModels:          append([]string{}, source.ExtraModels...),
 		GroupID:              cloneInt64Pointer(source.GroupID),
+		DisplayOverrides:     source.DisplayOverrides,
 		GroupName:            source.GroupName,
 		Enabled:              false,
 		IntervalSeconds:      source.IntervalSeconds,
@@ -443,6 +448,11 @@ func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provi
 
 // Update 更新监控。APIKey 字段：nil 或空字符串 = 不修改；非空 = 加密后覆盖。
 func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelMonitorUpdateParams) (*ChannelMonitor, error) {
+	if p.DisplayOverrides != nil {
+		if err := validateMonitorDisplayOverrides(*p.DisplayOverrides); err != nil {
+			return nil, err
+		}
+	}
 	if p.GroupID != nil && *p.GroupID != 0 {
 		if err := s.validateLinkedGroup(ctx, p.GroupID); err != nil {
 			return nil, err
@@ -989,6 +999,9 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 		if *p.GroupID > 0 {
 			existing.GroupID = cloneInt64Pointer(p.GroupID)
 		}
+	}
+	if p.DisplayOverrides != nil {
+		existing.DisplayOverrides = *p.DisplayOverrides
 	}
 	if p.GroupName != nil {
 		existing.GroupName = strings.TrimSpace(*p.GroupName)

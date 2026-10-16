@@ -195,6 +195,8 @@
         <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
       </div>
 
+      <MonitorDisplayOverridesEditor v-model="form.display_overrides" />
+
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="text-red-500">*</span></label>
         <input v-model.number="form.interval_seconds" type="number" min="15" max="3600" required class="input" />
@@ -285,6 +287,7 @@ import { getAll as getAllGroups } from '@/api/admin/groups'
 import { userGroupsAPI } from '@/api/groups'
 import type {
   BodyOverrideMode,
+  MonitorDisplayOverrides,
   ChannelMonitor,
   CreateParams,
   APIMode,
@@ -301,6 +304,7 @@ import Select from '@/components/common/Select.vue'
 import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import { getPlatformTextClass } from '@/components/admin/channel/types'
 import MonitorKeyPickerDialog from '@/components/admin/monitor/MonitorKeyPickerDialog.vue'
+import MonitorDisplayOverridesEditor from './MonitorDisplayOverridesEditor.vue'
 import MonitorAdvancedRequestConfig from '@/components/admin/monitor/MonitorAdvancedRequestConfig.vue'
 import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
@@ -387,6 +391,7 @@ const myActiveKeys = ref<ApiKey[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 
 interface MonitorForm {
+  display_overrides: MonitorDisplayOverrides
   name: string
   provider: Provider
   api_mode: APIMode
@@ -410,6 +415,7 @@ interface MonitorForm {
 }
 
 const form = reactive<MonitorForm>({
+  display_overrides: {},
   name: '',
   provider: PROVIDER_ANTHROPIC,
   api_mode: API_MODE_CHAT_COMPLETIONS,
@@ -819,6 +825,7 @@ function resetForm() {
   form.extra_models = []
   form.group_id = null
   form.group_name = ''
+  form.display_overrides = {}
   form.interval_seconds = systemDefaultInterval.value
   form.jitter_seconds = 0
   form.enabled = true
@@ -843,6 +850,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_models = [...(m.extra_models || [])]
   form.group_id = m.group_id ?? null
   form.group_name = m.group_name || ''
+  form.display_overrides = { ...(m.display_overrides || {}) }
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
   form.jitter_seconds = m.jitter_seconds || 0
   form.enabled = m.enabled
@@ -914,6 +922,7 @@ function buildPayload(): CreateParams {
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
     extra_models: usesProbePart.value ? form.extra_models : [],
     group_id: form.group_id,
+    display_overrides: { ...form.display_overrides },
     group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,

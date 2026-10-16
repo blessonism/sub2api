@@ -32,23 +32,24 @@ const (
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
-	ID              int64
-	Name            string
-	Provider        string
-	APIMode         string
-	Endpoint        string
-	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
-	PrimaryModel    string
-	ExtraModels     []string
-	GroupID         *int64
-	GroupName       string
-	Enabled         bool
-	IntervalSeconds int
-	JitterSeconds   int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
-	LastCheckedAt   *time.Time
-	CreatedBy       int64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	DisplayOverrides domain.ChannelMonitorDisplayOverrides
+	ID               int64
+	Name             string
+	Provider         string
+	APIMode          string
+	Endpoint         string
+	APIKey           string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
+	PrimaryModel     string
+	ExtraModels      []string
+	GroupID          *int64
+	GroupName        string
+	Enabled          bool
+	IntervalSeconds  int
+	JitterSeconds    int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
+	LastCheckedAt    *time.Time
+	CreatedBy        int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 
 	// 配额模式（check_mode = quota / quota_probe）：
 	// 关联已有账号复用账号侧用量服务，Endpoint/APIKey 可为空（quota 模式）。
@@ -88,6 +89,7 @@ type ChannelMonitorListParams struct {
 
 // ChannelMonitorCreateParams 创建参数。
 type ChannelMonitorCreateParams struct {
+	DisplayOverrides domain.ChannelMonitorDisplayOverrides
 	Name             string
 	Provider         string
 	APIMode          string
@@ -116,18 +118,19 @@ type ChannelMonitorCreateParams struct {
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
 type ChannelMonitorUpdateParams struct {
-	Name            *string
-	Provider        *string
-	APIMode         *string
-	Endpoint        *string
-	APIKey          *string // 空字符串表示不修改；非空字符串覆盖
-	PrimaryModel    *string
-	ExtraModels     *[]string
-	GroupID         *int64 // nil = 不更新；0 = 解绑
-	GroupName       *string
-	Enabled         *bool
-	IntervalSeconds *int
-	JitterSeconds   *int
+	DisplayOverrides *domain.ChannelMonitorDisplayOverrides // nil 不变；{} 恢复全部自动
+	Name             *string
+	Provider         *string
+	APIMode          *string
+	Endpoint         *string
+	APIKey           *string // 空字符串表示不修改；非空字符串覆盖
+	PrimaryModel     *string
+	ExtraModels      *[]string
+	GroupID          *int64 // nil = 不更新；0 = 解绑
+	GroupName        *string
+	Enabled          *bool
+	IntervalSeconds  *int
+	JitterSeconds    *int
 	// 自定义快照字段：指针为 nil 表示不更新，非 nil 覆盖
 	// TemplateID *(*int64)：用 ** 表达三态：nil=不更新；&nil=清空；&&id=设为 id。
 	// 简化处理：用 ClearTemplate 显式标志 + TemplateID（普通指针）
@@ -163,6 +166,7 @@ type CheckResult struct {
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
+	DisplayOverrides      domain.ChannelMonitorDisplayOverrides
 	GroupID               *int64
 	CheckMode             string
 	PrimaryCheckedAt      *time.Time

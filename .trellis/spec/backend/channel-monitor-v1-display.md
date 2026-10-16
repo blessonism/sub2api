@@ -10,6 +10,7 @@
 - `POST /api/v1/admin/channel-monitors`、`PUT /api/v1/admin/channel-monitors/:id`：新增/编辑关联分组。
 - `POST /api/v1/admin/channel-monitors/:id/duplicate`：复制时保留关联分组。
 - `channel_monitors.group_id BIGINT NULL REFERENCES groups(id) ON DELETE SET NULL`。
+- `channel_monitors.display_overrides JSONB NOT NULL DEFAULT '{}'`（迁移 247）；Ent 使用 `domain.ChannelMonitorDisplayOverrides`，必须正式重新生成。
 - `ChannelMonitorDisplayService.Enrich(ctx context.Context, userID int64, views []*UserMonitorView)`：原地补充可选展示字段，查询失败不影响基础探测响应。
 - `ChannelMonitorDisplayRepository.BatchMetrics(context.Context, []ChannelMonitorMetricKey, time.Time) (map[ChannelMonitorMetricKey]ChannelMonitorDisplayMetrics, error)`：按分组/模型批量统计。
 
@@ -22,12 +23,23 @@
 - 新增接受正数或 null/省略；更新正数绑定、0 解绑、null/省略保持原值。绑定前确认分组存在；复制保留分组并生成独立监控。
 - 管理端选择本站 API Key 时带入其 `group_id`，管理员仍可改选。
 
+### 管理员手动展示值
+
+- 管理端新增/编辑/复制贯通 `display_overrides`：`visible_rate_multiplier`、`cache_rate_24h`、`output_tps_5m`、`primary_latency_ms`、`availability_7d`、`availability_15d`、`availability_30d`。
+- 每项是可空指针，nil 使用自动值，0 是有效手动值。更新省略/null 整个对象保持原配置；提供对象整体替换，`{}` 恢复全部自动，删除某个 key 恢复该项自动。复制独立保留覆盖配置。
+- 响应时间为非负整数 ms；倍率/TPS 为有限非负数；缓存比例 0–1，可用率 0–100。新增/编辑都在持久化前校验，非法值 HTTP 400 / `INVALID_MONITOR_DISPLAY_OVERRIDE`。
+- 表单中缓存率按百分数输入，保存时除以 100；提供一键全部恢复自动。默认所有项自动，不预设生产手动值。
+- 手动值只影响 V1 用户卡片和列表展示字段，不改实际计费倍率、用量记录、探测结果、状态、时间线及历史详情。卡片提示标明管理员手动设置，历史仍是真实记录。
+- 响应时间和 7 日可用率在用户视图组装时覆盖；15/30 日先取手动值，否则仍取原详情缓存。倍率/缓存率/TPS 在当前用户分组校验和自动统计完成后覆盖，不能进入共享统计缓存。
+- 未关联/无权限/分组权限查询失败时，不能使用或向用户暴露手动倍率/缓存率/TPS；已获分组权限但统计失败时仍使用手动值。用户接口 `display_overrides` 只返回当前用户可用的覆盖项。
+
 ### 用户接口和权限
 
 `GET /api/v1/channel-monitors` 保留原字段，追加以下可空字段，未知值必须保留 JSON null：
 
 | 字段 | 类型 | 口径 |
 | --- | --- | --- |
+| `display_overrides` | object | 当前用户可用的手动展示项，缺省为空对象 |
 | `group_id` | integer | 稳定关联 ID |
 | `primary_checked_at` | RFC3339 timestamp | 主模型最近探测时间，不能用监控或附加模型时间替代 |
 | `visible_rate_multiplier` | number | 当前用户最终可见倍率 |
@@ -44,7 +56,7 @@
 - TPS：最近 `[now-5m, now)` 内 `AVG(output_tokens * 1000.0 / duration_ms)`，使用请求完整耗时；有效样本通过与运维共用的 `usageOutputTPSValidSQL` 过滤。正输出、正耗时，排除图像；仅 sync/stream/ws_v2/cyber_blocked 类型。无有效样本为 null。
 - SQL 使用分组与时间条件配合现有 group/created_at 索引，不增加 usage log 索引或改变运维口径。
 - 聚合结果按分组/模型缓存 30 秒。无样本结果也缓存；查询失败不缓存。相同及重叠批次按 key 共享在途查询，未在途 key 合为批量 SQL。
-- 每条统计查询最多 2 秒；发起请求取消不取消其他等待者的共享查询。权限查询失败不提供新增倍率/统计，统计失败保留已解析倍率和基础探测结果。
+- 每条统计查询最多 2 秒；发起请求取消不取消其他等待者的共享查询。权限查询失败不提供新增倍率/统计，统计失败保留已解析倍率和基础探测结果；经过权限校验的手动统计值仍生效。
 - 未关联、无权限或分组不可用时，倍率和统计为 null。pure quota 不查询模型统计。
 - TPS 属于请求体验，独立于 RPM/TPM 规模信息和配额展示开关。
 
@@ -69,7 +81,7 @@
 | 用户未认证 | 路由认证中间件拒绝请求 |
 | 分组未关联、不可用或当前用户无权限 | 新倍率/统计为 null；保留探测结果 |
 | 分组权限查询失败 | 新倍率/统计为 null；列表仍成功返回 |
-| 统计超时或失败 | 保留已解析倍率，缓存率/TPS 为 null；失败不缓存 |
+| 统计超时或失败 | 保留已解析倍率；有授权的手动统计值则使用，否则缓存率/TPS 为 null；失败不缓存 |
 | 缓存率无有效分母 | 返回 0，卡片显示 0.0% |
 | TPS 无有效样本 | 返回 null；有效的 0 必须返回 0 |
 | 纯配额监控 | 不查询模型统计；沿用配额与历史展示 |
@@ -83,6 +95,8 @@
 ## 6. 必需测试与断言
 
 - `backend/internal/repository/channel_monitor_display_integration_test.go`：真实 PostgreSQL 分组关联生命周期、模型与时间过滤、缓存比例、逐请求 TPS 和有效样本过滤。
+- `backend/internal/service/channel_monitor_display_overrides_test.go`：非法值拒绝、有效零值、原始数据保留、权限隔离、共享缓存和恢复自动。
+- `backend/internal/handler/admin/channel_monitor_display_overrides_test.go`：HTTP 新增、编辑、非法值、零值及 `{}`/null/省略契约。
 - `backend/internal/service/channel_monitor_display_test.go`：权限与倍率规则、缓存过期/无样本/失败、重叠并发合并和调用者取消。
 - `backend/internal/handler/channel_monitor_user_display_test.go`：nullable JSON、认证身份、配额与 TPS 独立性。
 - `frontend/src/components/user/__tests__/MonitorCard.display.spec.ts`：卡片指标、倍率两/三位精度、缺失缓存占位提示、零值、中英文、相对时间、窗口切换、状态条及详情。

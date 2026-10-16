@@ -60,6 +60,12 @@ describe('V1 monitor display card', () => {
  it.each([[0.18, '0.18x'], [0.185, '0.185x'], [1, '1.00x'], [0.003, '0.003x'], [0.1801, '0.18x'], [0.0001, '0.000100x']])('formats multiplier %s as %s', (value, label) => {
   expect(card({ visible_rate_multiplier: Number(value) }).get('[data-testid="monitor-rate"]').text()).toBe(label)
  })
+ it('explains manually adjusted values while preserving Ping details', () => {
+  const wrapper = card({ display_overrides: { visible_rate_multiplier: 0.25, primary_latency_ms: 3000, cache_rate_24h: 0.623, output_tps_5m: 15.2, availability_7d: 89.1 } })
+  expect(wrapper.get('[data-testid="monitor-rate"]').attributes('title')).toContain('手动')
+  expect(wrapper.get('.metric-column').attributes('title')).toContain('手动')
+  expect(wrapper.get('.metric-column').attributes('title')).toContain('25ms')
+ })
  it('preserves capacity, degradation, and failure semantics', () => {
   const capacity = card({ primary_status: 'error', primary_error_category: 'rate_or_capacity' })
   expect(capacity.text()).toContain('限流')
@@ -94,5 +100,10 @@ describe('V1 monitor display card', () => {
   expect(wrapper.emitted('cardClick')?.[0]?.[0]).toEqual(item)
   await wrapper.setProps({ detailCache: {} })
   expect(wrapper.get('[data-testid="monitor-availability"]').text()).toBe('—')
+  await wrapper.setProps({ items: [{ ...item, display_overrides: { availability_15d: 0, availability_30d: 99 } }], window: '15d' })
+  expect(wrapper.get('[data-testid="monitor-availability"]').text()).toBe('0.0%')
+  await wrapper.setProps({ window: '30d' })
+  expect(wrapper.get('[data-testid="monitor-availability"]').text()).toBe('99.0%')
+  expect(wrapper.get('[data-testid="monitor-availability"]').element.closest('.metric-column')?.getAttribute('title')).toContain('手动')
  })
 })
