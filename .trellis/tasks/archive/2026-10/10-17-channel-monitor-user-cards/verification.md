@@ -39,3 +39,11 @@ Go 命令使用 `GOPROXY=https://goproxy.cn,direct`，绕过本机默认 proxy �
 按用户最新反馈，卡片与加载骨架去掉外边框，改用轻柔阴影；深浅主题和悬停分别调整阴影强度。保留内部指标分隔线及键盘焦点提示。前述灰蓝边框截图属于上一版验收，不能代表最新阴影样式。
 
 最新阴影改动已通过 MonitorCard/MonitorCardGrid 定向 ESLint 与 `git diff --check`；此次只调整外观，没有重跑前述全部行为测试。
+
+## 本地合并结果
+
+- 功能提交：`1046c537e1fc51072e44903f2cf17374aa4d3600`。
+- 已以 `git merge --ff-only feature/channel-monitor-user-cards` 合入本地 `custom/main`，无冲突。
+- 原工作区 34 个未提交文件逐一校验哈希/链接目标，内容与合并前一致；未混入本任务提交。
+- 仅归档当前任务；独立记录会话，避免触碰原工作区已修改的 Edom index/journal。
+- 未推送远端、未部署、未执行生产迁移。
