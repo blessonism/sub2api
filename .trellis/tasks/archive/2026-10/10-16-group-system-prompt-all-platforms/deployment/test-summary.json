@@ -1,0 +1,44 @@
+{
+  "backend": {
+    "passed_events_including_subtests": {
+      "github.com/Wei-Shaw/sub2api/internal/handler/admin": 2,
+      "github.com/Wei-Shaw/sub2api/internal/service": 494
+    },
+    "failed": [],
+    "skipped": [],
+    "passed_packages": [
+      "github.com/Wei-Shaw/sub2api/internal/handler/admin",
+      "github.com/Wei-Shaw/sub2api/internal/service"
+    ]
+  },
+  "regression": {
+    "passed_events_including_subtests": {
+      "github.com/Wei-Shaw/sub2api/internal/service": 300
+    },
+    "failed": [],
+    "skipped": [],
+    "passed_packages": [
+      "github.com/Wei-Shaw/sub2api/internal/service"
+    ]
+  },
+  "integration": {
+    "passed_events_including_subtests": {
+      "github.com/Wei-Shaw/sub2api/internal/repository": 7
+    },
+    "failed": [],
+    "skipped": [],
+    "passed_packages": [
+      "github.com/Wei-Shaw/sub2api/internal/repository"
+    ]
+  },
+  "frontend": {
+    "passed_tests": 80,
+    "typecheck": "passed",
+    "eslint_changed_files": "passed"
+  },
+  "lint": {
+    "tool": "golangci-lint v2.14.0",
+    "new_from_base": "366dc9d9f5e1",
+    "result": "0 issues."
+  }
+}

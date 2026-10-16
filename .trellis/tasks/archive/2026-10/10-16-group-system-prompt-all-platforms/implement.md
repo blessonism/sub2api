@@ -5,4 +5,4 @@
 - [x] 补齐 DeepSeek/同族、多协议转换、Gemini/Antigravity/Grok 与计数回归。
 - [x] 前端创建/编辑、切平台和 simple mode 全平台验证；更新契约。
 - [x] 定向后端/前端测试、类型检查和变更文件 lint；记录验证。
-- [ ] 合入 custom/main 并本机构建、部署 OVH，记录健康与回滚信息。
+- [x] 合入 custom/main 并本机构建、部署 OVH，健康、公网产物、迁移/环境一致性与回滚记录均完成。

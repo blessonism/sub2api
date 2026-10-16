@@ -1,0 +1,14 @@
+{
+  "commit": "10f2f9a00dcae6b7d48bd4cd516bb09a11c7a47a",
+  "rev": "10f2f9a00dca",
+  "build": "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-all-prompts-10f2f9a00dca-aq0fx6px",
+  "source": "/var/folders/1s/1y5j398106j6vnny35bgwt7m0000gn/T/sub2api-ovh-all-prompts-10f2f9a00dca-aq0fx6px/source",
+  "image": "sub2api-custom:10f2f9a00dca",
+  "verified_source_files": 5608,
+  "base_image_id": "sha256:efecdab31e4c6b029a164b89f3e131e87761c22693292d6008d71bad77d72cdb",
+  "dependencies": "local node_modules with byte-identical committed pnpm-lock.yaml",
+  "image_id": "sha256:c4d1904fae842bd21927d4329b9cd0767225b443a44464d40e4948c5c7c0f882",
+  "version_output": "2026-10-16T16:01:56.111Z\tINFO\tstdlog\tSub2API 0.2.16 (commit: 10f2f9a00dca, built: 2026-10-16T16:01:30Z)\t{\"service\": \"sub2api\", \"env\": \"bootstrap\", \"legacy_stdlog\": true}",
+  "binary_sha256": "08aeb6a67303a14746ab134d32fdbd47f88656d302dbd5689993d1d03d9ce7b2",
+  "version": "0.2.16"
+}

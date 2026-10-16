@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "image": "sub2api-custom:10f2f9a00dca",
+  "image_id": "sha256:c4d1904fae842bd21927d4329b9cd0767225b443a44464d40e4948c5c7c0f882",
+  "health": "healthy",
+  "restart_count": 0,
+  "migrations_unchanged": 347,
+  "other_containers_unchanged": 7,
+  "config_and_environment_unchanged": true,
+  "override_only_image_changed": true,
+  "override_backup": "/opt/sub2api-backups/docker-compose.override.predeploy-sub2api-custom_7f4d33b06144-to-10f2f9a00dca-20261017-000319.yml",
+  "http": {
+    "/": {
+      "http": 200
+    },
+    "/setup/status": {
+      "http": 200,
+      "needs_setup": false
+    },
+    "/api/v1/settings/public": {
+      "http": 200,
+      "code": 0
+    },
+    "/api/v1/admin/groups": {
+      "http": 401
+    },
+    "/v1/models": {
+      "http": 401
+    }
+  }
+}

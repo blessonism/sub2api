@@ -1,0 +1,71 @@
+--- deploy/ovh-safe-deploy.sh
++++ temporary/ovh-safe-deploy-pinned.sh
+@@ -8 +8 @@
+-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
++REPO_ROOT='/Users/suki/code/sub2api'
+@@ -107,12 +107,12 @@
+-if [[ -n "$(git status --porcelain)" ]]; then
+-  fail "working tree is not clean; deploy from a clean checkout of custom/main"
+-fi
+-
+-git fetch origin custom/main
+-REMOTE_REV="$(git rev-parse --short=12 origin/custom/main)"
+-[[ "$REV" == "$REMOTE_REV" ]] || fail "HEAD $REV is not origin/custom/main $REMOTE_REV"
+-
+-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+-if [[ "$BRANCH" != "custom/main" && -z "${CI:-}" ]]; then
+-  fail "deploy from custom/main; current branch is $BRANCH"
+-fi
++# 发布用户明确指定的本地 custom/main 固定提交；无 Git push。
++EXPECTED_FULL_HEAD=10f2f9a00dcae6b7d48bd4cd516bb09a11c7a47a
++[[ "$FULL_HEAD" == "$EXPECTED_FULL_HEAD" ]] || fail "local HEAD changed"
++[[ "$(git rev-parse custom/main)" == "$EXPECTED_FULL_HEAD" ]] || fail "custom/main changed"
++[[ "$(git branch --show-current)" == custom/main ]] || fail "local branch changed"
++# 工作树原有 journal/任务文件不参与构建；实际构建输入来自固定 SHA 的 git archive。
++git diff --quiet "$EXPECTED_FULL_HEAD" -- backend frontend deploy docs/legal || fail "tracked build inputs changed"
++git diff --cached --quiet || fail "index changed"
++[[ "$SKIP_BUILD" -eq 1 ]] || fail "fixed release requires --skip-build"
++LOCAL_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
++[[ "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" == "$PLATFORM" ]] || fail "image platform mismatch"
++[[ "$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$EXPECTED_FULL_HEAD" ]] || fail "image revision mismatch"
+@@ -156 +156 @@
+-  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' bash -s" <<'REMOTE'
++  "REV='$REV' IMAGE_REPO='$IMAGE_REPO' DEPLOY_DIR='$DEPLOY_DIR' BACKUP_DIR='$BACKUP_DIR' CONTAINER_NAME='$CONTAINER_NAME' HEALTH_URL='$HEALTH_URL' EXPECTED_IMAGE_ID='$LOCAL_IMAGE_ID' bash -s" <<'REMOTE'
+@@ -160 +160 @@
+-docker image inspect "$IMAGE" >/dev/null
++[[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$EXPECTED_IMAGE_ID" ]] || { echo 'Loaded image ID mismatch' >&2; exit 1; }
+@@ -163,0 +164,8 @@
++[[ "$OLD_IMAGE" == sub2api-custom:7f4d33b06144 ]] || { echo 'Production image changed since preflight' >&2; exit 1; }
++[[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == sha256:efecdab31e4c6b029a164b89f3e131e87761c22693292d6008d71bad77d72cdb ]] || { echo 'Production image ID changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/docker-compose.override.yml' | awk '{print $1}')" == 89c981900f26ecfd2dfa16e37b33732d2c7278084d3dacf5f1563ca3323a3079 ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/docker-compose.yml' | awk '{print $1}')" == e4a2b37f4ecb603274478f7c4d383564609b27c3429d109fb910fa41e8606fe0 ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++[[ "$(sha256sum '/opt/sub2api-deploy/.env' | awk '{print $1}')" == d9a82773c3c7f9e9d987c47e632f6f457f63e769551bbbc4a4c79b24235c47c6 ]] || { echo 'Deployment config changed since preflight' >&2; exit 1; }
++
++[[ -s '/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/database.dump' ]] || { echo 'Verified database backup missing' >&2; exit 1; }
++[[ -s '/opt/sub2api-backups/predeploy-7f4d33b06144-20261016T135139Z/deployment-config.tar.gz' ]] || { echo 'Configuration backup missing' >&2; exit 1; }
+@@ -168,0 +177 @@
++chmod 600 "$BACKUP_FILE"
+@@ -188,3 +196,0 @@
+-mv "$TMP_FILE" docker-compose.override.yml
+-docker compose config --quiet
+-
+@@ -195,4 +201,5 @@
+-  docker compose up -d "$CONTAINER_NAME" || true
+-}
+-
+-if ! docker compose up -d "$CONTAINER_NAME"; then
++  docker compose up -d --no-deps --pull never "$CONTAINER_NAME" || true
++}
++
++mv "$TMP_FILE" docker-compose.override.yml
++if ! docker compose config --quiet; then
+@@ -203,2 +210,7 @@
+-for _ in $(seq 1 30); do
+-  if curl -fsS --max-time 5 "$HEALTH_URL"; then
++if ! docker compose up -d --no-deps --pull never "$CONTAINER_NAME"; then
++  rollback
++  exit 1
++fi
++
++for _ in $(seq 1 60); do
++  if [[ "$(docker inspect "$CONTAINER_NAME" --format '{{.Image}}')" == "$EXPECTED_IMAGE_ID" ]] && curl -fsS --max-time 5 "$HEALTH_URL"; then
