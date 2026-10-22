@@ -241,13 +241,15 @@ func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, 
 	result := make(map[int64][]service.PricingInterval)
 	for rows.Next() {
 		var iv service.PricingInterval
+		var tierLabel sql.NullString
 		if err := rows.Scan(
-			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
+			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &tierLabel,
 			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheWrite1hPrice, &iv.CacheReadPrice,
 			&iv.PerRequestPrice, &iv.SortOrder, &iv.CreatedAt, &iv.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan account stats pricing interval: %w", err)
 		}
+		iv.TierLabel = tierLabel.String
 		result[iv.PricingID] = append(result[iv.PricingID], iv)
 	}
 	return result, rows.Err()
