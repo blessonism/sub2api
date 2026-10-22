@@ -155,6 +155,32 @@ func TestGptIntelligenceRadarBench_NoPublishedGradesIsEmpty(t *testing.T) {
 	require.Zero(t, snap.Metadata.FailedSeries)
 }
 
+func TestGptIntelligenceRadarBench_AcceptsV5AndV6Summaries(t *testing.T) {
+	for _, schema := range []string{
+		"radar-bench-public-summary-v5-150-daily-graded-count",
+		"radar-bench-public-summary-v6-150-details",
+	} {
+		t.Run(schema, func(t *testing.T) {
+			selection := radarBenchSelection{Model: "gpt-6.1-sol", Effort: "high"}
+			binding := radarBenchTestBinding(selection)
+			score := 97.90210570679321
+			summary := radarBenchTestSummary(binding, selection, &score)
+			summary.Schema = schema
+			now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+			s, requests := radarBenchTestService(t, binding, map[radarBenchSelection]radarBenchSummary{selection: summary}, &now)
+			snap, err := s.GetSnapshot(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, snap.Latest)
+			require.Equal(t, score, *snap.Latest.Score)
+			require.Equal(t, 150, snap.Latest.ScoreMax)
+			require.Equal(t, "2026-10-13", snap.Latest.Date)
+			require.Len(t, snap.RecentDays, 1)
+			require.Zero(t, snap.Metadata.FailedSeries)
+			require.Len(t, *requests, 2)
+		})
+	}
+}
+
 func TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory(t *testing.T) {
 	selection := radarBenchSelection{Model: "gpt-6.1-sol", Effort: "max"}
 	b := radarBenchTestBinding(selection)
@@ -163,19 +189,28 @@ func TestGptIntelligenceRadarBench_RejectsMismatchedSourceAndHistory(t *testing.
 		name   string
 		change func(*radarBenchSummary)
 	}{
+		{"unknown schema", func(p *radarBenchSummary) { p.Schema = "radar-bench-public-summary-v7-150-details" }},
+		{"missing schema", func(p *radarBenchSummary) { p.Schema = "" }},
 		{"model", func(p *radarBenchSummary) { p.Model = "other-model" }},
 		{"catalog", func(p *radarBenchSummary) { p.CatalogVersion = "other-catalog" }},
 		{"digest", func(p *radarBenchSummary) { p.TaskSetSHA256 = strings.Repeat("b", 64) }},
+		{"scoring policy", func(p *radarBenchSummary) { p.ScoringPolicyVersion = "other-policy" }},
 		{"coverage", func(p *radarBenchSummary) { p.Coverage = 65 }},
 		{"status", func(p *radarBenchSummary) { p.ScoreStatus = "complete" }},
 		{"last grade", func(p *radarBenchSummary) { p.History.Points[0].Coverage = 52 }},
 		{"non day timestamp", func(p *radarBenchSummary) { p.History.Points[0].At = "2026-10-13T12:00:00Z" }},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p := radarBenchTestSummary(b, selection, &score)
-			tc.change(&p)
-			require.Error(t, p.validate(&b, selection))
-		})
+		for _, schema := range []string{
+			"radar-bench-public-summary-v5-150-daily-graded-count",
+			"radar-bench-public-summary-v6-150-details",
+		} {
+			t.Run(tc.name+"/"+schema, func(t *testing.T) {
+				p := radarBenchTestSummary(b, selection, &score)
+				p.Schema = schema
+				tc.change(&p)
+				require.Error(t, p.validate(&b, selection))
+			})
+		}
 	}
 	p := radarBenchTestSummary(b, selection, &score)
 	p.HistoryState = "unavailable"

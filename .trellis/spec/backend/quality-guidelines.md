@@ -959,7 +959,7 @@ turns := FilterConversationExportableTurns(repoTurns, req) // final service gate
 - 不使用第三方字段中的任意 `transport_origin`。公共采集不携带私有凭据；HTTP client 禁用环境代理。
 - 单请求 8 秒、整批 20 秒、并发最多 3、每个响应最多 512 KiB。读取 `limit+1` 后明确判断超限。
 - binding 需启用且接口验证标志为真；benchmark/catalog 非空，task digest 为 32 字节十六进制，score version 为 `radar-bench-v2-150`，满分 150、题数 64。
-- summary schema 为 `radar-bench-public-summary-v5-150-daily-graded-count`，评分 policy 为 `radar-bench-v2-last3-per-task-equal-weight-150`。模型、档位、benchmark/catalog/digest/评分版本/满分必须与请求及 binding 一致。
+- summary schema 显式兼容 `radar-bench-public-summary-v5-150-daily-graded-count` 和 `radar-bench-public-summary-v6-150-details`；v6 新增的详情指标不进入现有快照，不影响共用的评分及 UTC 日桶契约。未知或缺失 schema 仍拒绝，错误信息包含实际 schema。评分 policy 为 `radar-bench-v2-last3-per-task-equal-weight-150`。模型、档位、benchmark/catalog/digest/评分版本/满分必须与请求及 binding 一致。
 - `coverage` 是任务覆盖，不能填入旧 `passed`。覆盖 0 时 score=null/status=`missing_current_result`；1..63 时有效 0..150 分/status=`provisional`；64 时 status=`complete`。`graded_runs_count` 为非负累计有效判分数，缺少旧 token/费用等数据时保留 null。
 - `history_state=available` 时校验 history schema `radar-bench-public-history-v1-150-daily`、模型/档位/版本/满分、UTC/day、递增 UTC 零点日桶、覆盖和状态；最终日桶与 summary/updated_bucket 一致。latest.date 使用真实 `YYYY-MM-DD` 判分日；历史不可用时日期留空，不能取抓取时间。
 - 归一化 DTO 沿用 latest/recent_days/comparisons，增加 benchmark、score_max/coverage/required_tasks/graded_runs_count 和 metadata.requested_series/failed_series；`monitored_at`、`cached_at` 为采集时间。
@@ -984,6 +984,7 @@ turns := FilterConversationExportableTurns(repoTurns, req) // final service gate
 
 #### 6. Tests Required
 - service 回归覆盖动态新/旧型号、去重、null/0 分、覆盖与状态、部分/全部失败、无成绩、边界及超限、目录异常、错误历史、历史不可用、并发限制、取消、429 冷却和缓存深拷贝。
+- v5/v6 summary 均需通过采集到快照的回归；两个版本下均验证来源、评分和历史不一致会被拒绝，未知或缺失 schema 不得自动放行。
 - 保留旧 JSON parser、环境代理禁用和 Prompt 题库回归；不再维护旧 runtime efficiency 合并测试。
 - handler/routes 验证静态指标路由与功能开关；前端验证后端路径、超时/取消转发、运行时解析和旧 DTO 兼容。
 - UI 验证有成绩的旧型号及 0 分仍显示，覆盖不会显示为通过数，UTC 判分日、状态、满分和部分失败提示正确；zh/en key 同步。

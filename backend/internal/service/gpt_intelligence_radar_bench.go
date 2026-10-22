@@ -20,7 +20,8 @@ const (
 	radarBenchBindingURL        = "https://codexradar.com/data/radar-bench-binding.json"
 	radarBenchSummaryURL        = "https://codexradar.com/api/radar-bench-score"
 	radarBenchScoreVersion      = "radar-bench-v2-150"
-	radarBenchSummarySchema     = "radar-bench-public-summary-v5-150-daily-graded-count"
+	radarBenchSummarySchema     = "radar-bench-public-summary-v6-150-details"
+	radarBenchSummarySchemaV5   = "radar-bench-public-summary-v5-150-daily-graded-count"
 	radarBenchHistorySchema     = "radar-bench-public-history-v1-150-daily"
 	radarBenchScoringPolicy     = "radar-bench-v2-last3-per-task-equal-weight-150"
 	radarBenchCollectionTimeout = 20 * time.Second
@@ -231,7 +232,13 @@ func (g radarBenchGrade) valid(maxScore float64, tasks int) bool {
 }
 
 func (p *radarBenchSummary) validate(b *radarBenchBinding, requested radarBenchSelection) error {
-	if p.Schema != radarBenchSummarySchema || p.radarBenchSelection != requested || p.Benchmark != b.Benchmark || p.CatalogVersion != b.CatalogVersion || p.TaskSetSHA256 != b.TaskSetSHA256 || p.ScoreVersion != b.ScoreVersion || p.ScoreMax != b.ScoreMax || p.ScoringPolicyVersion != radarBenchScoringPolicy || !p.valid(float64(b.ScoreMax), b.TotalTasks) || p.GradedRunsCount == nil || *p.GradedRunsCount < 0 {
+	switch p.Schema {
+	case radarBenchSummarySchema, radarBenchSummarySchemaV5:
+		// v5/v6 共用评分和 UTC 日桶契约；新增详情指标不进入现有快照。
+	default:
+		return fmt.Errorf("unsupported radar bench summary schema %q for %s/%s", p.Schema, requested.Model, requested.Effort)
+	}
+	if p.radarBenchSelection != requested || p.Benchmark != b.Benchmark || p.CatalogVersion != b.CatalogVersion || p.TaskSetSHA256 != b.TaskSetSHA256 || p.ScoreVersion != b.ScoreVersion || p.ScoreMax != b.ScoreMax || p.ScoringPolicyVersion != radarBenchScoringPolicy || !p.valid(float64(b.ScoreMax), b.TotalTasks) || p.GradedRunsCount == nil || *p.GradedRunsCount < 0 {
 		return fmt.Errorf("invalid radar bench summary for %s/%s", requested.Model, requested.Effort)
 	}
 	if p.HistoryState != "available" {
