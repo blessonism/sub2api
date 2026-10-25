@@ -158,7 +158,11 @@ func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, late
 }
 
 func formatResponsesStreamPartialMessage(streamErr *monitorResponsesStreamError, firstOutputMs *int, latencyMs int) string {
-	message := fmt.Sprintf("responses stream read timeout: total=%dms", latencyMs)
+	prefix := "responses stream incomplete"
+	if errors.Is(streamErr, context.DeadlineExceeded) {
+		prefix = "responses stream read timeout"
+	}
+	message := fmt.Sprintf("%s: total=%dms", prefix, latencyMs)
 	if firstOutputMs != nil {
 		message += fmt.Sprintf(" first_output=%dms", *firstOutputMs)
 	}
@@ -358,7 +362,9 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 }
 
 // monitorResponsesStreamError 标记 Responses 流在 HTTP 2xx 后的读取状态。
-// allowPartial 仅用于“已有可验证文本、但没有正常终态”的降级路径；显式失败、总超时和超限都必须保持 error。
+// allowPartial 仅用于“已有输出文本、但没有正常终态”的降级路径（读超时、64KB
+// 读取上限）；显式失败和总超时必须保持 error。allowPartial 不等于成功：下游
+// 仍要求 challenge 校验通过才降级为 degraded，否则维持 error。
 type monitorResponsesStreamError struct {
 	cause        error
 	allowPartial bool
@@ -496,7 +502,8 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 
 	for scanner.Scan() {
 		if limited.N <= 0 {
-			return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes)}
+			// 上游可能只是流很啰嗦（推理摘要/重复快照），答案已到就别判死。
+			return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
 		}
 		line := scanner.Text()
 		appendRaw(line)
@@ -513,7 +520,7 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 	}
 
 	if limited.N <= 0 {
-		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes)}
+		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
 	}
 	if scanErr := scanner.Err(); scanErr != nil {
 		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{

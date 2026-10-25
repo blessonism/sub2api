@@ -530,15 +530,73 @@ func TestRunCheckForModel_OpenAIResponses_ClientReadTimeoutAfterOutputIsDegraded
 	}
 }
 
-func TestReadOpenAIResponsesStream_OverLimitRemainsError(t *testing.T) {
+func TestReadOpenAIResponsesStream_OverLimitReturnsError(t *testing.T) {
 	body := strings.NewReader("data: " + strings.Repeat("x", monitorResponseMaxBytes) + "\n\n")
 	_, _, _, err := readOpenAIResponsesStream(context.Background(), body)
 	if err == nil {
 		t.Fatal("oversized Responses stream should return an error")
 	}
 	var streamErr *monitorResponsesStreamError
-	if !errors.As(err, &streamErr) || streamErr.allowPartial {
-		t.Fatalf("oversized Responses stream must not allow partial success, got %T %+v", err, streamErr)
+	if !errors.As(err, &streamErr) {
+		t.Fatalf("oversized Responses stream should return monitorResponsesStreamError, got %T", err)
+	}
+	if !streamErr.allowPartial {
+		t.Fatal("over-limit error should allow challenge-validated downgrade downstream")
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_OverLimitWithValidOutputIsDegraded(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			// 用 SSE 注释行把流撑过 64KB 且不发终态事件：模拟啰嗦上游
+			// （推理摘要/重复快照），答案其实已经到了。
+			pad := ": " + strings.Repeat("p", 64) + "\n\n"
+			for i := 0; i < 1200; i++ {
+				_, _ = w.Write([]byte(pad))
+			}
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusDegraded {
+		t.Fatalf("over-limit stream with valid output should be degraded, got status=%s message=%q", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "exceeds 65536") {
+		t.Fatalf("degraded message should explain the read limit, got %q", res.Message)
+	}
+	if res.LatencyMs == nil {
+		t.Fatal("degraded result should retain latency")
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_OverLimitWithoutOutputRemainsError(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, _ string) {
+			pad := ": " + strings.Repeat("p", 64) + "\n\n"
+			for i := 0; i < 1200; i++ {
+				_, _ = w.Write([]byte(pad))
+			}
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("over-limit stream without any output must remain error, got status=%s message=%q", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "exceeds 65536") {
+		t.Fatalf("error message should explain the read limit, got %q", res.Message)
 	}
 }
 
