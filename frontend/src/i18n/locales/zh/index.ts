@@ -1,3 +1,4 @@
+import adminAccessKeys from './adminAccessKeys'
 import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
@@ -9,6 +10,7 @@ import custom from './custom'
 import { mergeLocale } from '../mergeLocale'
 
 const base = {
+  adminAccessKeys,
   ...landing,
   ...common,
   ...dashboard,

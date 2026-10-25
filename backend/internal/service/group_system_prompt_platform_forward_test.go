@@ -161,7 +161,7 @@ func TestGroupSystemPromptOtherPlatformsCountTokens(t *testing.T) {
 	for _, platform := range []string{PlatformGemini, PlatformAntigravity, PlatformGrok} {
 		for _, mode := range []string{"prepend", "append", "replace"} {
 			t.Run(platform+"/"+mode, func(t *testing.T) {
-				ctx, c, rec := groupPromptForwardContext(platform, mode, "/v1/messages/count_tokens", body)
+				ctx, c, _ := groupPromptForwardContext(platform, mode, "/v1/messages/count_tokens", body)
 				cfg := groupSystemPromptConfig(ctx, c)
 				prepared, err := PrepareGroupSystemPromptBody(body, SystemPromptProtocolMessages, cfg)
 				require.NoError(t, err)
@@ -175,13 +175,20 @@ func TestGroupSystemPromptOtherPlatformsCountTokens(t *testing.T) {
 					require.Equal(t, want, got)
 					return
 				}
-				parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
-				require.NoError(t, err)
 				svc := &GatewayService{}
-				require.NoError(t, svc.ForwardCountTokens(ctx, c, &Account{Platform: platform, Type: AccountTypeAPIKey}, parsed))
-				require.Equal(t, 200, rec.Code)
-				require.Greater(t, gjson.GetBytes(rec.Body.Bytes(), "input_tokens").Int(), int64(0))
-				require.Equal(t, string(body), string(parsed.Body.Bytes()))
+				// OAuth 账号必须同样命中本地估算：凭据协议拦截不允许先于分组提示路径生效。
+				for _, account := range []*Account{
+					{Platform: platform, Type: AccountTypeAPIKey},
+					{Platform: platform, Type: AccountTypeOAuth},
+				} {
+					ctx, c, rec := groupPromptForwardContext(platform, mode, "/v1/messages/count_tokens", body)
+					parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+					require.NoError(t, err)
+					require.NoError(t, svc.ForwardCountTokens(ctx, c, account, parsed))
+					require.Equal(t, 200, rec.Code)
+					require.Greater(t, gjson.GetBytes(rec.Body.Bytes(), "input_tokens").Int(), int64(0))
+					require.Equal(t, string(body), string(parsed.Body.Bytes()))
+				}
 			})
 		}
 	}

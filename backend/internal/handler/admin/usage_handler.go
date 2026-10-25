@@ -73,7 +73,9 @@ type CreateAdminUsageCalibrationRequest struct {
 }
 
 type adminUsageListResponse struct {
-	Items                []dto.AdminUsageLog              `json:"items"`
+	// Items 经 adminUsageLogResponses 处理：scoped admin key 请求返回裁剪后的 gin.H，
+	// 普通管理员请求返回完整 []dto.AdminUsageLog。
+	Items                any                              `json:"items"`
 	Total                int64                            `json:"total"`
 	Page                 int                              `json:"page"`
 	PageSize             int                              `json:"page_size"`
@@ -267,11 +269,6 @@ func (h *UsageHandler) List(c *gin.Context) {
 		}
 	}
 
-	out := make([]dto.AdminUsageLog, 0, len(records))
-	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
-	}
-
 	var sharedIPUsersSummary *usagestats.SharedIPUsersSummary
 	if sharedIPUsers {
 		summary, err := h.usageService.GetSharedIPUsersSummary(c.Request.Context(), filters)
@@ -291,7 +288,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		total = result.Total
 	}
 	response.Success(c, adminUsageListResponse{
-		Items:                out,
+		Items:                adminUsageLogResponses(c, records),
 		Total:                total,
 		Page:                 page,
 		PageSize:             pageSize,
