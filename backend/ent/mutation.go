@@ -36,6 +36,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/modeliqproberesult"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -93,6 +94,7 @@ const (
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
+	TypeModelIQProbeResult            = "ModelIQProbeResult"
 	TypePaymentAuditLog               = "PaymentAuditLog"
 	TypePaymentOrder                  = "PaymentOrder"
 	TypePaymentProviderInstance       = "PaymentProviderInstance"
@@ -38548,6 +38550,1473 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown IdentityAdoptionDecision edge %s", name)
+}
+
+// ModelIQProbeResultMutation represents an operation that mutates the ModelIQProbeResult nodes in the graph.
+type ModelIQProbeResultMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int64
+	account_id           *int64
+	addaccount_id        *int64
+	account_name         *string
+	model                *string
+	protocol             *string
+	status               *modeliqproberesult.Status
+	override_status      *modeliqproberesult.OverrideStatus
+	error_category       *string
+	error_message        *string
+	expected_answer      *string
+	actual_answer        *string
+	latency_ms           *int64
+	addlatency_ms        *int64
+	input_tokens         *int
+	addinput_tokens      *int
+	output_tokens        *int
+	addoutput_tokens     *int
+	cache_read_tokens    *int
+	addcache_read_tokens *int
+	created_at           *time.Time
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*ModelIQProbeResult, error)
+	predicates           []predicate.ModelIQProbeResult
+}
+
+var _ ent.Mutation = (*ModelIQProbeResultMutation)(nil)
+
+// modeliqproberesultOption allows management of the mutation configuration using functional options.
+type modeliqproberesultOption func(*ModelIQProbeResultMutation)
+
+// newModelIQProbeResultMutation creates new mutation for the ModelIQProbeResult entity.
+func newModelIQProbeResultMutation(c config, op Op, opts ...modeliqproberesultOption) *ModelIQProbeResultMutation {
+	m := &ModelIQProbeResultMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeModelIQProbeResult,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withModelIQProbeResultID sets the ID field of the mutation.
+func withModelIQProbeResultID(id int64) modeliqproberesultOption {
+	return func(m *ModelIQProbeResultMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ModelIQProbeResult
+		)
+		m.oldValue = func(ctx context.Context) (*ModelIQProbeResult, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ModelIQProbeResult.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withModelIQProbeResult sets the old ModelIQProbeResult of the mutation.
+func withModelIQProbeResult(node *ModelIQProbeResult) modeliqproberesultOption {
+	return func(m *ModelIQProbeResultMutation) {
+		m.oldValue = func(context.Context) (*ModelIQProbeResult, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ModelIQProbeResultMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ModelIQProbeResultMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ModelIQProbeResultMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ModelIQProbeResultMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ModelIQProbeResult.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *ModelIQProbeResultMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *ModelIQProbeResultMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *ModelIQProbeResultMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *ModelIQProbeResultMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (m *ModelIQProbeResultMutation) ClearAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+	m.clearedFields[modeliqproberesult.FieldAccountID] = struct{}{}
+}
+
+// AccountIDCleared returns if the "account_id" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) AccountIDCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldAccountID]
+	return ok
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *ModelIQProbeResultMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+	delete(m.clearedFields, modeliqproberesult.FieldAccountID)
+}
+
+// SetAccountName sets the "account_name" field.
+func (m *ModelIQProbeResultMutation) SetAccountName(s string) {
+	m.account_name = &s
+}
+
+// AccountName returns the value of the "account_name" field in the mutation.
+func (m *ModelIQProbeResultMutation) AccountName() (r string, exists bool) {
+	v := m.account_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountName returns the old "account_name" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldAccountName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountName: %w", err)
+	}
+	return oldValue.AccountName, nil
+}
+
+// ClearAccountName clears the value of the "account_name" field.
+func (m *ModelIQProbeResultMutation) ClearAccountName() {
+	m.account_name = nil
+	m.clearedFields[modeliqproberesult.FieldAccountName] = struct{}{}
+}
+
+// AccountNameCleared returns if the "account_name" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) AccountNameCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldAccountName]
+	return ok
+}
+
+// ResetAccountName resets all changes to the "account_name" field.
+func (m *ModelIQProbeResultMutation) ResetAccountName() {
+	m.account_name = nil
+	delete(m.clearedFields, modeliqproberesult.FieldAccountName)
+}
+
+// SetModel sets the "model" field.
+func (m *ModelIQProbeResultMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *ModelIQProbeResultMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *ModelIQProbeResultMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetProtocol sets the "protocol" field.
+func (m *ModelIQProbeResultMutation) SetProtocol(s string) {
+	m.protocol = &s
+}
+
+// Protocol returns the value of the "protocol" field in the mutation.
+func (m *ModelIQProbeResultMutation) Protocol() (r string, exists bool) {
+	v := m.protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocol returns the old "protocol" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldProtocol(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocol: %w", err)
+	}
+	return oldValue.Protocol, nil
+}
+
+// ClearProtocol clears the value of the "protocol" field.
+func (m *ModelIQProbeResultMutation) ClearProtocol() {
+	m.protocol = nil
+	m.clearedFields[modeliqproberesult.FieldProtocol] = struct{}{}
+}
+
+// ProtocolCleared returns if the "protocol" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) ProtocolCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldProtocol]
+	return ok
+}
+
+// ResetProtocol resets all changes to the "protocol" field.
+func (m *ModelIQProbeResultMutation) ResetProtocol() {
+	m.protocol = nil
+	delete(m.clearedFields, modeliqproberesult.FieldProtocol)
+}
+
+// SetStatus sets the "status" field.
+func (m *ModelIQProbeResultMutation) SetStatus(value modeliqproberesult.Status) {
+	m.status = &value
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ModelIQProbeResultMutation) Status() (r modeliqproberesult.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldStatus(ctx context.Context) (v modeliqproberesult.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ModelIQProbeResultMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetOverrideStatus sets the "override_status" field.
+func (m *ModelIQProbeResultMutation) SetOverrideStatus(ms modeliqproberesult.OverrideStatus) {
+	m.override_status = &ms
+}
+
+// OverrideStatus returns the value of the "override_status" field in the mutation.
+func (m *ModelIQProbeResultMutation) OverrideStatus() (r modeliqproberesult.OverrideStatus, exists bool) {
+	v := m.override_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOverrideStatus returns the old "override_status" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldOverrideStatus(ctx context.Context) (v *modeliqproberesult.OverrideStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOverrideStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOverrideStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOverrideStatus: %w", err)
+	}
+	return oldValue.OverrideStatus, nil
+}
+
+// ClearOverrideStatus clears the value of the "override_status" field.
+func (m *ModelIQProbeResultMutation) ClearOverrideStatus() {
+	m.override_status = nil
+	m.clearedFields[modeliqproberesult.FieldOverrideStatus] = struct{}{}
+}
+
+// OverrideStatusCleared returns if the "override_status" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) OverrideStatusCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldOverrideStatus]
+	return ok
+}
+
+// ResetOverrideStatus resets all changes to the "override_status" field.
+func (m *ModelIQProbeResultMutation) ResetOverrideStatus() {
+	m.override_status = nil
+	delete(m.clearedFields, modeliqproberesult.FieldOverrideStatus)
+}
+
+// SetErrorCategory sets the "error_category" field.
+func (m *ModelIQProbeResultMutation) SetErrorCategory(s string) {
+	m.error_category = &s
+}
+
+// ErrorCategory returns the value of the "error_category" field in the mutation.
+func (m *ModelIQProbeResultMutation) ErrorCategory() (r string, exists bool) {
+	v := m.error_category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCategory returns the old "error_category" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldErrorCategory(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCategory: %w", err)
+	}
+	return oldValue.ErrorCategory, nil
+}
+
+// ClearErrorCategory clears the value of the "error_category" field.
+func (m *ModelIQProbeResultMutation) ClearErrorCategory() {
+	m.error_category = nil
+	m.clearedFields[modeliqproberesult.FieldErrorCategory] = struct{}{}
+}
+
+// ErrorCategoryCleared returns if the "error_category" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) ErrorCategoryCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldErrorCategory]
+	return ok
+}
+
+// ResetErrorCategory resets all changes to the "error_category" field.
+func (m *ModelIQProbeResultMutation) ResetErrorCategory() {
+	m.error_category = nil
+	delete(m.clearedFields, modeliqproberesult.FieldErrorCategory)
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *ModelIQProbeResultMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *ModelIQProbeResultMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldErrorMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *ModelIQProbeResultMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[modeliqproberesult.FieldErrorMessage] = struct{}{}
+}
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldErrorMessage]
+	return ok
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *ModelIQProbeResultMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, modeliqproberesult.FieldErrorMessage)
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (m *ModelIQProbeResultMutation) SetExpectedAnswer(s string) {
+	m.expected_answer = &s
+}
+
+// ExpectedAnswer returns the value of the "expected_answer" field in the mutation.
+func (m *ModelIQProbeResultMutation) ExpectedAnswer() (r string, exists bool) {
+	v := m.expected_answer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpectedAnswer returns the old "expected_answer" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldExpectedAnswer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpectedAnswer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpectedAnswer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpectedAnswer: %w", err)
+	}
+	return oldValue.ExpectedAnswer, nil
+}
+
+// ResetExpectedAnswer resets all changes to the "expected_answer" field.
+func (m *ModelIQProbeResultMutation) ResetExpectedAnswer() {
+	m.expected_answer = nil
+}
+
+// SetActualAnswer sets the "actual_answer" field.
+func (m *ModelIQProbeResultMutation) SetActualAnswer(s string) {
+	m.actual_answer = &s
+}
+
+// ActualAnswer returns the value of the "actual_answer" field in the mutation.
+func (m *ModelIQProbeResultMutation) ActualAnswer() (r string, exists bool) {
+	v := m.actual_answer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualAnswer returns the old "actual_answer" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldActualAnswer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualAnswer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualAnswer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualAnswer: %w", err)
+	}
+	return oldValue.ActualAnswer, nil
+}
+
+// ClearActualAnswer clears the value of the "actual_answer" field.
+func (m *ModelIQProbeResultMutation) ClearActualAnswer() {
+	m.actual_answer = nil
+	m.clearedFields[modeliqproberesult.FieldActualAnswer] = struct{}{}
+}
+
+// ActualAnswerCleared returns if the "actual_answer" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) ActualAnswerCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldActualAnswer]
+	return ok
+}
+
+// ResetActualAnswer resets all changes to the "actual_answer" field.
+func (m *ModelIQProbeResultMutation) ResetActualAnswer() {
+	m.actual_answer = nil
+	delete(m.clearedFields, modeliqproberesult.FieldActualAnswer)
+}
+
+// SetLatencyMs sets the "latency_ms" field.
+func (m *ModelIQProbeResultMutation) SetLatencyMs(i int64) {
+	m.latency_ms = &i
+	m.addlatency_ms = nil
+}
+
+// LatencyMs returns the value of the "latency_ms" field in the mutation.
+func (m *ModelIQProbeResultMutation) LatencyMs() (r int64, exists bool) {
+	v := m.latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLatencyMs returns the old "latency_ms" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldLatencyMs(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLatencyMs: %w", err)
+	}
+	return oldValue.LatencyMs, nil
+}
+
+// AddLatencyMs adds i to the "latency_ms" field.
+func (m *ModelIQProbeResultMutation) AddLatencyMs(i int64) {
+	if m.addlatency_ms != nil {
+		*m.addlatency_ms += i
+	} else {
+		m.addlatency_ms = &i
+	}
+}
+
+// AddedLatencyMs returns the value that was added to the "latency_ms" field in this mutation.
+func (m *ModelIQProbeResultMutation) AddedLatencyMs() (r int64, exists bool) {
+	v := m.addlatency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearLatencyMs clears the value of the "latency_ms" field.
+func (m *ModelIQProbeResultMutation) ClearLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+	m.clearedFields[modeliqproberesult.FieldLatencyMs] = struct{}{}
+}
+
+// LatencyMsCleared returns if the "latency_ms" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) LatencyMsCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldLatencyMs]
+	return ok
+}
+
+// ResetLatencyMs resets all changes to the "latency_ms" field.
+func (m *ModelIQProbeResultMutation) ResetLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+	delete(m.clearedFields, modeliqproberesult.FieldLatencyMs)
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (m *ModelIQProbeResultMutation) SetInputTokens(i int) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *ModelIQProbeResultMutation) InputTokens() (r int, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldInputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *ModelIQProbeResultMutation) AddInputTokens(i int) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *ModelIQProbeResultMutation) AddedInputTokens() (r int, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (m *ModelIQProbeResultMutation) ClearInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	m.clearedFields[modeliqproberesult.FieldInputTokens] = struct{}{}
+}
+
+// InputTokensCleared returns if the "input_tokens" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) InputTokensCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldInputTokens]
+	return ok
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *ModelIQProbeResultMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	delete(m.clearedFields, modeliqproberesult.FieldInputTokens)
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *ModelIQProbeResultMutation) SetOutputTokens(i int) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *ModelIQProbeResultMutation) OutputTokens() (r int, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldOutputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *ModelIQProbeResultMutation) AddOutputTokens(i int) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *ModelIQProbeResultMutation) AddedOutputTokens() (r int, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (m *ModelIQProbeResultMutation) ClearOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	m.clearedFields[modeliqproberesult.FieldOutputTokens] = struct{}{}
+}
+
+// OutputTokensCleared returns if the "output_tokens" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) OutputTokensCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldOutputTokens]
+	return ok
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *ModelIQProbeResultMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	delete(m.clearedFields, modeliqproberesult.FieldOutputTokens)
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (m *ModelIQProbeResultMutation) SetCacheReadTokens(i int) {
+	m.cache_read_tokens = &i
+	m.addcache_read_tokens = nil
+}
+
+// CacheReadTokens returns the value of the "cache_read_tokens" field in the mutation.
+func (m *ModelIQProbeResultMutation) CacheReadTokens() (r int, exists bool) {
+	v := m.cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheReadTokens returns the old "cache_read_tokens" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldCacheReadTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheReadTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheReadTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheReadTokens: %w", err)
+	}
+	return oldValue.CacheReadTokens, nil
+}
+
+// AddCacheReadTokens adds i to the "cache_read_tokens" field.
+func (m *ModelIQProbeResultMutation) AddCacheReadTokens(i int) {
+	if m.addcache_read_tokens != nil {
+		*m.addcache_read_tokens += i
+	} else {
+		m.addcache_read_tokens = &i
+	}
+}
+
+// AddedCacheReadTokens returns the value that was added to the "cache_read_tokens" field in this mutation.
+func (m *ModelIQProbeResultMutation) AddedCacheReadTokens() (r int, exists bool) {
+	v := m.addcache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (m *ModelIQProbeResultMutation) ClearCacheReadTokens() {
+	m.cache_read_tokens = nil
+	m.addcache_read_tokens = nil
+	m.clearedFields[modeliqproberesult.FieldCacheReadTokens] = struct{}{}
+}
+
+// CacheReadTokensCleared returns if the "cache_read_tokens" field was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) CacheReadTokensCleared() bool {
+	_, ok := m.clearedFields[modeliqproberesult.FieldCacheReadTokens]
+	return ok
+}
+
+// ResetCacheReadTokens resets all changes to the "cache_read_tokens" field.
+func (m *ModelIQProbeResultMutation) ResetCacheReadTokens() {
+	m.cache_read_tokens = nil
+	m.addcache_read_tokens = nil
+	delete(m.clearedFields, modeliqproberesult.FieldCacheReadTokens)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ModelIQProbeResultMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ModelIQProbeResultMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ModelIQProbeResult entity.
+// If the ModelIQProbeResult object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelIQProbeResultMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ModelIQProbeResultMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ModelIQProbeResultMutation builder.
+func (m *ModelIQProbeResultMutation) Where(ps ...predicate.ModelIQProbeResult) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ModelIQProbeResultMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ModelIQProbeResultMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ModelIQProbeResult, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ModelIQProbeResultMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ModelIQProbeResultMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ModelIQProbeResult).
+func (m *ModelIQProbeResultMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ModelIQProbeResultMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.account_id != nil {
+		fields = append(fields, modeliqproberesult.FieldAccountID)
+	}
+	if m.account_name != nil {
+		fields = append(fields, modeliqproberesult.FieldAccountName)
+	}
+	if m.model != nil {
+		fields = append(fields, modeliqproberesult.FieldModel)
+	}
+	if m.protocol != nil {
+		fields = append(fields, modeliqproberesult.FieldProtocol)
+	}
+	if m.status != nil {
+		fields = append(fields, modeliqproberesult.FieldStatus)
+	}
+	if m.override_status != nil {
+		fields = append(fields, modeliqproberesult.FieldOverrideStatus)
+	}
+	if m.error_category != nil {
+		fields = append(fields, modeliqproberesult.FieldErrorCategory)
+	}
+	if m.error_message != nil {
+		fields = append(fields, modeliqproberesult.FieldErrorMessage)
+	}
+	if m.expected_answer != nil {
+		fields = append(fields, modeliqproberesult.FieldExpectedAnswer)
+	}
+	if m.actual_answer != nil {
+		fields = append(fields, modeliqproberesult.FieldActualAnswer)
+	}
+	if m.latency_ms != nil {
+		fields = append(fields, modeliqproberesult.FieldLatencyMs)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldOutputTokens)
+	}
+	if m.cache_read_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldCacheReadTokens)
+	}
+	if m.created_at != nil {
+		fields = append(fields, modeliqproberesult.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ModelIQProbeResultMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		return m.AccountID()
+	case modeliqproberesult.FieldAccountName:
+		return m.AccountName()
+	case modeliqproberesult.FieldModel:
+		return m.Model()
+	case modeliqproberesult.FieldProtocol:
+		return m.Protocol()
+	case modeliqproberesult.FieldStatus:
+		return m.Status()
+	case modeliqproberesult.FieldOverrideStatus:
+		return m.OverrideStatus()
+	case modeliqproberesult.FieldErrorCategory:
+		return m.ErrorCategory()
+	case modeliqproberesult.FieldErrorMessage:
+		return m.ErrorMessage()
+	case modeliqproberesult.FieldExpectedAnswer:
+		return m.ExpectedAnswer()
+	case modeliqproberesult.FieldActualAnswer:
+		return m.ActualAnswer()
+	case modeliqproberesult.FieldLatencyMs:
+		return m.LatencyMs()
+	case modeliqproberesult.FieldInputTokens:
+		return m.InputTokens()
+	case modeliqproberesult.FieldOutputTokens:
+		return m.OutputTokens()
+	case modeliqproberesult.FieldCacheReadTokens:
+		return m.CacheReadTokens()
+	case modeliqproberesult.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ModelIQProbeResultMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case modeliqproberesult.FieldAccountName:
+		return m.OldAccountName(ctx)
+	case modeliqproberesult.FieldModel:
+		return m.OldModel(ctx)
+	case modeliqproberesult.FieldProtocol:
+		return m.OldProtocol(ctx)
+	case modeliqproberesult.FieldStatus:
+		return m.OldStatus(ctx)
+	case modeliqproberesult.FieldOverrideStatus:
+		return m.OldOverrideStatus(ctx)
+	case modeliqproberesult.FieldErrorCategory:
+		return m.OldErrorCategory(ctx)
+	case modeliqproberesult.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case modeliqproberesult.FieldExpectedAnswer:
+		return m.OldExpectedAnswer(ctx)
+	case modeliqproberesult.FieldActualAnswer:
+		return m.OldActualAnswer(ctx)
+	case modeliqproberesult.FieldLatencyMs:
+		return m.OldLatencyMs(ctx)
+	case modeliqproberesult.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case modeliqproberesult.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case modeliqproberesult.FieldCacheReadTokens:
+		return m.OldCacheReadTokens(ctx)
+	case modeliqproberesult.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ModelIQProbeResult field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelIQProbeResultMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case modeliqproberesult.FieldAccountName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountName(v)
+		return nil
+	case modeliqproberesult.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case modeliqproberesult.FieldProtocol:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocol(v)
+		return nil
+	case modeliqproberesult.FieldStatus:
+		v, ok := value.(modeliqproberesult.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case modeliqproberesult.FieldOverrideStatus:
+		v, ok := value.(modeliqproberesult.OverrideStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOverrideStatus(v)
+		return nil
+	case modeliqproberesult.FieldErrorCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCategory(v)
+		return nil
+	case modeliqproberesult.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case modeliqproberesult.FieldExpectedAnswer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpectedAnswer(v)
+		return nil
+	case modeliqproberesult.FieldActualAnswer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualAnswer(v)
+		return nil
+	case modeliqproberesult.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLatencyMs(v)
+		return nil
+	case modeliqproberesult.FieldInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case modeliqproberesult.FieldOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case modeliqproberesult.FieldCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheReadTokens(v)
+		return nil
+	case modeliqproberesult.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelIQProbeResult field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ModelIQProbeResultMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, modeliqproberesult.FieldAccountID)
+	}
+	if m.addlatency_ms != nil {
+		fields = append(fields, modeliqproberesult.FieldLatencyMs)
+	}
+	if m.addinput_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldOutputTokens)
+	}
+	if m.addcache_read_tokens != nil {
+		fields = append(fields, modeliqproberesult.FieldCacheReadTokens)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ModelIQProbeResultMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		return m.AddedAccountID()
+	case modeliqproberesult.FieldLatencyMs:
+		return m.AddedLatencyMs()
+	case modeliqproberesult.FieldInputTokens:
+		return m.AddedInputTokens()
+	case modeliqproberesult.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case modeliqproberesult.FieldCacheReadTokens:
+		return m.AddedCacheReadTokens()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelIQProbeResultMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case modeliqproberesult.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLatencyMs(v)
+		return nil
+	case modeliqproberesult.FieldInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case modeliqproberesult.FieldOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case modeliqproberesult.FieldCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheReadTokens(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelIQProbeResult numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ModelIQProbeResultMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(modeliqproberesult.FieldAccountID) {
+		fields = append(fields, modeliqproberesult.FieldAccountID)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldAccountName) {
+		fields = append(fields, modeliqproberesult.FieldAccountName)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldProtocol) {
+		fields = append(fields, modeliqproberesult.FieldProtocol)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldOverrideStatus) {
+		fields = append(fields, modeliqproberesult.FieldOverrideStatus)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldErrorCategory) {
+		fields = append(fields, modeliqproberesult.FieldErrorCategory)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldErrorMessage) {
+		fields = append(fields, modeliqproberesult.FieldErrorMessage)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldActualAnswer) {
+		fields = append(fields, modeliqproberesult.FieldActualAnswer)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldLatencyMs) {
+		fields = append(fields, modeliqproberesult.FieldLatencyMs)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldInputTokens) {
+		fields = append(fields, modeliqproberesult.FieldInputTokens)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldOutputTokens) {
+		fields = append(fields, modeliqproberesult.FieldOutputTokens)
+	}
+	if m.FieldCleared(modeliqproberesult.FieldCacheReadTokens) {
+		fields = append(fields, modeliqproberesult.FieldCacheReadTokens)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ModelIQProbeResultMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ModelIQProbeResultMutation) ClearField(name string) error {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		m.ClearAccountID()
+		return nil
+	case modeliqproberesult.FieldAccountName:
+		m.ClearAccountName()
+		return nil
+	case modeliqproberesult.FieldProtocol:
+		m.ClearProtocol()
+		return nil
+	case modeliqproberesult.FieldOverrideStatus:
+		m.ClearOverrideStatus()
+		return nil
+	case modeliqproberesult.FieldErrorCategory:
+		m.ClearErrorCategory()
+		return nil
+	case modeliqproberesult.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case modeliqproberesult.FieldActualAnswer:
+		m.ClearActualAnswer()
+		return nil
+	case modeliqproberesult.FieldLatencyMs:
+		m.ClearLatencyMs()
+		return nil
+	case modeliqproberesult.FieldInputTokens:
+		m.ClearInputTokens()
+		return nil
+	case modeliqproberesult.FieldOutputTokens:
+		m.ClearOutputTokens()
+		return nil
+	case modeliqproberesult.FieldCacheReadTokens:
+		m.ClearCacheReadTokens()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelIQProbeResult nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ModelIQProbeResultMutation) ResetField(name string) error {
+	switch name {
+	case modeliqproberesult.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case modeliqproberesult.FieldAccountName:
+		m.ResetAccountName()
+		return nil
+	case modeliqproberesult.FieldModel:
+		m.ResetModel()
+		return nil
+	case modeliqproberesult.FieldProtocol:
+		m.ResetProtocol()
+		return nil
+	case modeliqproberesult.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case modeliqproberesult.FieldOverrideStatus:
+		m.ResetOverrideStatus()
+		return nil
+	case modeliqproberesult.FieldErrorCategory:
+		m.ResetErrorCategory()
+		return nil
+	case modeliqproberesult.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case modeliqproberesult.FieldExpectedAnswer:
+		m.ResetExpectedAnswer()
+		return nil
+	case modeliqproberesult.FieldActualAnswer:
+		m.ResetActualAnswer()
+		return nil
+	case modeliqproberesult.FieldLatencyMs:
+		m.ResetLatencyMs()
+		return nil
+	case modeliqproberesult.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case modeliqproberesult.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case modeliqproberesult.FieldCacheReadTokens:
+		m.ResetCacheReadTokens()
+		return nil
+	case modeliqproberesult.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelIQProbeResult field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ModelIQProbeResultMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ModelIQProbeResultMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ModelIQProbeResultMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ModelIQProbeResultMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ModelIQProbeResultMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ModelIQProbeResultMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ModelIQProbeResultMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ModelIQProbeResult unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ModelIQProbeResultMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ModelIQProbeResult edge %s", name)
 }
 
 // PaymentAuditLogMutation represents an operation that mutates the PaymentAuditLog nodes in the graph.

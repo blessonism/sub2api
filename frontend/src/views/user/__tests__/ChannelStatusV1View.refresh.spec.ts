@@ -8,6 +8,7 @@ vi.mock('@/api/channelMonitor', () => ({ list, status: vi.fn() }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ cachedPublicSettings: { channel_monitor_enabled: true }, showError: vi.fn() }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isAdmin: false }) }))
 vi.mock('@/api/gptIntelligence', () => ({ fetchGptIntelligenceSnapshot: async () => null }))
+vi.mock('@/api/modelIqProbe', () => ({ fetchModelIqProbeSummary: async () => ({ items: [] }) }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({ t: (key: string) => key }),

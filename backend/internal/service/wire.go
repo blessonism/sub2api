@@ -575,10 +575,11 @@ func ProvideOpsCleanupService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
+	modelIQProbeSvc *ModelIQProbeService,
 	settingRepo SettingRepository,
 	opsService *OpsService,
 ) *OpsCleanupService {
-	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, modelIQProbeSvc, settingRepo)
 	svc.Start()
 	if opsService != nil {
 		opsService.SetCleanupReloader(svc)
@@ -1067,6 +1068,8 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelStatusService,
 	NewChannelMonitorRequestTemplateService,
+	NewModelIQProbeService,
+	ProvideModelIQProbeRunner,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
 
@@ -1171,6 +1174,20 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
 	return svc
+}
+
+// ProvideModelIQProbeRunner 创建并启动智商探针调度器。
+// 多实例互斥靠 leader lock；配置保存后 handler 调 runner.Reload() 重排下一次执行。
+// Runner.Stop 由 cleanup function 调用。
+func ProvideModelIQProbeRunner(
+	svc *ModelIQProbeService,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *ModelIQProbeRunner {
+	r := NewModelIQProbeRunner(svc)
+	r.SetLeaderLock(lockCache, db)
+	r.Start()
+	return r
 }
 
 // ProvideChannelMonitorV2Aggregator starts the passive minute-rollup worker.

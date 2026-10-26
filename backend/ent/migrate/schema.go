@@ -1389,6 +1389,43 @@ var (
 			},
 		},
 	}
+	// ModelIqProbeResultsColumns holds the columns for the "model_iq_probe_results" table.
+	ModelIqProbeResultsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "account_name", Type: field.TypeString, Nullable: true, Size: 200, Default: ""},
+		{Name: "model", Type: field.TypeString, Size: 200},
+		{Name: "protocol", Type: field.TypeString, Nullable: true, Size: 40, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pass", "wrong_answer", "error"}},
+		{Name: "override_status", Type: field.TypeEnum, Nullable: true, Enums: []string{"pass", "wrong_answer", "error"}},
+		{Name: "error_category", Type: field.TypeString, Nullable: true, Size: 40, Default: ""},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, Default: ""},
+		{Name: "expected_answer", Type: field.TypeString, Size: 200},
+		{Name: "actual_answer", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "latency_ms", Type: field.TypeInt64, Nullable: true},
+		{Name: "input_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "output_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "cache_read_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ModelIqProbeResultsTable holds the schema information for the "model_iq_probe_results" table.
+	ModelIqProbeResultsTable = &schema.Table{
+		Name:       "model_iq_probe_results",
+		Columns:    ModelIqProbeResultsColumns,
+		PrimaryKey: []*schema.Column{ModelIqProbeResultsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "modeliqproberesult_model_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelIqProbeResultsColumns[3], ModelIqProbeResultsColumns[15]},
+			},
+			{
+				Name:    "modeliqproberesult_account_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelIqProbeResultsColumns[1], ModelIqProbeResultsColumns[15]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2406,6 +2443,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		ModelIqProbeResultsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2517,6 +2555,9 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	ModelIqProbeResultsTable.Annotation = &entsql.Annotation{
+		Table: "model_iq_probe_results",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

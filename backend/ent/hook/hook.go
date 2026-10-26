@@ -297,6 +297,18 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
 }
 
+// The ModelIQProbeResultFunc type is an adapter to allow the use of ordinary
+// function as ModelIQProbeResult mutator.
+type ModelIQProbeResultFunc func(context.Context, *ent.ModelIQProbeResultMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelIQProbeResultFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ModelIQProbeResultMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ModelIQProbeResultMutation", m)
+}
+
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
 // function as PaymentAuditLog mutator.
 type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogMutation) (ent.Value, error)

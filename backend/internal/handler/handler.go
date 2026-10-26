@@ -38,6 +38,7 @@ type AdminHandlers struct {
 	Channel                 *admin.ChannelHandler
 	ChannelMonitor          *admin.ChannelMonitorHandler
 	ChannelMonitorTemplate  *admin.ChannelMonitorRequestTemplateHandler
+	ModelIQProbe            *admin.ModelIQProbeHandler
 	ContentModeration       *admin.ContentModerationHandler
 	PromptAudit             *securityaudit.PromptAdminHandler
 	Payment                 *admin.PaymentHandler
@@ -62,6 +63,7 @@ type Handlers struct {
 	Announcement     *AnnouncementHandler
 	ChannelMonitor   *ChannelMonitorUserHandler
 	ChannelMonitorV2 *ChannelMonitorV2Handler
+	ModelIQProbe     *ModelIQProbeUserHandler
 	ChannelStatus    *ChannelStatusHandler
 	Admin            *AdminHandlers
 	Gateway          *GatewayHandler

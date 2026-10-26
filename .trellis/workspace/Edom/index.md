@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-10-14
+- **Total Sessions**: 9
+- **Last Active**: 2026-10-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~204 | Active |
+| `journal-1.md` | ~303 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-10-17 | 全平台 System Prompt 注入修复与 OVH 部署 | `10f2f9a00dca` | `custom/main` |
+| 8 | 2026-10-14 | 智力雷达接入现行 RadarBench 并部署 OVH | `eb5bff47e4990083a0dc785a9690c6169f03c600` | `custom/main` |
+| 7 | 2026-10-14 | OVH 部署二开 v0.2.16 | `8fec104efb1fac129ee0665da6bae866baa80de1` | `feature/deploy-ovh-v0-2-16` |
 | 6 | 2026-10-14 | 同步官方 v0.2.16 并修复完整检查失败 | `8983b05ff58c71a73beb405f9034158b8f7e9039` | `custom/main` |
 | 5 | 2026-08-26 | 同步最新上游 main | `c08b38738` | `sync/upstream-20260826` |
 | 4 | 2026-08-26 | 账号管理当天缓存命中展示 | `636495b9b` | `custom/main` |

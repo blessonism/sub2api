@@ -21,6 +21,13 @@
       @card-click="openDetail"
     />
 
+    <CandyProbePanel
+      v-if="candyProbeItems.length > 0 || candyProbeLoading"
+      :items="candyProbeItems"
+      :loading="candyProbeLoading"
+      :error="candyProbeError"
+    />
+
     <div class="mt-5">
       <GptIntelligencePanel
         :snapshot="gptIntelligenceSnapshot"
@@ -56,12 +63,17 @@ import {
   fetchGptIntelligenceSnapshot,
   type GptIntelligenceSnapshot,
 } from '@/api/gptIntelligence'
+import {
+  fetchModelIqProbeSummary,
+  type ModelIqProbeSummaryItem,
+} from '@/api/modelIqProbe'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MonitorHero, {
   type MonitorWindow,
   type OverallStatus,
 } from '@/components/user/monitor/MonitorHero.vue'
 import GptIntelligencePanel from '@/components/user/monitor/GptIntelligencePanel.vue'
+import CandyProbePanel from '@/components/user/monitor/CandyProbePanel.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import ChannelStatusApiDialog from '@/components/user/monitor/ChannelStatusApiDialog.vue'
@@ -83,9 +95,13 @@ const detailTarget = ref<UserMonitorView | null>(null)
 const gptIntelligenceSnapshot = ref<GptIntelligenceSnapshot | null>(null)
 const gptIntelligenceLoading = ref(false)
 const gptIntelligenceError = ref<string | null>(null)
+const candyProbeItems = ref<ModelIqProbeSummaryItem[]>([])
+const candyProbeLoading = ref(false)
+const candyProbeError = ref<string | null>(null)
 
 let abortController: AbortController | null = null
 let gptIntelligenceAbortController: AbortController | null = null
+let candyProbeAbortController: AbortController | null = null
 
 const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
@@ -93,7 +109,8 @@ const autoRefresh = useAutoRefresh({
   defaultInterval: DEFAULT_INTERVAL_SECONDS,
   defaultEnabled: true,
   onRefresh: () => refresh(true),
-  shouldPause: () => document.hidden || loading.value || gptIntelligenceLoading.value,
+  shouldPause: () =>
+    document.hidden || loading.value || gptIntelligenceLoading.value || candyProbeLoading.value,
 })
 const countdown = autoRefresh.countdown
 
@@ -159,10 +176,36 @@ async function reloadModelIq(silent = false) {
   }
 }
 
+async function reloadCandyProbe(silent = false) {
+  if (candyProbeAbortController) candyProbeAbortController.abort()
+  const ctrl = new AbortController()
+  candyProbeAbortController = ctrl
+  if (!silent) candyProbeLoading.value = true
+  try {
+    const summary = await fetchModelIqProbeSummary({ signal: ctrl.signal })
+    if (ctrl.signal.aborted || candyProbeAbortController !== ctrl) return
+    candyProbeItems.value = summary.items
+    candyProbeError.value = null
+  } catch (err: unknown) {
+    const e = err as { name?: string; code?: string; message?: string }
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    if (!ctrl.signal.aborted && candyProbeAbortController === ctrl) {
+      // 探针未启用时后端返回空列表；请求失败仅内联提示，不打全局 toast。
+      candyProbeError.value = e?.message || t('channelStatus.candyProbe.loadErrorTitle')
+    }
+  } finally {
+    if (candyProbeAbortController === ctrl) {
+      if (!silent) candyProbeLoading.value = false
+      candyProbeAbortController = null
+    }
+  }
+}
+
 async function reloadAll(silent = false) {
   await Promise.all([
     reload(silent),
     reloadModelIq(silent),
+    reloadCandyProbe(silent),
   ])
 }
 
@@ -227,5 +270,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (abortController) abortController.abort()
   if (gptIntelligenceAbortController) gptIntelligenceAbortController.abort()
+  if (candyProbeAbortController) candyProbeAbortController.abort()
 })
 </script>

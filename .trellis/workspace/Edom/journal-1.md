@@ -202,3 +202,134 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: OVH 部署二开 v0.2.16
+
+**Date**: 2026-10-14
+**Task**: OVH 部署二开 v0.2.16
+**Branch**: `feature/deploy-ovh-v0-2-16`
+
+### Summary
+
+将本地 custom/main 的 v0.2.16 部署到 ovh，镜像 sub2api-custom:8fec104efb1f。346 个迁移校验、容器 health 和公网核心资源通过；保留数据库及 override 备份；其他容器和配置不变。仅本地构建，不推送 Git。验收：.trellis/tasks/archive/2026-10/10-14-deploy-ovh-v0-2-16/validation.md。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8fec104efb1fac129ee0665da6bae866baa80de1` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 8: 智力雷达接入现行 RadarBench 并部署 OVH
+
+**Date**: 2026-10-14
+**Task**: 智力雷达接入现行 RadarBench 并部署 OVH
+**Branch**: `custom/main`
+
+### Summary
+
+按公开 binding 动态展示所有有成绩的模型和档位，保留旧型号及 0 分，区分 UTC 判分日与读取时间。后端 18 个定向回归、前端 49 个相关测试、lint/typecheck/构建与真实源回放通过。发布镜像 sub2api-custom:eb5bff47e499，healthy；9 个公网资源和实际生产雷达 UI 验证通过，可见 10 月 14 日成绩，其余 7 个容器和配置不变，无新增迁移。本地 custom/main 已快进，不推送 Git；验收 .trellis/tasks/archive/2026-10/10-14-radar-stale-data/validation.md。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eb5bff47e4990083a0dc785a9690c6169f03c600` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 9: 全平台 System Prompt 注入修复与 OVH 部署
+
+**Date**: 2026-10-17
+**Task**: 全平台 System Prompt 注入修复与 OVH 部署
+**Branch**: `custom/main`
+
+### Summary
+
+开放 DeepSeek 等全部登记平台与组合分组，补齐 Gemini/System One/Grok/Antigravity 独立转发和计数。定向测试、数据库集成、前端和新增 lint 检查通过；已合入 custom/main 并本机构建部署 OVH，公网产物与镜像一致，保留回滚备份。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `10f2f9a00dca` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+---
+
+## Session 10: 糖果问题探针与智商监控
+
+**Date**: 2026-10-26
+**Task**: 10-26-model-iq-probe
+**Branch**: `feature/model-iq-probe`（基线 custom/main）
+
+### Summary
+
+新增独立子系统"智商监控"：以糖果问题（标准答案 21）为默认探针题，按账号×模型或仅按模型主动探测 OpenAI 账号上的 GPT 模型是否降智。用户端渠道状态页（V1）模型可用性下方新增糖果探针区块（按模型汇总 + 最近 10 次圆点时间线，零账号信息）；管理端新增与渠道监控同级的智商监控页面（配置题目/期望答案/目标/间隔 + 结果明细/过滤/改判/立即探测）。判分"出现即通过"与 challenge 同语义；结果存 `model_iq_probe_results`（迁移 249）保留 30 天；leader lock 防多实例并发。
+
+### Main Changes
+
+- 后端：`service/model_iq_probe_{service,runner}.go`、`repository/model_iq_probe_repo.go`、`handler/admin/model_iq_probe_handler.go`、用户端 `handler/model_iq_probe_user_handler.go`、ent schema + 迁移 249、settings key `model_iq_probe_config`、OpsCleanupService 清理挂钩、wire 全套注册。
+- 前端：`api/modelIqProbe.ts`、`api/admin/modelIqProbe.ts`、`components/user/monitor/CandyProbePanel.vue`、`views/admin/ModelIqMonitorView.vue`、路由 `/admin/channels/iq-monitor`、侧边栏渠道管理分组新条目、zh/en i18n（nav/custom overlay/admin）。
+- spec：新增 `.trellis/spec/backend/model-iq-probe.md`。
+
+### Testing
+
+- 后端：判分/配置/汇总单测 + repo 集成测试（testcontainers）通过；`go build ./...`、handler/server/routes/cmd 测试通过。service 包存量失败 `TestOpenAICodexTicketGate_CompactRequestUsesForwardOutboundModel` 在 clean custom/main 上同样失败，与本任务无关。
+- 前端：新增 10 个测试；全量 412 文件 / 3235 测试通过；`pnpm typecheck`、`pnpm check:i18n` 通过。
+
+### Status
+
+[IN PROGRESS] **待提交**（三段式提交待操作者确认；运行环境人工验收"立即探测/定时执行"待做）
+
+### Next Steps
+
+- 操作者确认后执行三段式提交（代码 → spec → 任务归档/journal）。
+- 部署测试环境人工验收：保存配置 → 立即探测 → 结果出现；定时轮次执行。

@@ -766,6 +766,11 @@ const StatusPulseIcon = createOutlineIcon(
   'M6 18h12'
 )
 
+// 智商监控：灯泡+火花（Heroicons light-bulb 变体），与"智力/探针"语义呼应。
+const BrainIcon = createOutlineIcon(
+  'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.199m-1.5.199a6.01 6.01 0 01-1.5-.199m0 0a3.004 3.004 0 01-2.25 2.914m4.5-2.914a3.004 3.004 0 002.25 2.914M9.75 11.25c0 1.152.266 2.243.74 3.213M12 3a9 9 0 11-9 9m9-9a9 9 0 019 9m-9-6.75v.008h.008V5.25H12z'
+)
+
 const ShieldIcon = {
   render: () =>
     h(
@@ -937,6 +942,7 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+        { path: '/admin/channels/iq-monitor', label: t('nav.modelIqMonitor'), icon: BrainIcon },
       ],
     },
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。

@@ -42,6 +42,7 @@ import lotteryCampaignsAPI from './lotteryCampaigns'
 import accountCollectionsAPI from './accountCollections'
 import auditAPI from './audit'
 import pluginsAPI from './plugins'
+import modelIqProbeAPI from './modelIqProbe'
 
 /**
  * Unified admin API object for convenient access
@@ -74,6 +75,7 @@ export const adminAPI = {
   channels: channelsAPI,
   channelMonitor: channelMonitorAPI,
   channelMonitorTemplate: channelMonitorTemplateAPI,
+  modelIqProbe: modelIqProbeAPI,
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,

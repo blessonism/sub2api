@@ -214,6 +214,23 @@ export default {
         "red": "RED",
         "unknown": "UNKNOWN"
       }
+    },
+    "candyProbe": {
+      "title": "Candy Probe · Degradation Check",
+      "description": "Actively probes GPT models with the candy puzzle: an answer containing the expected result is healthy; wrong answers (20/23/29) may indicate degradation. The strip shows the last 60 results, oldest to newest.",
+      "summary": "{ok}/{total} healthy",
+      "verdictPass": "Healthy",
+      "verdictWrong": "Likely degraded",
+      "verdictError": "Probe failed",
+      "verdictUnknown": "Not probed",
+      "rateLabel": "of last {n}",
+      "streak": "{n} passed in a row",
+      "latestAnswer": "Latest answer",
+      "stripLabel": "Last {n} probes",
+      "stripOrder": "oldest to newest",
+      "answerFallback": "No answer text",
+      "loadErrorTitle": "Unable to load candy probe results",
+      "noData": "No probe data yet"
     }
   },
   "activities": {

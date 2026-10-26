@@ -47,6 +47,7 @@ type OpsCleanupService struct {
 	redisClient       *redis.Client
 	cfg               *config.Config
 	channelMonitorSvc *ChannelMonitorService
+	modelIQProbeSvc   *ModelIQProbeService
 	settingRepo       SettingRepository
 
 	instanceID string
@@ -74,6 +75,7 @@ func NewOpsCleanupService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
+	modelIQProbeSvc *ModelIQProbeService,
 	settingRepo SettingRepository,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
@@ -82,6 +84,7 @@ func NewOpsCleanupService(
 		redisClient:       redisClient,
 		cfg:               cfg,
 		channelMonitorSvc: channelMonitorSvc,
+		modelIQProbeSvc:   modelIQProbeSvc,
 		settingRepo:       settingRepo,
 		instanceID:        uuid.NewString(),
 	}
@@ -354,6 +357,13 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	if s.channelMonitorSvc != nil {
 		if err := s.channelMonitorSvc.RunDailyMaintenance(ctx); err != nil {
 			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] channel monitor maintenance failed: %v", err)
+		}
+	}
+
+	// 智商探针结果清理（保留 30 天），失败只记日志。
+	if s.modelIQProbeSvc != nil {
+		if err := s.modelIQProbeSvc.CleanupOldResults(ctx); err != nil {
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] model IQ probe cleanup failed: %v", err)
 		}
 	}
 

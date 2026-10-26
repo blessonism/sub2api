@@ -214,6 +214,23 @@ export default {
         "red": "RED",
         "unknown": "UNKNOWN"
       }
+    },
+    "candyProbe": {
+      "title": "糖果探针 · 降智检测",
+      "description": "用糖果问题主动探测各 GPT 模型：回答出现标准答案即视为正常，答错（如 20/23/29）可能存在降智。条带展示最近 60 次结果，从左到右由旧到新。",
+      "summary": "{ok}/{total} 正常",
+      "verdictPass": "正常",
+      "verdictWrong": "疑似降智",
+      "verdictError": "探测失败",
+      "verdictUnknown": "未探测",
+      "rateLabel": "近 {n} 次",
+      "streak": "连续 {n} 次正常",
+      "latestAnswer": "最新回答",
+      "stripLabel": "最近 {n} 次探测",
+      "stripOrder": "由旧到新",
+      "answerFallback": "暂无回答文本",
+      "loadErrorTitle": "暂时无法加载糖果探针结果",
+      "noData": "暂无探测数据"
     }
   },
   "activities": {
