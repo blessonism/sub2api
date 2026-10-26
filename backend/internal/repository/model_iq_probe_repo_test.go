@@ -56,3 +56,52 @@ func TestModelIQProbeSummaryModelsAndEmptyTargets(t *testing.T) {
 	require.Equal(t, []string{"gpt-5.4"}, models)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestModelIQProbeGetByID(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := &modelIQProbeRepository{db: db}
+	columns := []string{"id", "account_id", "account_name", "model", "protocol", "status", "override_status", "error_category", "error_message", "expected_answer", "actual_answer", "latency_ms", "input_tokens", "output_tokens", "cache_read_tokens", "created_at"}
+	getQuery := "SELECT " + modelIQProbeSelectColumns + " FROM model_iq_probe_results WHERE id = $1"
+
+	mock.ExpectQuery(regexp.QuoteMeta(getQuery)).WithArgs(int64(7)).WillReturnRows(
+		sqlmock.NewRows(columns).AddRow(7, 42, "private", "gpt-5.2", "responses", "wrong_answer", nil, "", "", "21", "20", 100, nil, nil, nil, time.Now()))
+	row, err := repo.GetByID(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.2", row.Model)
+	require.Equal(t, "wrong_answer", row.ResolveEffectiveStatus())
+
+	mock.ExpectQuery(regexp.QuoteMeta(getQuery)).WithArgs(int64(99)).WillReturnRows(sqlmock.NewRows(columns))
+	_, err = repo.GetByID(context.Background(), 99)
+	require.ErrorIs(t, err, service.ErrModelIQProbeResultNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestModelIQProbeRandomPassAnswer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := &modelIQProbeRepository{db: db}
+	sampleQuery := "SELECT actual_answer FROM model_iq_probe_results WHERE actual_answer <> '' AND id <> $1 AND COALESCE(override_status, status) = 'pass' ORDER BY (model = $2) DESC, RANDOM() LIMIT 1"
+
+	mock.ExpectQuery(regexp.QuoteMeta(sampleQuery)).WithArgs(int64(7), "gpt-5.2").
+		WillReturnRows(sqlmock.NewRows([]string{"actual_answer"}).AddRow("所以最少取出 21 个糖果。"))
+	answer, ok, err := repo.RandomPassAnswer(context.Background(), "gpt-5.2", 7)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "所以最少取出 21 个糖果。", answer)
+
+	// 无可用样本：ok=false 且不报错。
+	mock.ExpectQuery(regexp.QuoteMeta(sampleQuery)).WithArgs(int64(7), "gpt-5.2").
+		WillReturnRows(sqlmock.NewRows([]string{"actual_answer"}))
+	answer, ok, err = repo.RandomPassAnswer(context.Background(), "gpt-5.2", 7)
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.Empty(t, answer)
+
+	mock.ExpectQuery(regexp.QuoteMeta(sampleQuery)).WithArgs(int64(7), "gpt-5.2").WillReturnError(sql.ErrConnDone)
+	_, _, err = repo.RandomPassAnswer(context.Background(), "gpt-5.2", 7)
+	require.ErrorIs(t, err, sql.ErrConnDone)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

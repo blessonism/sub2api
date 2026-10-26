@@ -120,14 +120,22 @@ func TestUserSummaryFromRows(t *testing.T) {
 	require.NotNil(t, latest)
 	require.Equal(t, ModelIQProbeStatusPass, latest.Status)
 	require.Equal(t, "最少 21 个", latest.AnswerExcerpt)
+	// 完整回答随 latest 下发，供前端悬浮展示。
+	require.Equal(t, "最少 21 个", latest.Answer)
 
 	// Recent 转为旧→新。
 	require.Len(t, items[1].Recent, 3)
 	require.Equal(t, ModelIQProbeStatusError, items[1].Recent[0].Status)
 	require.Equal(t, ModelIQProbeStatusPass, items[1].Recent[2].Status)
 
+	// 时间线点位带悬浮摘要：回答原文优先，error 行回退错误信息。
+	require.Equal(t, "timeout", items[1].Recent[0].AnswerExcerpt)
+	require.Equal(t, "23 个", items[1].Recent[1].AnswerExcerpt)
+	require.Equal(t, "最少 21 个", items[1].Recent[2].AnswerExcerpt)
+
 	// 摘要按字符截断。
 	require.LessOrEqual(t, len([]rune(items[0].Latest.AnswerExcerpt)), modelIQProbeAnswerExcerptMaxRunes)
+	require.LessOrEqual(t, len([]rune(items[0].Recent[0].AnswerExcerpt)), modelIQProbeAnswerExcerptMaxRunes)
 	// 不含账号信息。
 	require.NotContains(t, items[0].Model, "account")
 }

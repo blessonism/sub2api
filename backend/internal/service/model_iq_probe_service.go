@@ -75,6 +75,10 @@ var (
 		"model IQ probe is not available",
 	)
 	ErrModelIQProbeDisabled = infraerrors.BadRequest("MODEL_IQ_DISABLED", "model IQ probe is disabled")
+	ErrModelIQProbeNoPassAnswer = infraerrors.NotFound(
+		"MODEL_IQ_NO_PASS_ANSWER",
+		"no passing probe answer is available for replacement",
+	)
 )
 
 // modelIQProbeNumberRegex 提取响应中的独立整数 token（与 challenge 判分同款）。
@@ -100,20 +104,23 @@ type ModelIQProbeConfig struct {
 	TargetMode      string   `json:"target_mode"`
 	Models          []string `json:"models"`
 	AccountIDs      []int64  `json:"account_ids"`
+	// DisabledAccountIDs 临时停用的账号（保留在 AccountIDs 名单中，不参与探测）。
+	DisabledAccountIDs []int64 `json:"disabled_account_ids"`
 }
 
 // DefaultModelIQProbeConfig 返回默认配置（糖果问题，答案 21，每 6 小时一轮）。
 func DefaultModelIQProbeConfig() *ModelIQProbeConfig {
 	return &ModelIQProbeConfig{
-		Enabled:         false,
-		Visibility:      ModelIQProbeVisibilityAdminOnly,
-		UserDisplayMode: ModelIQProbeDisplayReal,
-		Question:        DefaultModelIQProbeQuestion,
-		ExpectedAnswer:  "21",
-		IntervalMinutes: 360,
-		TargetMode:      ModelIQProbeTargetModeAccountModel,
-		Models:          []string{},
-		AccountIDs:      []int64{},
+		Enabled:            false,
+		Visibility:         ModelIQProbeVisibilityAdminOnly,
+		UserDisplayMode:    ModelIQProbeDisplayReal,
+		Question:           DefaultModelIQProbeQuestion,
+		ExpectedAnswer:     "21",
+		IntervalMinutes:    360,
+		TargetMode:         ModelIQProbeTargetModeAccountModel,
+		Models:             []string{},
+		AccountIDs:         []int64{},
+		DisabledAccountIDs: []int64{},
 	}
 }
 
@@ -150,6 +157,7 @@ func (c *ModelIQProbeConfig) normalize() {
 	}
 	c.Models = trimAndDedupStrings(c.Models)
 	c.AccountIDs = trimAndDedupInt64s(c.AccountIDs)
+	c.DisabledAccountIDs = trimAndDedupInt64s(c.DisabledAccountIDs)
 }
 
 // Validate 校验配置。
@@ -238,7 +246,9 @@ type ModelIQProbeRepository interface {
 	ListRecent(ctx context.Context, limit int) ([]*ModelIQProbeResult, error)
 	ListSummaryModels(ctx context.Context, accountIDs []int64) ([]string, error)
 	ListForSummary(ctx context.Context, targets []ModelIQProbeTargetRef, recentPerModel int) ([]*ModelIQProbeResult, error)
-	OverrideStatus(ctx context.Context, id int64, status *string) error
+	GetByID(ctx context.Context, id int64) (*ModelIQProbeResult, error)
+	RandomPassAnswer(ctx context.Context, model string, excludeID int64) (string, bool, error)
+	OverrideStatus(ctx context.Context, id int64, status *string, actualAnswer *string) error
 	DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
@@ -246,9 +256,11 @@ type ModelIQProbeRepository interface {
 
 // ModelIQProbeStatusPoint 时间线上的一个判定点。
 type ModelIQProbeStatusPoint struct {
-	Status             string    `json:"status"`
-	CheckedAt          time.Time `json:"checked_at"`
-	MarkedForExclusion bool      `json:"marked_for_exclusion,omitempty"`
+	Status    string    `json:"status"`
+	CheckedAt time.Time `json:"checked_at"`
+	// AnswerExcerpt 该次探测的回答摘要（error 回退错误信息），供时间线悬浮展示。
+	AnswerExcerpt      string `json:"answer_excerpt,omitempty"`
+	MarkedForExclusion bool   `json:"marked_for_exclusion,omitempty"`
 }
 
 // ModelIQProbeUserSummary 单个模型的探针汇总（用户端）。
@@ -260,8 +272,10 @@ type ModelIQProbeUserSummary struct {
 
 // ModelIQProbeUserLatest 当前汇总状态及对应代表记录的回答摘要。
 type ModelIQProbeUserLatest struct {
-	Status             string    `json:"status"`
-	AnswerExcerpt      string    `json:"answer_excerpt,omitempty"`
+	Status        string `json:"status"`
+	AnswerExcerpt string `json:"answer_excerpt,omitempty"`
+	// Answer 完整回答原文（入库时已截断到 modelIQProbeActualAnswerMaxBytes），供前端悬浮展示。
+	Answer             string    `json:"answer,omitempty"`
 	CheckedAt          time.Time `json:"checked_at"`
 	MarkedForExclusion bool      `json:"marked_for_exclusion,omitempty"`
 }
@@ -385,6 +399,10 @@ func (s *ModelIQProbeService) listProbeAccounts(ctx context.Context, cfg *ModelI
 		if len(cfg.AccountIDs) > 0 && !slices.Contains(cfg.AccountIDs, a.ID) {
 			continue
 		}
+		// 临时停用的账号保留在名单里但不参与探测，方便随时恢复。
+		if slices.Contains(cfg.DisabledAccountIDs, a.ID) {
+			continue
+		}
 		selected = append(selected, a)
 	}
 	slices.SortFunc(selected, func(a, b *Account) int { return int(a.ID - b.ID) })
@@ -397,6 +415,21 @@ func (s *ModelIQProbeService) resolveProbeModels(ctx context.Context, cfg *Model
 		return cfg.Models
 	}
 	return s.discoverGPTModels(ctx, accounts)
+}
+
+// ListAvailableModels 拉取当前探测目标账号可服务的 GPT 模型并集，供管理端配置
+// 页选择。与探测运行的自动发现同口径（gpt-* 文本模型，过滤 image 档），实时
+// 拉取并走上游目录缓存，不落库。
+func (s *ModelIQProbeService) ListAvailableModels(ctx context.Context) ([]string, error) {
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := s.listProbeAccounts(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return s.discoverGPTModels(ctx, accounts), nil
 }
 
 // discoverGPTModels 并发拉取各账号的模型目录，取 gpt-* 文本模型并集。
@@ -685,6 +718,7 @@ func (s *ModelIQProbeService) UserSummary(ctx context.Context, isAdmin bool) ([]
 			if !isAdmin && cfg.UserDisplayMode == ModelIQProbeDisplayAlwaysGreen {
 				item.Latest.Status = ModelIQProbeStatusPass
 				item.Latest.AnswerExcerpt = ""
+				item.Latest.Answer = ""
 			}
 		}
 		for i := range item.Recent {
@@ -692,6 +726,7 @@ func (s *ModelIQProbeService) UserSummary(ctx context.Context, isAdmin bool) ([]
 			point.MarkedForExclusion = cfg.ShowExclusion && point.Status == ModelIQProbeStatusWrongAnswer
 			if !isAdmin && cfg.UserDisplayMode == ModelIQProbeDisplayAlwaysGreen {
 				point.Status = ModelIQProbeStatusPass
+				point.AnswerExcerpt = ""
 			}
 		}
 	}
@@ -725,7 +760,11 @@ func userSummaryFromRows(rows []*ModelIQProbeResult) []*ModelIQProbeUserSummary 
 			}
 		}
 		if len(item.Recent) < modelIQProbeRecentPerModel {
-			item.Recent = append(item.Recent, ModelIQProbeStatusPoint{Status: row.ResolveEffectiveStatus(), CheckedAt: row.CreatedAt})
+			item.Recent = append(item.Recent, ModelIQProbeStatusPoint{
+				Status:        row.ResolveEffectiveStatus(),
+				CheckedAt:     row.CreatedAt,
+				AnswerExcerpt: modelIQProbePointExcerpt(row),
+			})
 		}
 	}
 
@@ -738,6 +777,7 @@ func userSummaryFromRows(rows []*ModelIQProbeResult) []*ModelIQProbeUserSummary 
 			item.Latest = &ModelIQProbeUserLatest{
 				Status:        row.ResolveEffectiveStatus(),
 				AnswerExcerpt: truncateStringRunes(row.ActualAnswer, modelIQProbeAnswerExcerptMaxRunes),
+				Answer:        row.ActualAnswer,
 				CheckedAt:     row.CreatedAt,
 			}
 		}
@@ -745,6 +785,14 @@ func userSummaryFromRows(rows []*ModelIQProbeResult) []*ModelIQProbeUserSummary 
 	}
 	slices.SortFunc(items, func(a, b *ModelIQProbeUserSummary) int { return strings.Compare(a.Model, b.Model) })
 	return items
+}
+
+// modelIQProbePointExcerpt 时间线点的悬浮摘要：优先回答原文，error 行回退错误信息。
+func modelIQProbePointExcerpt(row *ModelIQProbeResult) string {
+	if text := strings.TrimSpace(row.ActualAnswer); text != "" {
+		return truncateStringRunes(text, modelIQProbeAnswerExcerptMaxRunes)
+	}
+	return truncateStringRunes(row.ErrorMessage, modelIQProbeAnswerExcerptMaxRunes)
 }
 
 func modelIQProbeStatusSeverity(status string) int {
@@ -759,7 +807,7 @@ func modelIQProbeStatusSeverity(status string) int {
 }
 
 // OverrideStatus 人工改判；status 传 nil 表示清除改判恢复自动判定。
-func (s *ModelIQProbeService) OverrideStatus(ctx context.Context, id int64, status *string) error {
+func (s *ModelIQProbeService) OverrideStatus(ctx context.Context, id int64, status *string, actualAnswer *string) error {
 	if status != nil {
 		switch *status {
 		case ModelIQProbeStatusPass, ModelIQProbeStatusWrongAnswer, ModelIQProbeStatusError:
@@ -767,7 +815,27 @@ func (s *ModelIQProbeService) OverrideStatus(ctx context.Context, id int64, stat
 			return ErrModelIQProbeInvalidConfig.WithCause(fmt.Errorf("invalid override status"))
 		}
 	}
-	return s.repo.OverrideStatus(ctx, id, status)
+	if actualAnswer != nil {
+		trimmed := strings.TrimSpace(*actualAnswer)
+		*actualAnswer = truncateStringBytes(trimmed, modelIQProbeActualAnswerMaxBytes)
+	}
+	return s.repo.OverrideStatus(ctx, id, status, actualAnswer)
+}
+
+// RandomPassAnswer 返回一条可用的通过回复样本（优先同模型），供改判时一键替换。
+func (s *ModelIQProbeService) RandomPassAnswer(ctx context.Context, id int64) (string, error) {
+	row, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	answer, ok, err := s.repo.RandomPassAnswer(ctx, row.Model, id)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", ErrModelIQProbeNoPassAnswer
+	}
+	return answer, nil
 }
 
 // CleanupOldResults 清理超过保留期的结果行（OpsCleanupService 每日调用）。

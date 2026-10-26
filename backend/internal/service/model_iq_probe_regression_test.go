@@ -325,13 +325,17 @@ func TestModelIQProbeVisibilityAndDisplayProjection(t *testing.T) {
 				for _, item := range items {
 					require.Equal(t, ModelIQProbeStatusPass, item.Latest.Status)
 					require.Empty(t, item.Latest.AnswerExcerpt)
+					require.Empty(t, item.Latest.Answer)
 					for _, point := range item.Recent {
 						require.Equal(t, ModelIQProbeStatusPass, point.Status)
+						// always-green 模式下点位摘要同样清空，避免泄露降智回答。
+						require.Empty(t, point.AnswerExcerpt)
 					}
 				}
 			} else {
 				require.Equal(t, ModelIQProbeStatusWrongAnswer, failed.Latest.Status)
 				require.Equal(t, "20", failed.Latest.AnswerExcerpt)
+				require.Equal(t, "20", failed.Latest.Answer)
 			}
 			encoded, err := json.Marshal(items)
 			require.NoError(t, err)
@@ -340,6 +344,77 @@ func TestModelIQProbeVisibilityAndDisplayProjection(t *testing.T) {
 			require.Equal(t, ModelIQProbeStatusWrongAnswer, rows[1].Status)
 		})
 	}
+}
+
+func TestModelIQProbeListAvailableModels(t *testing.T) {
+	cfg := enabledIQProbeConfig()
+	cfg.Models = []string{"gpt-legacy"} // 拉取接口不受已配置模型影响，始终实时发现
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	settings := NewSettingService(&iqProbeSettingsStub{values: map[string]string{SettingKeyModelIQProbeConfig: string(raw)}}, nil)
+
+	// OpenAI 账号参与发现；非 OpenAI 账号被过滤。
+	probeAccount := Account{
+		ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+		Schedulable: true, Concurrency: 3,
+		Credentials: map[string]any{"api_key": "sk-upstream", "base_url": "https://models.example/v1"},
+	}
+	anthropicAccount := Account{ID: 3, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true}
+	accounts := &iqProbeAccountsStub{accounts: []Account{probeAccount, anthropicAccount}}
+
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"object":"list","data":[
+			{"id":"GPT-5.1"},{"id":"gpt-5.2"},{"id":"gpt-image-1"},{"id":"deepseek-chat"}
+		]}`), nil
+	}}
+	gateway := &OpenAIGatewayService{
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		httpUpstream: upstream,
+	}
+	accountTest := &AccountTestService{accountRepo: accounts, openaiGatewayService: gateway, httpUpstream: upstream, cfg: &config.Config{}}
+	svc := NewModelIQProbeService(&iqProbeResultsStub{}, settings, accounts, accountTest)
+
+	models, err := svc.ListAvailableModels(context.Background())
+	require.NoError(t, err)
+	// 小写归一并取 gpt-* 文本模型并集；image 档与非 GPT 模型不进选项。
+	require.Equal(t, []string{"gpt-5.1", "gpt-5.2"}, models)
+}
+
+func TestModelIQProbeDisabledAccountsStayListedButSkipped(t *testing.T) {
+	cfg := enabledIQProbeConfig()
+	cfg.AccountIDs = []int64{2, 4}
+	cfg.DisabledAccountIDs = []int64{4} // 保留在名单中，临时停用
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	settings := NewSettingService(&iqProbeSettingsStub{values: map[string]string{SettingKeyModelIQProbeConfig: string(raw)}}, nil)
+
+	openaiAccount := func(id int64, apiKey string) Account {
+		return Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+			Schedulable: true, Concurrency: 3,
+			Credentials: map[string]any{"api_key": apiKey, "base_url": "https://models.example/v1"},
+		}
+	}
+	accounts := &iqProbeAccountsStub{accounts: []Account{openaiAccount(2, "sk-one"), openaiAccount(4, "sk-two")}}
+
+	upstream := &codexModelsHTTPUpstreamStub{do: func(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		// 不同账号返回不同目录：停用账号的模型不应出现在并集里。
+		if strings.HasSuffix(req.Header.Get("Authorization"), "sk-two") {
+			return ordinaryModelsUpstreamResponse(`{"object":"list","data":[{"id":"gpt-5.2"}]}`), nil
+		}
+		return ordinaryModelsUpstreamResponse(`{"object":"list","data":[{"id":"gpt-5.1"}]}`), nil
+	}}
+	gateway := &OpenAIGatewayService{
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		httpUpstream: upstream,
+	}
+	accountTest := &AccountTestService{accountRepo: accounts, openaiGatewayService: gateway, httpUpstream: upstream, cfg: &config.Config{}}
+	svc := NewModelIQProbeService(&iqProbeResultsStub{}, settings, accounts, accountTest)
+
+	models, err := svc.ListAvailableModels(context.Background())
+	require.NoError(t, err)
+	// 账号 4 被临时停用：其目录里的 gpt-5.2 不参与并集。
+	require.Equal(t, []string{"gpt-5.1"}, models)
 }
 
 func TestModelIQProbeSummaryRecoversPerAccount(t *testing.T) {

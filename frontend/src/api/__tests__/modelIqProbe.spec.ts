@@ -14,10 +14,11 @@ describe('parseModelIqProbeSummary', () => {
           latest: {
             status: 'pass',
             answer_excerpt: '所以最少取出 21 个糖果。',
+            answer: '所以最少取出 21 个糖果：星形 12 个、圆形 9 个。',
             checked_at: '2026-10-26T03:00:00Z',
           },
           recent: [
-            { status: 'wrong_answer', checked_at: '2026-10-26T01:00:00Z' },
+            { status: 'wrong_answer', checked_at: '2026-10-26T01:00:00Z', answer_excerpt: '答案是 20 个。' },
             { status: 'pass', checked_at: '2026-10-26T03:00:00Z' },
           ],
         },
@@ -29,10 +30,12 @@ describe('parseModelIqProbeSummary', () => {
     expect(summary.items[0].latest).toMatchObject({
       status: 'pass',
       answer_excerpt: '所以最少取出 21 个糖果。',
+      answer: '所以最少取出 21 个糖果：星形 12 个、圆形 9 个。',
       checked_at: '2026-10-26T03:00:00Z',
     })
     expect(summary.items[0].recent).toHaveLength(2)
     expect(summary.items[0].recent[0].status).toBe('wrong_answer')
+    expect(summary.items[0].recent[0].answer_excerpt).toBe('答案是 20 个。')
   })
 
   it('normalizes unknown statuses and drops invalid entries', () => {

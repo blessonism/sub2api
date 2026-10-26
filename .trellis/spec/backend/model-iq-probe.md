@@ -9,7 +9,7 @@ settings key `model_iq_probe_config`（JSON），改配置不需要重启：
 - `enabled=false`，`question` 默认糖果题，`expected_answer="21"`。
 - `interval_minutes=360`，合法范围 5～10080；实际定时附加 ±10% 抖动。
 - `target_mode=account_model`（账号 × 模型）或 `model_only`（每模型选择第一个支持账号）。
-- `models=[]` 时从上游目录发现 `gpt-*` 文本模型，排除 `gpt-image-*`；`account_ids=[]` 使用全部可调度的活跃 OpenAI 账号。
+- `models=[]` 时从上游目录发现 `gpt-*` 文本模型，排除 `gpt-image-*`；`account_ids=[]` 使用全部可调度的活跃 OpenAI 账号；`disabled_account_ids` 里的账号保留在名单中但临时不参与探测（实际范围 = account_ids − disabled_account_ids）。
 - `visibility=admin_only` 或 `all_users`，缺失字段默认 `admin_only`。
 - `user_display_mode=real` 或 `always_green`，缺失字段默认 `real`。
 - `show_exclusion=false`，开启后为答错结果附加 `marked_for_exclusion` 展示标记。

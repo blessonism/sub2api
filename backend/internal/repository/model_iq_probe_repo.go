@@ -194,13 +194,17 @@ func (r *modelIQProbeRepository) ListForSummary(ctx context.Context, targets []s
 }
 
 // OverrideStatus 人工改判；status 为 nil 时清除改判恢复自动判定。
-func (r *modelIQProbeRepository) OverrideStatus(ctx context.Context, id int64, status *string) error {
+// actualAnswer 非 nil 时同步改写回答原文（nil 保持不变）。
+func (r *modelIQProbeRepository) OverrideStatus(ctx context.Context, id int64, status *string, actualAnswer *string) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.ModelIQProbeResult.Update().Where(modeliqproberesult.ID(id))
 	if status != nil {
 		builder = builder.SetOverrideStatus(modeliqproberesult.OverrideStatus(*status))
 	} else {
 		builder = builder.ClearOverrideStatus()
+	}
+	if actualAnswer != nil {
+		builder = builder.SetActualAnswer(*actualAnswer)
 	}
 	affected, err := builder.Save(ctx)
 	if err != nil {
@@ -210,6 +214,48 @@ func (r *modelIQProbeRepository) OverrideStatus(ctx context.Context, id int64, s
 		return service.ErrModelIQProbeResultNotFound
 	}
 	return nil
+}
+
+// GetByID 按主键拉取单条结果；不存在返回 ErrModelIQProbeResultNotFound。
+func (r *modelIQProbeRepository) GetByID(ctx context.Context, id int64) (*service.ModelIQProbeResult, error) {
+	querySQL := "SELECT " + modelIQProbeSelectColumns + " FROM model_iq_probe_results WHERE id = $1"
+	rows, err := r.db.QueryContext(ctx, querySQL, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrModelIQProbeResultNotFound
+	}
+	return scanModelIQProbeResult(rows)
+}
+
+// RandomPassAnswer 抽一条有效通过回复作为改判替换样本：优先同模型，其次任意
+// 模型，排除指定行自身。ok=false 表示库中没有可用样本。
+func (r *modelIQProbeRepository) RandomPassAnswer(ctx context.Context, model string, excludeID int64) (string, bool, error) {
+	querySQL := "SELECT actual_answer FROM model_iq_probe_results " +
+		"WHERE actual_answer <> '' AND id <> $1 " +
+		"AND COALESCE(override_status, status) = 'pass' " +
+		"ORDER BY (model = $2) DESC, RANDOM() LIMIT 1"
+	rows, err := r.db.QueryContext(ctx, querySQL, excludeID, model)
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", false, err
+		}
+		return "", false, nil
+	}
+	var answer string
+	if err := rows.Scan(&answer); err != nil {
+		return "", false, err
+	}
+	return answer, true, nil
 }
 
 // DeleteBefore 物理删除指定时间前的结果行，返回删除条数。

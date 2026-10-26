@@ -7,12 +7,16 @@ export type ModelIqProbeStatus = 'pass' | 'wrong_answer' | 'error' | 'unknown'
 export interface ModelIqProbeStatusPoint {
   status: ModelIqProbeStatus
   checked_at: string
+  // 该次探测的回答摘要（error 为错误信息），供时间线悬浮展示。
+  answer_excerpt?: string
   marked_for_exclusion?: boolean
 }
 
 export interface ModelIqProbeUserLatest {
   status: ModelIqProbeStatus
   answer_excerpt?: string
+  // 完整回答原文（后端入库时已截断），供悬浮展示完整回复。
+  answer?: string
   checked_at: string
   marked_for_exclusion?: boolean
 }
@@ -57,6 +61,7 @@ function parseLatest(value: unknown): ModelIqProbeUserLatest | null {
   return {
     status,
     answer_excerpt: readString(value.answer_excerpt) || undefined,
+    answer: readString(value.answer) || undefined,
     checked_at: checkedAt,
     marked_for_exclusion: value.marked_for_exclusion === true,
   }
@@ -77,6 +82,7 @@ export function parseModelIqProbeSummary(value: unknown): ModelIqProbeSummary {
               if (!isRecord(point)) return null
               return {
                 status: readStatus(point.status), checked_at: readTime(point.checked_at),
+                answer_excerpt: readString(point.answer_excerpt) || undefined,
                 marked_for_exclusion: point.marked_for_exclusion === true,
               }
             })

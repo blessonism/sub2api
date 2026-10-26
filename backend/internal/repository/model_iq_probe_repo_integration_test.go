@@ -95,7 +95,7 @@ func TestModelIQProbeResultRoundTrip(t *testing.T) {
 	require.Equal(t, "答案是 20 个。", wrongRows[0].ActualAnswer)
 
 	// 人工改判：wrong_answer 行改判为 pass 后，pass 过滤应命中它。
-	require.NoError(t, repo.OverrideStatus(ctx, rows[1].ID, &passStatus))
+	require.NoError(t, repo.OverrideStatus(ctx, rows[1].ID, &passStatus, nil))
 	passRows, passTotal, err := repo.ListPage(ctx, 1, 10, service.ModelIQProbeListFilters{Status: service.ModelIQProbeStatusPass})
 	require.NoError(t, err)
 	require.EqualValues(t, 2, passTotal)
@@ -104,13 +104,27 @@ func TestModelIQProbeResultRoundTrip(t *testing.T) {
 	require.Equal(t, "所以最少取出 21 个糖果。", passRows[1].ActualAnswer)
 
 	// 清除改判恢复自动判定。
-	require.NoError(t, repo.OverrideStatus(ctx, rows[1].ID, nil))
+	require.NoError(t, repo.OverrideStatus(ctx, rows[1].ID, nil, nil))
 	_, passTotal, err = repo.ListPage(ctx, 1, 10, service.ModelIQProbeListFilters{Status: service.ModelIQProbeStatusPass})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, passTotal)
 
+	// 改判同时改写回答原文；GetByID 可读回。
+	rewritten := "所以最少取出 21 个糖果（星形 12 + 圆形 9）。"
+	require.NoError(t, repo.OverrideStatus(ctx, rows[1].ID, &passStatus, &rewritten))
+	rewrittenRow, err := repo.GetByID(ctx, rows[1].ID)
+	require.NoError(t, err)
+	require.Equal(t, rewritten, rewrittenRow.ActualAnswer)
+	require.Equal(t, "pass", rewrittenRow.ResolveEffectiveStatus())
+
+	// RandomPassAnswer：优先同模型，排除自身，只取有效通过行。
+	sample, ok, err := repo.RandomPassAnswer(ctx, "gpt-5.2", rows[1].ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "所以最少取出 21 个糖果。", sample)
+
 	// 改判不存在的行 → NotFound。
-	require.ErrorIs(t, repo.OverrideStatus(ctx, 999999, &passStatus), service.ErrModelIQProbeResultNotFound)
+	require.ErrorIs(t, repo.OverrideStatus(ctx, 999999, &passStatus, nil), service.ErrModelIQProbeResultNotFound)
 
 	// DeleteBefore：只删截止时间前的行。
 	deleted, err := repo.DeleteBefore(ctx, time.Now().Add(-45*time.Minute))

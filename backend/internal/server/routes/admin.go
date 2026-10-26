@@ -965,10 +965,12 @@ func registerModelIQProbeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		iq.GET("/config", h.Admin.ModelIQProbe.GetConfig)
 		iq.PUT("/config", h.Admin.ModelIQProbe.UpdateConfig)
+		iq.GET("/models", h.Admin.ModelIQProbe.ListModels)
 		iq.GET("/results", h.Admin.ModelIQProbe.ListResults)
 		iq.POST("/run", h.Admin.ModelIQProbe.RunProbe)
 		iq.GET("/run", h.Admin.ModelIQProbe.GetRun)
 		iq.POST("/results/:id/override", h.Admin.ModelIQProbe.OverrideResult)
+		iq.GET("/results/:id/pass-answer", h.Admin.ModelIQProbe.GetPassAnswerSample)
 	}
 }
 

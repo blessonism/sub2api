@@ -19,6 +19,8 @@ export interface ModelIqProbeConfig {
   target_mode: ModelIqProbeTargetMode
   models: string[]
   account_ids: number[]
+  // 临时停用的账号（保留在 account_ids 名单中，不参与探测）。
+  disabled_account_ids: number[]
 }
 
 export interface ModelIqProbeResult {
@@ -78,6 +80,12 @@ export async function getConfig(): Promise<ModelIqProbeConfig> {
   return data
 }
 
+/** 拉取探测目标账号当前可服务的 GPT 模型并集（与探测运行的自动发现同口径）。 */
+export async function listAvailableModels(options?: { signal?: AbortSignal }): Promise<string[]> {
+  const { data } = await apiClient.get<{ models: string[] }>('/admin/model-iq-probe/models', options)
+  return data.models || []
+}
+
 export async function updateConfig(config: ModelIqProbeConfig): Promise<ModelIqProbeConfig> {
   const { data } = await apiClient.put<ModelIqProbeConfig>('/admin/model-iq-probe/config', config)
   return data
@@ -104,16 +112,30 @@ export async function getRunState(options?: { signal?: AbortSignal }): Promise<M
   return data
 }
 
-/** status 传 null 表示清除人工改判。 */
-export async function overrideResult(id: number, status: ModelIqProbeStatus | null): Promise<void> {
-  await apiClient.post(`/admin/model-iq-probe/results/${id}/override`, { status })
+/** status 传 null 表示清除人工改判；actualAnswer 传非空值时同步改写回答原文。 */
+export async function overrideResult(
+  id: number,
+  status: ModelIqProbeStatus | null,
+  actualAnswer?: string
+): Promise<void> {
+  const body: { status: ModelIqProbeStatus | null; actual_answer?: string } = { status }
+  if (actualAnswer && actualAnswer.trim()) body.actual_answer = actualAnswer
+  await apiClient.post(`/admin/model-iq-probe/results/${id}/override`, body)
+}
+
+/** 拉取一条随机的通过回复样本（优先同模型），供改判时一键替换。 */
+export async function fetchPassAnswerSample(id: number): Promise<string> {
+  const { data } = await apiClient.get<{ answer: string }>(`/admin/model-iq-probe/results/${id}/pass-answer`)
+  return data.answer || ''
 }
 
 export default {
   getConfig,
+  listAvailableModels,
   updateConfig,
   listResults,
   runProbe,
   getRunState,
   overrideResult,
+  fetchPassAnswerSample,
 }

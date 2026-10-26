@@ -113,14 +113,25 @@
             </template>
 
             <template #cell-actual_answer="{ row }">
-              <button
-                type="button"
-                class="max-w-[18rem] truncate text-left text-sm text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-300"
-                :title="t('admin.modelIqMonitor.viewAnswer')"
-                @click="openAnswerDialog(row)"
-              >
-                {{ row.actual_answer || row.error_message || '-' }}
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  class="max-w-[18rem] truncate text-left text-sm text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-300"
+                  :title="t('admin.modelIqMonitor.viewAnswer')"
+                  @click="openAnswerDialog(row)"
+                >
+                  {{ row.actual_answer || row.error_message || '-' }}
+                </button>
+                <button
+                  v-if="row.actual_answer"
+                  type="button"
+                  class="shrink-0 p-0.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-300"
+                  :title="t('common.copy')"
+                  @click="copyRowAnswer(row)"
+                >
+                  <Icon name="copy" size="xs" />
+                </button>
+              </div>
             </template>
 
             <template #cell-latency_ms="{ row }">
@@ -223,6 +234,36 @@
               :aria-label="t('admin.modelIqMonitor.accountsLabel')"
             />
             <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.accountsHint') }}</p>
+
+            <div v-if="configForm.account_ids.length > 0" class="mt-3">
+              <p class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.modelIqMonitor.accountTogglesLabel') }}</p>
+              <div class="mt-2 space-y-2">
+                <div
+                  v-for="account in selectedAccountOptions"
+                  :key="account.id"
+                  class="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
+                  :class="isAccountDisabled(account.id)
+                    ? 'border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/60'
+                    : 'border-gray-200 dark:border-dark-600'"
+                >
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span
+                      class="truncate text-sm"
+                      :class="isAccountDisabled(account.id) ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200'"
+                    >
+                      {{ account.name }}
+                    </span>
+                    <span class="shrink-0 text-xs text-gray-400">#{{ account.id }}</span>
+                  </div>
+                  <Toggle
+                    :model-value="!isAccountDisabled(account.id)"
+                    :aria-label="t('admin.modelIqMonitor.accountToggle', { name: account.name })"
+                    @update:model-value="setAccountEnabled(account.id, $event)"
+                  />
+                </div>
+              </div>
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.accountTogglesHint') }}</p>
+            </div>
           </div>
 
           <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -233,6 +274,31 @@
               @update:models="configForm.models = $event"
             />
             <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.modelsHint') }}</p>
+
+            <div class="mt-3">
+              <p class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.modelIqMonitor.availableModelsLabel') }}</p>
+              <p v-if="availableModelsLoading" class="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.modelIqMonitor.availableModelsLoading') }}
+              </p>
+              <div v-else-if="availableModels.length > 0" class="mt-1.5 flex flex-wrap gap-1.5">
+                <button
+                  v-for="model in availableModels"
+                  :key="model"
+                  type="button"
+                  class="inline-flex items-center rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors"
+                  :class="configForm.models.includes(model)
+                    ? 'border-primary-400 bg-primary-50 text-primary-700 dark:border-primary-500/50 dark:bg-primary-900/30 dark:text-primary-300'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-900/60 dark:text-gray-300 dark:hover:text-primary-300'"
+                  :aria-pressed="configForm.models.includes(model)"
+                  @click="toggleModel(model)"
+                >
+                  {{ model }}
+                </button>
+              </div>
+              <p v-else class="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.modelIqMonitor.availableModelsEmpty') }}
+              </p>
+            </div>
           </div>
 
           <div class="grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-2">
@@ -298,6 +364,17 @@
           <p>{{ t('admin.modelIqMonitor.expectedAnswer') }}: <span class="font-semibold">{{ answerRow.expected_answer }}</span></p>
           <p v-if="answerRow.error_message" class="mt-1 text-red-500">{{ answerRow.error_message }}</p>
         </div>
+        <div class="flex items-center justify-end">
+          <button
+            v-if="answerRow?.actual_answer"
+            type="button"
+            class="btn h-7 text-xs"
+            @click="copyDialogAnswer"
+          >
+            <Icon name="copy" size="xs" class="mr-1" />
+            {{ t('common.copy') }}
+          </button>
+        </div>
         <pre class="max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-800 dark:bg-dark-900/60 dark:text-gray-200">{{ answerRow.actual_answer || t('admin.modelIqMonitor.noAnswerText') }}</pre>
       </div>
     </BaseDialog>
@@ -320,6 +397,28 @@
             <span class="text-gray-800 dark:text-gray-200">{{ option.label }}</span>
           </label>
         </div>
+        <div class="space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="input-label mb-0" for="iq-override-answer">{{ t('admin.modelIqMonitor.overrideAnswerLabel') }}</label>
+            <button
+              v-if="canReplaceAnswer"
+              type="button"
+              class="btn h-7 text-xs"
+              :disabled="fetchingSample"
+              @click="fillRandomPassAnswer"
+            >
+              <Icon name="sparkles" size="xs" class="mr-1" />
+              {{ fetchingSample ? t('admin.modelIqMonitor.fetchingSample') : t('admin.modelIqMonitor.replaceWithPassReply') }}
+            </button>
+          </div>
+          <textarea
+            id="iq-override-answer"
+            v-model="overrideAnswer"
+            rows="4"
+            class="input w-full font-mono text-xs leading-5"
+          ></textarea>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.overrideAnswerHint') }}</p>
+        </div>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
@@ -339,6 +438,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
+import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import type {
   ModelIqProbeConfig,
@@ -386,6 +486,7 @@ const configForm = reactive<ModelIqProbeConfig>({
   target_mode: 'account_model',
   models: [],
   account_ids: [],
+  disabled_account_ids: [],
 })
 
 // 账号选项：分页拉全量后前端过滤出 OpenAI 平台账号，供多选下拉使用。
@@ -425,6 +526,56 @@ const targetModeOptions = computed(() => [
   { label: t('admin.modelIqMonitor.targetModeAccountModel'), value: 'account_model' },
   { label: t('admin.modelIqMonitor.targetModeModelOnly'), value: 'model_only' },
 ])
+
+// 已添加账号的临时停用：保留在 account_ids 名单中，disabled_account_ids 记录停用子集，
+// 实际探测范围 = account_ids − disabled_account_ids。
+const selectedAccountOptions = computed(() => {
+  const byId = new Map(accountOptions.value.map((account) => [account.id, account]))
+  return configForm.account_ids.map((id) => byId.get(id) ?? { id, name: `#${id}`, platform: 'openai', status: '' })
+})
+
+function isAccountDisabled(id: number): boolean {
+  return configForm.disabled_account_ids.includes(id)
+}
+
+function setAccountEnabled(id: number, enabled: boolean) {
+  const disabled = new Set(configForm.disabled_account_ids)
+  if (enabled) disabled.delete(id)
+  else disabled.add(id)
+  configForm.disabled_account_ids = [...disabled].sort((a, b) => a - b)
+}
+
+// 账号从选择器移除时，同步清掉残留的停用标记。
+watch(
+  () => configForm.account_ids,
+  (ids) => {
+    if (configForm.disabled_account_ids.some((id) => !ids.includes(id))) {
+      configForm.disabled_account_ids = configForm.disabled_account_ids.filter((id) => ids.includes(id))
+    }
+  },
+)
+
+// 可拉取的探测模型：与探测运行的自动发现同口径（gpt-* 文本模型并集），点选即可加入。
+const availableModels = ref<string[]>([])
+const availableModelsLoading = ref(false)
+
+async function loadAvailableModels() {
+  if (availableModelsLoading.value) return
+  availableModelsLoading.value = true
+  try {
+    availableModels.value = await adminAPI.modelIqProbe.listAvailableModels()
+  } catch {
+    // 拉取失败不阻断配置编辑，保留手动输入路径。
+  } finally {
+    availableModelsLoading.value = false
+  }
+}
+
+function toggleModel(model: string) {
+  configForm.models = configForm.models.includes(model)
+    ? configForm.models.filter((m) => m !== model)
+    : [...configForm.models, model]
+}
 const visibilityOptions = computed(() => [
   { label: t('admin.modelIqMonitor.visibilityAdmin'), value: 'admin_only' },
   { label: t('admin.modelIqMonitor.visibilityAll'), value: 'all_users' },
@@ -450,6 +601,7 @@ async function loadConfig() {
       target_mode: cfg.target_mode,
       models: cfg.models || [],
       account_ids: cfg.account_ids || [],
+      disabled_account_ids: cfg.disabled_account_ids || [],
     })
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.loadConfigFailed')))
@@ -639,6 +791,16 @@ async function reloadRunState(): Promise<ModelIqProbeRunState | null> {
 // 回答全文弹窗
 const showAnswerDialog = ref(false)
 const answerRow = ref<ModelIqProbeResult | null>(null)
+const { copyToClipboard } = useClipboard()
+
+function copyRowAnswer(row: ModelIqProbeResult) {
+  void copyToClipboard(row.actual_answer || '')
+}
+
+function copyDialogAnswer() {
+  void copyToClipboard(answerRow.value?.actual_answer || '')
+}
+
 function openAnswerDialog(row: ModelIqProbeResult) {
   answerRow.value = row
   showAnswerDialog.value = true
@@ -648,11 +810,16 @@ function closeAnswerDialog() {
   answerRow.value = null
 }
 
-// 人工改判弹窗
+// 人工改判弹窗：判定改写 + 回答原文编辑；疑似降智行可一键填入随机通过回复。
 const showOverrideDialog = ref(false)
 const overrideRow = ref<ModelIqProbeResult | null>(null)
 const overrideChoice = ref<ModelIqProbeStatus | ''>('')
+const overrideAnswer = ref('')
 const overriding = ref(false)
+const fetchingSample = ref(false)
+
+const canReplaceAnswer = computed(() => overrideRow.value?.effective_status === 'wrong_answer')
+
 const overrideOptions = computed(() => [
   { label: t('admin.modelIqMonitor.status.pass'), value: 'pass' as const },
   { label: t('admin.modelIqMonitor.status.wrong_answer'), value: 'wrong_answer' as const },
@@ -663,6 +830,7 @@ const overrideOptions = computed(() => [
 function openOverrideDialog(row: ModelIqProbeResult) {
   overrideRow.value = row
   overrideChoice.value = row.override_status ?? ''
+  overrideAnswer.value = row.actual_answer || ''
   showOverrideDialog.value = true
 }
 function closeOverrideDialog() {
@@ -670,11 +838,36 @@ function closeOverrideDialog() {
   overrideRow.value = null
 }
 
+async function fillRandomPassAnswer() {
+  if (!overrideRow.value || fetchingSample.value) return
+  fetchingSample.value = true
+  try {
+    const sample = await adminAPI.modelIqProbe.fetchPassAnswerSample(overrideRow.value.id)
+    if (sample) {
+      overrideAnswer.value = sample
+    } else {
+      appStore.showError(t('admin.modelIqMonitor.noPassAnswer'))
+    }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.noPassAnswer')))
+  } finally {
+    fetchingSample.value = false
+  }
+}
+
 async function confirmOverride() {
   if (!overrideRow.value) return
   overriding.value = true
   try {
-    await adminAPI.modelIqProbe.overrideResult(overrideRow.value.id, overrideChoice.value === '' ? null : overrideChoice.value)
+    const trimmed = overrideAnswer.value.trim()
+    const original = (overrideRow.value.actual_answer || '').trim()
+    // 仅在回答被实际修改且非空时改写原文，避免误清空。
+    const actualAnswer = trimmed && trimmed !== original ? trimmed : undefined
+    await adminAPI.modelIqProbe.overrideResult(
+      overrideRow.value.id,
+      overrideChoice.value === '' ? null : overrideChoice.value,
+      actualAnswer,
+    )
     appStore.showSuccess(t('admin.modelIqMonitor.overrideSuccess'))
     showOverrideDialog.value = false
     overrideRow.value = null
@@ -741,6 +934,7 @@ onMounted(() => {
   void reloadResults()
   void loadConfig()
   void loadAccountOptions()
+  void loadAvailableModels()
   void reloadRunState()
 })
 
