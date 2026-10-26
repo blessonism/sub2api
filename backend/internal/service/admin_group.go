@@ -78,10 +78,16 @@ func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, erro
 
 func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error) {
 	platform = strings.TrimSpace(platform)
+	var routeModels []string
 	if id > 0 {
 		group, err := s.groupRepo.GetByIDLite(ctx, id)
 		if err != nil {
 			return nil, err
+		}
+		for _, route := range group.ModelGroupRoutes {
+			if route.Enabled {
+				routeModels = append(routeModels, route.Model)
+			}
 		}
 		if platform == "" {
 			platform = group.Platform
@@ -92,6 +98,18 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	}
 
 	candidates := defaultModelsListCandidateIDs(platform)
+	for _, model := range routeModels {
+		found := false
+		for _, candidate := range candidates {
+			if candidate == model {
+				found = true
+				break
+			}
+		}
+		if !found {
+			candidates = append(candidates, model)
+		}
+	}
 	if id <= 0 || s.accountRepo == nil {
 		return candidates, nil
 	}
@@ -438,6 +456,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		subscriptionType = SubscriptionTypeStandard
 	}
 
+	modelGroupRoutes, err := s.normalizeModelGroupRoutes(ctx, 0, platform, subscriptionType, input.ModelGroupRoutes)
+	if err != nil {
+		return nil, err
+	}
+
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
@@ -635,6 +658,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		SystemPromptInjection:           systemPromptInjection,
+		ModelGroupRoutes:                modelGroupRoutes,
 		ModelAllowlist:                  modelAllowlist,
 		CodexModelsManifestConfig:       normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
@@ -1066,6 +1090,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, err
 		}
 		group.ModelAllowlist = modelAllowlist
+	}
+	if input.ModelGroupRoutes != nil {
+		modelGroupRoutes, err := s.normalizeModelGroupRoutes(ctx, id, group.Platform, group.SubscriptionType, *input.ModelGroupRoutes)
+		if err != nil {
+			return nil, err
+		}
+		group.ModelGroupRoutes = modelGroupRoutes
+	} else if len(group.ModelGroupRoutes) > 0 && (group.Platform != PlatformOpenAI || group.IsSubscriptionType()) {
+		return nil, infraerrors.New(http.StatusBadRequest, "INVALID_MODEL_GROUP_ROUTES", "Clear model routes before changing platform or subscription type")
 	}
 	if input.ModelsListConfig != nil {
 		group.ModelsListConfig = normalizeGroupModelsListConfig(*input.ModelsListConfig)

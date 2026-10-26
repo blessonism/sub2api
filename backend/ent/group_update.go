@@ -1146,6 +1146,18 @@ func (_u *GroupUpdate) SetNillableSystemPromptInjection(v *domain.GroupSystemPro
 	return _u
 }
 
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (_u *GroupUpdate) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpdate {
+	_u.mutation.SetModelGroupRoutes(v)
+	return _u
+}
+
+// AppendModelGroupRoutes appends value to the "model_group_routes" field.
+func (_u *GroupUpdate) AppendModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpdate {
+	_u.mutation.AppendModelGroupRoutes(v)
+	return _u
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_u *GroupUpdate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpdate {
 	_u.mutation.SetModelAllowlist(v)
@@ -1993,6 +2005,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.SystemPromptInjection(); ok {
 		_spec.SetField(group.FieldSystemPromptInjection, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelGroupRoutes(); ok {
+		_spec.SetField(group.FieldModelGroupRoutes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelGroupRoutes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelGroupRoutes, value)
+		})
 	}
 	if value, ok := _u.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
@@ -3461,6 +3481,18 @@ func (_u *GroupUpdateOne) SetNillableSystemPromptInjection(v *domain.GroupSystem
 	return _u
 }
 
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (_u *GroupUpdateOne) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpdateOne {
+	_u.mutation.SetModelGroupRoutes(v)
+	return _u
+}
+
+// AppendModelGroupRoutes appends value to the "model_group_routes" field.
+func (_u *GroupUpdateOne) AppendModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpdateOne {
+	_u.mutation.AppendModelGroupRoutes(v)
+	return _u
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_u *GroupUpdateOne) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpdateOne {
 	_u.mutation.SetModelAllowlist(v)
@@ -4338,6 +4370,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.SystemPromptInjection(); ok {
 		_spec.SetField(group.FieldSystemPromptInjection, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelGroupRoutes(); ok {
+		_spec.SetField(group.FieldModelGroupRoutes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelGroupRoutes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelGroupRoutes, value)
+		})
 	}
 	if value, ok := _u.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)

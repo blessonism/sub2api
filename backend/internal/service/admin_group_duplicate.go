@@ -164,6 +164,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		DefaultMappedModel:              source.DefaultMappedModel,
 		MessagesDispatchModelConfig:     cloneGroupMessagesDispatchModelConfig(source.MessagesDispatchModelConfig),
 		SystemPromptInjection:           source.SystemPromptInjection.WithDefaults(),
+		ModelGroupRoutes:                append([]ModelGroupRoute(nil), source.ModelGroupRoutes...),
 		ModelAllowlist:                  GroupModelAllowlist{Enabled: source.ModelAllowlist.Enabled, Models: append([]string(nil), source.ModelAllowlist.Models...)},
 		CodexModelsManifestConfig:       GroupCodexModelsManifestConfig{},
 		ModelsListConfig:                GroupModelsListConfig{Enabled: source.ModelsListConfig.Enabled, Models: append([]string(nil), source.ModelsListConfig.Models...)},

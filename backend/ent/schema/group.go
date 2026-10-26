@@ -284,6 +284,9 @@ func (Group) Fields() []ent.Field {
 			Default(domain.GroupSystemPromptInjection{Mode: "append"}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("分组级系统提示词注入：enabled、mode（prepend/append/replace）、content"),
+		field.JSON("model_group_routes", []domain.ModelGroupRoute{}).
+			Default([]domain.ModelGroupRoute{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("model_allowlist", domain.GroupModelAllowlist{}).
 			Default(domain.GroupModelAllowlist{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).

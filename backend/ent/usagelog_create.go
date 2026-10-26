@@ -169,6 +169,20 @@ func (_c *UsageLogCreate) SetNillableBillingMode(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetSourceGroupID sets the "source_group_id" field.
+func (_c *UsageLogCreate) SetSourceGroupID(v int64) *UsageLogCreate {
+	_c.mutation.SetSourceGroupID(v)
+	return _c
+}
+
+// SetNillableSourceGroupID sets the "source_group_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableSourceGroupID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetSourceGroupID(*v)
+	}
+	return _c
+}
+
 // SetGroupID sets the "group_id" field.
 func (_c *UsageLogCreate) SetGroupID(v int64) *UsageLogCreate {
 	_c.mutation.SetGroupID(v)
@@ -1021,6 +1035,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
 		_node.BillingMode = &value
 	}
+	if value, ok := _c.mutation.SourceGroupID(); ok {
+		_spec.SetField(usagelog.FieldSourceGroupID, field.TypeInt64, value)
+		_node.SourceGroupID = &value
+	}
 	if value, ok := _c.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
 		_node.InputTokens = value
@@ -1497,6 +1515,30 @@ func (u *UsageLogUpsert) UpdateBillingMode() *UsageLogUpsert {
 // ClearBillingMode clears the value of the "billing_mode" field.
 func (u *UsageLogUpsert) ClearBillingMode() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldBillingMode)
+	return u
+}
+
+// SetSourceGroupID sets the "source_group_id" field.
+func (u *UsageLogUpsert) SetSourceGroupID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldSourceGroupID, v)
+	return u
+}
+
+// UpdateSourceGroupID sets the "source_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateSourceGroupID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldSourceGroupID)
+	return u
+}
+
+// AddSourceGroupID adds v to the "source_group_id" field.
+func (u *UsageLogUpsert) AddSourceGroupID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldSourceGroupID, v)
+	return u
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (u *UsageLogUpsert) ClearSourceGroupID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldSourceGroupID)
 	return u
 }
 
@@ -2411,6 +2453,34 @@ func (u *UsageLogUpsertOne) UpdateBillingMode() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearBillingMode() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearBillingMode()
+	})
+}
+
+// SetSourceGroupID sets the "source_group_id" field.
+func (u *UsageLogUpsertOne) SetSourceGroupID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetSourceGroupID(v)
+	})
+}
+
+// AddSourceGroupID adds v to the "source_group_id" field.
+func (u *UsageLogUpsertOne) AddSourceGroupID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddSourceGroupID(v)
+	})
+}
+
+// UpdateSourceGroupID sets the "source_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateSourceGroupID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateSourceGroupID()
+	})
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (u *UsageLogUpsertOne) ClearSourceGroupID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearSourceGroupID()
 	})
 }
 
@@ -3595,6 +3665,34 @@ func (u *UsageLogUpsertBulk) UpdateBillingMode() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearBillingMode() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearBillingMode()
+	})
+}
+
+// SetSourceGroupID sets the "source_group_id" field.
+func (u *UsageLogUpsertBulk) SetSourceGroupID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetSourceGroupID(v)
+	})
+}
+
+// AddSourceGroupID adds v to the "source_group_id" field.
+func (u *UsageLogUpsertBulk) AddSourceGroupID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddSourceGroupID(v)
+	})
+}
+
+// UpdateSourceGroupID sets the "source_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateSourceGroupID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateSourceGroupID()
+	})
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (u *UsageLogUpsertBulk) ClearSourceGroupID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearSourceGroupID()
 	})
 }
 

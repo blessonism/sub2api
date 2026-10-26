@@ -35,6 +35,8 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
+	modelGroupRoutes           *service.ModelGroupRouteResolver
+	modelGroupRouteCatalog     *service.GatewayService
 	compositeResolver          *service.CompositeRouteResolver
 	gatewayService             *service.OpenAIGatewayService
 	billingCacheService        *service.BillingCacheService
@@ -2576,6 +2578,27 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
 		return
 	}
+	// 原组校验在上方完成；选组必须早于计费、余额预留与账号选择。
+	routeSourceKey := apiKey
+	var routeTurnKeys openAIWSTurnBillingAPIKeys
+	if h.modelGroupRoutes != nil && hasEnabledModelGroupRoutes(routeSourceKey.Group) {
+		if !consistentModelGroupRouteCandidates(reqModel, requestmodel.FromBodyCandidates("", "application/json", firstMessage)) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Conflicting model values are not supported for group routing")
+			return
+		}
+		selected, routeErr := h.modelGroupRoutes.Resolve(c.Request.Context(), routeSourceKey, modelGroupRouteRequest(c.FullPath(), reqModel, firstMessage, true))
+		if routeErr != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Model group route is unavailable")
+			return
+		}
+		if blocked := blockedModelAllowlistCandidate(selected.Group, requestmodel.FromBodyCandidates("", "application/json", firstMessage)); blocked != "" {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Model is not available for the target group")
+			return
+		}
+		apiKey = selected
+		installModelGroupRouteKey(c, apiKey)
+	}
+	routeTurnKeys.set(1, apiKey)
 	// Keep the client model in the frame for admission, response identity and usage.
 	// Apply the resolved upstream model through MapRequestModel on every turn.
 	wsRouteModel := reqModel
@@ -3051,7 +3074,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
 				candidates := append([]string{model}, requestmodel.FromBodyCandidates("", "application/json", payload)...)
-				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
+				routeKey, routeErr := h.resolveModelGroupRouteWSTurn(ctx, routeSourceKey, apiKey, modelGroupRouteRequest(c.FullPath(), model, payload, true), candidates)
+				if routeErr != nil {
+					return routeErr
+				}
+				routeTurnKeys.set(turn, routeKey)
+
+				if blocked := blockedModelAllowlistCandidate(routeKey.Group, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
@@ -3096,7 +3125,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 长连接跨峰谷/倍率刷新防护：每个 turn 按当前时刻重装门并复核
 				// 当前账号，越线即要求客户端重连重选（连接绑定单一上游账号，
 				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
-				turnBillingCtx := turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, apiKey)
+				turnBillingCtx := turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, routeTurnKeys.forTurn(turn, apiKey))
 				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(turnBillingCtx, apiKey.GroupID)
 				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
 					reqLog.Info("openai.websocket_turn_profit_vetoed",

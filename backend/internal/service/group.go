@@ -14,6 +14,8 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type GroupOpenAISchedulerOverrides = domain.GroupOpenAISchedulerOverrides
+type ModelGroupRoute = domain.ModelGroupRoute
+
 type GroupSystemPromptInjection = domain.GroupSystemPromptInjection
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
@@ -119,6 +121,7 @@ type Group struct {
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+	ModelGroupRoutes            []ModelGroupRoute
 	ModelAllowlist              GroupModelAllowlist
 	CodexModelsManifestConfig   GroupCodexModelsManifestConfig
 	ModelsListConfig            GroupModelsListConfig

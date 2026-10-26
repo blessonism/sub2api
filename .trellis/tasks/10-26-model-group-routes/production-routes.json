@@ -1,0 +1,7 @@
+{
+  "group_id": 51,
+  "model_group_routes": [
+    {"model": "gpt-5.6-luna", "target_group_id": 40, "mode": "target_only", "enabled": true},
+    {"model": "gpt-6-luna", "target_group_id": 40, "mode": "target_only", "enabled": true}
+  ]
+}

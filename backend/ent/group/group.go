@@ -140,6 +140,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldSystemPromptInjection holds the string denoting the system_prompt_injection field in the database.
 	FieldSystemPromptInjection = "system_prompt_injection"
+	// FieldModelGroupRoutes holds the string denoting the model_group_routes field in the database.
+	FieldModelGroupRoutes = "model_group_routes"
 	// FieldModelAllowlist holds the string denoting the model_allowlist field in the database.
 	FieldModelAllowlist = "model_allowlist"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
@@ -297,6 +299,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldSystemPromptInjection,
+	FieldModelGroupRoutes,
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
 	FieldOpenaiSchedulerOverrides,
@@ -440,6 +443,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultSystemPromptInjection holds the default value on creation for the "system_prompt_injection" field.
 	DefaultSystemPromptInjection domain.GroupSystemPromptInjection
+	// DefaultModelGroupRoutes holds the default value on creation for the "model_group_routes" field.
+	DefaultModelGroupRoutes []domain.ModelGroupRoute
 	// DefaultModelAllowlist holds the default value on creation for the "model_allowlist" field.
 	DefaultModelAllowlist domain.GroupModelAllowlist
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.

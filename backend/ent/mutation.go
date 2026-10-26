@@ -30774,6 +30774,8 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	system_prompt_injection                 *domain.GroupSystemPromptInjection
+	model_group_routes                      *[]domain.ModelGroupRoute
+	appendmodel_group_routes                []domain.ModelGroupRoute
 	model_allowlist                         *domain.GroupModelAllowlist
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
 	openai_scheduler_overrides              *domain.GroupOpenAISchedulerOverrides
@@ -34004,6 +34006,57 @@ func (m *GroupMutation) ResetSystemPromptInjection() {
 	m.system_prompt_injection = nil
 }
 
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (m *GroupMutation) SetModelGroupRoutes(dgr []domain.ModelGroupRoute) {
+	m.model_group_routes = &dgr
+	m.appendmodel_group_routes = nil
+}
+
+// ModelGroupRoutes returns the value of the "model_group_routes" field in the mutation.
+func (m *GroupMutation) ModelGroupRoutes() (r []domain.ModelGroupRoute, exists bool) {
+	v := m.model_group_routes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelGroupRoutes returns the old "model_group_routes" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelGroupRoutes(ctx context.Context) (v []domain.ModelGroupRoute, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelGroupRoutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelGroupRoutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelGroupRoutes: %w", err)
+	}
+	return oldValue.ModelGroupRoutes, nil
+}
+
+// AppendModelGroupRoutes adds dgr to the "model_group_routes" field.
+func (m *GroupMutation) AppendModelGroupRoutes(dgr []domain.ModelGroupRoute) {
+	m.appendmodel_group_routes = append(m.appendmodel_group_routes, dgr...)
+}
+
+// AppendedModelGroupRoutes returns the list of values that were appended to the "model_group_routes" field in this mutation.
+func (m *GroupMutation) AppendedModelGroupRoutes() ([]domain.ModelGroupRoute, bool) {
+	if len(m.appendmodel_group_routes) == 0 {
+		return nil, false
+	}
+	return m.appendmodel_group_routes, true
+}
+
+// ResetModelGroupRoutes resets all changes to the "model_group_routes" field.
+func (m *GroupMutation) ResetModelGroupRoutes() {
+	m.model_group_routes = nil
+	m.appendmodel_group_routes = nil
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (m *GroupMutation) SetModelAllowlist(dma domain.GroupModelAllowlist) {
 	m.model_allowlist = &dma
@@ -34797,7 +34850,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 72)
+	fields := make([]string, 0, 73)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -34984,6 +35037,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.system_prompt_injection != nil {
 		fields = append(fields, group.FieldSystemPromptInjection)
 	}
+	if m.model_group_routes != nil {
+		fields = append(fields, group.FieldModelGroupRoutes)
+	}
 	if m.model_allowlist != nil {
 		fields = append(fields, group.FieldModelAllowlist)
 	}
@@ -35146,6 +35202,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldSystemPromptInjection:
 		return m.SystemPromptInjection()
+	case group.FieldModelGroupRoutes:
+		return m.ModelGroupRoutes()
 	case group.FieldModelAllowlist:
 		return m.ModelAllowlist()
 	case group.FieldCodexModelsManifestConfig:
@@ -35299,6 +35357,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldSystemPromptInjection:
 		return m.OldSystemPromptInjection(ctx)
+	case group.FieldModelGroupRoutes:
+		return m.OldModelGroupRoutes(ctx)
 	case group.FieldModelAllowlist:
 		return m.OldModelAllowlist(ctx)
 	case group.FieldCodexModelsManifestConfig:
@@ -35761,6 +35821,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSystemPromptInjection(v)
+		return nil
+	case group.FieldModelGroupRoutes:
+		v, ok := value.([]domain.ModelGroupRoute)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelGroupRoutes(v)
 		return nil
 	case group.FieldModelAllowlist:
 		v, ok := value.(domain.GroupModelAllowlist)
@@ -36546,6 +36613,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSystemPromptInjection:
 		m.ResetSystemPromptInjection()
+		return nil
+	case group.FieldModelGroupRoutes:
+		m.ResetModelGroupRoutes()
 		return nil
 	case group.FieldModelAllowlist:
 		m.ResetModelAllowlist()
@@ -55091,6 +55161,8 @@ type UsageLogMutation struct {
 	model_mapping_chain          *string
 	billing_tier                 *string
 	billing_mode                 *string
+	source_group_id              *int64
+	addsource_group_id           *int64
 	input_tokens                 *int
 	addinput_tokens              *int
 	output_tokens                *int
@@ -55850,6 +55922,76 @@ func (m *UsageLogMutation) BillingModeCleared() bool {
 func (m *UsageLogMutation) ResetBillingMode() {
 	m.billing_mode = nil
 	delete(m.clearedFields, usagelog.FieldBillingMode)
+}
+
+// SetSourceGroupID sets the "source_group_id" field.
+func (m *UsageLogMutation) SetSourceGroupID(i int64) {
+	m.source_group_id = &i
+	m.addsource_group_id = nil
+}
+
+// SourceGroupID returns the value of the "source_group_id" field in the mutation.
+func (m *UsageLogMutation) SourceGroupID() (r int64, exists bool) {
+	v := m.source_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceGroupID returns the old "source_group_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldSourceGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceGroupID: %w", err)
+	}
+	return oldValue.SourceGroupID, nil
+}
+
+// AddSourceGroupID adds i to the "source_group_id" field.
+func (m *UsageLogMutation) AddSourceGroupID(i int64) {
+	if m.addsource_group_id != nil {
+		*m.addsource_group_id += i
+	} else {
+		m.addsource_group_id = &i
+	}
+}
+
+// AddedSourceGroupID returns the value that was added to the "source_group_id" field in this mutation.
+func (m *UsageLogMutation) AddedSourceGroupID() (r int64, exists bool) {
+	v := m.addsource_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (m *UsageLogMutation) ClearSourceGroupID() {
+	m.source_group_id = nil
+	m.addsource_group_id = nil
+	m.clearedFields[usagelog.FieldSourceGroupID] = struct{}{}
+}
+
+// SourceGroupIDCleared returns if the "source_group_id" field was cleared in this mutation.
+func (m *UsageLogMutation) SourceGroupIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldSourceGroupID]
+	return ok
+}
+
+// ResetSourceGroupID resets all changes to the "source_group_id" field.
+func (m *UsageLogMutation) ResetSourceGroupID() {
+	m.source_group_id = nil
+	m.addsource_group_id = nil
+	delete(m.clearedFields, usagelog.FieldSourceGroupID)
 }
 
 // SetGroupID sets the "group_id" field.
@@ -57901,7 +58043,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 48)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -57940,6 +58082,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.billing_mode != nil {
 		fields = append(fields, usagelog.FieldBillingMode)
+	}
+	if m.source_group_id != nil {
+		fields = append(fields, usagelog.FieldSourceGroupID)
 	}
 	if m.group != nil {
 		fields = append(fields, usagelog.FieldGroupID)
@@ -58080,6 +58225,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingTier()
 	case usagelog.FieldBillingMode:
 		return m.BillingMode()
+	case usagelog.FieldSourceGroupID:
+		return m.SourceGroupID()
 	case usagelog.FieldGroupID:
 		return m.GroupID()
 	case usagelog.FieldSubscriptionID:
@@ -58185,6 +58332,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBillingTier(ctx)
 	case usagelog.FieldBillingMode:
 		return m.OldBillingMode(ctx)
+	case usagelog.FieldSourceGroupID:
+		return m.OldSourceGroupID(ctx)
 	case usagelog.FieldGroupID:
 		return m.OldGroupID(ctx)
 	case usagelog.FieldSubscriptionID:
@@ -58354,6 +58503,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBillingMode(v)
+		return nil
+	case usagelog.FieldSourceGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceGroupID(v)
 		return nil
 	case usagelog.FieldGroupID:
 		v, ok := value.(int64)
@@ -58611,6 +58767,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addchannel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
 	}
+	if m.addsource_group_id != nil {
+		fields = append(fields, usagelog.FieldSourceGroupID)
+	}
 	if m.addinput_tokens != nil {
 		fields = append(fields, usagelog.FieldInputTokens)
 	}
@@ -58684,6 +58843,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case usagelog.FieldChannelID:
 		return m.AddedChannelID()
+	case usagelog.FieldSourceGroupID:
+		return m.AddedSourceGroupID()
 	case usagelog.FieldInputTokens:
 		return m.AddedInputTokens()
 	case usagelog.FieldOutputTokens:
@@ -58741,6 +58902,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddChannelID(v)
+		return nil
+	case usagelog.FieldSourceGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSourceGroupID(v)
 		return nil
 	case usagelog.FieldInputTokens:
 		v, ok := value.(int)
@@ -58921,6 +59089,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldBillingMode) {
 		fields = append(fields, usagelog.FieldBillingMode)
 	}
+	if m.FieldCleared(usagelog.FieldSourceGroupID) {
+		fields = append(fields, usagelog.FieldSourceGroupID)
+	}
 	if m.FieldCleared(usagelog.FieldGroupID) {
 		fields = append(fields, usagelog.FieldGroupID)
 	}
@@ -59003,6 +59174,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldBillingMode:
 		m.ClearBillingMode()
+		return nil
+	case usagelog.FieldSourceGroupID:
+		m.ClearSourceGroupID()
 		return nil
 	case usagelog.FieldGroupID:
 		m.ClearGroupID()
@@ -59095,6 +59269,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldBillingMode:
 		m.ResetBillingMode()
+		return nil
+	case usagelog.FieldSourceGroupID:
+		m.ResetSourceGroupID()
 		return nil
 	case usagelog.FieldGroupID:
 		m.ResetGroupID()

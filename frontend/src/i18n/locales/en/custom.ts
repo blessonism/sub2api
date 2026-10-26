@@ -21,6 +21,7 @@ export default {
     "calibrationTokens": "Admin calibration"
   },
   "usage": {
+    "modelGroupRoute": "Source group → billing group",
     "calibrationTokens": "Admin calibration",
     "adminUserFilter": "User",
     "adminSelectUserPlaceholder": "Select user",
@@ -2246,6 +2247,24 @@ export default {
       "balanceReductionFailed": "Failed to reduce user balances"
     },
     "groups": {
+      "modelGroupRoutes": {
+        "title": "Route models to a group",
+        "hint": "Scheduling, prices, personal rates and group limits follow the selected group.",
+        "add": "Add rule",
+        "empty": "No forwarding rules",
+        "model": "Model name (exact match)",
+        "target": "Target group",
+        "mode": "Routing mode",
+        "enabled": "Enabled",
+        "remove": "Remove",
+        "target_only": "Fixed target group",
+        "prefer_local": "Prefer current group",
+        "target_onlyHint": "Always use the target group; return an error when it is unavailable.",
+        "prefer_localHint": "Forward only when no eligible local account exists before sending. Busy accounts queue locally; upstream failures do not retry across groups.",
+        "invalid": "Provide a model and target. Models must be unique without *, and the target must be another group.",
+        "loadFailed": "Failed to load target groups.",
+        "unavailable": "Unavailable"
+      },
       "systemPromptInjection": {
         "typesafeHint": "For TypeSafe System One, apply the selected mode to each question’s instructions while keeping state input data and criteria.",
         "title": "System Prompt Injection",

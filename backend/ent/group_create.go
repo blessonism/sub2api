@@ -842,6 +842,12 @@ func (_c *GroupCreate) SetNillableSystemPromptInjection(v *domain.GroupSystemPro
 	return _c
 }
 
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (_c *GroupCreate) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupCreate {
+	_c.mutation.SetModelGroupRoutes(v)
+	return _c
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_c *GroupCreate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupCreate {
 	_c.mutation.SetModelAllowlist(v)
@@ -1259,6 +1265,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultSystemPromptInjection
 		_c.mutation.SetSystemPromptInjection(v)
 	}
+	if _, ok := _c.mutation.ModelGroupRoutes(); !ok {
+		v := group.DefaultModelGroupRoutes
+		_c.mutation.SetModelGroupRoutes(v)
+	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		v := group.DefaultModelAllowlist
 		_c.mutation.SetModelAllowlist(v)
@@ -1485,6 +1495,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.SystemPromptInjection(); !ok {
 		return &ValidationError{Name: "system_prompt_injection", err: errors.New(`ent: missing required field "Group.system_prompt_injection"`)}
+	}
+	if _, ok := _c.mutation.ModelGroupRoutes(); !ok {
+		return &ValidationError{Name: "model_group_routes", err: errors.New(`ent: missing required field "Group.model_group_routes"`)}
 	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		return &ValidationError{Name: "model_allowlist", err: errors.New(`ent: missing required field "Group.model_allowlist"`)}
@@ -1800,6 +1813,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SystemPromptInjection(); ok {
 		_spec.SetField(group.FieldSystemPromptInjection, field.TypeJSON, value)
 		_node.SystemPromptInjection = value
+	}
+	if value, ok := _c.mutation.ModelGroupRoutes(); ok {
+		_spec.SetField(group.FieldModelGroupRoutes, field.TypeJSON, value)
+		_node.ModelGroupRoutes = value
 	}
 	if value, ok := _c.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
@@ -2996,6 +3013,18 @@ func (u *GroupUpsert) SetSystemPromptInjection(v domain.GroupSystemPromptInjecti
 // UpdateSystemPromptInjection sets the "system_prompt_injection" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateSystemPromptInjection() *GroupUpsert {
 	u.SetExcluded(group.FieldSystemPromptInjection)
+	return u
+}
+
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (u *GroupUpsert) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpsert {
+	u.Set(group.FieldModelGroupRoutes, v)
+	return u
+}
+
+// UpdateModelGroupRoutes sets the "model_group_routes" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelGroupRoutes() *GroupUpsert {
+	u.SetExcluded(group.FieldModelGroupRoutes)
 	return u
 }
 
@@ -4351,6 +4380,20 @@ func (u *GroupUpsertOne) SetSystemPromptInjection(v domain.GroupSystemPromptInje
 func (u *GroupUpsertOne) UpdateSystemPromptInjection() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSystemPromptInjection()
+	})
+}
+
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (u *GroupUpsertOne) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelGroupRoutes(v)
+	})
+}
+
+// UpdateModelGroupRoutes sets the "model_group_routes" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelGroupRoutes() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelGroupRoutes()
 	})
 }
 
@@ -5895,6 +5938,20 @@ func (u *GroupUpsertBulk) SetSystemPromptInjection(v domain.GroupSystemPromptInj
 func (u *GroupUpsertBulk) UpdateSystemPromptInjection() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSystemPromptInjection()
+	})
+}
+
+// SetModelGroupRoutes sets the "model_group_routes" field.
+func (u *GroupUpsertBulk) SetModelGroupRoutes(v []domain.ModelGroupRoute) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelGroupRoutes(v)
+	})
+}
+
+// UpdateModelGroupRoutes sets the "model_group_routes" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelGroupRoutes() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelGroupRoutes()
 	})
 }
 

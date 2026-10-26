@@ -144,6 +144,8 @@ type Group struct {
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	// 分组级系统提示词注入：enabled、mode（prepend/append/replace）、content
 	SystemPromptInjection domain.GroupSystemPromptInjection `json:"system_prompt_injection,omitempty"`
+	// ModelGroupRoutes holds the value of the "model_group_routes" field.
+	ModelGroupRoutes []domain.ModelGroupRoute `json:"model_group_routes,omitempty"`
 	// 分组模型白名单：同时约束模型列表接口与请求准入
 	ModelAllowlist domain.GroupModelAllowlist `json:"model_allowlist,omitempty"`
 	// 固定账号获取 Codex Model Manifest 配置；开启后 /models 请求只用选定账号拉取（仅 openai 平台）
@@ -270,7 +272,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldI18n, group.FieldTimeRatePeriods, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldSystemPromptInjection, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldOpenaiSchedulerOverrides, group.FieldReasoningEffortMappings:
+		case group.FieldI18n, group.FieldTimeRatePeriods, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldSystemPromptInjection, group.FieldModelGroupRoutes, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldOpenaiSchedulerOverrides, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
@@ -711,6 +713,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field system_prompt_injection: %w", err)
 				}
 			}
+		case group.FieldModelGroupRoutes:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field model_group_routes", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ModelGroupRoutes); err != nil {
+					return fmt.Errorf("unmarshal field model_group_routes: %w", err)
+				}
+			}
 		case group.FieldModelAllowlist:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field model_allowlist", values[i])
@@ -1080,6 +1090,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("system_prompt_injection=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SystemPromptInjection))
+	builder.WriteString(", ")
+	builder.WriteString("model_group_routes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ModelGroupRoutes))
 	builder.WriteString(", ")
 	builder.WriteString("model_allowlist=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ModelAllowlist))

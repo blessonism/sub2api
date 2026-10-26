@@ -40,6 +40,7 @@ var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
+	modelGroupRoutes          *service.ModelGroupRouteResolver
 	gatewayService            *service.GatewayService
 	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
@@ -1190,6 +1191,15 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	if h.modelGroupRoutes != nil && apiKey != nil && hasEnabledModelGroupRoutes(apiKey.Group) {
+		if len(availableModels) == 0 {
+			availableModels = defaultModelIDsForPlatform(platform)
+		}
+		availableModels, _ = h.modelGroupRoutes.VisibleModels(c.Request.Context(), apiKey, availableModels)
+		// 路由已完成权限与白名单过滤，空目录也不能再回退默认模型。
+		writeModelsList(c, platform, availableModels)
+		return
+	}
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 		source := modelListingSource(platform, availableModels, defaultModelIDsForPlatform(platform))
 		writeAllowlistedModelsList(c, platform, apiKey.Group.ModelAllowlist.FilterForListing(source))

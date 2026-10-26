@@ -296,8 +296,11 @@
             }}</span>
           </template>
 
-          <template #cell-model="{ value }">
+          <template #cell-model="{ value, row }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+            <div v-if="row.source_group_id" class="text-xs text-gray-500" :title="t('usage.modelGroupRoute')" data-testid="usage-model-group-route">
+              #{{ row.source_group_id }} → {{ row.group?.name || `#${row.group_id}` }}
+            </div>
           </template>
 
           <template #cell-reasoning_effort="{ row }">
@@ -908,6 +911,10 @@
               <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.cache_read_cost.toFixed(6) }}</span>
             </div>
+          </div>
+          <div v-if="tooltipData?.source_group_id" class="flex items-center justify-between gap-4 text-xs">
+            <span class="text-gray-400">{{ t('usage.modelGroupRoute') }}</span>
+            <span>#{{ tooltipData.source_group_id }} → {{ tooltipData.group?.name || `#${tooltipData.group_id}` }}</span>
           </div>
           <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">
