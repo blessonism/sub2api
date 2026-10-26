@@ -2316,6 +2316,8 @@ export default {
         "originalStatus": "原始状态",
         "effectiveStatus": "有效状态",
         "latency": "延迟",
+        "tokens": "Token",
+        "cached": "缓存",
         "message": "消息",
         "actions": "人工判定"
       }

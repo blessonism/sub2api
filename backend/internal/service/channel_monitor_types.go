@@ -149,6 +149,19 @@ type ChannelMonitorUpdateParams struct {
 	AccountID *int64
 }
 
+// MonitorTokenUsage 一次探测的 token 消耗（来自响应 usage 字段）。
+// 上游未返回 usage 或流在终态前被截断时为 nil。
+type MonitorTokenUsage struct {
+	InputTokens     int
+	OutputTokens    int
+	CacheReadTokens int
+}
+
+// Empty 全为零时视为无有效 usage，避免把错误响应的 0/0/0 当成真实消耗展示。
+func (u *MonitorTokenUsage) Empty() bool {
+	return u == nil || (u.InputTokens == 0 && u.OutputTokens == 0 && u.CacheReadTokens == 0)
+}
+
 // CheckResult 单个模型一次检测的结果。
 type CheckResult struct {
 	Model         string
@@ -162,6 +175,8 @@ type CheckResult struct {
 	ErrorCategory string
 	// Quota 配额模式附带快照（quota 模式唯一数据；quota_probe 挂在主模型行）。
 	Quota *domain.MonitorQuotaSnapshot
+	// TokenUsage 本次探测的 token 消耗；无 usage 数据时为 nil。
+	TokenUsage *MonitorTokenUsage
 }
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
@@ -248,6 +263,8 @@ type ChannelMonitorHistoryRow struct {
 	Quota         *domain.MonitorQuotaSnapshot
 	// ErrorCategory 错误归类（仅 status=error 且可识别时有值）。
 	ErrorCategory string
+	// TokenUsage 本次探测 token 消耗；无 usage 数据时为 nil。
+	TokenUsage *MonitorTokenUsage
 }
 
 // ChannelMonitorHistoryEntry 历史记录查询返回行（含 ent 主键 ID）。
@@ -265,6 +282,8 @@ type ChannelMonitorHistoryEntry struct {
 	// ErrorCategory 错误归类（rate_or_capacity 等）；空串表示未归类。
 	// ListRecentHistoryForMonitors（timeline）与单监控 ListHistory 均填充。
 	ErrorCategory string
+	// TokenUsage 本次探测 token 消耗；仅 ListHistory 填充（timeline 精简不携带）。
+	TokenUsage *MonitorTokenUsage
 }
 
 // ChannelMonitorLatest 最近一次检测的简明信息（用于 UserMonitorView 聚合）。

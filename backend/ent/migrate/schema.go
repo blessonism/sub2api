@@ -813,6 +813,9 @@ var (
 		{Name: "override_status", Type: field.TypeEnum, Nullable: true, Enums: []string{"operational", "degraded", "failed"}},
 		{Name: "latency_ms", Type: field.TypeInt, Nullable: true},
 		{Name: "ping_latency_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "input_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "output_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "cache_read_tokens", Type: field.TypeInt, Nullable: true},
 		{Name: "message", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},
 		{Name: "error_category", Type: field.TypeString, Nullable: true, Size: 40, Default: ""},
 		{Name: "quota", Type: field.TypeJSON, Nullable: true},
@@ -827,7 +830,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitor_histories_channel_monitors_history",
-				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[10]},
+				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[13]},
 				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -836,12 +839,12 @@ var (
 			{
 				Name:    "channelmonitorhistory_monitor_id_model_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[10], ChannelMonitorHistoriesColumns[1], ChannelMonitorHistoriesColumns[9]},
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[13], ChannelMonitorHistoriesColumns[1], ChannelMonitorHistoriesColumns[12]},
 			},
 			{
 				Name:    "channelmonitorhistory_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[9]},
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[12]},
 			},
 		},
 	}

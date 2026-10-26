@@ -84,6 +84,48 @@ func (_c *ChannelMonitorHistoryCreate) SetNillablePingLatencyMs(v *int) *Channel
 	return _c
 }
 
+// SetInputTokens sets the "input_tokens" field.
+func (_c *ChannelMonitorHistoryCreate) SetInputTokens(v int) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetInputTokens(v)
+	return _c
+}
+
+// SetNillableInputTokens sets the "input_tokens" field if the given value is not nil.
+func (_c *ChannelMonitorHistoryCreate) SetNillableInputTokens(v *int) *ChannelMonitorHistoryCreate {
+	if v != nil {
+		_c.SetInputTokens(*v)
+	}
+	return _c
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (_c *ChannelMonitorHistoryCreate) SetOutputTokens(v int) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetOutputTokens(v)
+	return _c
+}
+
+// SetNillableOutputTokens sets the "output_tokens" field if the given value is not nil.
+func (_c *ChannelMonitorHistoryCreate) SetNillableOutputTokens(v *int) *ChannelMonitorHistoryCreate {
+	if v != nil {
+		_c.SetOutputTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (_c *ChannelMonitorHistoryCreate) SetCacheReadTokens(v int) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetCacheReadTokens(v)
+	return _c
+}
+
+// SetNillableCacheReadTokens sets the "cache_read_tokens" field if the given value is not nil.
+func (_c *ChannelMonitorHistoryCreate) SetNillableCacheReadTokens(v *int) *ChannelMonitorHistoryCreate {
+	if v != nil {
+		_c.SetCacheReadTokens(*v)
+	}
+	return _c
+}
+
 // SetMessage sets the "message" field.
 func (_c *ChannelMonitorHistoryCreate) SetMessage(v string) *ChannelMonitorHistoryCreate {
 	_c.mutation.SetMessage(v)
@@ -275,6 +317,18 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 		_spec.SetField(channelmonitorhistory.FieldPingLatencyMs, field.TypeInt, value)
 		_node.PingLatencyMs = &value
 	}
+	if value, ok := _c.mutation.InputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldInputTokens, field.TypeInt, value)
+		_node.InputTokens = &value
+	}
+	if value, ok := _c.mutation.OutputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOutputTokens, field.TypeInt, value)
+		_node.OutputTokens = &value
+	}
+	if value, ok := _c.mutation.CacheReadTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt, value)
+		_node.CacheReadTokens = &value
+	}
 	if value, ok := _c.mutation.Message(); ok {
 		_spec.SetField(channelmonitorhistory.FieldMessage, field.TypeString, value)
 		_node.Message = value
@@ -459,6 +513,78 @@ func (u *ChannelMonitorHistoryUpsert) AddPingLatencyMs(v int) *ChannelMonitorHis
 // ClearPingLatencyMs clears the value of the "ping_latency_ms" field.
 func (u *ChannelMonitorHistoryUpsert) ClearPingLatencyMs() *ChannelMonitorHistoryUpsert {
 	u.SetNull(channelmonitorhistory.FieldPingLatencyMs)
+	return u
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) SetInputTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldInputTokens, v)
+	return u
+}
+
+// UpdateInputTokens sets the "input_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateInputTokens() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldInputTokens)
+	return u
+}
+
+// AddInputTokens adds v to the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) AddInputTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Add(channelmonitorhistory.FieldInputTokens, v)
+	return u
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) ClearInputTokens() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldInputTokens)
+	return u
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) SetOutputTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldOutputTokens, v)
+	return u
+}
+
+// UpdateOutputTokens sets the "output_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateOutputTokens() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldOutputTokens)
+	return u
+}
+
+// AddOutputTokens adds v to the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) AddOutputTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Add(channelmonitorhistory.FieldOutputTokens, v)
+	return u
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) ClearOutputTokens() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldOutputTokens)
+	return u
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) SetCacheReadTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldCacheReadTokens, v)
+	return u
+}
+
+// UpdateCacheReadTokens sets the "cache_read_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateCacheReadTokens() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldCacheReadTokens)
+	return u
+}
+
+// AddCacheReadTokens adds v to the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) AddCacheReadTokens(v int) *ChannelMonitorHistoryUpsert {
+	u.Add(channelmonitorhistory.FieldCacheReadTokens, v)
+	return u
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsert) ClearCacheReadTokens() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldCacheReadTokens)
 	return u
 }
 
@@ -684,6 +810,90 @@ func (u *ChannelMonitorHistoryUpsertOne) UpdatePingLatencyMs() *ChannelMonitorHi
 func (u *ChannelMonitorHistoryUpsertOne) ClearPingLatencyMs() *ChannelMonitorHistoryUpsertOne {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearPingLatencyMs()
+	})
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetInputTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetInputTokens(v)
+	})
+}
+
+// AddInputTokens adds v to the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) AddInputTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddInputTokens(v)
+	})
+}
+
+// UpdateInputTokens sets the "input_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateInputTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateInputTokens()
+	})
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearInputTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearInputTokens()
+	})
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetOutputTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetOutputTokens(v)
+	})
+}
+
+// AddOutputTokens adds v to the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) AddOutputTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddOutputTokens(v)
+	})
+}
+
+// UpdateOutputTokens sets the "output_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateOutputTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateOutputTokens()
+	})
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearOutputTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearOutputTokens()
+	})
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetCacheReadTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetCacheReadTokens(v)
+	})
+}
+
+// AddCacheReadTokens adds v to the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) AddCacheReadTokens(v int) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheReadTokens sets the "cache_read_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateCacheReadTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateCacheReadTokens()
+	})
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearCacheReadTokens() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearCacheReadTokens()
 	})
 }
 
@@ -1084,6 +1294,90 @@ func (u *ChannelMonitorHistoryUpsertBulk) UpdatePingLatencyMs() *ChannelMonitorH
 func (u *ChannelMonitorHistoryUpsertBulk) ClearPingLatencyMs() *ChannelMonitorHistoryUpsertBulk {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearPingLatencyMs()
+	})
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetInputTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetInputTokens(v)
+	})
+}
+
+// AddInputTokens adds v to the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) AddInputTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddInputTokens(v)
+	})
+}
+
+// UpdateInputTokens sets the "input_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateInputTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateInputTokens()
+	})
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearInputTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearInputTokens()
+	})
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetOutputTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetOutputTokens(v)
+	})
+}
+
+// AddOutputTokens adds v to the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) AddOutputTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddOutputTokens(v)
+	})
+}
+
+// UpdateOutputTokens sets the "output_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateOutputTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateOutputTokens()
+	})
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearOutputTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearOutputTokens()
+	})
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetCacheReadTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetCacheReadTokens(v)
+	})
+}
+
+// AddCacheReadTokens adds v to the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) AddCacheReadTokens(v int) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.AddCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheReadTokens sets the "cache_read_tokens" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateCacheReadTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateCacheReadTokens()
+	})
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearCacheReadTokens() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearCacheReadTokens()
 	})
 }
 

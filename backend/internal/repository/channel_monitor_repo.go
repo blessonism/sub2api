@@ -269,6 +269,11 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 		if row.ErrorCategory != "" {
 			c = c.SetErrorCategory(row.ErrorCategory)
 		}
+		if row.TokenUsage != nil {
+			c = c.SetInputTokens(row.TokenUsage.InputTokens).
+				SetOutputTokens(row.TokenUsage.OutputTokens).
+				SetCacheReadTokens(row.TokenUsage.CacheReadTokens)
+		}
 		bulk = append(bulk, c)
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
@@ -321,8 +326,22 @@ func historyEntToService(row *dbent.ChannelMonitorHistory) *service.ChannelMonit
 		Quota:          row.Quota,
 		ErrorCategory:  row.ErrorCategory,
 	}
+	if row.InputTokens != nil || row.OutputTokens != nil || row.CacheReadTokens != nil {
+		entry.TokenUsage = &service.MonitorTokenUsage{
+			InputTokens:     derefInt(row.InputTokens),
+			OutputTokens:    derefInt(row.OutputTokens),
+			CacheReadTokens: derefInt(row.CacheReadTokens),
+		}
+	}
 	entry.EffectiveStatus = effectiveMonitorStatus(entry.Status, entry.OverrideStatus)
 	return entry
+}
+
+func derefInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func enumPtrToString[T ~string](v *T) *string {

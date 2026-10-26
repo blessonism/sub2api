@@ -27,6 +27,12 @@ const (
 	FieldLatencyMs = "latency_ms"
 	// FieldPingLatencyMs holds the string denoting the ping_latency_ms field in the database.
 	FieldPingLatencyMs = "ping_latency_ms"
+	// FieldInputTokens holds the string denoting the input_tokens field in the database.
+	FieldInputTokens = "input_tokens"
+	// FieldOutputTokens holds the string denoting the output_tokens field in the database.
+	FieldOutputTokens = "output_tokens"
+	// FieldCacheReadTokens holds the string denoting the cache_read_tokens field in the database.
+	FieldCacheReadTokens = "cache_read_tokens"
 	// FieldMessage holds the string denoting the message field in the database.
 	FieldMessage = "message"
 	// FieldErrorCategory holds the string denoting the error_category field in the database.
@@ -57,6 +63,9 @@ var Columns = []string{
 	FieldOverrideStatus,
 	FieldLatencyMs,
 	FieldPingLatencyMs,
+	FieldInputTokens,
+	FieldOutputTokens,
+	FieldCacheReadTokens,
 	FieldMessage,
 	FieldErrorCategory,
 	FieldQuota,
@@ -173,6 +182,21 @@ func ByLatencyMs(opts ...sql.OrderTermOption) OrderOption {
 // ByPingLatencyMs orders the results by the ping_latency_ms field.
 func ByPingLatencyMs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPingLatencyMs, opts...).ToFunc()
+}
+
+// ByInputTokens orders the results by the input_tokens field.
+func ByInputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInputTokens, opts...).ToFunc()
+}
+
+// ByOutputTokens orders the results by the output_tokens field.
+func ByOutputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutputTokens, opts...).ToFunc()
+}
+
+// ByCacheReadTokens orders the results by the cache_read_tokens field.
+func ByCacheReadTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheReadTokens, opts...).ToFunc()
 }
 
 // ByMessage orders the results by the message field.
