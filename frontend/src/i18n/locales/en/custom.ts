@@ -2300,6 +2300,8 @@ export default {
         "originalStatus": "Original",
         "effectiveStatus": "Effective",
         "latency": "Latency",
+        "tokens": "Tokens",
+        "cached": "cached",
         "message": "Message",
         "actions": "Manual Status"
       }

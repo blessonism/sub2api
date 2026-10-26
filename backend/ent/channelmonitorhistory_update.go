@@ -146,6 +146,87 @@ func (_u *ChannelMonitorHistoryUpdate) ClearPingLatencyMs() *ChannelMonitorHisto
 	return _u
 }
 
+// SetInputTokens sets the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) SetInputTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.ResetInputTokens()
+	_u.mutation.SetInputTokens(v)
+	return _u
+}
+
+// SetNillableInputTokens sets the "input_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableInputTokens(v *int) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetInputTokens(*v)
+	}
+	return _u
+}
+
+// AddInputTokens adds value to the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) AddInputTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.AddInputTokens(v)
+	return _u
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearInputTokens() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearInputTokens()
+	return _u
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) SetOutputTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.ResetOutputTokens()
+	_u.mutation.SetOutputTokens(v)
+	return _u
+}
+
+// SetNillableOutputTokens sets the "output_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableOutputTokens(v *int) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetOutputTokens(*v)
+	}
+	return _u
+}
+
+// AddOutputTokens adds value to the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) AddOutputTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.AddOutputTokens(v)
+	return _u
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearOutputTokens() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearOutputTokens()
+	return _u
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) SetCacheReadTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.ResetCacheReadTokens()
+	_u.mutation.SetCacheReadTokens(v)
+	return _u
+}
+
+// SetNillableCacheReadTokens sets the "cache_read_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableCacheReadTokens(v *int) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetCacheReadTokens(*v)
+	}
+	return _u
+}
+
+// AddCacheReadTokens adds value to the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) AddCacheReadTokens(v int) *ChannelMonitorHistoryUpdate {
+	_u.mutation.AddCacheReadTokens(v)
+	return _u
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearCacheReadTokens() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearCacheReadTokens()
+	return _u
+}
+
 // SetMessage sets the "message" field.
 func (_u *ChannelMonitorHistoryUpdate) SetMessage(v string) *ChannelMonitorHistoryUpdate {
 	_u.mutation.SetMessage(v)
@@ -330,6 +411,33 @@ func (_u *ChannelMonitorHistoryUpdate) sqlSave(ctx context.Context) (_node int, 
 	if _u.mutation.PingLatencyMsCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldPingLatencyMs, field.TypeInt)
 	}
+	if value, ok := _u.mutation.InputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldInputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedInputTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldInputTokens, field.TypeInt, value)
+	}
+	if _u.mutation.InputTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldInputTokens, field.TypeInt)
+	}
+	if value, ok := _u.mutation.OutputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedOutputTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldOutputTokens, field.TypeInt, value)
+	}
+	if _u.mutation.OutputTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldOutputTokens, field.TypeInt)
+	}
+	if value, ok := _u.mutation.CacheReadTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheReadTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt, value)
+	}
+	if _u.mutation.CacheReadTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Message(); ok {
 		_spec.SetField(channelmonitorhistory.FieldMessage, field.TypeString, value)
 	}
@@ -513,6 +621,87 @@ func (_u *ChannelMonitorHistoryUpdateOne) AddPingLatencyMs(v int) *ChannelMonito
 // ClearPingLatencyMs clears the value of the "ping_latency_ms" field.
 func (_u *ChannelMonitorHistoryUpdateOne) ClearPingLatencyMs() *ChannelMonitorHistoryUpdateOne {
 	_u.mutation.ClearPingLatencyMs()
+	return _u
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetInputTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ResetInputTokens()
+	_u.mutation.SetInputTokens(v)
+	return _u
+}
+
+// SetNillableInputTokens sets the "input_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableInputTokens(v *int) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetInputTokens(*v)
+	}
+	return _u
+}
+
+// AddInputTokens adds value to the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) AddInputTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.AddInputTokens(v)
+	return _u
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearInputTokens() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearInputTokens()
+	return _u
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetOutputTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ResetOutputTokens()
+	_u.mutation.SetOutputTokens(v)
+	return _u
+}
+
+// SetNillableOutputTokens sets the "output_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableOutputTokens(v *int) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetOutputTokens(*v)
+	}
+	return _u
+}
+
+// AddOutputTokens adds value to the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) AddOutputTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.AddOutputTokens(v)
+	return _u
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearOutputTokens() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearOutputTokens()
+	return _u
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetCacheReadTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ResetCacheReadTokens()
+	_u.mutation.SetCacheReadTokens(v)
+	return _u
+}
+
+// SetNillableCacheReadTokens sets the "cache_read_tokens" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableCacheReadTokens(v *int) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetCacheReadTokens(*v)
+	}
+	return _u
+}
+
+// AddCacheReadTokens adds value to the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) AddCacheReadTokens(v int) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.AddCacheReadTokens(v)
+	return _u
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearCacheReadTokens() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearCacheReadTokens()
 	return _u
 }
 
@@ -729,6 +918,33 @@ func (_u *ChannelMonitorHistoryUpdateOne) sqlSave(ctx context.Context) (_node *C
 	}
 	if _u.mutation.PingLatencyMsCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldPingLatencyMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.InputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldInputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedInputTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldInputTokens, field.TypeInt, value)
+	}
+	if _u.mutation.InputTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldInputTokens, field.TypeInt)
+	}
+	if value, ok := _u.mutation.OutputTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedOutputTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldOutputTokens, field.TypeInt, value)
+	}
+	if _u.mutation.OutputTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldOutputTokens, field.TypeInt)
+	}
+	if value, ok := _u.mutation.CacheReadTokens(); ok {
+		_spec.SetField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheReadTokens(); ok {
+		_spec.AddField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt, value)
+	}
+	if _u.mutation.CacheReadTokensCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldCacheReadTokens, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Message(); ok {
 		_spec.SetField(channelmonitorhistory.FieldMessage, field.TypeString, value)

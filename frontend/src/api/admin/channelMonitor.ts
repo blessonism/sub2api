@@ -242,6 +242,10 @@ export interface HistoryItem {
   quota?: MonitorQuotaSnapshot | null
   /** 错误归类（rate_or_capacity 等；空 = 未归类） */
   error_category?: MonitorErrorCategory | ''
+  /** 探测 token 消耗（响应 usage；无 usage 数据时缺省） */
+  input_tokens?: number | null
+  output_tokens?: number | null
+  cache_read_tokens?: number | null
 }
 
 export interface HistoryParams {

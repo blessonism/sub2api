@@ -37,7 +37,10 @@ const (
 	// monitorMessageMaxBytes message 字段最大字节数（与 schema/migration 一致）。
 	monitorMessageMaxBytes = 500
 	// monitorResponseMaxBytes 单次模型响应最大读取字节，防止 OOM。
-	monitorResponseMaxBytes = 64 * 1024
+	// 256KB：部分"不降智"中转会在 Responses 流里回显注入的 2 万+ token 系统
+	// 提示词（response.created 携带完整 instructions/input，约 90KB），64KB
+	// 会在答案到达前耗尽导致误报 error，故放宽到 256KB。
+	monitorResponseMaxBytes = 256 * 1024
 	// monitorErrorBodySnippetMaxBytes 非 2xx 响应时保留上游 body 片段的最大字节数。
 	// 留 300 字节足够覆盖典型结构化错误（如 `{"error":{"message":"..."}}`），
 	// 又给 "upstream HTTP <status>: " 前缀留出余量，避免最终被 monitorMessageMaxBytes (500) 截得太狠。

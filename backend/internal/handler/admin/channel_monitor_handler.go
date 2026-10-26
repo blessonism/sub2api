@@ -164,6 +164,9 @@ type channelMonitorHistoryItemResponse struct {
 	CheckedAt       string                       `json:"checked_at"`
 	Quota           *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
 	ErrorCategory   string                       `json:"error_category,omitempty"`
+	InputTokens     *int                         `json:"input_tokens,omitempty"`
+	OutputTokens    *int                         `json:"output_tokens,omitempty"`
+	CacheReadTokens *int                         `json:"cache_read_tokens,omitempty"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -236,7 +239,7 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 }
 
 func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonitorHistoryItemResponse {
-	return channelMonitorHistoryItemResponse{
+	resp := channelMonitorHistoryItemResponse{
 		ID:              e.ID,
 		Model:           e.Model,
 		Status:          e.Status,
@@ -249,6 +252,13 @@ func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonito
 		Quota:           e.Quota,
 		ErrorCategory:   e.ErrorCategory,
 	}
+	if e.TokenUsage != nil {
+		input, output, cached := e.TokenUsage.InputTokens, e.TokenUsage.OutputTokens, e.TokenUsage.CacheReadTokens
+		resp.InputTokens = &input
+		resp.OutputTokens = &output
+		resp.CacheReadTokens = &cached
+	}
+	return resp
 }
 
 func effectiveHistoryStatus(e *service.ChannelMonitorHistoryEntry) string {

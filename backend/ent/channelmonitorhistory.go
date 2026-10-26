@@ -32,6 +32,12 @@ type ChannelMonitorHistory struct {
 	LatencyMs *int `json:"latency_ms,omitempty"`
 	// PingLatencyMs holds the value of the "ping_latency_ms" field.
 	PingLatencyMs *int `json:"ping_latency_ms,omitempty"`
+	// InputTokens holds the value of the "input_tokens" field.
+	InputTokens *int `json:"input_tokens,omitempty"`
+	// OutputTokens holds the value of the "output_tokens" field.
+	OutputTokens *int `json:"output_tokens,omitempty"`
+	// CacheReadTokens holds the value of the "cache_read_tokens" field.
+	CacheReadTokens *int `json:"cache_read_tokens,omitempty"`
 	// Message holds the value of the "message" field.
 	Message string `json:"message,omitempty"`
 	// ErrorCategory holds the value of the "error_category" field.
@@ -73,7 +79,7 @@ func (*ChannelMonitorHistory) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case channelmonitorhistory.FieldQuota:
 			values[i] = new([]byte)
-		case channelmonitorhistory.FieldID, channelmonitorhistory.FieldMonitorID, channelmonitorhistory.FieldLatencyMs, channelmonitorhistory.FieldPingLatencyMs:
+		case channelmonitorhistory.FieldID, channelmonitorhistory.FieldMonitorID, channelmonitorhistory.FieldLatencyMs, channelmonitorhistory.FieldPingLatencyMs, channelmonitorhistory.FieldInputTokens, channelmonitorhistory.FieldOutputTokens, channelmonitorhistory.FieldCacheReadTokens:
 			values[i] = new(sql.NullInt64)
 		case channelmonitorhistory.FieldModel, channelmonitorhistory.FieldStatus, channelmonitorhistory.FieldOverrideStatus, channelmonitorhistory.FieldMessage, channelmonitorhistory.FieldErrorCategory:
 			values[i] = new(sql.NullString)
@@ -138,6 +144,27 @@ func (_m *ChannelMonitorHistory) assignValues(columns []string, values []any) er
 			} else if value.Valid {
 				_m.PingLatencyMs = new(int)
 				*_m.PingLatencyMs = int(value.Int64)
+			}
+		case channelmonitorhistory.FieldInputTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field input_tokens", values[i])
+			} else if value.Valid {
+				_m.InputTokens = new(int)
+				*_m.InputTokens = int(value.Int64)
+			}
+		case channelmonitorhistory.FieldOutputTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field output_tokens", values[i])
+			} else if value.Valid {
+				_m.OutputTokens = new(int)
+				*_m.OutputTokens = int(value.Int64)
+			}
+		case channelmonitorhistory.FieldCacheReadTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_read_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheReadTokens = new(int)
+				*_m.CacheReadTokens = int(value.Int64)
 			}
 		case channelmonitorhistory.FieldMessage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -227,6 +254,21 @@ func (_m *ChannelMonitorHistory) String() string {
 	builder.WriteString(", ")
 	if v := _m.PingLatencyMs; v != nil {
 		builder.WriteString("ping_latency_ms=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.InputTokens; v != nil {
+		builder.WriteString("input_tokens=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.OutputTokens; v != nil {
+		builder.WriteString("output_tokens=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CacheReadTokens; v != nil {
+		builder.WriteString("cache_read_tokens=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

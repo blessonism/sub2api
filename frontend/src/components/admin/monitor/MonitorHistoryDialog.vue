@@ -62,6 +62,9 @@
                   {{ t('admin.channelMonitor.historyColumns.latency') }}
                 </th>
                 <th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.channelMonitor.historyColumns.tokens') }}
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.channelMonitor.historyColumns.message') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400">
@@ -103,6 +106,9 @@
                 </td>
                 <td class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
                   {{ formatHistoryLatency(item.latency_ms) }}
+                </td>
+                <td class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-300">
+                  {{ formatHistoryTokens(item) }}
                 </td>
                 <td class="max-w-[260px] px-3 py-2 text-gray-600 dark:text-gray-300">
                   <span class="line-clamp-2">{{ item.message || '-' }}</span>
@@ -296,6 +302,25 @@ function isCurrentHistoryRequest(seq: number, monitorId: number, model?: string)
 function formatHistoryLatency(ms: number | null): string {
   if (ms == null) return formatLatency(ms)
   return `${formatLatency(ms)} ms`
+}
+
+/** 历史行 token 消耗展示：↑输入 ↓输出，命中缓存时附 (cached N)。无 usage 数据显示 '-'。 */
+function formatHistoryTokens(item: HistoryItem): string {
+  if (item.input_tokens == null && item.output_tokens == null) return '-'
+  const parts = [
+    `↑${formatTokenCount(item.input_tokens ?? 0)}`,
+    `↓${formatTokenCount(item.output_tokens ?? 0)}`,
+  ]
+  if (item.cache_read_tokens != null && item.cache_read_tokens > 0) {
+    parts.push(`(${t('admin.channelMonitor.historyColumns.cached')} ${formatTokenCount(item.cache_read_tokens)})`)
+  }
+  return parts.join(' ')
+}
+
+function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return String(value)
 }
 
 function formatDateTime(iso: string): string {

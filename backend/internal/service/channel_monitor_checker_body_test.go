@@ -532,7 +532,7 @@ func TestRunCheckForModel_OpenAIResponses_ClientReadTimeoutAfterOutputIsDegraded
 
 func TestReadOpenAIResponsesStream_OverLimitReturnsError(t *testing.T) {
 	body := strings.NewReader("data: " + strings.Repeat("x", monitorResponseMaxBytes) + "\n\n")
-	_, _, _, err := readOpenAIResponsesStream(context.Background(), body)
+	_, _, _, _, err := readOpenAIResponsesStream(context.Background(), body)
 	if err == nil {
 		t.Fatal("oversized Responses stream should return an error")
 	}
@@ -552,10 +552,10 @@ func TestRunCheckForModel_OpenAIResponses_OverLimitWithValidOutputIsDegraded(t *
 				"type":  "response.output_text.delta",
 				"delta": answer,
 			})
-			// 用 SSE 注释行把流撑过 64KB 且不发终态事件：模拟啰嗦上游
-			// （推理摘要/重复快照），答案其实已经到了。
+			// 用 SSE 注释行把流撑过 monitorResponseMaxBytes 且不发终态事件：
+			// 模拟啰嗦上游（推理摘要/重复快照），答案其实已经到了。
 			pad := ": " + strings.Repeat("p", 64) + "\n\n"
-			for i := 0; i < 1200; i++ {
+			for i := 0; i < monitorResponseMaxBytes/len(pad)+200; i++ {
 				_, _ = w.Write([]byte(pad))
 			}
 		},
@@ -569,7 +569,7 @@ func TestRunCheckForModel_OpenAIResponses_OverLimitWithValidOutputIsDegraded(t *
 	if res.Status != MonitorStatusDegraded {
 		t.Fatalf("over-limit stream with valid output should be degraded, got status=%s message=%q", res.Status, res.Message)
 	}
-	if !strings.Contains(res.Message, "exceeds 65536") {
+	if !strings.Contains(res.Message, "exceeds") {
 		t.Fatalf("degraded message should explain the read limit, got %q", res.Message)
 	}
 	if res.LatencyMs == nil {
@@ -581,7 +581,7 @@ func TestRunCheckForModel_OpenAIResponses_OverLimitWithoutOutputRemainsError(t *
 	h := &openAICaptureHandler{
 		responsesStream: func(w http.ResponseWriter, _ string) {
 			pad := ": " + strings.Repeat("p", 64) + "\n\n"
-			for i := 0; i < 1200; i++ {
+			for i := 0; i < monitorResponseMaxBytes/len(pad)+200; i++ {
 				_, _ = w.Write([]byte(pad))
 			}
 		},
@@ -595,8 +595,109 @@ func TestRunCheckForModel_OpenAIResponses_OverLimitWithoutOutputRemainsError(t *
 	if res.Status != MonitorStatusError {
 		t.Fatalf("over-limit stream without any output must remain error, got status=%s message=%q", res.Status, res.Message)
 	}
-	if !strings.Contains(res.Message, "exceeds 65536") {
+	if !strings.Contains(res.Message, "exceeds") {
 		t.Fatalf("error message should explain the read limit, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_CapturesTokenUsage(t *testing.T) {
+	h := &openAICaptureHandler{
+		responsesStream: func(w http.ResponseWriter, answer string) {
+			writeResponsesSSEEvent(w, "response.output_text.delta", map[string]any{
+				"type":  "response.output_text.delta",
+				"delta": answer,
+			})
+			writeResponsesSSEEvent(w, "response.completed", map[string]any{
+				"type": "response.completed",
+				"response": map[string]any{
+					"output": []map[string]any{{
+						"type":    "message",
+						"content": []map[string]any{{"type": "output_text", "text": answer}},
+					}},
+					"usage": map[string]any{
+						"input_tokens":         57,
+						"output_tokens":        5,
+						"input_tokens_details": map[string]any{"cached_tokens": 22435},
+					},
+				},
+			})
+		},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("responses stream with usage should be operational, got status=%s message=%q", res.Status, res.Message)
+	}
+	if res.TokenUsage == nil {
+		t.Fatal("token usage should be captured from response.completed")
+	}
+	if res.TokenUsage.InputTokens != 57 || res.TokenUsage.OutputTokens != 5 || res.TokenUsage.CacheReadTokens != 22435 {
+		t.Fatalf("unexpected token usage: %+v", res.TokenUsage)
+	}
+}
+
+func TestExtractMonitorUsageFromJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		body     string
+		want     *MonitorTokenUsage
+	}{
+		{
+			name:     "openai chat completions",
+			provider: MonitorProviderOpenAI,
+			body:     `{"usage":{"prompt_tokens":22426,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":0}}}`,
+			want:     &MonitorTokenUsage{InputTokens: 22426, OutputTokens: 5},
+		},
+		{
+			name:     "openai responses json",
+			provider: MonitorProviderOpenAI,
+			body:     `{"usage":{"input_tokens":57,"output_tokens":5,"input_tokens_details":{"cached_tokens":22435}}}`,
+			want:     &MonitorTokenUsage{InputTokens: 57, OutputTokens: 5, CacheReadTokens: 22435},
+		},
+		{
+			name:     "anthropic",
+			provider: MonitorProviderAnthropic,
+			body:     `{"usage":{"input_tokens":10,"output_tokens":3,"cache_read_input_tokens":99}}`,
+			want:     &MonitorTokenUsage{InputTokens: 10, OutputTokens: 3, CacheReadTokens: 99},
+		},
+		{
+			name:     "gemini",
+			provider: MonitorProviderGemini,
+			body:     `{"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":4,"cachedContentTokenCount":7}}`,
+			want:     &MonitorTokenUsage{InputTokens: 11, OutputTokens: 4, CacheReadTokens: 7},
+		},
+		{
+			name:     "missing usage",
+			provider: MonitorProviderOpenAI,
+			body:     `{"choices":[]}`,
+			want:     nil,
+		},
+		{
+			name:     "all zero",
+			provider: MonitorProviderOpenAI,
+			body:     `{"usage":{"prompt_tokens":0,"completion_tokens":0}}`,
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractMonitorUsageFromJSON(tt.provider, []byte(tt.body))
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("extractMonitorUsageFromJSON() = %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil || *got != *tt.want {
+				t.Fatalf("extractMonitorUsageFromJSON() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

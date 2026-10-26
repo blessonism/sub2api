@@ -68,10 +68,11 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, firstOutputMs, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
+	respText, rawBody, statusCode, firstOutputMs, tokenUsage, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
+	res.TokenUsage = tokenUsage
 
 	if err != nil {
 		var streamErr *monitorResponsesStreamError
@@ -170,6 +171,44 @@ func formatResponsesStreamPartialMessage(streamErr *monitorResponsesStreamError,
 		message += ": " + sanitizeErrorMessage(streamErr.Error())
 	}
 	return message
+}
+
+// monitorUsageFromGJSON 从 usage 对象提取 token 消耗，兼容四种命名习惯：
+// OpenAI Chat（prompt_tokens/completion_tokens）、OpenAI Responses
+// （input_tokens/output_tokens）、Anthropic（cache_read_input_tokens）、
+// Gemini（promptTokenCount/candidatesTokenCount）。全零返回 nil。
+func monitorUsageFromGJSON(u gjson.Result) *MonitorTokenUsage {
+	if !u.Exists() {
+		return nil
+	}
+	usage := &MonitorTokenUsage{
+		InputTokens:     int(firstNonZeroInt(u.Get("prompt_tokens").Int(), u.Get("input_tokens").Int(), u.Get("promptTokenCount").Int())),
+		OutputTokens:    int(firstNonZeroInt(u.Get("completion_tokens").Int(), u.Get("output_tokens").Int(), u.Get("candidatesTokenCount").Int())),
+		CacheReadTokens: int(firstNonZeroInt(u.Get("prompt_tokens_details.cached_tokens").Int(), u.Get("input_tokens_details.cached_tokens").Int(), u.Get("cache_read_input_tokens").Int(), u.Get("cached_tokens").Int(), u.Get("cachedContentTokenCount").Int())),
+	}
+	if usage.Empty() {
+		return nil
+	}
+	return usage
+}
+
+// extractMonitorUsageFromJSON 从非流式响应 body 提取 token 消耗。
+// provider 仅用于区分 Gemini 的 usageMetadata 顶层路径；其余 provider 的
+// usage 字段命名差异由 monitorUsageFromGJSON 的回退链覆盖。
+func extractMonitorUsageFromJSON(provider string, body []byte) *MonitorTokenUsage {
+	if provider == MonitorProviderGemini {
+		return monitorUsageFromGJSON(gjson.GetBytes(body, "usageMetadata"))
+	}
+	return monitorUsageFromGJSON(gjson.GetBytes(body, "usage"))
+}
+
+func firstNonZeroInt(values ...int64) int64 {
+	for _, v := range values {
+		if v != 0 {
+			return v
+		}
+	}
+	return 0
 }
 
 // bodyOverrideMode 归一取 opts.BodyOverrideMode，nil opts / 空串都视为 off。
@@ -335,19 +374,20 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 //   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
 //   - rawBody: 已读取的响应体/流片段（被 monitorResponseMaxBytes 限制），用于错误路径保留诊断信息
 //   - status: HTTP 状态码
+//   - usage: 响应携带的 token 消耗；无 usage 数据（错误响应、流被截断）时为 nil
 //   - err: 网络 / 序列化错误
-func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, firstOutputMs *int, err error) {
+func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, firstOutputMs *int, usage *MonitorTokenUsage, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
-		return "", "", 0, nil, err
+		return "", "", 0, nil, nil, err
 	}
 	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
 	if !ok {
-		return "", "", 0, nil, fmt.Errorf("unsupported provider %q", provider)
+		return "", "", 0, nil, nil, fmt.Errorf("unsupported provider %q", provider)
 	}
 	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
 	if err != nil {
-		return "", "", 0, nil, err
+		return "", "", 0, nil, nil, err
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
@@ -356,9 +396,9 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
-		return "", "", status, nil, err
+		return "", "", status, nil, nil, err
 	}
-	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil, nil
+	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil, extractMonitorUsageFromJSON(provider, respBytes), nil
 }
 
 // monitorResponsesStreamError 标记 Responses 流在 HTTP 2xx 后的读取状态。
@@ -386,35 +426,35 @@ func (e *monitorResponsesStreamError) Unwrap() error {
 
 // postOpenAIResponsesStream 发送 Responses 流式请求，并在收到终态前增量读取 SSE。
 // 兼容少数忽略 stream=true 的网关：若 2xx body 不是 SSE，则在 EOF 时按普通 Responses JSON 提取文本。
-func postOpenAIResponsesStream(ctx context.Context, fullURL string, payload []byte, headers map[string]string) (string, string, int, *int, error) {
+func postOpenAIResponsesStream(ctx context.Context, fullURL string, payload []byte, headers map[string]string) (string, string, int, *int, *MonitorTokenUsage, error) {
 	req, err := newMonitorPOSTRequest(ctx, fullURL, payload, headers, "text/event-stream")
 	if err != nil {
-		return "", "", 0, nil, err
+		return "", "", 0, nil, nil, err
 	}
 	resp, err := monitorHTTPClient.Do(req)
 	if err != nil {
-		return "", "", 0, nil, fmt.Errorf("do request: %w", err)
+		return "", "", 0, nil, nil, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
 		if readErr != nil {
-			return "", string(body), resp.StatusCode, nil, fmt.Errorf("read body: %w", readErr)
+			return "", string(body), resp.StatusCode, nil, nil, fmt.Errorf("read body: %w", readErr)
 		}
-		return "", string(body), resp.StatusCode, nil, nil
+		return "", string(body), resp.StatusCode, nil, nil, nil
 	}
 
-	text, rawBody, firstOutputMs, streamErr := readOpenAIResponsesStream(ctx, resp.Body)
+	text, rawBody, firstOutputMs, usage, streamErr := readOpenAIResponsesStream(ctx, resp.Body)
 	if streamErr != nil {
-		return text, rawBody, resp.StatusCode, firstOutputMs, streamErr
+		return text, rawBody, resp.StatusCode, firstOutputMs, usage, streamErr
 	}
-	return text, rawBody, resp.StatusCode, firstOutputMs, nil
+	return text, rawBody, resp.StatusCode, firstOutputMs, usage, nil
 }
 
-func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBody string, firstOutputMs *int, err error) {
+func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBody string, firstOutputMs *int, usage *MonitorTokenUsage, err error) {
 	if body == nil {
-		return "", "", nil, &monitorResponsesStreamError{cause: errors.New("responses stream body is nil")}
+		return "", "", nil, nil, &monitorResponsesStreamError{cause: errors.New("responses stream body is nil")}
 	}
 
 	limited := &io.LimitedReader{R: body, N: int64(monitorResponseMaxBytes) + 1}
@@ -424,6 +464,7 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 	var raw bytes.Buffer
 	var output strings.Builder
 	var parser openAICompatSSEFrameParser
+	var capturedUsage *MonitorTokenUsage
 	seenSSE := false
 	seenTerminal := false
 	streamStart := time.Now()
@@ -486,6 +527,7 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 		case "response.completed", "response.done":
 			if response := gjson.GetBytes(payloadBytes, "response"); response.Exists() {
 				setOutput(extractOpenAIResponsesText([]byte(response.Raw)))
+				capturedUsage = monitorUsageFromGJSON(gjson.GetBytes([]byte(response.Raw), "usage"))
 			}
 			seenTerminal = true
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
@@ -503,7 +545,7 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 	for scanner.Scan() {
 		if limited.N <= 0 {
 			// 上游可能只是流很啰嗦（推理摘要/重复快照），答案已到就别判死。
-			return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
+			return output.String(), raw.String(), firstOutputMs, capturedUsage, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
 		}
 		line := scanner.Text()
 		appendRaw(line)
@@ -512,28 +554,28 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 			continue
 		}
 		if err := processFrame(frame); err != nil {
-			return output.String(), raw.String(), firstOutputMs, err
+			return output.String(), raw.String(), firstOutputMs, capturedUsage, err
 		}
 		if seenTerminal {
-			return output.String(), raw.String(), firstOutputMs, nil
+			return output.String(), raw.String(), firstOutputMs, capturedUsage, nil
 		}
 	}
 
 	if limited.N <= 0 {
-		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
+		return output.String(), raw.String(), firstOutputMs, capturedUsage, &monitorResponsesStreamError{cause: fmt.Errorf("responses stream body exceeds %d bytes", monitorResponseMaxBytes), allowPartial: true}
 	}
 	if scanErr := scanner.Err(); scanErr != nil {
-		return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{
+		return output.String(), raw.String(), firstOutputMs, capturedUsage, &monitorResponsesStreamError{
 			cause:        fmt.Errorf("responses stream read: %w", scanErr),
 			allowPartial: errors.Is(scanErr, context.DeadlineExceeded) && ctx.Err() == nil,
 		}
 	}
 	if frame, ok := parser.Finish(); ok {
 		if err := processFrame(frame); err != nil {
-			return output.String(), raw.String(), firstOutputMs, err
+			return output.String(), raw.String(), firstOutputMs, capturedUsage, err
 		}
 		if seenTerminal {
-			return output.String(), raw.String(), firstOutputMs, nil
+			return output.String(), raw.String(), firstOutputMs, capturedUsage, nil
 		}
 	}
 
@@ -544,13 +586,17 @@ func readOpenAIResponsesStream(ctx context.Context, body io.Reader) (text, rawBo
 			if strings.TrimSpace(text) == "" {
 				if response := gjson.GetBytes(rawBytes, "response"); response.Exists() {
 					text = extractOpenAIResponsesText([]byte(response.Raw))
+					capturedUsage = monitorUsageFromGJSON(gjson.GetBytes([]byte(response.Raw), "usage"))
 				}
 			}
-			return text, raw.String(), firstOutputMs, nil
+			if capturedUsage == nil {
+				capturedUsage = monitorUsageFromGJSON(gjson.GetBytes(rawBytes, "usage"))
+			}
+			return text, raw.String(), firstOutputMs, capturedUsage, nil
 		}
-		return "", raw.String(), firstOutputMs, nil
+		return "", raw.String(), firstOutputMs, nil, nil
 	}
-	return output.String(), raw.String(), firstOutputMs, &monitorResponsesStreamError{
+	return output.String(), raw.String(), firstOutputMs, capturedUsage, &monitorResponsesStreamError{
 		cause:        errors.New("responses stream ended before terminal event"),
 		allowPartial: false,
 	}

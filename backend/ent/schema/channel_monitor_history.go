@@ -46,6 +46,17 @@ func (ChannelMonitorHistory) Fields() []ent.Field {
 		field.Int("ping_latency_ms").
 			Optional().
 			Nillable(),
+		// input_tokens / output_tokens / cache_read_tokens: 探测响应 usage 里的
+		// token 消耗；上游未返回 usage 或流在终态前被截断时为 NULL。
+		field.Int("input_tokens").
+			Optional().
+			Nillable(),
+		field.Int("output_tokens").
+			Optional().
+			Nillable(),
+		field.Int("cache_read_tokens").
+			Optional().
+			Nillable(),
 		field.String("message").
 			Optional().
 			Default("").

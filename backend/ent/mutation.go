@@ -20240,26 +20240,32 @@ func (m *ChannelMonitorDailyRollupMutation) ResetEdge(name string) error {
 // ChannelMonitorHistoryMutation represents an operation that mutates the ChannelMonitorHistory nodes in the graph.
 type ChannelMonitorHistoryMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	model              *string
-	status             *channelmonitorhistory.Status
-	override_status    *channelmonitorhistory.OverrideStatus
-	latency_ms         *int
-	addlatency_ms      *int
-	ping_latency_ms    *int
-	addping_latency_ms *int
-	message            *string
-	error_category     *string
-	quota              **domain.MonitorQuotaSnapshot
-	checked_at         *time.Time
-	clearedFields      map[string]struct{}
-	monitor            *int64
-	clearedmonitor     bool
-	done               bool
-	oldValue           func(context.Context) (*ChannelMonitorHistory, error)
-	predicates         []predicate.ChannelMonitorHistory
+	op                   Op
+	typ                  string
+	id                   *int64
+	model                *string
+	status               *channelmonitorhistory.Status
+	override_status      *channelmonitorhistory.OverrideStatus
+	latency_ms           *int
+	addlatency_ms        *int
+	ping_latency_ms      *int
+	addping_latency_ms   *int
+	input_tokens         *int
+	addinput_tokens      *int
+	output_tokens        *int
+	addoutput_tokens     *int
+	cache_read_tokens    *int
+	addcache_read_tokens *int
+	message              *string
+	error_category       *string
+	quota                **domain.MonitorQuotaSnapshot
+	checked_at           *time.Time
+	clearedFields        map[string]struct{}
+	monitor              *int64
+	clearedmonitor       bool
+	done                 bool
+	oldValue             func(context.Context) (*ChannelMonitorHistory, error)
+	predicates           []predicate.ChannelMonitorHistory
 }
 
 var _ ent.Mutation = (*ChannelMonitorHistoryMutation)(nil)
@@ -20657,6 +20663,216 @@ func (m *ChannelMonitorHistoryMutation) ResetPingLatencyMs() {
 	delete(m.clearedFields, channelmonitorhistory.FieldPingLatencyMs)
 }
 
+// SetInputTokens sets the "input_tokens" field.
+func (m *ChannelMonitorHistoryMutation) SetInputTokens(i int) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) InputTokens() (r int, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldInputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *ChannelMonitorHistoryMutation) AddInputTokens(i int) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *ChannelMonitorHistoryMutation) AddedInputTokens() (r int, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ClearInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	m.clearedFields[channelmonitorhistory.FieldInputTokens] = struct{}{}
+}
+
+// InputTokensCleared returns if the "input_tokens" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) InputTokensCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldInputTokens]
+	return ok
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldInputTokens)
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *ChannelMonitorHistoryMutation) SetOutputTokens(i int) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) OutputTokens() (r int, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldOutputTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *ChannelMonitorHistoryMutation) AddOutputTokens(i int) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *ChannelMonitorHistoryMutation) AddedOutputTokens() (r int, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ClearOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	m.clearedFields[channelmonitorhistory.FieldOutputTokens] = struct{}{}
+}
+
+// OutputTokensCleared returns if the "output_tokens" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) OutputTokensCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldOutputTokens]
+	return ok
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldOutputTokens)
+}
+
+// SetCacheReadTokens sets the "cache_read_tokens" field.
+func (m *ChannelMonitorHistoryMutation) SetCacheReadTokens(i int) {
+	m.cache_read_tokens = &i
+	m.addcache_read_tokens = nil
+}
+
+// CacheReadTokens returns the value of the "cache_read_tokens" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) CacheReadTokens() (r int, exists bool) {
+	v := m.cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheReadTokens returns the old "cache_read_tokens" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldCacheReadTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheReadTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheReadTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheReadTokens: %w", err)
+	}
+	return oldValue.CacheReadTokens, nil
+}
+
+// AddCacheReadTokens adds i to the "cache_read_tokens" field.
+func (m *ChannelMonitorHistoryMutation) AddCacheReadTokens(i int) {
+	if m.addcache_read_tokens != nil {
+		*m.addcache_read_tokens += i
+	} else {
+		m.addcache_read_tokens = &i
+	}
+}
+
+// AddedCacheReadTokens returns the value that was added to the "cache_read_tokens" field in this mutation.
+func (m *ChannelMonitorHistoryMutation) AddedCacheReadTokens() (r int, exists bool) {
+	v := m.addcache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheReadTokens clears the value of the "cache_read_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ClearCacheReadTokens() {
+	m.cache_read_tokens = nil
+	m.addcache_read_tokens = nil
+	m.clearedFields[channelmonitorhistory.FieldCacheReadTokens] = struct{}{}
+}
+
+// CacheReadTokensCleared returns if the "cache_read_tokens" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) CacheReadTokensCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldCacheReadTokens]
+	return ok
+}
+
+// ResetCacheReadTokens resets all changes to the "cache_read_tokens" field.
+func (m *ChannelMonitorHistoryMutation) ResetCacheReadTokens() {
+	m.cache_read_tokens = nil
+	m.addcache_read_tokens = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldCacheReadTokens)
+}
+
 // SetMessage sets the "message" field.
 func (m *ChannelMonitorHistoryMutation) SetMessage(s string) {
 	m.message = &s
@@ -20901,7 +21117,7 @@ func (m *ChannelMonitorHistoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorHistoryMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 13)
 	if m.monitor != nil {
 		fields = append(fields, channelmonitorhistory.FieldMonitorID)
 	}
@@ -20919,6 +21135,15 @@ func (m *ChannelMonitorHistoryMutation) Fields() []string {
 	}
 	if m.ping_latency_ms != nil {
 		fields = append(fields, channelmonitorhistory.FieldPingLatencyMs)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldOutputTokens)
+	}
+	if m.cache_read_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldCacheReadTokens)
 	}
 	if m.message != nil {
 		fields = append(fields, channelmonitorhistory.FieldMessage)
@@ -20952,6 +21177,12 @@ func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 		return m.LatencyMs()
 	case channelmonitorhistory.FieldPingLatencyMs:
 		return m.PingLatencyMs()
+	case channelmonitorhistory.FieldInputTokens:
+		return m.InputTokens()
+	case channelmonitorhistory.FieldOutputTokens:
+		return m.OutputTokens()
+	case channelmonitorhistory.FieldCacheReadTokens:
+		return m.CacheReadTokens()
 	case channelmonitorhistory.FieldMessage:
 		return m.Message()
 	case channelmonitorhistory.FieldErrorCategory:
@@ -20981,6 +21212,12 @@ func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name strin
 		return m.OldLatencyMs(ctx)
 	case channelmonitorhistory.FieldPingLatencyMs:
 		return m.OldPingLatencyMs(ctx)
+	case channelmonitorhistory.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case channelmonitorhistory.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case channelmonitorhistory.FieldCacheReadTokens:
+		return m.OldCacheReadTokens(ctx)
 	case channelmonitorhistory.FieldMessage:
 		return m.OldMessage(ctx)
 	case channelmonitorhistory.FieldErrorCategory:
@@ -21040,6 +21277,27 @@ func (m *ChannelMonitorHistoryMutation) SetField(name string, value ent.Value) e
 		}
 		m.SetPingLatencyMs(v)
 		return nil
+	case channelmonitorhistory.FieldInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case channelmonitorhistory.FieldOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case channelmonitorhistory.FieldCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheReadTokens(v)
+		return nil
 	case channelmonitorhistory.FieldMessage:
 		v, ok := value.(string)
 		if !ok {
@@ -21082,6 +21340,15 @@ func (m *ChannelMonitorHistoryMutation) AddedFields() []string {
 	if m.addping_latency_ms != nil {
 		fields = append(fields, channelmonitorhistory.FieldPingLatencyMs)
 	}
+	if m.addinput_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldOutputTokens)
+	}
+	if m.addcache_read_tokens != nil {
+		fields = append(fields, channelmonitorhistory.FieldCacheReadTokens)
+	}
 	return fields
 }
 
@@ -21094,6 +21361,12 @@ func (m *ChannelMonitorHistoryMutation) AddedField(name string) (ent.Value, bool
 		return m.AddedLatencyMs()
 	case channelmonitorhistory.FieldPingLatencyMs:
 		return m.AddedPingLatencyMs()
+	case channelmonitorhistory.FieldInputTokens:
+		return m.AddedInputTokens()
+	case channelmonitorhistory.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case channelmonitorhistory.FieldCacheReadTokens:
+		return m.AddedCacheReadTokens()
 	}
 	return nil, false
 }
@@ -21117,6 +21390,27 @@ func (m *ChannelMonitorHistoryMutation) AddField(name string, value ent.Value) e
 		}
 		m.AddPingLatencyMs(v)
 		return nil
+	case channelmonitorhistory.FieldInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case channelmonitorhistory.FieldOutputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case channelmonitorhistory.FieldCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheReadTokens(v)
+		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitorHistory numeric field %s", name)
 }
@@ -21133,6 +21427,15 @@ func (m *ChannelMonitorHistoryMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(channelmonitorhistory.FieldPingLatencyMs) {
 		fields = append(fields, channelmonitorhistory.FieldPingLatencyMs)
+	}
+	if m.FieldCleared(channelmonitorhistory.FieldInputTokens) {
+		fields = append(fields, channelmonitorhistory.FieldInputTokens)
+	}
+	if m.FieldCleared(channelmonitorhistory.FieldOutputTokens) {
+		fields = append(fields, channelmonitorhistory.FieldOutputTokens)
+	}
+	if m.FieldCleared(channelmonitorhistory.FieldCacheReadTokens) {
+		fields = append(fields, channelmonitorhistory.FieldCacheReadTokens)
 	}
 	if m.FieldCleared(channelmonitorhistory.FieldMessage) {
 		fields = append(fields, channelmonitorhistory.FieldMessage)
@@ -21165,6 +21468,15 @@ func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 		return nil
 	case channelmonitorhistory.FieldPingLatencyMs:
 		m.ClearPingLatencyMs()
+		return nil
+	case channelmonitorhistory.FieldInputTokens:
+		m.ClearInputTokens()
+		return nil
+	case channelmonitorhistory.FieldOutputTokens:
+		m.ClearOutputTokens()
+		return nil
+	case channelmonitorhistory.FieldCacheReadTokens:
+		m.ClearCacheReadTokens()
 		return nil
 	case channelmonitorhistory.FieldMessage:
 		m.ClearMessage()
@@ -21200,6 +21512,15 @@ func (m *ChannelMonitorHistoryMutation) ResetField(name string) error {
 		return nil
 	case channelmonitorhistory.FieldPingLatencyMs:
 		m.ResetPingLatencyMs()
+		return nil
+	case channelmonitorhistory.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case channelmonitorhistory.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case channelmonitorhistory.FieldCacheReadTokens:
+		m.ResetCacheReadTokens()
 		return nil
 	case channelmonitorhistory.FieldMessage:
 		m.ResetMessage()
