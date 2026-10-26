@@ -389,6 +389,7 @@ const (
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyGptIntelligenceTemplates    = "gpt_intelligence_templates"    // GPT 智力检验全局模板（JSON 数组）
+	SettingKeyModelIQProbeConfig          = "model_iq_probe_config"         // 智商探针配置（JSON：题目/期望答案/目标/间隔）
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量

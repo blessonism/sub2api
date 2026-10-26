@@ -131,6 +131,9 @@ func RegisterAdminRoutes(
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
 
+		// 智商监控（糖果问题探针）
+		registerModelIQProbeRoutes(admin, h)
+
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
@@ -952,6 +955,19 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		templates.DELETE("/:id", h.Admin.ChannelMonitorTemplate.Delete)
 		templates.GET("/:id/monitors", h.Admin.ChannelMonitorTemplate.AssociatedMonitors)
 		templates.POST("/:id/apply", h.Admin.ChannelMonitorTemplate.Apply)
+	}
+}
+
+// registerModelIQProbeRoutes 注册智商监控（糖果问题探针）的管理端路由。
+// 功能开关由探针自身配置（model_iq_probe_config.enabled）控制，不加独立 guard。
+func registerModelIQProbeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	iq := admin.Group("/model-iq-probe")
+	{
+		iq.GET("/config", h.Admin.ModelIQProbe.GetConfig)
+		iq.PUT("/config", h.Admin.ModelIQProbe.UpdateConfig)
+		iq.GET("/results", h.Admin.ModelIQProbe.ListResults)
+		iq.POST("/run", h.Admin.ModelIQProbe.RunProbe)
+		iq.POST("/results/:id/override", h.Admin.ModelIQProbe.OverrideResult)
 	}
 }
 

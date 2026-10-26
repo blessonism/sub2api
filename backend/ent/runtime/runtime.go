@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/modeliqproberesult"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -1730,6 +1731,70 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	modeliqproberesultFields := schema.ModelIQProbeResult{}.Fields()
+	_ = modeliqproberesultFields
+	// modeliqproberesultDescAccountName is the schema descriptor for account_name field.
+	modeliqproberesultDescAccountName := modeliqproberesultFields[1].Descriptor()
+	// modeliqproberesult.DefaultAccountName holds the default value on creation for the account_name field.
+	modeliqproberesult.DefaultAccountName = modeliqproberesultDescAccountName.Default.(string)
+	// modeliqproberesult.AccountNameValidator is a validator for the "account_name" field. It is called by the builders before save.
+	modeliqproberesult.AccountNameValidator = modeliqproberesultDescAccountName.Validators[0].(func(string) error)
+	// modeliqproberesultDescModel is the schema descriptor for model field.
+	modeliqproberesultDescModel := modeliqproberesultFields[2].Descriptor()
+	// modeliqproberesult.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	modeliqproberesult.ModelValidator = func() func(string) error {
+		validators := modeliqproberesultDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// modeliqproberesultDescProtocol is the schema descriptor for protocol field.
+	modeliqproberesultDescProtocol := modeliqproberesultFields[3].Descriptor()
+	// modeliqproberesult.DefaultProtocol holds the default value on creation for the protocol field.
+	modeliqproberesult.DefaultProtocol = modeliqproberesultDescProtocol.Default.(string)
+	// modeliqproberesult.ProtocolValidator is a validator for the "protocol" field. It is called by the builders before save.
+	modeliqproberesult.ProtocolValidator = modeliqproberesultDescProtocol.Validators[0].(func(string) error)
+	// modeliqproberesultDescErrorCategory is the schema descriptor for error_category field.
+	modeliqproberesultDescErrorCategory := modeliqproberesultFields[6].Descriptor()
+	// modeliqproberesult.DefaultErrorCategory holds the default value on creation for the error_category field.
+	modeliqproberesult.DefaultErrorCategory = modeliqproberesultDescErrorCategory.Default.(string)
+	// modeliqproberesult.ErrorCategoryValidator is a validator for the "error_category" field. It is called by the builders before save.
+	modeliqproberesult.ErrorCategoryValidator = modeliqproberesultDescErrorCategory.Validators[0].(func(string) error)
+	// modeliqproberesultDescErrorMessage is the schema descriptor for error_message field.
+	modeliqproberesultDescErrorMessage := modeliqproberesultFields[7].Descriptor()
+	// modeliqproberesult.DefaultErrorMessage holds the default value on creation for the error_message field.
+	modeliqproberesult.DefaultErrorMessage = modeliqproberesultDescErrorMessage.Default.(string)
+	// modeliqproberesultDescExpectedAnswer is the schema descriptor for expected_answer field.
+	modeliqproberesultDescExpectedAnswer := modeliqproberesultFields[8].Descriptor()
+	// modeliqproberesult.ExpectedAnswerValidator is a validator for the "expected_answer" field. It is called by the builders before save.
+	modeliqproberesult.ExpectedAnswerValidator = func() func(string) error {
+		validators := modeliqproberesultDescExpectedAnswer.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(expected_answer string) error {
+			for _, fn := range fns {
+				if err := fn(expected_answer); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// modeliqproberesultDescCreatedAt is the schema descriptor for created_at field.
+	modeliqproberesultDescCreatedAt := modeliqproberesultFields[14].Descriptor()
+	// modeliqproberesult.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modeliqproberesult.DefaultCreatedAt = modeliqproberesultDescCreatedAt.Default.(func() time.Time)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.
