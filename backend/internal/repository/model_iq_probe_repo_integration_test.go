@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/ent/modeliqproberesult"
 	"testing"
 	"time"
 
@@ -123,4 +124,63 @@ func TestModelIQProbeResultRoundTrip(t *testing.T) {
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+func TestModelIQProbeSummaryPreservesOlderTargetFailure(t *testing.T) {
+	ctx := context.Background()
+	repo := NewModelIQProbeRepository(integrationEntClient, integrationDB)
+	const model = "gpt-iq-summary-test"
+	t.Cleanup(func() {
+		_, err := integrationEntClient.ModelIQProbeResult.Delete().Where(modeliqproberesult.ModelEQ(model)).Exec(ctx)
+		require.NoError(t, err)
+	})
+	now := time.Now()
+	for _, row := range []*service.ModelIQProbeResult{
+		{Model: model, AccountID: int64Ptr(101), Status: service.ModelIQProbeStatusWrongAnswer, ExpectedAnswer: "21", CreatedAt: now.Add(-time.Hour)},
+		{Model: model, AccountID: int64Ptr(102), Status: service.ModelIQProbeStatusPass, ExpectedAnswer: "21", CreatedAt: now.Add(-2 * time.Minute)},
+		{Model: model, AccountID: int64Ptr(102), Status: service.ModelIQProbeStatusPass, ExpectedAnswer: "21", CreatedAt: now.Add(-time.Minute)},
+		{Model: model, AccountID: int64Ptr(102), Status: service.ModelIQProbeStatusPass, ExpectedAnswer: "21", CreatedAt: now},
+		{Model: model, AccountID: int64Ptr(103), Status: service.ModelIQProbeStatusWrongAnswer, ExpectedAnswer: "21", CreatedAt: now.AddDate(0, 0, -31)},
+	} {
+		require.NoError(t, repo.Insert(ctx, row))
+	}
+	rows, err := repo.ListForSummary(ctx, []service.ModelIQProbeTargetRef{{AccountID: 101, Model: model}, {AccountID: 102, Model: model}, {AccountID: 103, Model: model}}, 2)
+	require.NoError(t, err)
+	// 两条模型时间线 + 另一账号的最新失败；不加载全部账号历史。
+	require.Len(t, rows, 3)
+	require.Equal(t, service.ModelIQProbeStatusWrongAnswer, rows[2].Status)
+	rows, err = repo.ListForSummary(ctx, []service.ModelIQProbeTargetRef{{AccountID: 101, Model: model}}, 2)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	rows, err = repo.ListForSummary(ctx, []service.ModelIQProbeTargetRef{{AccountID: 101, Model: model + "-missing"}}, 2)
+	require.NoError(t, err)
+	require.Empty(t, rows)
+}
+
+func TestModelIQProbeSummaryFiltersExactTargetPairs(t *testing.T) {
+	ctx := context.Background()
+	repo := NewModelIQProbeRepository(integrationEntClient, integrationDB)
+	const firstModel, secondModel = "gpt-iq-pair-a", "gpt-iq-pair-b"
+	t.Cleanup(func() {
+		_, err := integrationEntClient.ModelIQProbeResult.Delete().Where(modeliqproberesult.ModelIn(firstModel, secondModel)).Exec(ctx)
+		require.NoError(t, err)
+	})
+	now := time.Now()
+	for _, row := range []*service.ModelIQProbeResult{
+		{AccountID: int64Ptr(101), Model: firstModel, Status: service.ModelIQProbeStatusPass, ExpectedAnswer: "21", CreatedAt: now.Add(-time.Minute)},
+		{AccountID: int64Ptr(102), Model: secondModel, Status: service.ModelIQProbeStatusPass, ExpectedAnswer: "21", CreatedAt: now.Add(-time.Minute)},
+		{AccountID: int64Ptr(101), Model: secondModel, Status: service.ModelIQProbeStatusWrongAnswer, ExpectedAnswer: "21", CreatedAt: now},
+		{AccountID: int64Ptr(102), Model: firstModel, Status: service.ModelIQProbeStatusWrongAnswer, ExpectedAnswer: "21", CreatedAt: now},
+	} {
+		require.NoError(t, repo.Insert(ctx, row))
+	}
+	rows, err := repo.ListForSummary(ctx, []service.ModelIQProbeTargetRef{{AccountID: 101, Model: firstModel}, {AccountID: 102, Model: secondModel}}, 60)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		require.Equal(t, service.ModelIQProbeStatusPass, row.Status)
+	}
+	models, err := repo.ListSummaryModels(ctx, []int64{101})
+	require.NoError(t, err)
+	require.Equal(t, []string{firstModel, secondModel}, models)
 }

@@ -217,8 +217,9 @@ export default {
       }
     },
     "candyProbe": {
+      "markedForExclusion": "已标记剔除",
       "title": "糖果探针 · 降智检测",
-      "description": "用糖果问题主动探测各 GPT 模型：回答出现标准答案即视为正常，答错（如 20/23/29）可能存在降智。条带展示最近 60 次结果，从左到右由旧到新。",
+      "description": "使用糖果题对配置的账号与 GPT 模型进行抽样检测。模型状态汇总各账号的最新结果，条带展示最近 60 次探测，由旧到新。",
       "summary": "{ok}/{total} 正常",
       "verdictPass": "正常",
       "verdictWrong": "疑似降智",
@@ -226,7 +227,7 @@ export default {
       "verdictUnknown": "未探测",
       "rateLabel": "近 {n} 次",
       "streak": "连续 {n} 次正常",
-      "latestAnswer": "最新回答",
+      "latestAnswer": "判定参考回答",
       "stripLabel": "最近 {n} 次探测",
       "stripOrder": "由旧到新",
       "answerFallback": "暂无回答文本",
@@ -508,6 +509,20 @@ export default {
     "retry": "重试"
   },
   "admin": {
+    "modelIqMonitor": {
+      "visibilityLabel": "探测结果可见范围",
+      "visibilityAdmin": "仅管理员",
+      "visibilityAll": "所有登录用户",
+      "displayModeLabel": "普通用户展示模式",
+      "displayReal": "真实探测结果",
+      "displayGreen": "常绿展示",
+      "displayModeHint": "常绿模式统一调整普通用户看到的状态、历史条带和通过率，隐藏回答摘要；管理员始终查看真实记录。",
+      "showExclusionLabel": "显示未通过的剔除标记",
+      "showExclusionHint": "答错结果显示「已标记剔除」。本期仅展示标记，不会停止账号承接请求；超时和限流不视为答错。",
+      "runStarted": "已启动后台探测，可以离开页面后再查看结果",
+      "runProgress": "后台探测中：已完成 {done}/{total} 个目标",
+      "loadRunFailed": "探测进度加载失败"
+    },
     "affiliates": {
       "leaderboard": {
         "description": "按累计邀请人数查看全站邀请人及其受邀用户充值贡献",

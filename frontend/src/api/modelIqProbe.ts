@@ -7,12 +7,14 @@ export type ModelIqProbeStatus = 'pass' | 'wrong_answer' | 'error' | 'unknown'
 export interface ModelIqProbeStatusPoint {
   status: ModelIqProbeStatus
   checked_at: string
+  marked_for_exclusion?: boolean
 }
 
 export interface ModelIqProbeUserLatest {
   status: ModelIqProbeStatus
   answer_excerpt?: string
   checked_at: string
+  marked_for_exclusion?: boolean
 }
 
 export interface ModelIqProbeSummaryItem {
@@ -56,6 +58,7 @@ function parseLatest(value: unknown): ModelIqProbeUserLatest | null {
     status,
     answer_excerpt: readString(value.answer_excerpt) || undefined,
     checked_at: checkedAt,
+    marked_for_exclusion: value.marked_for_exclusion === true,
   }
 }
 
@@ -72,7 +75,10 @@ export function parseModelIqProbeSummary(value: unknown): ModelIqProbeSummary {
         ? raw.recent
             .map((point): ModelIqProbeStatusPoint | null => {
               if (!isRecord(point)) return null
-              return { status: readStatus(point.status), checked_at: readTime(point.checked_at) }
+              return {
+                status: readStatus(point.status), checked_at: readTime(point.checked_at),
+                marked_for_exclusion: point.marked_for_exclusion === true,
+              }
             })
             .filter((point): point is ModelIqProbeStatusPoint => point !== null)
         : []

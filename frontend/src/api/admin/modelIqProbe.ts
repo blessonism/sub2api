@@ -10,6 +10,9 @@ export type ModelIqProbeTargetMode = 'account_model' | 'model_only'
 
 export interface ModelIqProbeConfig {
   enabled: boolean
+  visibility: 'admin_only' | 'all_users'
+  user_display_mode: 'real' | 'always_green'
+  show_exclusion: boolean
   question: string
   expected_answer: string
   interval_minutes: number
@@ -61,6 +64,15 @@ export interface ModelIqProbeCycleSummary {
   error: number
 }
 
+export interface ModelIqProbeRunState {
+  id: string
+  status: 'idle' | 'running' | 'completed' | 'failed'
+  started_at: string | null
+  finished_at: string | null
+  summary: ModelIqProbeCycleSummary
+  error_message?: string
+}
+
 export async function getConfig(): Promise<ModelIqProbeConfig> {
   const { data } = await apiClient.get<ModelIqProbeConfig>('/admin/model-iq-probe/config')
   return data
@@ -82,8 +94,13 @@ export async function listResults(
   return data
 }
 
-export async function runProbe(): Promise<ModelIqProbeCycleSummary> {
-  const { data } = await apiClient.post<ModelIqProbeCycleSummary>('/admin/model-iq-probe/run')
+export async function runProbe(): Promise<ModelIqProbeRunState> {
+  const { data } = await apiClient.post<ModelIqProbeRunState>('/admin/model-iq-probe/run')
+  return data
+}
+
+export async function getRunState(options?: { signal?: AbortSignal }): Promise<ModelIqProbeRunState> {
+  const { data } = await apiClient.get<ModelIqProbeRunState>('/admin/model-iq-probe/run', options)
   return data
 }
 
@@ -97,5 +114,6 @@ export default {
   updateConfig,
   listResults,
   runProbe,
+  getRunState,
   overrideResult,
 }

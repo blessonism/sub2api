@@ -53,10 +53,14 @@
             class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
             :class="verdictBadgeClass(item.latest?.status)"
           >
-            <span class="h-1.5 w-1.5 rounded-full" :class="summaryDotClass"></span>
+            <span class="h-1.5 w-1.5 rounded-full" :class="item.latest?.status === 'pass' ? 'bg-emerald-500' : item.latest?.status === 'wrong_answer' ? 'bg-red-500' : 'bg-gray-400'"></span>
             {{ verdictLabel(item) }}
           </span>
         </div>
+
+        <p v-if="item.latest?.marked_for_exclusion" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+          {{ t('channelStatus.candyProbe.markedForExclusion') }}
+        </p>
 
         <div class="mt-3 flex items-stretch gap-3">
           <div class="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-white/80 px-3 py-2.5 ring-1 ring-gray-200/70 dark:bg-dark-800/70 dark:ring-dark-700/60">
@@ -315,7 +319,7 @@ function displayBars(item: ModelIqProbeSummaryItem): Array<{ colorClass: string;
   return bars
 }
 
-function dotTitle(point: { status: ModelIqProbeStatus; checked_at: string }): string {
-  return `${formatRelativeTime(point.checked_at, nowMs.value)} · ${statusText(point.status)}`
+function dotTitle(point: { status: ModelIqProbeStatus; checked_at: string; marked_for_exclusion?: boolean }): string {
+  return `${formatRelativeTime(point.checked_at, nowMs.value)} · ${statusText(point.status)}${point.marked_for_exclusion ? ` · ${t('channelStatus.candyProbe.markedForExclusion')}` : ''}`
 }
 </script>

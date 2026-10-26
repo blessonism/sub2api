@@ -69,12 +69,18 @@
                 <Toggle v-model="autoRefreshEnabled" />
                 {{ t('admin.modelIqMonitor.autoRefresh') }}
               </label>
-              <button type="button" class="btn btn-primary h-9" :disabled="running" @click="handleRunNow">
+              <button type="button" class="btn btn-primary h-9" :disabled="running || !savedEnabled" @click="handleRunNow">
                 <Icon name="play" size="sm" class="mr-1" />
                 {{ running ? t('admin.modelIqMonitor.running') : t('admin.modelIqMonitor.runNow') }}
               </button>
             </div>
           </div>
+          <p v-if="runState?.status === 'running'" class="mt-3 text-sm text-gray-600 dark:text-gray-300" role="status">
+            {{ t('admin.modelIqMonitor.runProgress', { done: runState.summary.pass + runState.summary.wrong_answer + runState.summary.error, total: runState.summary.total }) }}
+          </p>
+          <p v-else-if="runState?.status === 'failed'" class="mt-3 text-sm text-red-600 dark:text-red-400" role="status">
+            {{ t('admin.modelIqMonitor.runFailed') }}: {{ runState.error_message }}
+          </p>
         </template>
 
         <template #table>
@@ -171,6 +177,25 @@
             <Toggle v-model="configForm.enabled" />
           </div>
 
+          <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+            <div>
+              <label class="input-label">{{ t('admin.modelIqMonitor.visibilityLabel') }}</label>
+              <Select v-model="configForm.visibility" :options="visibilityOptions" class="mt-1 w-72" :aria-label="t('admin.modelIqMonitor.visibilityLabel')" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.modelIqMonitor.displayModeLabel') }}</label>
+              <Select v-model="configForm.user_display_mode" :options="displayModeOptions" class="mt-1 w-72" :aria-label="t('admin.modelIqMonitor.displayModeLabel')" />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.displayModeHint') }}</p>
+            </div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ t('admin.modelIqMonitor.showExclusionLabel') }}</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.showExclusionHint') }}</p>
+              </div>
+              <Toggle v-model="configForm.show_exclusion" />
+            </div>
+          </div>
+
           <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
             <label class="input-label">{{ t('admin.modelIqMonitor.targetModeLabel') }}</label>
             <Select
@@ -184,10 +209,18 @@
 
           <div v-if="configForm.target_mode === 'account_model'" class="border-t border-gray-100 pt-4 dark:border-dark-700">
             <label class="input-label">{{ t('admin.modelIqMonitor.accountsLabel') }}</label>
-            <ModelTagInput
-              :models="accountTagModels"
+            <AccountMultiSelector
+              v-model="configForm.account_ids"
+              :options="accountOptions"
+              :loading="accountOptionsLoading"
               :placeholder="t('admin.modelIqMonitor.accountsPlaceholder')"
-              @update:models="onAccountTagsChange"
+              :search-placeholder="t('admin.modelIqMonitor.accountsSearch')"
+              :empty-text="t('admin.modelIqMonitor.accountsEmpty')"
+              :loading-text="t('admin.modelIqMonitor.accountsLoading')"
+              :inactive-label="t('admin.modelIqMonitor.accountsInactive')"
+              :selected-label="t('admin.modelIqMonitor.accountsSelected', { count: configForm.account_ids.length })"
+              :count-label="t('admin.modelIqMonitor.accountsCount', { count: accountOptions.length })"
+              :aria-label="t('admin.modelIqMonitor.accountsLabel')"
             />
             <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.modelIqMonitor.accountsHint') }}</p>
           </div>
@@ -311,6 +344,7 @@ import type {
   ModelIqProbeConfig,
   ModelIqProbeResult,
   ModelIqProbeStatus,
+  ModelIqProbeRunState,
 } from '@/api/admin/modelIqProbe'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -319,6 +353,8 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import AccountMultiSelector from '@/components/admin/AccountMultiSelector.vue'
+import type { AccountListItem } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -338,8 +374,12 @@ function switchTab(tab: 'results' | 'config') {
 
 const configLoading = ref(false)
 const savingConfig = ref(false)
+const savedEnabled = ref(false)
 const configForm = reactive<ModelIqProbeConfig>({
   enabled: false,
+  visibility: 'admin_only',
+  user_display_mode: 'real',
+  show_exclusion: false,
   question: '',
   expected_answer: '21',
   interval_minutes: 360,
@@ -348,28 +388,62 @@ const configForm = reactive<ModelIqProbeConfig>({
   account_ids: [],
 })
 
-// 账号 ID 复用 ModelTagInput 的字符串标签交互，保存时转数字。
-const accountTagModels = ref<string[]>([])
+// 账号选项：分页拉全量后前端过滤出 OpenAI 平台账号，供多选下拉使用。
+interface AccountOption {
+  id: number
+  name: string
+  platform: string
+  status: string
+}
+const accountOptions = ref<AccountOption[]>([])
+const accountOptionsLoading = ref(false)
+
+async function loadAccountOptions() {
+  if (accountOptionsLoading.value) return
+  accountOptionsLoading.value = true
+  try {
+    const collected = new Map<number, AccountListItem>()
+    const pageSize = 100
+    // 用响应里的 pages 驱动翻页：后端可能压小 page_size，按 items 数量判断会提前终止。
+    const first = await adminAPI.accounts.list(1, pageSize)
+    for (const item of first.items) collected.set(item.id, item)
+    for (let page = 2; page <= first.pages; page++) {
+      const res = await adminAPI.accounts.list(page, pageSize)
+      for (const item of res.items) collected.set(item.id, item)
+    }
+    accountOptions.value = [...collected.values()]
+      .filter((account) => account.platform === 'openai')
+      .map((account) => ({ id: account.id, name: account.name, platform: account.platform, status: account.status }))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.loadAccountsFailed')))
+  } finally {
+    accountOptionsLoading.value = false
+  }
+}
 
 const targetModeOptions = computed(() => [
   { label: t('admin.modelIqMonitor.targetModeAccountModel'), value: 'account_model' },
   { label: t('admin.modelIqMonitor.targetModeModelOnly'), value: 'model_only' },
 ])
-
-function onAccountTagsChange(models: string[]) {
-  accountTagModels.value = models
-  const ids = models
-    .map((m) => Number.parseInt(m, 10))
-    .filter((n) => Number.isFinite(n) && n > 0)
-  configForm.account_ids = [...new Set(ids)]
-}
+const visibilityOptions = computed(() => [
+  { label: t('admin.modelIqMonitor.visibilityAdmin'), value: 'admin_only' },
+  { label: t('admin.modelIqMonitor.visibilityAll'), value: 'all_users' },
+])
+const displayModeOptions = computed(() => [
+  { label: t('admin.modelIqMonitor.displayReal'), value: 'real' },
+  { label: t('admin.modelIqMonitor.displayGreen'), value: 'always_green' },
+])
 
 async function loadConfig() {
   configLoading.value = true
   try {
     const cfg = await adminAPI.modelIqProbe.getConfig()
+    savedEnabled.value = cfg.enabled
     Object.assign(configForm, {
       enabled: cfg.enabled,
+      visibility: cfg.visibility || 'admin_only',
+      user_display_mode: cfg.user_display_mode || 'real',
+      show_exclusion: cfg.show_exclusion ?? false,
       question: cfg.question,
       expected_answer: cfg.expected_answer,
       interval_minutes: cfg.interval_minutes,
@@ -377,7 +451,6 @@ async function loadConfig() {
       models: cfg.models || [],
       account_ids: cfg.account_ids || [],
     })
-    accountTagModels.value = (cfg.account_ids || []).map(String)
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.loadConfigFailed')))
   } finally {
@@ -396,11 +469,12 @@ async function saveConfig() {
   }
   savingConfig.value = true
   try {
-    await adminAPI.modelIqProbe.updateConfig({
+    const saved = await adminAPI.modelIqProbe.updateConfig({
       ...configForm,
       question: configForm.question,
       expected_answer: configForm.expected_answer.trim(),
     })
+    savedEnabled.value = saved.enabled
     appStore.showSuccess(t('admin.modelIqMonitor.saveSuccess'))
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.saveFailed')))
@@ -414,6 +488,11 @@ async function saveConfig() {
 const results = ref<ModelIqProbeResult[]>([])
 const resultsLoading = ref(false)
 const running = ref(false)
+const runState = ref<ModelIqProbeRunState | null>(null)
+let runStatusTimer: ReturnType<typeof setTimeout> | null = null
+let runStatusController: AbortController | null = null
+let disposed = false
+let recoveryRun: { previousId: string | null } | null = null
 const autoRefreshEnabled = ref(false)
 const resultPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const resultFilters = reactive({ model: '', status: '' as ModelIqProbeStatus | '', account_id: '' })
@@ -492,24 +571,69 @@ function onResultPageSizeChange(size: number) {
 
 async function handleRunNow() {
   if (running.value) return
+  const previousRunId = runState.value?.id ?? null
+  recoveryRun = null
+  runStatusController?.abort()
+  if (runStatusTimer) clearTimeout(runStatusTimer)
   running.value = true
   try {
-    const summary = await adminAPI.modelIqProbe.runProbe()
-    appStore.showSuccess(
-      t('admin.modelIqMonitor.runSummary', {
-        total: summary.total,
-        pass: summary.pass,
-        wrong: summary.wrong_answer,
-        error: summary.error,
-      }),
-    )
-    resultPagination.page = 1
-    await reloadResults()
+    const state = await adminAPI.modelIqProbe.runProbe()
+    if (disposed) return
+    runState.value = state
+    appStore.showSuccess(t('admin.modelIqMonitor.runStarted'))
+    void reloadRunState()
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.runFailed')))
-  } finally {
-    running.value = false
+    if (disposed) return
+    // POST 响应丢失或 409 均不能证明后台没有运行；先恢复共享任务状态。
+    recoveryRun = { previousId: previousRunId }
+    const state = await reloadRunState()
+    if (!disposed && state && state.status !== 'running' && (previousRunId === null || !state.id || state.id === previousRunId)) {
+      appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.runFailed')))
+    }
   }
+}
+
+async function reloadRunState(): Promise<ModelIqProbeRunState | null> {
+  runStatusController?.abort()
+  const ctrl = new AbortController()
+  runStatusController = ctrl
+  let shouldPoll = running.value || recoveryRun !== null
+  try {
+    const state = await adminAPI.modelIqProbe.getRunState({ signal: ctrl.signal })
+    if (disposed || ctrl.signal.aborted || runStatusController !== ctrl) return null
+    const wasRunning = running.value
+    const recovery = recoveryRun
+    recoveryRun = null
+    runState.value = state
+    running.value = state.status === 'running'
+    shouldPoll = running.value
+    const notifyCompletion = recovery === null
+      ? wasRunning
+      : recovery.previousId !== null && Boolean(state.id) && state.id !== recovery.previousId
+    if (!running.value && notifyCompletion) {
+      if (state.status === 'failed') {
+        appStore.showError(state.error_message || t('admin.modelIqMonitor.runFailed'))
+      } else if (state.status === 'completed') {
+        const summary = state.summary
+        appStore.showSuccess(t('admin.modelIqMonitor.runSummary', {
+          total: summary.total, pass: summary.pass, wrong: summary.wrong_answer, error: summary.error,
+        }))
+      }
+      resultPagination.page = 1
+      await reloadResults()
+    }
+    return state
+  } catch (err: unknown) {
+    const e = err as { code?: string }
+    if (!disposed && !ctrl.signal.aborted && e.code !== 'ERR_CANCELED') {
+      appStore.showError(extractApiErrorMessage(err, t('admin.modelIqMonitor.loadRunFailed')))
+    }
+  } finally {
+    if (!disposed && runStatusController === ctrl && shouldPoll) {
+      runStatusTimer = setTimeout(() => { void reloadRunState() }, 2000)
+    }
+  }
+  return null
 }
 
 // 回答全文弹窗
@@ -616,9 +740,14 @@ watch(
 onMounted(() => {
   void reloadResults()
   void loadConfig()
+  void loadAccountOptions()
+  void reloadRunState()
 })
 
 onUnmounted(() => {
+  disposed = true
+  if (runStatusTimer) clearTimeout(runStatusTimer)
+  runStatusController?.abort()
   if (filterTimeout) clearTimeout(filterTimeout)
   if (autoRefreshTimer) clearInterval(autoRefreshTimer)
   abortController?.abort()

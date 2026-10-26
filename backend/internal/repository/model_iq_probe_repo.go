@@ -10,6 +10,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/modeliqproberesult"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 // modelIQProbeRepository 实现 service.ModelIQProbeRepository。
@@ -128,6 +129,60 @@ func (r *modelIQProbeRepository) ListRecent(ctx context.Context, limit int) ([]*
 	defer rows.Close()
 
 	results := make([]*service.ModelIQProbeResult, 0, limit)
+	for rows.Next() {
+		item, err := scanModelIQProbeResult(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, rows.Err()
+}
+
+// 自动发现模式在本地历史中读取模型名，公开查询不会触发上游模型目录请求。
+func (r *modelIQProbeRepository) ListSummaryModels(ctx context.Context, accountIDs []int64) ([]string, error) {
+	models := []string{}
+	if len(accountIDs) == 0 {
+		return models, nil
+	}
+	rows, err := r.db.QueryContext(ctx, "SELECT DISTINCT model FROM model_iq_probe_results WHERE created_at >= $1 AND account_id = ANY($2) ORDER BY model",
+		time.Now().AddDate(0, 0, -service.ModelIQProbeRetentionDays), pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var model string
+		if err := rows.Scan(&model); err != nil {
+			return nil, err
+		}
+		models = append(models, model)
+	}
+	return models, rows.Err()
+}
+
+// 先限制精确目标对，再计算最新记录和时间线，退出范围的账号不会挤占历史槽位。
+func (r *modelIQProbeRepository) ListForSummary(ctx context.Context, targets []service.ModelIQProbeTargetRef, recentPerModel int) ([]*service.ModelIQProbeResult, error) {
+	if len(targets) == 0 {
+		return []*service.ModelIQProbeResult{}, nil
+	}
+	accountIDs := make([]int64, 0, len(targets))
+	models := make([]string, 0, len(targets))
+	for _, target := range targets {
+		accountIDs = append(accountIDs, target.AccountID)
+		models = append(models, target.Model)
+	}
+	args := []any{time.Now().AddDate(0, 0, -service.ModelIQProbeRetentionDays), recentPerModel, pq.Array(accountIDs), pq.Array(models)}
+	where := "created_at >= $1 AND (account_id, model) IN (SELECT * FROM unnest($3::bigint[], $4::text[]))"
+	query := "WITH ranked AS (SELECT " + modelIQProbeSelectColumns +
+		", ROW_NUMBER() OVER (PARTITION BY model, account_id ORDER BY created_at DESC, id DESC) AS target_rank, ROW_NUMBER() OVER (PARTITION BY model ORDER BY created_at DESC, id DESC) AS model_rank FROM model_iq_probe_results WHERE " + where +
+		") SELECT " + modelIQProbeSelectColumns + " FROM ranked WHERE target_rank = 1 OR model_rank <= $2 ORDER BY created_at DESC, id DESC"
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]*service.ModelIQProbeResult, 0)
 	for rows.Next() {
 		item, err := scanModelIQProbeResult(rows)
 		if err != nil {

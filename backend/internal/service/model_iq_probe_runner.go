@@ -45,10 +45,14 @@ type ModelIQProbeRunner struct {
 
 // NewModelIQProbeRunner 构造调度器；Start 在 wire Provider 中调用一次。
 func NewModelIQProbeRunner(svc *ModelIQProbeService) *ModelIQProbeRunner {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &ModelIQProbeRunner{
-		svc:        svc,
-		instanceID: uuid.NewString(),
-		reloadCh:   make(chan struct{}, 1),
+		svc:          svc,
+		parentCtx:    ctx,
+		parentCancel: cancel,
+		stopCh:       make(chan struct{}),
+		instanceID:   uuid.NewString(),
+		reloadCh:     make(chan struct{}, 1),
 	}
 }
 
@@ -72,11 +76,7 @@ func (r *ModelIQProbeRunner) Start() {
 		return
 	}
 	r.started = true
-	ctx, cancel := context.WithCancel(context.Background())
-	stopCh := make(chan struct{})
-	r.parentCtx = ctx
-	r.parentCancel = cancel
-	r.stopCh = stopCh
+	ctx, stopCh := r.parentCtx, r.stopCh
 	r.wg.Add(1)
 	r.mu.Unlock()
 
@@ -93,7 +93,7 @@ func (r *ModelIQProbeRunner) Stop() {
 		return
 	}
 	r.mu.Lock()
-	if !r.started || r.stopped {
+	if r.stopped {
 		r.mu.Unlock()
 		return
 	}
@@ -151,7 +151,9 @@ func (r *ModelIQProbeRunner) loop(ctx context.Context, stopCh chan struct{}) {
 
 // nextDelay 计算下一次触发等待：启用时 interval ±10% jitter，未启用时用空闲轮询间隔。
 func (r *ModelIQProbeRunner) nextDelay() time.Duration {
-	cfg, err := r.svc.GetConfig(context.Background())
+	ctx, cancel := context.WithTimeout(r.parentCtx, 5*time.Second)
+	defer cancel()
+	cfg, err := r.svc.GetConfig(ctx)
 	if err != nil {
 		slog.Warn("model_iq_probe: read config for schedule failed", "error", err)
 		return modelIQProbeIdleDelay
@@ -171,48 +173,127 @@ func (r *ModelIQProbeRunner) nextDelay() time.Duration {
 
 // runScheduledCycle 定时触发的探测轮次：仅 leader 实例执行。
 func (r *ModelIQProbeRunner) runScheduledCycle(ctx context.Context) {
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-
-		lockCtx, lockCancel := context.WithTimeout(ctx, 2*time.Second)
-		release, leader := tryAcquireSingletonLeaderLock(lockCtx, r.lockCache, r.db, modelIQProbeLeaderLockKey, r.instanceID, modelIQProbeLeaderLockTTL)
-		lockCancel()
-		if !leader {
-			slog.Debug("model_iq_probe: skip non-leader scheduled run")
-			return
-		}
-		defer release()
-
-		runCtx, runCancel := context.WithTimeout(ctx, modelIQProbeRunTimeout)
-		defer runCancel()
-		summary, err := r.svc.RunProbeCycle(runCtx)
-		if err != nil {
-			slog.Warn("model_iq_probe: scheduled cycle failed", "error", err)
-			return
-		}
-		if summary != nil && summary.Total > 0 {
-			slog.Info("model_iq_probe: scheduled cycle completed", "total", summary.Total, "pass", summary.Pass, "wrong_answer", summary.WrongAnswer, "error", summary.Error)
-		}
-	}()
+	if _, err := r.StartRun(ctx); err != nil && !ErrModelIQProbeRunInProgress.Is(err) && !ErrModelIQProbeDisabled.Is(err) {
+		slog.Warn("model_iq_probe: scheduled cycle failed", "error", err)
+	}
 }
 
-// RunOnce 手动触发一轮探测（管理端"立即探测"）。
-// leader lock 已被占用（其他实例正在跑）时返回进行中错误；
-// 进程内重入由 service 的 atomic 防护兜底。
-func (r *ModelIQProbeRunner) RunOnce(ctx context.Context) (*ModelIQProbeCycleSummary, error) {
+// GetRunState 只有在获取全局执行锁后才恢复旧 running，不能误判其他实例的活跃任务。
+func (r *ModelIQProbeRunner) GetRunState(ctx context.Context) (*ModelIQProbeRunState, error) {
 	if r == nil || r.svc == nil {
 		return nil, ErrModelIQProbeUnavailable
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	state, err := r.svc.GetRunState(ctx)
+	if err != nil || state.Status != "running" {
+		return state, err
+	}
+	if r.svc.running.Load() || !r.svc.jobActive.CompareAndSwap(false, true) {
+		return state, nil
+	}
+	defer r.svc.jobActive.Store(false)
 	lockCtx, lockCancel := context.WithTimeout(ctx, 2*time.Second)
-	release, leader := tryAcquireSingletonLeaderLock(lockCtx, r.lockCache, r.db, modelIQProbeLeaderLockKey, r.instanceID, modelIQProbeLeaderLockTTL)
+	release, acquired := tryAcquireSingletonLeaderLock(lockCtx, r.lockCache, r.db, modelIQProbeLeaderLockKey, r.instanceID, modelIQProbeLeaderLockTTL)
 	lockCancel()
-	if !leader {
-		return nil, ErrModelIQProbeRunInProgress
+	if !acquired {
+		return state, nil
 	}
 	defer release()
+	if r.svc.running.Load() {
+		return state, nil
+	}
+	state, err = r.svc.GetRunState(ctx)
+	if err != nil || state.Status != "running" {
+		return state, err
+	}
+	state.Status = "failed"
+	state.ErrorMessage = "probe ended without a persisted final state; retry is available"
+	finished := time.Now()
+	state.FinishedAt = &finished
+	if err := r.svc.saveFinalRunState(ctx, *state); err != nil {
+		slog.Error("model_iq_probe: persist recovered run state failed", "error", err)
+	}
+	return state, nil
+}
 
-	runCtx, runCancel := context.WithTimeout(ctx, modelIQProbeRunTimeout)
-	defer runCancel()
-	return r.svc.RunProbeCycle(runCtx)
+// StartRun 只同步完成校验、占锁和任务登记，实际执行继承应用生命周期。
+func (r *ModelIQProbeRunner) StartRun(ctx context.Context) (*ModelIQProbeRunState, error) {
+	if r == nil || r.svc == nil {
+		return nil, ErrModelIQProbeUnavailable
+	}
+	ctx, startCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer startCancel()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped {
+		return nil, ErrModelIQProbeUnavailable
+	}
+	cfg, err := r.svc.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled {
+		return nil, ErrModelIQProbeDisabled
+	}
+	if !r.svc.jobActive.CompareAndSwap(false, true) {
+		return nil, ErrModelIQProbeRunInProgress
+	}
+	admitted := false
+	defer func() {
+		if !admitted {
+			r.svc.jobActive.Store(false)
+		}
+	}()
+	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	release, acquired := tryAcquireSingletonLeaderLock(lockCtx, r.lockCache, r.db, modelIQProbeLeaderLockKey, r.instanceID, modelIQProbeLeaderLockTTL)
+	cancel()
+	if !acquired || r.svc.running.Load() {
+		if acquired {
+			release()
+		}
+		return nil, ErrModelIQProbeRunInProgress
+	}
+	// 已获取全局执行锁；历史 running 不能代替活跃锁阻止新任务恢复。
+	now := time.Now()
+	initial := ModelIQProbeRunState{ID: uuid.NewString(), Status: "running", StartedAt: &now}
+	if err := r.svc.saveRunState(ctx, initial); err != nil {
+		release()
+		return nil, err
+	}
+	r.wg.Add(1)
+	admitted = true
+	go func(state ModelIQProbeRunState) {
+		defer r.wg.Done()
+		defer r.svc.jobActive.Store(false)
+		defer release()
+		runCtx, runCancel := context.WithTimeout(r.parentCtx, modelIQProbeRunTimeout)
+		defer runCancel()
+		var progressErr error
+		summary, runErr := r.svc.runProbeCycle(runCtx, func(summary ModelIQProbeCycleSummary) {
+			state.Summary = summary
+			if err := r.svc.saveRunState(runCtx, state); err != nil {
+				progressErr = err
+			}
+		})
+		if summary != nil {
+			state.Summary = *summary
+		}
+		state.Status = "completed"
+		if runErr != nil || progressErr != nil {
+			state.Status = "failed"
+			state.ErrorMessage = "probe results or progress could not be saved"
+			if runErr != nil {
+				state.ErrorMessage = truncateStringBytes(runErr.Error(), modelIQProbeErrorMessageMaxBytes)
+			}
+		}
+		finished := time.Now()
+		state.FinishedAt = &finished
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer persistCancel()
+		if err := r.svc.saveFinalRunState(persistCtx, state); err != nil {
+			slog.Error("model_iq_probe: save final run state failed", "error", err)
+		}
+	}(initial)
+	return &initial, nil
 }

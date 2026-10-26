@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,11 +15,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
-	"unicode/utf8"
 )
 
 // 智商探针状态与目标模式常量。
@@ -29,13 +31,17 @@ const (
 
 	ModelIQProbeTargetModeAccountModel = "account_model"
 	ModelIQProbeTargetModeModelOnly    = "model_only"
+	ModelIQProbeVisibilityAdminOnly    = "admin_only"
+	ModelIQProbeVisibilityAllUsers     = "all_users"
+	ModelIQProbeDisplayReal            = "real"
+	ModelIQProbeDisplayAlwaysGreen     = "always_green"
 
 	// modelIQProbeMinIntervalMinutes / Max：探测间隔边界（5 分钟 ~ 7 天）。
 	modelIQProbeMinIntervalMinutes = 5
 	modelIQProbeMaxIntervalMinutes = 10080
 
-	// modelIQProbeRetentionDays 结果保留天数。
-	modelIQProbeRetentionDays = 30
+	// ModelIQProbeRetentionDays 结果保留天数。
+	ModelIQProbeRetentionDays = 30
 	// modelIQProbeActualAnswerMaxBytes 回答原文存档上限（超长截断）。
 	modelIQProbeActualAnswerMaxBytes = 4 << 10
 	// modelIQProbeErrorMessageMaxBytes 错误信息存档上限。
@@ -45,8 +51,6 @@ const (
 
 	// modelIQProbeProbeConcurrency 单轮探测并发上限。
 	modelIQProbeProbeConcurrency = 3
-	// modelIQProbeRecentLimit 用户端汇总拉取的最近结果条数上限。
-	modelIQProbeRecentLimit = 500
 	// modelIQProbeRecentPerModel 用户端每模型展示的最近结果数（时间线条带深度，
 	// 与渠道监控卡片时间线的 60 点规格一致）。
 	modelIQProbeRecentPerModel = 60
@@ -70,6 +74,7 @@ var (
 		"MODEL_IQ_UNAVAILABLE",
 		"model IQ probe is not available",
 	)
+	ErrModelIQProbeDisabled = infraerrors.BadRequest("MODEL_IQ_DISABLED", "model IQ probe is disabled")
 )
 
 // modelIQProbeNumberRegex 提取响应中的独立整数 token（与 challenge 判分同款）。
@@ -86,6 +91,9 @@ const DefaultModelIQProbeQuestion = `在一个黑色的袋子里放有三种口�
 // ModelIQProbeConfig 智商探针配置（settings 表 JSON 存储）。
 type ModelIQProbeConfig struct {
 	Enabled         bool     `json:"enabled"`
+	Visibility      string   `json:"visibility"`
+	UserDisplayMode string   `json:"user_display_mode"`
+	ShowExclusion   bool     `json:"show_exclusion"`
 	Question        string   `json:"question"`
 	ExpectedAnswer  string   `json:"expected_answer"`
 	IntervalMinutes int      `json:"interval_minutes"`
@@ -98,6 +106,8 @@ type ModelIQProbeConfig struct {
 func DefaultModelIQProbeConfig() *ModelIQProbeConfig {
 	return &ModelIQProbeConfig{
 		Enabled:         false,
+		Visibility:      ModelIQProbeVisibilityAdminOnly,
+		UserDisplayMode: ModelIQProbeDisplayReal,
 		Question:        DefaultModelIQProbeQuestion,
 		ExpectedAnswer:  "21",
 		IntervalMinutes: 360,
@@ -123,6 +133,12 @@ func DecodeModelIQProbeConfig(raw string) *ModelIQProbeConfig {
 
 // normalize 补齐空缺字段并清理输入。
 func (c *ModelIQProbeConfig) normalize() {
+	if c.Visibility == "" {
+		c.Visibility = ModelIQProbeVisibilityAdminOnly
+	}
+	if c.UserDisplayMode == "" {
+		c.UserDisplayMode = ModelIQProbeDisplayReal
+	}
 	if strings.TrimSpace(c.Question) == "" {
 		c.Question = DefaultModelIQProbeQuestion
 	}
@@ -138,6 +154,12 @@ func (c *ModelIQProbeConfig) normalize() {
 
 // Validate 校验配置。
 func (c *ModelIQProbeConfig) Validate() error {
+	if c.Visibility != ModelIQProbeVisibilityAdminOnly && c.Visibility != ModelIQProbeVisibilityAllUsers {
+		return ErrModelIQProbeInvalidConfig.WithCause(fmt.Errorf("invalid visibility"))
+	}
+	if c.UserDisplayMode != ModelIQProbeDisplayReal && c.UserDisplayMode != ModelIQProbeDisplayAlwaysGreen {
+		return ErrModelIQProbeInvalidConfig.WithCause(fmt.Errorf("invalid user_display_mode"))
+	}
 	if strings.TrimSpace(c.Question) == "" {
 		return ErrModelIQProbeInvalidConfig.WithCause(fmt.Errorf("question is required"))
 	}
@@ -203,11 +225,19 @@ type ModelIQProbeListFilters struct {
 	Status    string // 生效状态过滤；空 = 全部
 }
 
+// ModelIQProbeTargetRef 是仓储查询使用的精确目标，不携带账号凭据。
+type ModelIQProbeTargetRef struct {
+	AccountID int64
+	Model     string
+}
+
 // ModelIQProbeRepository 智商探针结果仓储端口。
 type ModelIQProbeRepository interface {
 	Insert(ctx context.Context, result *ModelIQProbeResult) error
 	ListPage(ctx context.Context, page, pageSize int, filters ModelIQProbeListFilters) ([]*ModelIQProbeResult, int64, error)
 	ListRecent(ctx context.Context, limit int) ([]*ModelIQProbeResult, error)
+	ListSummaryModels(ctx context.Context, accountIDs []int64) ([]string, error)
+	ListForSummary(ctx context.Context, targets []ModelIQProbeTargetRef, recentPerModel int) ([]*ModelIQProbeResult, error)
 	OverrideStatus(ctx context.Context, id int64, status *string) error
 	DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
@@ -216,8 +246,9 @@ type ModelIQProbeRepository interface {
 
 // ModelIQProbeStatusPoint 时间线上的一个判定点。
 type ModelIQProbeStatusPoint struct {
-	Status    string    `json:"status"`
-	CheckedAt time.Time `json:"checked_at"`
+	Status             string    `json:"status"`
+	CheckedAt          time.Time `json:"checked_at"`
+	MarkedForExclusion bool      `json:"marked_for_exclusion,omitempty"`
 }
 
 // ModelIQProbeUserSummary 单个模型的探针汇总（用户端）。
@@ -227,11 +258,12 @@ type ModelIQProbeUserSummary struct {
 	Recent []ModelIQProbeStatusPoint `json:"recent"`
 }
 
-// ModelIQProbeUserLatest 最新一次探测结果（含回答摘要）。
+// ModelIQProbeUserLatest 当前汇总状态及对应代表记录的回答摘要。
 type ModelIQProbeUserLatest struct {
-	Status        string    `json:"status"`
-	AnswerExcerpt string    `json:"answer_excerpt,omitempty"`
-	CheckedAt     time.Time `json:"checked_at"`
+	Status             string    `json:"status"`
+	AnswerExcerpt      string    `json:"answer_excerpt,omitempty"`
+	CheckedAt          time.Time `json:"checked_at"`
+	MarkedForExclusion bool      `json:"marked_for_exclusion,omitempty"`
 }
 
 // ModelIQProbeCycleSummary 一轮探测的汇总。
@@ -276,7 +308,8 @@ type ModelIQProbeService struct {
 	accountRepo        AccountRepository
 	accountTestService *AccountTestService
 
-	running atomic.Bool
+	running   atomic.Bool
+	jobActive atomic.Bool
 }
 
 // NewModelIQProbeService 创建服务。
@@ -412,12 +445,17 @@ func (s *ModelIQProbeService) resolveTargets(ctx context.Context, cfg *ModelIQPr
 		return nil, err
 	}
 	models := s.resolveProbeModels(ctx, cfg, accounts)
+	return cloneModelIQProbeTargets(selectModelIQProbeTargets(accounts, models, cfg.TargetMode))
+}
+
+// 执行与展示共用目标选择规则；展示只读本地模型记录，不向上游发起模型发现。
+func selectModelIQProbeTargets(accounts []*Account, models []string, targetMode string) []modelIQProbeTarget {
 	if len(models) == 0 || len(accounts) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	targets := make([]modelIQProbeTarget, 0, len(accounts)*len(models))
-	if cfg.TargetMode == ModelIQProbeTargetModeModelOnly {
+	if targetMode == ModelIQProbeTargetModeModelOnly {
 		for _, model := range models {
 			for _, a := range accounts {
 				if a.IsModelSupported(model) {
@@ -426,7 +464,7 @@ func (s *ModelIQProbeService) resolveTargets(ctx context.Context, cfg *ModelIQPr
 				}
 			}
 		}
-		return targets, nil
+		return targets
 	}
 	for _, a := range accounts {
 		for _, model := range models {
@@ -434,6 +472,24 @@ func (s *ModelIQProbeService) resolveTargets(ctx context.Context, cfg *ModelIQPr
 				targets = append(targets, modelIQProbeTarget{account: a, model: model})
 			}
 		}
+	}
+	return targets
+}
+
+// 账号测试会更新 Extra 和内部缓存；每个并发目标必须拥有独立快照。
+func cloneModelIQProbeTargets(targets []modelIQProbeTarget) ([]modelIQProbeTarget, error) {
+	for i := range targets {
+		account := *targets[i].account
+		var err error
+		account.Credentials, err = cloneAccountJSONMap(account.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("clone probe credentials: %w", err)
+		}
+		account.Extra, err = cloneAccountJSONMap(account.Extra)
+		if err != nil {
+			return nil, fmt.Errorf("clone probe extra: %w", err)
+		}
+		targets[i].account = &account
 	}
 	return targets, nil
 }
@@ -443,6 +499,10 @@ func (s *ModelIQProbeService) resolveTargets(ctx context.Context, cfg *ModelIQPr
 // RunProbeCycle 执行一轮探测：解析目标 → 并发探测 → 写入结果。
 // 进程内防重入；配置未启用时直接返回空汇总。
 func (s *ModelIQProbeService) RunProbeCycle(ctx context.Context) (*ModelIQProbeCycleSummary, error) {
+	return s.runProbeCycle(ctx, nil)
+}
+
+func (s *ModelIQProbeService) runProbeCycle(ctx context.Context, progress func(ModelIQProbeCycleSummary)) (*ModelIQProbeCycleSummary, error) {
 	cfg, err := s.GetConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -454,9 +514,15 @@ func (s *ModelIQProbeService) RunProbeCycle(ctx context.Context) (*ModelIQProbeC
 		return nil, ErrModelIQProbeRunInProgress
 	}
 	defer s.running.Store(false)
+	if s.repo == nil || s.accountTestService == nil {
+		return nil, ErrModelIQProbeUnavailable
+	}
 
 	targets, err := s.resolveTargets(ctx, cfg)
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	summary := &ModelIQProbeCycleSummary{Total: len(targets)}
@@ -465,35 +531,49 @@ func (s *ModelIQProbeService) RunProbeCycle(ctx context.Context) (*ModelIQProbeC
 		return summary, nil
 	}
 
-	latestRows := make([]*ModelIQProbeResult, len(targets))
 	var mu sync.Mutex
+	var writeErr error
+	if progress != nil {
+		progress(*summary)
+	}
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(modelIQProbeProbeConcurrency)
-	for i, t := range targets {
-		idx, target := i, t
+	for _, t := range targets {
+		if ctx.Err() != nil {
+			break
+		}
+		target := t
 		group.Go(func() error {
-			result := s.probeTarget(groupCtx, target, cfg)
-			latestRows[idx] = result
-			if err := s.repo.Insert(groupCtx, result); err != nil {
-				slog.Error("model_iq_probe: insert result failed", "model", target.model, "error", err)
+			if groupCtx.Err() != nil {
 				return nil
 			}
+			result := s.probeTarget(groupCtx, target, cfg)
+			insertErr := s.repo.Insert(groupCtx, result)
 			mu.Lock()
-			switch result.ResolveEffectiveStatus() {
-			case ModelIQProbeStatusPass:
-				summary.Pass++
-			case ModelIQProbeStatusWrongAnswer:
-				summary.WrongAnswer++
-			default:
+			defer mu.Unlock()
+			if insertErr != nil {
+				writeErr = errors.Join(writeErr, insertErr)
 				summary.Error++
+				slog.Error("model_iq_probe: insert result failed", "model", target.model, "error", insertErr)
+			} else {
+				switch result.ResolveEffectiveStatus() {
+				case ModelIQProbeStatusPass:
+					summary.Pass++
+				case ModelIQProbeStatusWrongAnswer:
+					summary.WrongAnswer++
+				default:
+					summary.Error++
+				}
 			}
-			mu.Unlock()
+			if progress != nil {
+				progress(*summary)
+			}
 			return nil
 		})
 	}
 	_ = group.Wait()
 	slog.Info("model_iq_probe: cycle completed", "total", summary.Total, "pass", summary.Pass, "wrong_answer", summary.WrongAnswer, "error", summary.Error)
-	return summary, nil
+	return summary, errors.Join(writeErr, ctx.Err())
 }
 
 // probeTarget 对单个（账号, 模型）目标执行一次糖果问题探测。
@@ -520,7 +600,7 @@ func (s *ModelIQProbeService) probeTarget(ctx context.Context, target modelIQPro
 	result.LatencyMs = time.Since(startedAt).Milliseconds()
 
 	switch {
-	case testErr != nil || strings.TrimSpace(responseText) == "":
+	case testErr != nil || errMsg != "" || strings.TrimSpace(responseText) == "":
 		result.Status = ModelIQProbeStatusError
 		message := strings.TrimSpace(errMsg)
 		if message == "" && testErr != nil {
@@ -542,7 +622,7 @@ func (s *ModelIQProbeService) probeTarget(ctx context.Context, target modelIQPro
 
 // inferModelIQProbeProtocol 按账号类型推断探测协议（仅供排查参考）。
 func inferModelIQProbeProtocol(account *Account) string {
-	if account != nil && account.IsOpenAIOAuthLike() {
+	if account != nil && (account.IsOpenAIOAuthLike() || openai_compat.ShouldUseResponsesAPI(account.Extra)) {
 		return "responses"
 	}
 	return "chat_completions"
@@ -560,36 +640,89 @@ func (s *ModelIQProbeService) ListResultsAdmin(ctx context.Context, page, pageSi
 
 // UserSummary 用户端按模型汇总（最新判定 + 最近时间线）。
 // 探针未启用或无数据时返回空列表；绝不包含账号信息。
-func (s *ModelIQProbeService) UserSummary(ctx context.Context) ([]*ModelIQProbeUserSummary, error) {
+func (s *ModelIQProbeService) UserSummary(ctx context.Context, isAdmin bool) ([]*ModelIQProbeUserSummary, error) {
 	cfg, err := s.GetConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !cfg.Enabled || s.repo == nil {
+	if !cfg.Enabled || s.repo == nil || (!isAdmin && cfg.Visibility != ModelIQProbeVisibilityAllUsers) {
 		return []*ModelIQProbeUserSummary{}, nil
 	}
-	rows, err := s.repo.ListRecent(ctx, modelIQProbeRecentLimit)
+	accounts, err := s.listProbeAccounts(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return userSummaryFromRows(rows), nil
+	if len(accounts) == 0 {
+		return []*ModelIQProbeUserSummary{}, nil
+	}
+	models := cfg.Models
+	if len(models) == 0 {
+		ids := make([]int64, 0, len(accounts))
+		for _, account := range accounts {
+			ids = append(ids, account.ID)
+		}
+		models, err = s.repo.ListSummaryModels(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
+	selected := selectModelIQProbeTargets(accounts, models, cfg.TargetMode)
+	if len(selected) == 0 {
+		return []*ModelIQProbeUserSummary{}, nil
+	}
+	targets := make([]ModelIQProbeTargetRef, 0, len(selected))
+	for _, target := range selected {
+		targets = append(targets, ModelIQProbeTargetRef{AccountID: target.account.ID, Model: target.model})
+	}
+	rows, err := s.repo.ListForSummary(ctx, targets, modelIQProbeRecentPerModel)
+	if err != nil {
+		return nil, err
+	}
+	items := userSummaryFromRows(rows)
+	for _, item := range items {
+		if item.Latest != nil {
+			item.Latest.MarkedForExclusion = cfg.ShowExclusion && item.Latest.Status == ModelIQProbeStatusWrongAnswer
+			if !isAdmin && cfg.UserDisplayMode == ModelIQProbeDisplayAlwaysGreen {
+				item.Latest.Status = ModelIQProbeStatusPass
+				item.Latest.AnswerExcerpt = ""
+			}
+		}
+		for i := range item.Recent {
+			point := &item.Recent[i]
+			point.MarkedForExclusion = cfg.ShowExclusion && point.Status == ModelIQProbeStatusWrongAnswer
+			if !isAdmin && cfg.UserDisplayMode == ModelIQProbeDisplayAlwaysGreen {
+				point.Status = ModelIQProbeStatusPass
+			}
+		}
+	}
+	return items, nil
 }
 
 // userSummaryFromRows 把按 created_at desc 排序的结果行按模型聚合成用户端视图。
-// 不输出账号信息；回答摘要只取每模型最新一行。
+// 先取每账号最新结果，再取最严重状态；旧失败由同账号新结果替代。
 func userSummaryFromRows(rows []*ModelIQProbeResult) []*ModelIQProbeUserSummary {
 	latestRow := make(map[string]*ModelIQProbeResult)
 	byModel := make(map[string]*ModelIQProbeUserSummary)
 	order := make([]string, 0, len(rows))
+	seenTargets := make(map[string]map[int64]bool)
 	for _, row := range rows {
 		item, ok := byModel[row.Model]
 		if !ok {
 			item = &ModelIQProbeUserSummary{Model: row.Model, Recent: []ModelIQProbeStatusPoint{}}
 			byModel[row.Model] = item
 			order = append(order, row.Model)
+			seenTargets[row.Model] = make(map[int64]bool)
 		}
-		if _, ok := latestRow[row.Model]; !ok {
-			latestRow[row.Model] = row
+		var accountID int64
+		if row.AccountID != nil {
+			accountID = *row.AccountID
+		}
+		if !seenTargets[row.Model][accountID] {
+			seenTargets[row.Model][accountID] = true
+			previous := latestRow[row.Model]
+			if previous == nil || modelIQProbeStatusSeverity(row.ResolveEffectiveStatus()) > modelIQProbeStatusSeverity(previous.ResolveEffectiveStatus()) {
+				latestRow[row.Model] = row
+			}
 		}
 		if len(item.Recent) < modelIQProbeRecentPerModel {
 			item.Recent = append(item.Recent, ModelIQProbeStatusPoint{Status: row.ResolveEffectiveStatus(), CheckedAt: row.CreatedAt})
@@ -614,6 +747,17 @@ func userSummaryFromRows(rows []*ModelIQProbeResult) []*ModelIQProbeUserSummary 
 	return items
 }
 
+func modelIQProbeStatusSeverity(status string) int {
+	switch status {
+	case ModelIQProbeStatusWrongAnswer:
+		return 2
+	case ModelIQProbeStatusError:
+		return 1
+	default:
+		return 0
+	}
+}
+
 // OverrideStatus 人工改判；status 传 nil 表示清除改判恢复自动判定。
 func (s *ModelIQProbeService) OverrideStatus(ctx context.Context, id int64, status *string) error {
 	if status != nil {
@@ -628,7 +772,7 @@ func (s *ModelIQProbeService) OverrideStatus(ctx context.Context, id int64, stat
 
 // CleanupOldResults 清理超过保留期的结果行（OpsCleanupService 每日调用）。
 func (s *ModelIQProbeService) CleanupOldResults(ctx context.Context) error {
-	cutoff := time.Now().AddDate(0, 0, -modelIQProbeRetentionDays)
+	cutoff := time.Now().AddDate(0, 0, -ModelIQProbeRetentionDays)
 	deleted, err := s.repo.DeleteBefore(ctx, cutoff)
 	if err != nil {
 		return err

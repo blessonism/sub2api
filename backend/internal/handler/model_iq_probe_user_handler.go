@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +19,8 @@ func NewModelIQProbeUserHandler(svc *service.ModelIQProbeService) *ModelIQProbeU
 
 // GetSummary 返回按模型汇总的最近探针结果（禁用/无数据时 items 为空）。
 func (h *ModelIQProbeUserHandler) GetSummary(c *gin.Context) {
-	items, err := h.svc.UserSummary(c.Request.Context())
+	role, _ := middleware.GetUserRoleFromContext(c)
+	items, err := h.svc.UserSummary(c.Request.Context(), role == service.RoleAdmin)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

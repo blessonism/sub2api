@@ -17,6 +17,7 @@ const messages: Record<string, string> = {
   'channelStatus.candyProbe.noTimeline': 'No probes yet',
   'channelStatus.candyProbe.loadErrorTitle': 'Unable to load candy probe results',
   'channelStatus.candyProbe.noData': 'No probe data yet',
+  'channelStatus.candyProbe.markedForExclusion': 'Marked for exclusion',
   'channelStatus.card.probeCount': 'Last {n} probes',
   'monitorCommon.latencyEmpty': '-',
   'monitorCommon.relativeSecondsAgo': '{n}s ago',
@@ -110,5 +111,18 @@ describe('CandyProbePanel', () => {
     const wrapper = mount(CandyProbePanel, { props: { items } })
     expect(wrapper.text()).not.toContain('@')
     expect(wrapper.html()).not.toContain('account')
+  })
+
+  it('renders exclusion markers on the latest verdict and history tooltip', () => {
+    const projected = {
+      model: 'gpt-5.4',
+      latest: { status: 'pass' as const, checked_at: new Date().toISOString(), marked_for_exclusion: true },
+      recent: [{ status: 'pass' as const, checked_at: new Date().toISOString(), marked_for_exclusion: true }],
+    }
+    const wrapper = mount(CandyProbePanel, { props: { items: [projected] } })
+    expect(wrapper.text()).toContain('Marked for exclusion')
+    expect(wrapper.text()).toContain('100%')
+    expect(wrapper.findAll('.candy-bar').at(-1)?.attributes('title')).toContain('Marked for exclusion')
+    wrapper.unmount()
   })
 })

@@ -217,8 +217,9 @@ export default {
       }
     },
     "candyProbe": {
+      "markedForExclusion": "Marked for exclusion",
       "title": "Candy Probe · Degradation Check",
-      "description": "Actively probes GPT models with the candy puzzle: an answer containing the expected result is healthy; wrong answers (20/23/29) may indicate degradation. The strip shows the last 60 results, oldest to newest.",
+      "description": "Candy puzzle samples across configured accounts and GPT models. Verdicts combine the latest result per account; the strip shows the last 60 probes from oldest to newest.",
       "summary": "{ok}/{total} healthy",
       "verdictPass": "Healthy",
       "verdictWrong": "Likely degraded",
@@ -226,7 +227,7 @@ export default {
       "verdictUnknown": "Not probed",
       "rateLabel": "of last {n}",
       "streak": "{n} passed in a row",
-      "latestAnswer": "Latest answer",
+      "latestAnswer": "Verdict sample",
       "stripLabel": "Last {n} probes",
       "stripOrder": "oldest to newest",
       "answerFallback": "No answer text",
@@ -508,6 +509,20 @@ export default {
     "retry": "Retry"
   },
   "admin": {
+    "modelIqMonitor": {
+      "visibilityLabel": "Probe result visibility",
+      "visibilityAdmin": "Administrators only",
+      "visibilityAll": "All signed-in users",
+      "displayModeLabel": "User display mode",
+      "displayReal": "Actual probe results",
+      "displayGreen": "Always green",
+      "displayModeHint": "Always-green mode adjusts user verdicts, history and pass rates, and hides answer excerpts. Administrators always see actual records.",
+      "showExclusionLabel": "Show exclusion markers for wrong answers",
+      "showExclusionHint": "Wrong answers show “Marked for exclusion”. This is a display marker only and does not stop traffic. Timeouts and rate limits are not wrong answers.",
+      "runStarted": "Background probe started. You can leave this page and check the results later.",
+      "runProgress": "Background probe: {done}/{total} targets completed",
+      "loadRunFailed": "Unable to load probe progress"
+    },
     "affiliates": {
       "leaderboard": {
         "description": "Rank inviters by lifetime invitations and invited-user recharge contribution",

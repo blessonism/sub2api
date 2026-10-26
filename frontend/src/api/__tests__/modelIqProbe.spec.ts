@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseModelIqProbeSummary } from '@/api/modelIqProbe'
+import { getRunState, runProbe, updateConfig } from '@/api/admin/modelIqProbe'
+
+const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }))
+vi.mock('@/api/client', () => ({ apiClient: { get, post, put } }))
 
 describe('parseModelIqProbeSummary', () => {
   it('parses items with latest verdict, excerpt and recent timeline', () => {
@@ -54,5 +58,37 @@ describe('parseModelIqProbeSummary', () => {
   it('keeps empty item lists (probe disabled or no data)', () => {
     const summary = parseModelIqProbeSummary({ items: [] })
     expect(summary.items).toEqual([])
+  })
+
+  it('only accepts boolean exclusion markers without exposing extra fields', () => {
+    const summary = parseModelIqProbeSummary({ items: [{ model: 'gpt-5.4',
+      latest: { status: 'pass', checked_at: 'now', marked_for_exclusion: true, account_id: 42 },
+      recent: [{ status: 'pass', checked_at: 'now', marked_for_exclusion: 'true' }],
+    }] })
+    expect(summary.items[0].latest?.marked_for_exclusion).toBe(true)
+    expect(summary.items[0].recent[0].marked_for_exclusion).toBe(false)
+    expect(summary.items[0].latest).not.toHaveProperty('account_id')
+  })
+})
+
+describe('admin model IQ probe API', () => {
+  it('starts a background run and fetches shared progress with cancellation', async () => {
+    const state = { id: 'run-1', status: 'running' }
+    post.mockResolvedValue({ data: state })
+    get.mockResolvedValue({ data: state })
+    const signal = new AbortController().signal
+    expect(await runProbe()).toEqual(state)
+    expect(post).toHaveBeenCalledWith('/admin/model-iq-probe/run')
+    expect(await getRunState({ signal })).toEqual(state)
+    expect(get).toHaveBeenCalledWith('/admin/model-iq-probe/run', { signal })
+  })
+
+  it('persists all display options with the probe configuration', async () => {
+    const config = { enabled: true, visibility: 'all_users' as const, user_display_mode: 'always_green' as const,
+      show_exclusion: true, question: 'Question', expected_answer: '21', interval_minutes: 360,
+      target_mode: 'account_model' as const, models: [], account_ids: [], }
+    put.mockResolvedValue({ data: config })
+    expect(await updateConfig(config)).toEqual(config)
+    expect(put).toHaveBeenCalledWith('/admin/model-iq-probe/config', config)
   })
 })

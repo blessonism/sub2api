@@ -31,6 +31,9 @@ func (h *ModelIQProbeHandler) GetConfig(c *gin.Context) {
 
 type modelIQProbeConfigRequest struct {
 	Enabled         bool     `json:"enabled"`
+	Visibility      string   `json:"visibility" binding:"omitempty,oneof=admin_only all_users"`
+	UserDisplayMode string   `json:"user_display_mode" binding:"omitempty,oneof=real always_green"`
+	ShowExclusion   bool     `json:"show_exclusion"`
 	Question        string   `json:"question"`
 	ExpectedAnswer  string   `json:"expected_answer" binding:"required,max=200"`
 	IntervalMinutes int      `json:"interval_minutes" binding:"required,min=5,max=10080"`
@@ -48,6 +51,9 @@ func (h *ModelIQProbeHandler) UpdateConfig(c *gin.Context) {
 	}
 	cfg := &service.ModelIQProbeConfig{
 		Enabled:         req.Enabled,
+		Visibility:      req.Visibility,
+		UserDisplayMode: req.UserDisplayMode,
+		ShowExclusion:   req.ShowExclusion,
 		Question:        req.Question,
 		ExpectedAnswer:  req.ExpectedAnswer,
 		IntervalMinutes: req.IntervalMinutes,
@@ -85,12 +91,22 @@ func (h *ModelIQProbeHandler) ListResults(c *gin.Context) {
 
 // RunProbe 手动触发一轮探测。
 func (h *ModelIQProbeHandler) RunProbe(c *gin.Context) {
-	summary, err := h.runner.RunOnce(c.Request.Context())
+	state, err := h.runner.StartRun(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, summary)
+	response.Success(c, state)
+}
+
+// GetRun 返回共享的后台探测进度，页面刷新或切换实例后仍可读取。
+func (h *ModelIQProbeHandler) GetRun(c *gin.Context) {
+	state, err := h.runner.GetRunState(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, state)
 }
 
 type modelIQProbeOverrideRequest struct {

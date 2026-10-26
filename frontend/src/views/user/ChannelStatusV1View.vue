@@ -22,7 +22,7 @@
     />
 
     <CandyProbePanel
-      v-if="candyProbeItems.length > 0 || candyProbeLoading"
+      v-if="candyProbeItems.length > 0 || candyProbeError"
       :items="candyProbeItems"
       :loading="candyProbeLoading"
       :error="candyProbeError"
