@@ -24,10 +24,21 @@
 这些不属于本任务，保持原样；本次新增的 errcheck/staticcheck 项已清零。
 
 ## 发布状态
-未 commit、push、迁移生产数据库或重启 OVH。规则缺省为空，迁移不硬编码生产分组。生产建议配置见 production-routes.json，上线与启用仍按已确认计划单独确认。
+2026-10-26 按用户授权完成本地提交与合并：功能提交 c9335e535，custom/main 合并提交 c387b6d8a。未 push、迁移生产数据库或重启 OVH。规则缺省为空，迁移不硬编码生产分组。生产建议配置见 production-routes.json，上线与启用仍须单独确认。
 
 ## 第二轮 Review
 - 发现并修复 5 类 P2：过滤后默认目录回填、WS 后启用规则漏检、WS Key/User 快照被整体更新、prefer_local 全局暂停/模型冷却漏检、固定来源目录无账号时目标模型不展示。
 - 各问题均先写回归复现失败，再修正。新增回归与相关 service/handler/routes 网关测试通过；完整命令、失败证据与修正行为见 review-2.md。
 - 本次功能变更 patch 的 golangci-lint v2.14.0：0 issues；git diff --check、Trellis context validation 通过。
 - 本轮没有修改数据库结构、repository 或前端，未重复运行这些不受影响的检查。
+
+
+## 本地合并与独立验证（2026-10-26）
+- 用户指令「合并到custom main」授权本功能本地提交、合并与此前提交计划中的 Trellis 归档/会话记录。
+- 本功能 67 个文件（包含本任务文档）单独提交；中英文 custom.ts 仅提交模型转发相关 hunks，原有 IQ 探针改动未带入。
+- 在临时干净 custom/main 检出执行 --no-ff 合并，暂存树与功能提交 tree 完全一致，无冲突。
+- 干净检出中 service/handler/handler-admin/dto/routes/repository/migrations 的原定 Go 定向检查全部通过；前端 pnpm typecheck、4 个文件共 74 项定向测试通过。
+- 首次并发验证时前端出现 ENOSPC，service 构建失败。清理确认无进程使用的 Go 编译临时目录后，单独补跑完整 service 筛选与 localeKeyCompleteness，全部通过，没有跳过失败项。
+- 本轮没有修改功能代码；上一轮 lint、真实数据库集成与构建检查继续有效。git diff --check 与任务上下文校验通过。
+- 原工作区 122 个已快照文件内容在提交后核对不变；合并完成后再次检查。
+- 仅收尾本任务，不归档其他历史任务；不推送、不部署。

@@ -2,7 +2,7 @@
 
 代码修复、检查与规格同步已完成。2026-10-26 用户回复「合并到custom main」，授权本功能本地提交、合并 custom/main 及前述 Trellis 收尾；不包含 push 或生产部署。
 
-## 拟议提交顺序
+## 已授权执行顺序
 
 1. `feat(gateway): 支持按模型转发分组`：本功能后端、迁移、前端、测试、规格和本任务文档。
 2. `Merge feature/model-group-routes: 分组按模型转发与 Luna 接入`：合并到本地 custom/main，并在干净临时检出验证。
@@ -125,3 +125,9 @@
 
 - `.trellis/workflow.md` Phase 3.4 要求展示提交计划并一次确认后执行。
 - `.trellis/spec/guides/downstream-fork-workflow.md`「高风险操作」明确包含 git commit，并要求确认前说明影响范围与回滚方式。
+
+## 本地执行结果
+
+- 功能提交：c9335e5358df44d026ae597aaf680bae6e6c4da2。
+- custom/main 合并提交：c387b6d8ac2df8134090a3f8e95e32f5151016cd。
+- 干净合并检出的 Go 定向、前端类型检查和 74 项定向测试通过；详细说明见 verification.md。
