@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "下游 fork 分支边界、fetch、预检、合并和回滚规则"}
+{"file": ".trellis/spec/tools/upstream-sync-fast-path.md", "reason": "上游同步 CLI 契约、退出码和检查选择规则"}

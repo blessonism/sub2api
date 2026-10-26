@@ -1,0 +1,17 @@
+{
+  "applied_count": 336,
+  "target_count": 346,
+  "checksum_mismatches": [],
+  "pending": [
+    "238b_content_moderation_engine_meta.sql",
+    "239_channel_reasoning_effort_multipliers.sql",
+    "240_affiliate_ledger_operation_id.sql",
+    "241_add_payment_order_bonus_amount.sql",
+    "241_add_typesafe_platform.sql",
+    "242_drop_platform_check_constraints.sql",
+    "242_group_i18n.sql",
+    "243_gemini_cached_contents.sql",
+    "244_gemini_cached_contents_channel_usage.sql",
+    "245_gemini_cached_contents_mutation_lease.sql"
+  ]
+}

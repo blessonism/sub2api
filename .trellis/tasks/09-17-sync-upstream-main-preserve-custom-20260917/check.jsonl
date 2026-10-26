@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/downstream-fork-workflow.md", "reason": "验证同步分支边界、远程引用一致性和回滚路径"}
+{"file": ".trellis/spec/tools/upstream-sync-fast-path.md", "reason": "核对定向检查是否按矩阵执行且未覆盖高风险路径"}

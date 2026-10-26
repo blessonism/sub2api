@@ -173,5 +173,9 @@ issues/
 
 # Vitest / Vite cache at repo root
 .vite/
+
+# 本地 Agent 工具运行状态
+.omo/
+.zcode/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
