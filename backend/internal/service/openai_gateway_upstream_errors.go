@@ -309,6 +309,55 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
+// OpenAIUpstreamTierForbiddenErrorType 标记「上游拒绝 priority/fast 档位」这一
+// 请求级错误；ops 错误日志的 error_type 直接取自响应体，管理员据此与普通
+// 403（凭据/账号问题）区分开。
+const OpenAIUpstreamTierForbiddenErrorType = "upstream_forbidden_tier"
+
+// isOpenAIUpstreamTierForbiddenResponse 判定上游 403 是否为 service_tier 档位拒绝。
+//
+// 信号组合：出站请求携带 fast 系档位（priority/ultrafast，以实际发往上游的 body
+// 为准——group ForceOpenAIFast 与 fast policy 都可能注入）+ 上游以结构化
+// permission_error 拒绝。实测案例（上游中转返回 403 "不要使用fast"）即此形状。
+// 要求 error.type=permission_error 是为了压低误判面：HTML/空体的 403（Cloudflare
+// 拦截等）不在此列，仍走通用 403 路径。
+//
+// 这是确定性的请求级问题：同一份请求换任何账号都会得到同样的结果（同一上游策略）。
+// 与「403=网关运营方凭据问题，包成 502 屏蔽账号状态」的默认假设不同——这里的报错
+// 只描述我们自己的请求参数，不暴露上游账号状态。
+func isOpenAIUpstreamTierForbiddenResponse(statusCode int, outboundServiceTier string, upstreamBody []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	tier := strings.ToLower(strings.TrimSpace(outboundServiceTier))
+	if tier != OpenAIFastTierPriority && tier != OpenAIFastTierUltrafast {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.type").String()), "permission_error")
+}
+
+// writeOpenAIUpstreamTierForbiddenResponse 回写档位拒绝的确定性错误。
+//
+// 状态码用 400 而非 502：502 会让下游网关（CCH 等）把确定性拒绝当临时故障重放
+// （#5479 同款放大路径）。文案给客户端可自救的指引；若档位来自 group/policy
+// 注入而非客户端本身，指引转给管理员调整 fast policy。
+func writeOpenAIUpstreamTierForbiddenResponse(c *gin.Context, tier string) {
+	message := fmt.Sprintf(
+		"Upstream rejected service_tier=%s (fast): remove service_tier from the request and retry, or contact administrator if the tier was added by gateway policy",
+		tier,
+	)
+	if StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, http.StatusBadRequest, OpenAIUpstreamTierForbiddenErrorType, message)
+		return
+	}
+	c.JSON(http.StatusBadRequest, gin.H{
+		"error": gin.H{
+			"type":    OpenAIUpstreamTierForbiddenErrorType,
+			"message": message,
+		},
+	})
+}
+
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
@@ -721,6 +770,33 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
 		}
 		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
+	}
+
+	// 上游档位拒绝（403 + permission_error + 出站带 fast 系档位）：请求级确定性
+	// 错误，不标记账号、不 failover，直接给客户端可自救报错。requestBody 是已应用
+	// fast policy / group 注入后的出站 body，tier 以它为准。
+	if resp.StatusCode == http.StatusForbidden {
+		if tier := extractOpenAIServiceTierFromBody(requestBody); tier != nil &&
+			isOpenAIUpstreamTierForbiddenResponse(resp.StatusCode, *tier, body) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Kind:               "http_error",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+			})
+			MarkResponseCommitted(c)
+			writeOpenAIUpstreamTierForbiddenResponse(c, *tier)
+			if upstreamMsg == "" {
+				return nil, fmt.Errorf("openai upstream forbidden service_tier=%s", *tier)
+			}
+			return nil, fmt.Errorf("openai upstream forbidden service_tier=%s message=%s", *tier, upstreamMsg)
+		}
 	}
 
 	// Handle upstream error (mark account status)

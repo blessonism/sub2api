@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -354,6 +355,101 @@ func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 				require.Equal(t, tc.wantParam, gjson.Get(body, "error.param").String())
 			}
 			require.NotContains(t, body, "secret123", "原始 body 里的敏感串不得泄漏")
+		})
+	}
+}
+
+// 上游以结构化 permission_error 拒绝 priority/fast 档位（生产实测案例：上游中转
+// 对带 fast 档的请求回 403 "不要使用fast"）——这是请求级确定性错误：换任何账号
+// 结果不变。必须回 400 + upstream_forbidden_tier + 可自救文案，不 failover、
+// 不标记账号，且不透传上游原文。
+func TestHandleErrorResponse_UpstreamTierForbiddenReturnsActionable400(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	upstreamBody := `{"error":{"message":"不要使用fast","type":"permission_error"}}`
+
+	for _, tc := range []struct {
+		name         string
+		requestTier  string
+		wantTierText string
+	}{
+		{name: "client_fast_alias", requestTier: "fast", wantTierText: "service_tier=priority"},
+		{name: "priority", requestTier: "priority", wantTierText: "service_tier=priority"},
+		{name: "ultrafast", requestTier: "ultrafast", wantTierText: "service_tier=ultrafast"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newOpenAIUpstreamErrorTestContext(t)
+			requestBody := []byte(fmt.Sprintf(`{"model":"gpt-6-sol","service_tier":%q,"input":"hi"}`, tc.requestTier))
+
+			_, err := svc.handleErrorResponse(
+				context.Background(),
+				newOpenAIUpstreamErrorResponse(http.StatusForbidden, upstreamBody),
+				c, newOpenAIUpstreamErrorTestAccount(), requestBody,
+			)
+
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr), "档位拒绝是确定性错误，不得触发 failover")
+			require.True(t, IsResponseCommitted(c), "响应已由 service 写出，不得再走通用报错")
+			require.Equal(t, http.StatusBadRequest, rec.Code, "确定性拒绝不得包成会被下游重试的 502")
+			body := rec.Body.String()
+			require.Equal(t, OpenAIUpstreamTierForbiddenErrorType, gjson.Get(body, "error.type").String())
+			msg := gjson.Get(body, "error.message").String()
+			require.Contains(t, msg, tc.wantTierText)
+			require.Contains(t, msg, "remove service_tier from the request and retry")
+			require.NotContains(t, body, "不要使用fast", "上游原文不得透传给客户端")
+		})
+	}
+}
+
+// 同样的 403 permission_error，但出站请求未携带 fast 系档位（例如账号真的被上游
+// 禁用）：必须维持「502 + 通用文案」的原状，不得误报成档位问题。
+func TestHandleErrorResponse_TierForbiddenSignalRequiresOutboundTier(t *testing.T) {
+	c, rec := newOpenAIUpstreamErrorTestContext(t)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+	_, err := svc.handleErrorResponse(
+		context.Background(),
+		newOpenAIUpstreamErrorResponse(http.StatusForbidden, `{"error":{"message":"Your account is deactivated","type":"permission_error"}}`),
+		c, newOpenAIUpstreamErrorTestAccount(), []byte(`{"model":"gpt-6-sol","input":"hi"}`),
+	)
+
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	body := rec.Body.String()
+	require.Equal(t, "upstream_error", gjson.Get(body, "error.type").String())
+	require.Equal(t, "Upstream access forbidden, please contact administrator", gjson.Get(body, "error.message").String())
+}
+
+// 403 + 出站带档位，但上游不是结构化 permission_error（HTML 人机验证页 / 空体 /
+// 其他 error.type）：不属于档位拒绝，保持通用 403 路径。
+func TestHandleErrorResponse_NonPermissionError403KeepsGenericPath(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "cloudflare_challenge_html", body: "<html><body>Just a moment...</body></html>"},
+		{name: "empty_body", body: ""},
+		{name: "other_error_type", body: `{"error":{"message":"quota exceeded","type":"insufficient_quota"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newOpenAIUpstreamErrorTestContext(t)
+			svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+			_, err := svc.handleErrorResponse(
+				context.Background(),
+				newOpenAIUpstreamErrorResponse(http.StatusForbidden, tc.body),
+				c, newOpenAIUpstreamErrorTestAccount(), []byte(`{"model":"gpt-6-sol","service_tier":"priority","input":"hi"}`),
+			)
+
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr), "handleErrorResponse 对普通 403 的既有行为：不 failover")
+			require.Equal(t, http.StatusBadGateway, rec.Code)
+			body := rec.Body.String()
+			require.Equal(t, "upstream_error", gjson.Get(body, "error.type").String())
+			require.Equal(t, "Upstream access forbidden, please contact administrator", gjson.Get(body, "error.message").String())
 		})
 	}
 }

@@ -1170,6 +1170,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				)
 				continue
 			}
+			// 上游档位拒绝（出站带 fast 系档位 + 403 permission_error）是请求级
+			// 确定性错误：换账号结果不变，不再 failover 烧账号，直接走
+			// handleErrorResponse 回可自救报错（其中也不标记账号）。
+			if tier := extractOpenAIServiceTierFromBody(body); tier != nil &&
+				isOpenAIUpstreamTierForbiddenResponse(resp.StatusCode, *tier, respBody) {
+				return s.handleErrorResponse(ctx, resp, c, account, body, resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel))
+			}
 			if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
