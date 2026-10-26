@@ -269,6 +269,33 @@ func (_u *UsageLogUpdate) ClearBillingMode() *UsageLogUpdate {
 	return _u
 }
 
+// SetSourceGroupID sets the "source_group_id" field.
+func (_u *UsageLogUpdate) SetSourceGroupID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetSourceGroupID()
+	_u.mutation.SetSourceGroupID(v)
+	return _u
+}
+
+// SetNillableSourceGroupID sets the "source_group_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableSourceGroupID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetSourceGroupID(*v)
+	}
+	return _u
+}
+
+// AddSourceGroupID adds value to the "source_group_id" field.
+func (_u *UsageLogUpdate) AddSourceGroupID(v int64) *UsageLogUpdate {
+	_u.mutation.AddSourceGroupID(v)
+	return _u
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (_u *UsageLogUpdate) ClearSourceGroupID() *UsageLogUpdate {
+	_u.mutation.ClearSourceGroupID()
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *UsageLogUpdate) SetGroupID(v int64) *UsageLogUpdate {
 	_u.mutation.SetGroupID(v)
@@ -1219,6 +1246,15 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.BillingModeCleared() {
 		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
 	}
+	if value, ok := _u.mutation.SourceGroupID(); ok {
+		_spec.SetField(usagelog.FieldSourceGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSourceGroupID(); ok {
+		_spec.AddField(usagelog.FieldSourceGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.SourceGroupIDCleared() {
+		_spec.ClearField(usagelog.FieldSourceGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
 	}
@@ -1816,6 +1852,33 @@ func (_u *UsageLogUpdateOne) SetNillableBillingMode(v *string) *UsageLogUpdateOn
 // ClearBillingMode clears the value of the "billing_mode" field.
 func (_u *UsageLogUpdateOne) ClearBillingMode() *UsageLogUpdateOne {
 	_u.mutation.ClearBillingMode()
+	return _u
+}
+
+// SetSourceGroupID sets the "source_group_id" field.
+func (_u *UsageLogUpdateOne) SetSourceGroupID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetSourceGroupID()
+	_u.mutation.SetSourceGroupID(v)
+	return _u
+}
+
+// SetNillableSourceGroupID sets the "source_group_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableSourceGroupID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetSourceGroupID(*v)
+	}
+	return _u
+}
+
+// AddSourceGroupID adds value to the "source_group_id" field.
+func (_u *UsageLogUpdateOne) AddSourceGroupID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddSourceGroupID(v)
+	return _u
+}
+
+// ClearSourceGroupID clears the value of the "source_group_id" field.
+func (_u *UsageLogUpdateOne) ClearSourceGroupID() *UsageLogUpdateOne {
+	_u.mutation.ClearSourceGroupID()
 	return _u
 }
 
@@ -2798,6 +2861,15 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.BillingModeCleared() {
 		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.SourceGroupID(); ok {
+		_spec.SetField(usagelog.FieldSourceGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSourceGroupID(); ok {
+		_spec.AddField(usagelog.FieldSourceGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.SourceGroupIDCleared() {
+		_spec.ClearField(usagelog.FieldSourceGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)

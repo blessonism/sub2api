@@ -34,7 +34,32 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 
-	ifNoneMatch := c.GetHeader("If-None-Match")
+	clientETag := c.GetHeader("If-None-Match")
+	ifNoneMatch := clientETag
+	routed := h.modelGroupRoutes != nil && h.modelGroupRouteCatalog != nil && hasEnabledModelGroupRoutes(apiKey.Group)
+	if routed {
+		ifNoneMatch = ""
+	}
+	writeManifest := func(manifest *service.OpenAIModelsResponse) {
+		if routed {
+			merged, mergeErr := routedCodexManifest(c.Request.Context(), h.modelGroupRoutes, h.modelGroupRouteCatalog, apiKey, manifest, clientETag)
+			if mergeErr != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build routed model catalogue")
+				return
+			}
+			manifest = merged
+		}
+		writeOpenAIModelsResponse(c, manifest)
+	}
+	writeRoutedModelsOnly := func() {
+		body, err := h.modelGroupRouteCatalog.BuildCodexModelsManifestForGroup(c.Request.Context(), apiKey.Group, "", []string{})
+		if err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build routed model catalogue")
+			return
+		}
+		writeManifest(&service.OpenAIModelsResponse{Body: body})
+	}
+
 	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
 	// 全部不可用/全部失败时按 FallbackToScheduler 决定回退调度器或返回错误。
 	if apiKey.Group.Platform == service.PlatformOpenAI &&
@@ -46,6 +71,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		)
 		if pinnedErr != nil {
 			if c.Request.Context().Err() != nil {
+				return
+			}
+			if routed && errors.Is(pinnedErr, service.ErrNoPinnedCodexModelsAccounts) && !apiKey.Group.CodexModelsManifestConfig.FallbackToScheduler {
+				writeRoutedModelsOnly()
 				return
 			}
 			if !apiKey.Group.CodexModelsManifestConfig.FallbackToScheduler {
@@ -67,7 +96,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			if c.Request.Context().Err() != nil {
 				return
 			}
-			writeOpenAIModelsResponse(c, pinnedManifest)
+			writeManifest(pinnedManifest)
 			return
 		}
 	}
@@ -86,7 +115,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 		if configured {
-			writeOpenAIModelsResponse(c, configuredManifest)
+			writeManifest(configuredManifest)
 			return
 		}
 	}
@@ -103,6 +132,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, "", "", failedAccountIDs)
 		if err != nil {
 			if c.Request.Context().Err() != nil {
+				return
+			}
+			if routed && lastUpstreamErr == nil {
+				writeRoutedModelsOnly()
 				return
 			}
 			if lastUpstreamErr != nil {
@@ -147,7 +180,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 
-		writeOpenAIModelsResponse(c, manifest)
+		writeManifest(manifest)
 		return
 	}
 }

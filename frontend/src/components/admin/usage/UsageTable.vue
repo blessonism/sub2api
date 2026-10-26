@@ -54,6 +54,9 @@
 
         <template #cell-model="{ row }">
           <div class="space-y-0.5 text-xs">
+            <div v-if="row.source_group_id" class="text-xs text-gray-500" :title="t('usage.modelGroupRoute')" data-testid="usage-model-group-route">
+              #{{ row.source_group_id }} → {{ row.group?.name || `#${row.group_id}` }}
+            </div>
             <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">
               <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
                    class="break-all"
@@ -492,6 +495,10 @@
               <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.cache_read_cost.toFixed(8) }}</span>
             </div>
+          </div>
+          <div v-if="tooltipData?.source_group_id" class="flex items-center justify-between gap-4 text-xs">
+            <span class="text-gray-400">{{ t('usage.modelGroupRoute') }}</span>
+            <span>#{{ tooltipData.source_group_id }} → {{ tooltipData.group?.name || `#${tooltipData.group_id}` }}</span>
           </div>
           <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">

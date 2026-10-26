@@ -1931,6 +1931,7 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
+	modelRouteGroups       *modelRouteHandlerGroupRepo
 	simpleModeRejectAtRead int64
 	compositeResolver      *service.CompositeRouteResolver
 	accountPlatform        string
@@ -3077,6 +3078,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 	if tc.group != nil {
 		apiKey.Group = tc.group
+	}
+	if tc.modelRouteGroups != nil {
+		h.modelGroupRoutes = service.NewModelGroupRouteResolver(tc.modelRouteGroups, gatewaySvc)
 	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

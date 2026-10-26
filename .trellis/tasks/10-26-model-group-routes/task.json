@@ -1,0 +1,39 @@
+{
+  "id": "model-group-routes",
+  "name": "model-group-routes",
+  "title": "分组按模型转发与 Luna 接入",
+  "description": "OpenAI 余额分组按精确模型转发，支持固定目标和本组优先，统一实际组调度、计费、目录和 WS 行为。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "Edom",
+  "assignee": "Edom",
+  "createdAt": "2026-10-26",
+  "completedAt": null,
+  "branch": "feature/model-group-routes",
+  "base_branch": "custom/main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/internal/service/model_group_routes.go",
+    "backend/internal/handler/model_group_routes.go",
+    "frontend/src/components/admin/group/ModelGroupRouteFields.vue"
+  ],
+  "notes": "代码修复和检查完成；按用户授权执行本功能本地提交、合并 custom/main、归档及会话记录。其他未提交工作保留，不推送、不部署。",
+  "meta": {
+    "implementation_complete": true,
+    "verification": "verification.md",
+    "production_changed": false,
+    "review_2": "review-2.md",
+    "fixes_complete": true,
+    "awaiting_commit_confirmation": false,
+    "commit_plan": "commit-plan.md",
+    "merge_authorization": "2026-10-26 用户：合并到custom main"
+  }
+}

@@ -109,6 +109,7 @@ type APIKeyAuthGroupSnapshot struct {
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	SystemPromptInjection       GroupSystemPromptInjection        `json:"system_prompt_injection"`
+	ModelGroupRoutes            []ModelGroupRoute                 `json:"model_group_routes,omitempty"`
 	ModelAllowlist              GroupModelAllowlist               `json:"model_allowlist,omitempty"`
 	CodexModelsManifestConfig   GroupCodexModelsManifestConfig    `json:"codex_models_manifest_config,omitempty"`
 	OpenAISchedulerOverrides    GroupOpenAISchedulerOverrides     `json:"openai_scheduler_overrides,omitempty"`

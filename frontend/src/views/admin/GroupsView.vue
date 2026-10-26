@@ -664,6 +664,12 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <ModelGroupRouteFields
+          v-if="!authStore.isSimpleMode && createForm.platform === 'openai' && createForm.subscription_type === 'standard'"
+          ref="createModelGroupRoutesRef"
+          id-prefix="create-model-group-routes"
+          v-model="createForm.model_group_routes"
+        />
         <SystemPromptInjectionFields
           v-if="supportsSystemPromptInjection(createForm.platform)"
           ref="createSystemPromptInjectionRef"
@@ -2531,6 +2537,13 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <ModelGroupRouteFields
+          v-if="!authStore.isSimpleMode && editForm.platform === 'openai' && editForm.subscription_type === 'standard'"
+          ref="editModelGroupRoutesRef"
+          id-prefix="edit-model-group-routes"
+          :source-group-id="editingGroup?.id"
+          v-model="editForm.model_group_routes"
+        />
         <SystemPromptInjectionFields
           v-if="supportsSystemPromptInjection(editForm.platform)"
           ref="editSystemPromptInjectionRef"
@@ -4781,6 +4794,8 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
+import ModelGroupRouteFields from "@/components/admin/group/ModelGroupRouteFields.vue";
+import type { ModelGroupRoute } from "@/types";
 import SystemPromptInjectionFields from "@/components/admin/group/SystemPromptInjectionFields.vue";
 import {
   normalizeSystemPromptInjection,
@@ -5427,6 +5442,8 @@ type ReasoningEffortPolicyFieldsExpose = {
   validate: () => boolean;
   resetValidation: () => void;
 };
+const createModelGroupRoutesRef = ref<{ validate: () => boolean } | null>(null);
+const editModelGroupRoutesRef = ref<{ validate: () => boolean } | null>(null);
 type SystemPromptInjectionFieldsExpose = { validate: () => boolean };
 const createSystemPromptInjectionRef = ref<SystemPromptInjectionFieldsExpose | null>(null);
 const editSystemPromptInjectionRef = ref<SystemPromptInjectionFieldsExpose | null>(null);
@@ -5455,6 +5472,7 @@ const editCodexManifestConfig = ref<CodexModelsManifestConfig>(createCodexManife
 const editCodexManifestAccountNames = ref<Record<number, string>>({});
 
 const createForm = reactive({
+  model_group_routes: [] as ModelGroupRoute[],
   system_prompt_injection: normalizeSystemPromptInjection("anthropic"),
   name: "",
   description: "",
@@ -5823,6 +5841,7 @@ const convertApiFormatToRoutingRules = async (
 };
 
 const editForm = reactive({
+  model_group_routes: [] as ModelGroupRoute[],
   system_prompt_injection: normalizeSystemPromptInjection("anthropic"),
   name: "",
   description: "",
@@ -6342,6 +6361,7 @@ const closeCreateModal = () => {
   createForm.max_reasoning_effort = "";
   createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
+  createForm.model_group_routes = [];
   createForm.system_prompt_injection = normalizeSystemPromptInjection("anthropic");
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
@@ -6413,6 +6433,7 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
 };
 
 const handleCreateGroup = async () => {
+  if (createForm.platform === 'openai' && createForm.subscription_type === 'standard' && createModelGroupRoutesRef.value && !createModelGroupRoutesRef.value.validate()) return;
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
@@ -6455,6 +6476,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      model_group_routes: createForm.platform === 'openai' && createForm.subscription_type === 'standard' ? createForm.model_group_routes : [],
       system_prompt_injection: normalizeSystemPromptInjection(
         createForm.platform,
         createForm.system_prompt_injection,
@@ -6606,6 +6628,7 @@ const handleEdit = async (group: AdminGroup) => {
     ]),
   );
   editForm.platform = group.platform;
+  editForm.model_group_routes = (group.model_group_routes ?? []).map(route => ({ ...route }));
   editForm.system_prompt_injection = normalizeSystemPromptInjection(
     group.platform,
     group.system_prompt_injection,
@@ -6740,6 +6763,7 @@ const closeEditModal = () => {
   editForm.max_reasoning_effort = "";
   editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
+  editForm.model_group_routes = [];
   editForm.system_prompt_injection = normalizeSystemPromptInjection("anthropic");
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
@@ -6776,6 +6800,7 @@ const closeEditModal = () => {
 };
 
 const handleUpdateGroup = async () => {
+  if (editForm.platform === 'openai' && editForm.subscription_type === 'standard' && editModelGroupRoutesRef.value && !editModelGroupRoutesRef.value.validate()) return;
   if (!editingGroup.value) return;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -6823,6 +6848,7 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      model_group_routes: editForm.platform === 'openai' && editForm.subscription_type === 'standard' ? editForm.model_group_routes : [],
       system_prompt_injection: normalizeSystemPromptInjection(
         editForm.platform,
         editForm.system_prompt_injection,

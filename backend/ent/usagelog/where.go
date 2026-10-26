@@ -120,6 +120,11 @@ func BillingMode(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldBillingMode, v))
 }
 
+// SourceGroupID applies equality check predicate on the "source_group_id" field. It's identical to SourceGroupIDEQ.
+func SourceGroupID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldSourceGroupID, v))
+}
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldGroupID, v))
@@ -998,6 +1003,56 @@ func BillingModeEqualFold(v string) predicate.UsageLog {
 // BillingModeContainsFold applies the ContainsFold predicate on the "billing_mode" field.
 func BillingModeContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingMode, v))
+}
+
+// SourceGroupIDEQ applies the EQ predicate on the "source_group_id" field.
+func SourceGroupIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDNEQ applies the NEQ predicate on the "source_group_id" field.
+func SourceGroupIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDIn applies the In predicate on the "source_group_id" field.
+func SourceGroupIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldSourceGroupID, vs...))
+}
+
+// SourceGroupIDNotIn applies the NotIn predicate on the "source_group_id" field.
+func SourceGroupIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldSourceGroupID, vs...))
+}
+
+// SourceGroupIDGT applies the GT predicate on the "source_group_id" field.
+func SourceGroupIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDGTE applies the GTE predicate on the "source_group_id" field.
+func SourceGroupIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDLT applies the LT predicate on the "source_group_id" field.
+func SourceGroupIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDLTE applies the LTE predicate on the "source_group_id" field.
+func SourceGroupIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldSourceGroupID, v))
+}
+
+// SourceGroupIDIsNil applies the IsNil predicate on the "source_group_id" field.
+func SourceGroupIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldSourceGroupID))
+}
+
+// SourceGroupIDNotNil applies the NotNil predicate on the "source_group_id" field.
+func SourceGroupIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldSourceGroupID))
 }
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

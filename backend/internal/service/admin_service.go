@@ -360,6 +360,7 @@ type CreateGroupInput struct {
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	SystemPromptInjection       GroupSystemPromptInjection
+	ModelGroupRoutes            []ModelGroupRoute
 	ModelAllowlist              GroupModelAllowlist
 	CodexModelsManifestConfig   GroupCodexModelsManifestConfig
 	ModelsListConfig            GroupModelsListConfig
@@ -451,6 +452,7 @@ type UpdateGroupInput struct {
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	SystemPromptInjection       *GroupSystemPromptInjection
+	ModelGroupRoutes            *[]ModelGroupRoute
 	ModelAllowlist              *GroupModelAllowlist
 	CodexModelsManifestConfig   *GroupCodexModelsManifestConfig
 	ModelsListConfig            *GroupModelsListConfig

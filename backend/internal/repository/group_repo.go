@@ -147,6 +147,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetSystemPromptInjection(groupIn.SystemPromptInjection.WithDefaults()).
+		SetModelGroupRoutes(nonNilModelGroupRoutes(groupIn.ModelGroupRoutes)).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).
@@ -340,6 +341,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetSystemPromptInjection(groupIn.SystemPromptInjection.WithDefaults()).
+		SetModelGroupRoutes(nonNilModelGroupRoutes(groupIn.ModelGroupRoutes)).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetOpenaiSchedulerOverrides(groupIn.OpenAISchedulerOverrides).
@@ -1247,4 +1249,11 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		}
 	}
 	return nil
+}
+
+func nonNilModelGroupRoutes(routes []service.ModelGroupRoute) []service.ModelGroupRoute {
+	if routes == nil {
+		return []service.ModelGroupRoute{}
+	}
+	return routes
 }

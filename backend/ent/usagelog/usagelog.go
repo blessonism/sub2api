@@ -40,6 +40,8 @@ const (
 	FieldBillingTier = "billing_tier"
 	// FieldBillingMode holds the string denoting the billing_mode field in the database.
 	FieldBillingMode = "billing_mode"
+	// FieldSourceGroupID holds the string denoting the source_group_id field in the database.
+	FieldSourceGroupID = "source_group_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
 	// FieldSubscriptionID holds the string denoting the subscription_id field in the database.
@@ -175,6 +177,7 @@ var Columns = []string{
 	FieldModelMappingChain,
 	FieldBillingTier,
 	FieldBillingMode,
+	FieldSourceGroupID,
 	FieldGroupID,
 	FieldSubscriptionID,
 	FieldInputTokens,
@@ -366,6 +369,11 @@ func ByBillingTier(opts ...sql.OrderTermOption) OrderOption {
 // ByBillingMode orders the results by the billing_mode field.
 func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBillingMode, opts...).ToFunc()
+}
+
+// BySourceGroupID orders the results by the source_group_id field.
+func BySourceGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSourceGroupID, opts...).ToFunc()
 }
 
 // ByGroupID orders the results by the group_id field.

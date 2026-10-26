@@ -15,7 +15,7 @@ import (
 )
 
 // v25：分组自定义系统提示词进入认证快照。
-const apiKeyAuthSnapshotVersion = 25
+const apiKeyAuthSnapshotVersion = 26
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -427,6 +427,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			SystemPromptInjection:           apiKey.Group.SystemPromptInjection.WithDefaults(),
+			ModelGroupRoutes:                append([]ModelGroupRoute(nil), apiKey.Group.ModelGroupRoutes...),
 			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
 			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
 			OpenAISchedulerOverrides:        apiKey.Group.OpenAISchedulerOverrides,
@@ -534,6 +535,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			SystemPromptInjection:           snapshot.Group.SystemPromptInjection.WithDefaults(),
+			ModelGroupRoutes:                append([]ModelGroupRoute(nil), snapshot.Group.ModelGroupRoutes...),
 			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
 			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			OpenAISchedulerOverrides:        snapshot.Group.OpenAISchedulerOverrides,

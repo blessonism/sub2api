@@ -21,6 +21,7 @@ export default {
     "calibrationTokens": "管理员校准"
   },
   "usage": {
+    "modelGroupRoute": "入口分组 → 计费分组",
     "calibrationTokens": "管理员校准",
     "adminUserFilter": "用户",
     "adminSelectUserPlaceholder": "选择用户",
@@ -2262,6 +2263,24 @@ export default {
       "balanceReductionFailed": "批量缩减用户余额失败"
     },
     "groups": {
+      "modelGroupRoutes": {
+        "title": "按模型转发分组",
+        "hint": "匹配模型后选择实际调度和计费分组，价格、专属倍率及分组限流跟随实际分组。",
+        "add": "添加规则",
+        "empty": "未配置转发规则",
+        "model": "模型名称（精确匹配）",
+        "target": "目标分组",
+        "mode": "路由方式",
+        "enabled": "启用",
+        "remove": "删除",
+        "target_only": "固定目标分组",
+        "prefer_local": "本组优先",
+        "target_onlyHint": "始终使用目标组；目标不可用时返回错误。",
+        "prefer_localHint": "发送前本组没有合格账号时转发；并发繁忙仍在本组排队，发送失败不跨组重试。",
+        "invalid": "请填写模型和目标分组；模型不能重复或包含 *，目标不能是自身。",
+        "loadFailed": "目标分组加载失败。",
+        "unavailable": "不可用"
+      },
       "systemPromptInjection": {
         "typesafeHint": "TypeSafe System One 会对每个独立问题的 instructions 应用所选模式，保留 state 输入数据和 criteria。",
         "title": "System Prompt 注入",

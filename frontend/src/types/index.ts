@@ -697,8 +697,16 @@ export interface Group {
   updated_at: string
 }
 
+export interface ModelGroupRoute {
+  model: string
+  target_group_id: number
+  mode: 'target_only' | 'prefer_local'
+  enabled: boolean
+}
+
 export interface AdminGroup extends Group {
   // 管理员自定义的分组系统指令，不在用户侧 Group 中暴露。
+  model_group_routes?: ModelGroupRoute[]
   system_prompt_injection?: GroupSystemPromptInjection
   time_rate_priority: TimeRatePriority
   time_rate_periods: GroupTimeRatePeriod[]
@@ -887,6 +895,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+  model_group_routes?: ModelGroupRoute[]
   system_prompt_injection?: GroupSystemPromptInjection
   name: string
   description?: string | null
@@ -957,6 +966,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+  model_group_routes?: ModelGroupRoute[]
   system_prompt_injection?: GroupSystemPromptInjection
   name?: string
   description?: string | null
@@ -1883,6 +1893,7 @@ export interface UsageLog {
   upstream_endpoint?: string | null
 
   group_id: number | null
+  source_group_id?: number | null
   subscription_id: number | null
 
   input_tokens: number

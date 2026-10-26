@@ -202,6 +202,7 @@ type AdminGroup struct {
 	DefaultMappedModel          string                                   `json:"default_mapped_model"`
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	SystemPromptInjection       service.GroupSystemPromptInjection       `json:"system_prompt_injection"`
+	ModelGroupRoutes            []service.ModelGroupRoute                `json:"model_group_routes"`
 	ModelAllowlist              service.GroupModelAllowlist              `json:"model_allowlist"`
 	// 固定账号获取 Codex Model Manifest 配置（仅 openai 平台使用）。
 	CodexModelsManifestConfig domain.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
@@ -603,6 +604,7 @@ type UsageLog struct {
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
+	SourceGroupID  *int64 `json:"source_group_id,omitempty"`
 	GroupID        *int64 `json:"group_id"`
 	SubscriptionID *int64 `json:"subscription_id"`
 

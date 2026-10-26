@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +21,10 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		return
 	}
 	etag := c.GetHeader("If-None-Match")
+	routed := h.modelGroupRoutes != nil && hasEnabledModelGroupRoutes(group)
+	if routed {
+		etag = ""
+	}
 	if c.Param("model") != "" {
 		etag = "" // A collection ETag cannot validate a single-model representation.
 	}
@@ -29,7 +34,7 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 	if c.Request.Context().Err() != nil {
 		return
 	}
-	if err != nil {
+	if err != nil && !(routed && errors.Is(err, service.ErrNoPinnedCodexModelsAccounts)) {
 		if errors.Is(err, service.ErrNoPinnedCodexModelsAccounts) {
 			writeOpenAIModelsError(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI model discovery accounts")
 			return
@@ -37,7 +42,20 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		writeOpenAIModelsError(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
 		return
 	}
-	setOpsSelectedAccount(c, account.ID, account.Platform)
+	if err != nil {
+		// 来源目录无可用账号时仍可展示独立目标池中的规则模型。
+		response = &service.OpenAIModelsResponse{Body: []byte(`{"object":"list","data":[]}`)}
+	} else {
+		setOpsSelectedAccount(c, account.ID, account.Platform)
+	}
+	if routed {
+		key, _ := middleware2.GetAPIKeyFromContext(c)
+		response, err = h.routedOpenAIModelsResponse(c, key, response)
+		if err != nil {
+			writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "Failed to build routed models")
+			return
+		}
+	}
 	writeOpenAIModelsResponse(c, response)
 }
 
