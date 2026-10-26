@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-10-17
+- **Total Sessions**: 10
+- **Last Active**: 2026-10-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~303 | Active |
+| `journal-1.md` | ~369 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-10-26 | 分组模型转发修复并合并 custom/main | `c9335e5358df44d026ae597aaf680bae6e6c4da2`, `c387b6d8ac2df8134090a3f8e95e32f5151016cd` | `custom/main` |
 | 9 | 2026-10-17 | 全平台 System Prompt 注入修复与 OVH 部署 | `10f2f9a00dca` | `custom/main` |
 | 8 | 2026-10-14 | 智力雷达接入现行 RadarBench 并部署 OVH | `eb5bff47e4990083a0dc785a9690c6169f03c600` | `custom/main` |
 | 7 | 2026-10-14 | OVH 部署二开 v0.2.16 | `8fec104efb1fac129ee0665da6bae866baa80de1` | `feature/deploy-ovh-v0-2-16` |

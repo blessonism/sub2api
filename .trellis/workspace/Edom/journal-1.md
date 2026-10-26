@@ -333,3 +333,37 @@
 
 - 操作者确认后执行三段式提交（代码 → spec → 任务归档/journal）。
 - 部署测试环境人工验收：保存配置 → 立即探测 → 结果出现；定时轮次执行。
+
+
+## Session 10: 分组模型转发修复并合并 custom/main
+
+**Date**: 2026-10-26
+**Task**: 分组模型转发修复并合并 custom/main
+**Branch**: `custom/main`
+
+### Summary
+
+完成按模型转发分组功能与五类 Review 修正；仅提交本功能，干净检出的 Go 定向、前端类型检查及 74 项测试通过，合并到本地 custom/main。原工作区其他未提交内容保留；生产未改动，未推送远端。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c9335e5358df44d026ae597aaf680bae6e6c4da2` | (see git log) |
+| `c387b6d8ac2df8134090a3f8e95e32f5151016cd` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
