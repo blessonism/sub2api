@@ -136,6 +136,39 @@ func TestModelIQProbeResultRoundTrip(t *testing.T) {
 	require.Equal(t, "gpt-5.1", remaining[0].Model)
 }
 
+func TestModelIQProbeUserHistoryIntegration(t *testing.T) {
+	ctx := context.Background()
+	repo := NewModelIQProbeRepository(integrationEntClient, integrationDB)
+	model := "history-integration-gpt"
+	now := time.Now()
+	pass := service.ModelIQProbeStatusPass
+	fixtures := []*service.ModelIQProbeResult{
+		{AccountID: int64Ptr(101), Model: model, Status: "pass", ExpectedAnswer: "21", CreatedAt: now.Add(-time.Hour)},
+		{AccountID: int64Ptr(101), Model: model, Status: "wrong_answer", OverrideStatus: &pass, ExpectedAnswer: "21", CreatedAt: now.Add(-2 * time.Hour)},
+		{AccountID: int64Ptr(101), Model: model, Status: "error", ExpectedAnswer: "21", CreatedAt: now.Add(-3 * time.Hour)},
+		{AccountID: int64Ptr(102), Model: model, Status: "wrong_answer", ExpectedAnswer: "21", CreatedAt: now.Add(-time.Hour)},
+		{AccountID: int64Ptr(101), Model: model, Status: "wrong_answer", ExpectedAnswer: "21", CreatedAt: now.Add(-48 * time.Hour)},
+	}
+	for _, row := range fixtures {
+		require.NoError(t, repo.Insert(ctx, row))
+	}
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM model_iq_probe_results WHERE model = $1", model)
+	})
+	rows, counts, total, err := repo.ListUserHistory(ctx, model, []int64{101}, now.Add(-24*time.Hour), "pass", 1, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, counts.Pass)
+	require.Zero(t, counts.WrongAnswer)
+	require.EqualValues(t, 1, counts.Error)
+	require.EqualValues(t, 2, total)
+	require.Len(t, rows, 1)
+	require.Equal(t, fixtures[0].ID, rows[0].ID)
+	rows, _, _, err = repo.ListUserHistory(ctx, model, []int64{101}, now.Add(-24*time.Hour), "pass", 2, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, fixtures[1].ID, rows[0].ID)
+}
+
 func int64Ptr(v int64) *int64 {
 	return &v
 }

@@ -2,6 +2,7 @@
 // 访问 /preview.html 使用；属开发辅助文件，不进主构建、不提交。
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import i18n, { initI18n } from '@/i18n'
 import PreviewRoot from './PreviewRoot.vue'
 import { installPreviewMockBackend } from './mockBackend'
@@ -17,6 +18,7 @@ async function bootstrap() {
   )
   const app = createApp(PreviewRoot)
   app.use(createPinia())
+  app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] }))
   await initI18n()
   app.use(i18n)
   app.mount('#app')

@@ -24,7 +24,7 @@
         >
           <!-- Header -->
           <div class="modal-header">
-            <h3 :id="dialogId" class="modal-title">
+            <h3 :id="dialogId" class="modal-title min-w-0 break-words">
               {{ title }}
             </h3>
             <button

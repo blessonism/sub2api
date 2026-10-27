@@ -281,6 +281,15 @@ export function installPreviewMockBackend() {
       return envelope({ answer: pick.actual_answer })
     }
     if (method === 'get' && url === '/channel-monitors/iq-probe') return envelope(userSummary())
+    if (method === 'get' && url === '/channel-monitors/iq-probe/history') {
+      const since = Date.now() - Number(params.hours ?? 168) * 3_600_000
+      const inRange = sortedRows().filter((row) => row.model === params.model && new Date(row.created_at).getTime() >= since)
+      const counts = { pass: 0, wrong_answer: 0, error: 0 }
+      for (const row of inRange) counts[effectiveStatus(row) as keyof typeof counts]++
+      const filtered = params.status ? inRange.filter((row) => effectiveStatus(row) === params.status) : inRange
+      const page = Math.max(1, Number(params.page ?? 1))
+      return envelope({ counts, total: filtered.length, items: filtered.slice((page - 1) * 20, page * 20).map((row) => ({ id: row.id, status: effectiveStatus(row), checked_at: row.created_at, answer: effectiveStatus(row) === 'error' ? '' : row.actual_answer, marked_for_exclusion: fakeConfig.show_exclusion && effectiveStatus(row) === 'wrong_answer' })) })
+    }
 
     // 其余请求一律返回空成功，避免预览页弹错误 toast。
     return envelope(null)

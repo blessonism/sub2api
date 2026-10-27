@@ -161,6 +161,7 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/gpt-intelligence", h.ChannelMonitor.GetGptIntelligence)
 			monitors.GET("/iq-probe", h.ModelIQProbe.GetSummary)
+			monitors.GET("/iq-probe/history", h.ModelIQProbe.GetHistory)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
 

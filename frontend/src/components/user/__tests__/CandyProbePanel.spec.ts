@@ -65,6 +65,15 @@ const items: ModelIqProbeSummaryItem[] = [
 ]
 
 describe('CandyProbePanel', () => {
+  it('opens history for the model whose timeline button was clicked', async () => {
+    const wrapper = mount(CandyProbePanel, { props: { items }, global: { stubs: { CandyProbeHistoryDrawer: { props: ['model'], template: '<div class="history-target">{{ model }}</div>' } } } })
+    const buttons = wrapper.findAll('button').filter((button) => button.text().includes('channelStatus.candyProbe.viewHistory'))
+    expect(buttons).toHaveLength(3)
+    await buttons[1].trigger('click')
+    expect(wrapper.find('.history-target').text()).toBe('gpt-5.1')
+    wrapper.unmount()
+  })
+
   it('renders one card per model with verdict badge and answer excerpt', () => {
     const wrapper = mount(CandyProbePanel, { props: { items } })
     const text = wrapper.text()

@@ -193,6 +193,42 @@ func (r *modelIQProbeRepository) ListForSummary(ctx context.Context, targets []s
 	return results, rows.Err()
 }
 
+func (r *modelIQProbeRepository) ListUserHistory(ctx context.Context, model string, accountIDs []int64, since time.Time, status string, page, pageSize int) ([]*service.ModelIQProbeResult, service.ModelIQProbeHistoryCounts, int64, error) {
+	counts := service.ModelIQProbeHistoryCounts{}
+	args := []any{model, pq.Array(accountIDs), since}
+	where := "model = $1 AND account_id = ANY($2) AND created_at >= $3"
+	countQuery := `SELECT COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'pass'),
+		COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'wrong_answer'),
+		COUNT(*) FILTER (WHERE COALESCE(override_status, status) = 'error') FROM model_iq_probe_results WHERE ` + where
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&counts.Pass, &counts.WrongAnswer, &counts.Error); err != nil {
+		return nil, counts, 0, err
+	}
+	if status != "" {
+		args = append(args, status)
+		where += " AND COALESCE(override_status, status) = $4"
+	}
+	var total int64
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM model_iq_probe_results WHERE "+where, args...).Scan(&total); err != nil {
+		return nil, counts, 0, err
+	}
+	args = append(args, pageSize, (page-1)*pageSize)
+	query := "SELECT " + modelIQProbeSelectColumns + " FROM model_iq_probe_results WHERE " + where + fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, counts, 0, err
+	}
+	defer rows.Close()
+	items := []*service.ModelIQProbeResult{}
+	for rows.Next() {
+		item, err := scanModelIQProbeResult(rows)
+		if err != nil {
+			return nil, counts, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, counts, total, rows.Err()
+}
+
 // OverrideStatus 人工改判；status 为 nil 时清除改判恢复自动判定。
 // actualAnswer 非 nil 时同步改写回答原文（nil 保持不变）。
 func (r *modelIQProbeRepository) OverrideStatus(ctx context.Context, id int64, status *string, actualAnswer *string) error {

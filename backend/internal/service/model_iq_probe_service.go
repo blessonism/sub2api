@@ -74,7 +74,7 @@ var (
 		"MODEL_IQ_UNAVAILABLE",
 		"model IQ probe is not available",
 	)
-	ErrModelIQProbeDisabled = infraerrors.BadRequest("MODEL_IQ_DISABLED", "model IQ probe is disabled")
+	ErrModelIQProbeDisabled     = infraerrors.BadRequest("MODEL_IQ_DISABLED", "model IQ probe is disabled")
 	ErrModelIQProbeNoPassAnswer = infraerrors.NotFound(
 		"MODEL_IQ_NO_PASS_ANSWER",
 		"no passing probe answer is available for replacement",
@@ -246,6 +246,7 @@ type ModelIQProbeRepository interface {
 	ListRecent(ctx context.Context, limit int) ([]*ModelIQProbeResult, error)
 	ListSummaryModels(ctx context.Context, accountIDs []int64) ([]string, error)
 	ListForSummary(ctx context.Context, targets []ModelIQProbeTargetRef, recentPerModel int) ([]*ModelIQProbeResult, error)
+	ListUserHistory(ctx context.Context, model string, accountIDs []int64, since time.Time, status string, page, pageSize int) ([]*ModelIQProbeResult, ModelIQProbeHistoryCounts, int64, error)
 	GetByID(ctx context.Context, id int64) (*ModelIQProbeResult, error)
 	RandomPassAnswer(ctx context.Context, model string, excludeID int64) (string, bool, error)
 	OverrideStatus(ctx context.Context, id int64, status *string, actualAnswer *string) error
@@ -268,6 +269,26 @@ type ModelIQProbeUserSummary struct {
 	Model  string                    `json:"model"`
 	Latest *ModelIQProbeUserLatest   `json:"latest"`
 	Recent []ModelIQProbeStatusPoint `json:"recent"`
+}
+
+type ModelIQProbeHistoryCounts struct {
+	Pass        int64 `json:"pass"`
+	WrongAnswer int64 `json:"wrong_answer"`
+	Error       int64 `json:"error"`
+}
+
+type ModelIQProbeHistoryItem struct {
+	ID                 int64     `json:"id"`
+	Status             string    `json:"status"`
+	CheckedAt          time.Time `json:"checked_at"`
+	Answer             string    `json:"answer,omitempty"`
+	MarkedForExclusion bool      `json:"marked_for_exclusion,omitempty"`
+}
+
+type ModelIQProbeUserHistory struct {
+	Items  []ModelIQProbeHistoryItem `json:"items"`
+	Counts ModelIQProbeHistoryCounts `json:"counts"`
+	Total  int64                     `json:"total"`
 }
 
 // ModelIQProbeUserLatest 当前汇总状态及对应代表记录的回答摘要。
@@ -731,6 +752,71 @@ func (s *ModelIQProbeService) UserSummary(ctx context.Context, isAdmin bool) ([]
 		}
 	}
 	return items, nil
+}
+
+// UserHistory 使用与概览相同的可见性和目标范围，只返回用户可见字段。
+func (s *ModelIQProbeService) UserHistory(ctx context.Context, isAdmin bool, model string, hours, page int, status string) (*ModelIQProbeUserHistory, error) {
+	result := &ModelIQProbeUserHistory{Items: []ModelIQProbeHistoryItem{}}
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled || s.repo == nil || (!isAdmin && cfg.Visibility != ModelIQProbeVisibilityAllUsers) {
+		return result, nil
+	}
+	accounts, err := s.listProbeAccounts(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	models := cfg.Models
+	if len(models) == 0 {
+		ids := make([]int64, 0, len(accounts))
+		for _, account := range accounts {
+			ids = append(ids, account.ID)
+		}
+		models, err = s.repo.ListSummaryModels(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !slices.Contains(models, model) {
+		return result, nil
+	}
+	ids := []int64{}
+	for _, target := range selectModelIQProbeTargets(accounts, []string{model}, cfg.TargetMode) {
+		ids = append(ids, target.account.ID)
+	}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	green := !isAdmin && cfg.UserDisplayMode == ModelIQProbeDisplayAlwaysGreen
+	queryStatus := status
+	if green {
+		queryStatus = ""
+	}
+	rows, counts, total, err := s.repo.ListUserHistory(ctx, model, ids, time.Now().Add(-time.Duration(hours)*time.Hour), queryStatus, page, 20)
+	if err != nil {
+		return nil, err
+	}
+	if green {
+		counts.Pass += counts.WrongAnswer + counts.Error
+		counts.WrongAnswer, counts.Error = 0, 0
+		if status != "" && status != ModelIQProbeStatusPass {
+			rows, total = nil, 0
+		}
+	}
+	result.Counts, result.Total = counts, total
+	for _, row := range rows {
+		item := ModelIQProbeHistoryItem{ID: row.ID, Status: row.ResolveEffectiveStatus(), CheckedAt: row.CreatedAt}
+		item.MarkedForExclusion = cfg.ShowExclusion && item.Status == ModelIQProbeStatusWrongAnswer
+		if green {
+			item.Status = ModelIQProbeStatusPass
+		} else if item.Status != ModelIQProbeStatusError {
+			item.Answer = row.ActualAnswer
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result, nil
 }
 
 // userSummaryFromRows 把按 created_at desc 排序的结果行按模型聚合成用户端视图。

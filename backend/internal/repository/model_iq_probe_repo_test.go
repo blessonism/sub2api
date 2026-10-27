@@ -57,6 +57,26 @@ func TestModelIQProbeSummaryModelsAndEmptyTargets(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestModelIQProbeUserHistoryScopesCountsAndPages(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := &modelIQProbeRepository{db: db}
+	since := time.Now().Add(-24 * time.Hour)
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FILTER`).WithArgs("gpt-5.4", `{42}`, since).WillReturnRows(sqlmock.NewRows([]string{"pass", "wrong", "error"}).AddRow(2, 1, 1))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM model_iq_probe_results WHERE .*COALESCE\(override_status, status\) = \$4`).WithArgs("gpt-5.4", `{42}`, since, "wrong_answer").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	columns := []string{"id", "account_id", "account_name", "model", "protocol", "status", "override_status", "error_category", "error_message", "expected_answer", "actual_answer", "latency_ms", "input_tokens", "output_tokens", "cache_read_tokens", "created_at"}
+	mock.ExpectQuery(`SELECT id, account_id, account_name, model, protocol, status`).WithArgs("gpt-5.4", `{42}`, since, "wrong_answer", 20, 20).WillReturnRows(sqlmock.NewRows(columns).AddRow(7, 42, "private", "gpt-5.4", "", "pass", "wrong_answer", "", "", "21", "20", 100, nil, nil, nil, time.Now()))
+	rows, counts, total, err := repo.ListUserHistory(context.Background(), "gpt-5.4", []int64{42}, since, "wrong_answer", 2, 20)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, counts.Pass)
+	require.EqualValues(t, 1, counts.WrongAnswer)
+	require.EqualValues(t, 1, counts.Error)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, "wrong_answer", rows[0].ResolveEffectiveStatus())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestModelIQProbeGetByID(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

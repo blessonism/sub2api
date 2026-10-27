@@ -116,6 +116,7 @@
           </div>
           <!-- 常显计数徽标：不依赖 hover 或颜色语义，直接告诉用户红色事件已被管理端处理。
                与底部 streak 徽章同构（琥珀色变体），保持卡片徽章语言统一。 -->
+          <div class="flex flex-wrap items-center gap-2">
           <span
             v-if="excludedCount(item) > 0"
             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
@@ -123,6 +124,10 @@
             <Icon name="check" size="xs" />
             <span class="tabular-nums">{{ t('channelStatus.candyProbe.excludedCountChip', { n: excludedCount(item) }) }}</span>
           </span>
+          <button type="button" class="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-primary-400" @click="historyModel = item.model">
+            {{ t('channelStatus.candyProbe.viewHistory') }} <Icon name="arrowRight" size="xs" />
+          </button>
+          </div>
         </div>
         <div
           class="grid h-4 w-full min-w-0 items-end gap-[2px]"
@@ -169,6 +174,7 @@
         </div>
       </div>
     </div>
+    <CandyProbeHistoryDrawer :model="historyModel" @close="historyModel = null" />
   </section>
 </template>
 
@@ -180,6 +186,7 @@ import { marked } from 'marked'
 import type { ModelIqProbeStatus, ModelIqProbeStatusPoint, ModelIqProbeSummaryItem } from '@/api/modelIqProbe'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import Icon from '@/components/icons/Icon.vue'
+import CandyProbeHistoryDrawer from './CandyProbeHistoryDrawer.vue'
 
 marked.setOptions({
   breaks: true,
@@ -193,6 +200,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const historyModel = ref<string | null>(null)
 const { formatRelativeTime } = useChannelMonitorFormat()
 
 // 环形仪表：r=20 的圆周长，dashoffset 按正常率偏移。

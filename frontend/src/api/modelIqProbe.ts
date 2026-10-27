@@ -31,6 +31,17 @@ export interface ModelIqProbeSummary {
   items: ModelIqProbeSummaryItem[]
 }
 
+export interface ModelIqProbeHistory {
+  items: Array<{ id: number; status: ModelIqProbeStatus; checked_at: string; answer?: string; marked_for_exclusion?: boolean }>
+  counts: { pass: number; wrong_answer: number; error: number }
+  total: number
+}
+
+export async function fetchModelIqProbeHistory(params: { model: string; hours: number; status: string; page: number }, signal?: AbortSignal): Promise<ModelIqProbeHistory> {
+  const { data } = await apiClient.get<ModelIqProbeHistory>('/channel-monitors/iq-probe/history', { params, signal })
+  return data
+}
+
 interface FetchOptions {
   signal?: AbortSignal
   timeoutMs?: number
