@@ -367,3 +367,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 对话历史完整拆除与 Review
+
+**Date**: 2026-11-05
+**Task**: 对话历史完整拆除与 Review
+**Branch**: `fix/remove-conversation-history`
+
+### Summary
+
+分两阶段提交对话历史拆除与专属数据清理。保留网关、计费、断连结算和共享函数，移除后台入口并重新生成 Ent/Wire。Review 通过，8 个后端包与前端 143 项测试通过，数据库和对象存储隔离演练记录已归档。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `16f596878f36397ae4350145c062a935a600a1b2` | (see git log) |
+| `4d421688a9bc79b188b8332f8f935388de9c50cf` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
