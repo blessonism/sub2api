@@ -83,7 +83,7 @@ func TestModelGroupRoutesHTTPActualForwardAndUsage(t *testing.T) {
 			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 			t.Cleanup(billing.Stop)
 			gateway := service.NewOpenAIGatewayService(accounts, logs, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
-			h := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(nil), billing, service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, nil, cfg)
+			h := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(nil), billing, service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
 			admission := &GatewayHandler{modelGroupRoutes: service.NewModelGroupRouteResolver(groups, gateway)}
 			router := gin.New()
 			router.Use(func(c *gin.Context) {

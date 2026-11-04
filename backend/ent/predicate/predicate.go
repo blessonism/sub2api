@@ -57,15 +57,6 @@ type ChannelMonitorRequestTemplate func(*sql.Selector)
 // CompositeModelRoute is the predicate function for compositemodelroute builders.
 type CompositeModelRoute func(*sql.Selector)
 
-// ConversationExportJob is the predicate function for conversationexportjob builders.
-type ConversationExportJob func(*sql.Selector)
-
-// ConversationSession is the predicate function for conversationsession builders.
-type ConversationSession func(*sql.Selector)
-
-// ConversationTurn is the predicate function for conversationturn builders.
-type ConversationTurn func(*sql.Selector)
-
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 

@@ -103,7 +103,6 @@ var ProviderSet = wire.NewSet(
 	NewUpstreamRelayRepository,
 	NewErrorPassthroughRepository,
 	NewTLSFingerprintProfileRepository,
-	NewConversationCaptureRepository,
 	NewPluginRepository,
 	NewPluginKVStore,
 	NewChannelRepository,

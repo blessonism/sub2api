@@ -52,7 +52,6 @@ func ProvideAdminHandlers(
 	complianceHandler *admin.ComplianceHandler,
 	tokenUsagePolicyHandler *admin.TokenUsagePolicyHandler,
 	upstreamRelayMonitoringHandler *admin.UpstreamRelayGroupMonitoringHandler,
-	conversationHandler *admin.ConversationHandler,
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
@@ -107,7 +106,6 @@ func ProvideAdminHandlers(
 		Compliance:              complianceHandler,
 		TokenUsagePolicy:        tokenUsagePolicyHandler,
 		UpstreamRelayMonitoring: upstreamRelayMonitoringHandler,
-		Conversation:            conversationHandler,
 		AuditLog:                auditLogHandler,
 	}
 }
@@ -148,7 +146,6 @@ func ProvideOpenAIGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
-	conversationCaptureService *service.ConversationCaptureService,
 	opsService *service.OpsService,
 	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
@@ -157,7 +154,7 @@ func ProvideOpenAIGatewayHandler(
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
-		usageRecordWorkerPool, errorPassthroughService, contentModerationService, conversationCaptureService, opsService, cfg)
+		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
@@ -350,7 +347,6 @@ var ProviderSet = wire.NewSet(
 	admin.NewComplianceHandler,
 	admin.NewTokenUsagePolicyHandler,
 	ProvideUpstreamRelayGroupMonitoringHandler,
-	admin.NewConversationHandler,
 	admin.NewAuditLogHandler,
 
 	// AdminHandlers and Handlers constructors

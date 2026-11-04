@@ -911,12 +911,6 @@ func ProvideSubscriptionService(
 	return svc
 }
 
-func ProvideConversationCaptureCleanupService(capture *ConversationCaptureService) *ConversationCaptureCleanupService {
-	svc := NewConversationCaptureCleanupService(capture)
-	svc.Start()
-	return svc
-}
-
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -1008,10 +1002,6 @@ var ProviderSet = wire.NewSet(
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
-	NewConversationCaptureWorkerPool,
-	NewConversationExportWorkerPool,
-	ProvideConversationCaptureService,
-	ProvideConversationCaptureCleanupService,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,

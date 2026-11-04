@@ -48,12 +48,6 @@ type Tx struct {
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
 	CompositeModelRoute *CompositeModelRouteClient
-	// ConversationExportJob is the client for interacting with the ConversationExportJob builders.
-	ConversationExportJob *ConversationExportJobClient
-	// ConversationSession is the client for interacting with the ConversationSession builders.
-	ConversationSession *ConversationSessionClient
-	// ConversationTurn is the client for interacting with the ConversationTurn builders.
-	ConversationTurn *ConversationTurnClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -252,9 +246,6 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
-	tx.ConversationExportJob = NewConversationExportJobClient(tx.config)
-	tx.ConversationSession = NewConversationSessionClient(tx.config)
-	tx.ConversationTurn = NewConversationTurnClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)

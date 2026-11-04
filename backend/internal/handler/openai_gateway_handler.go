@@ -44,7 +44,6 @@ type OpenAIGatewayHandler struct {
 	usageRecordWorkerPool      *service.UsageRecordWorkerPool
 	errorPassthroughService    *service.ErrorPassthroughService
 	contentModerationService   *service.ContentModerationService
-	conversationCaptureService *service.ConversationCaptureService
 	securityAuditCoordinator   *securityaudit.Coordinator
 	grokMediaEligibilityProber grokMediaEligibilityProber
 	opsService                 *service.OpsService
@@ -361,7 +360,6 @@ func NewOpenAIGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
-	conversationCaptureService *service.ConversationCaptureService,
 	opsService *service.OpsService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
@@ -374,18 +372,17 @@ func NewOpenAIGatewayHandler(
 		}
 	}
 	return &OpenAIGatewayHandler{
-		gatewayService:             gatewayService,
-		billingCacheService:        billingCacheService,
-		apiKeyService:              apiKeyService,
-		usageRecordWorkerPool:      usageRecordWorkerPool,
-		errorPassthroughService:    errorPassthroughService,
-		contentModerationService:   contentModerationService,
-		conversationCaptureService: conversationCaptureService,
-		opsService:                 opsService,
-		concurrencyHelper:          NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		imageLimiter:               &imageConcurrencyLimiter{},
-		maxAccountSwitches:         maxAccountSwitches,
-		cfg:                        cfg,
+		gatewayService:           gatewayService,
+		billingCacheService:      billingCacheService,
+		apiKeyService:            apiKeyService,
+		usageRecordWorkerPool:    usageRecordWorkerPool,
+		errorPassthroughService:  errorPassthroughService,
+		contentModerationService: contentModerationService,
+		opsService:               opsService,
+		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		imageLimiter:             &imageConcurrencyLimiter{},
+		maxAccountSwitches:       maxAccountSwitches,
+		cfg:                      cfg,
 	}
 }
 
@@ -846,12 +843,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			conversationID := strings.TrimSpace(c.GetHeader("X-Conversation-ID"))
-			clientRequestID := clientRequestIDFromContext(c.Request.Context())
-			var captureState *conversationCaptureState
-			if value, ok := c.Get(conversationCaptureStateKey); ok {
-				captureState, _ = value.(*conversationCaptureState)
-			}
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
@@ -881,28 +872,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 					).Error("openai.record_usage_failed", zap.Error(err))
 					return
-				}
-				if !cyberBlocked {
-					publishConversationCaptureMetaToState(captureState, service.ConversationCaptureMeta{
-						RequestID:          firstNonEmptyString(res.RequestID, clientRequestID),
-						UpstreamRequestID:  res.RequestID,
-						ClientRequestID:    clientRequestID,
-						ConversationID:     conversationID,
-						ResponseID:         res.ResponseID,
-						PreviousResponseID: previousResponseID,
-						EndpointKind:       service.ConversationCaptureEndpointResponses,
-						UserID:             subject.UserID,
-						APIKeyID:           apiKey.ID,
-						AccountID:          account.ID,
-						Model:              reqModel,
-						UpstreamModel:      res.UpstreamModel,
-						RequestPath:        inboundEndpoint,
-						Stream:             reqStream,
-						Usage:              res.Usage,
-						ActualCost:         res.ActualCost,
-						RequestBody:        append([]byte(nil), body...),
-						ClientDisconnect:   res.ClientDisconnect,
-					})
 				}
 			})
 		}

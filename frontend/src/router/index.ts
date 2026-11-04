@@ -477,29 +477,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/conversations',
-    name: 'AdminConversations',
-    component: () => import('@/views/admin/ConversationHistoryView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Conversation History',
-      titleKey: 'admin.conversations.title',
-      descriptionKey: 'admin.conversations.description'
-    }
-  },
-  {
-    path: '/admin/conversations/:id',
-    name: 'AdminConversationDetail',
-    component: () => import('@/views/admin/ConversationDetailView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Conversation Detail',
-      titleKey: 'admin.conversations.detailTitle',
-    }
-  },
-  {
     path: '/admin/upstream-relay-group-monitoring',
     name: 'AdminUpstreamRelayGroupMonitoring',
     component: () => import('@/views/admin/UpstreamRelayGroupMonitoringView.vue'),

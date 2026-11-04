@@ -456,6 +456,15 @@ func (h *GroupHandler) List(c *gin.Context) {
 	response.Paginated(c, outGroups, total, page, pageSize)
 }
 
+func parsePositiveIDParam(c *gin.Context, name string) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param(name), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid "+name)
+		return 0, false
+	}
+	return id, true
+}
+
 // ListCompositeRoutes handles listing composite model routes for one group.
 // GET /api/v1/admin/groups/:id/composite-routes
 func (h *GroupHandler) ListCompositeRoutes(c *gin.Context) {

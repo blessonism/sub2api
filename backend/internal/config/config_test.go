@@ -31,19 +31,16 @@ func TestLoadDefaultModelsListReadMaxBytes(t *testing.T) {
 	require.Equal(t, DefaultModelsListReadMaxBytes, cfg.Gateway.ModelsListReadMaxBytes)
 }
 
-func TestLoadConversationCaptureSubjectIDsFromEnv(t *testing.T) {
+func TestLoadIgnoresRetiredConversationCaptureConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
-	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_INCLUDED_USER_IDS", "11,12")
-	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_INCLUDED_API_KEY_IDS", "21,22")
-	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_EXCLUDED_USER_IDS", "31,32")
-	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_EXCLUDED_API_KEY_IDS", "41,42")
-
+	viper.Set("gateway.conversation_capture", map[string]any{
+		"enabled":           true,
+		"included_user_ids": []int64{11, 12},
+	})
+	t.Setenv("GATEWAY_CONVERSATION_CAPTURE_ENABLED", "true")
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, []int64{11, 12}, cfg.Gateway.ConversationCapture.IncludedUserIDs)
-	require.Equal(t, []int64{21, 22}, cfg.Gateway.ConversationCapture.IncludedAPIKeyIDs)
-	require.Equal(t, []int64{31, 32}, cfg.Gateway.ConversationCapture.ExcludedUserIDs)
-	require.Equal(t, []int64{41, 42}, cfg.Gateway.ConversationCapture.ExcludedAPIKeyIDs)
+	require.Positive(t, cfg.Gateway.MaxBodySize)
 }
 
 func TestLoadDefaultMinOutputTokens(t *testing.T) {

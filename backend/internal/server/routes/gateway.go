@@ -229,10 +229,6 @@ func RegisterGatewayRoutes(
 		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.ResponsesWithConversationCapture(c)
-				return
-			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -240,10 +236,6 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.ResponsesWithConversationCapture(c)
-				return
-			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -256,10 +248,6 @@ func RegisterGatewayRoutes(
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformOpenAI {
-				h.OpenAIGateway.ChatCompletionsWithConversationCapture(c)
-				return
-			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
@@ -388,10 +376,6 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformOpenAI {
-			h.OpenAIGateway.ResponsesWithConversationCapture(c)
-			return
-		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.Responses(c)
 			return
@@ -430,10 +414,6 @@ func RegisterGatewayRoutes(
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformOpenAI {
-			h.OpenAIGateway.ChatCompletionsWithConversationCapture(c)
-			return
-		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.ChatCompletions(c)
 			return

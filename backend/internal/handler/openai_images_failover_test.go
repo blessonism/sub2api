@@ -151,7 +151,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
 		nil,
 		nil,
-		nil, nil,
+		nil,
 		nil,
 		cfg,
 	)

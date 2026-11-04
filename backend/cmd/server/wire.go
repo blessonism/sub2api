@@ -114,9 +114,6 @@ func provideCleanup(
 	announcementEmailWorker *service.AnnouncementEmailWorker,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
-	conversationCaptureWorkerPool *service.ConversationCaptureWorkerPool,
-	conversationExportWorkerPool *service.ConversationExportWorkerPool,
-	conversationCaptureCleanup *service.ConversationCaptureCleanupService,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -340,24 +337,6 @@ func provideCleanup(
 			{"UsageRecordWorkerPool", func() error {
 				if usageRecordWorkerPool != nil {
 					usageRecordWorkerPool.Stop()
-				}
-				return nil
-			}},
-			{"ConversationCaptureWorkerPool", func() error {
-				if conversationCaptureWorkerPool != nil {
-					conversationCaptureWorkerPool.Stop()
-				}
-				return nil
-			}},
-			{"ConversationExportWorkerPool", func() error {
-				if conversationExportWorkerPool != nil {
-					conversationExportWorkerPool.Stop()
-				}
-				return nil
-			}},
-			{"ConversationCaptureCleanupService", func() error {
-				if conversationCaptureCleanup != nil {
-					conversationCaptureCleanup.Stop()
 				}
 				return nil
 			}},

@@ -48,7 +48,6 @@ type AdminHandlers struct {
 	Compliance              *admin.ComplianceHandler
 	TokenUsagePolicy        *admin.TokenUsagePolicyHandler
 	UpstreamRelayMonitoring *admin.UpstreamRelayGroupMonitoringHandler
-	Conversation            *admin.ConversationHandler
 	AuditLog                *admin.AuditLogHandler
 }
 

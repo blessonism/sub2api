@@ -292,12 +292,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			conversationID := strings.TrimSpace(c.GetHeader("X-Conversation-ID"))
-			clientRequestID := clientRequestIDFromContext(c.Request.Context())
-			var captureState *conversationCaptureState
-			if value, ok := c.Get(conversationCaptureStateKey); ok {
-				captureState, _ = value.(*conversationCaptureState)
-			}
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
@@ -325,25 +319,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 					).Error("openai_chat_completions.record_usage_failed", zap.Error(err))
 					return
-				}
-				if !cyberBlocked {
-					publishConversationCaptureMetaToState(captureState, service.ConversationCaptureMeta{
-						RequestID:         firstNonEmptyString(res.RequestID, clientRequestID),
-						UpstreamRequestID: res.RequestID,
-						ClientRequestID:   clientRequestID,
-						ConversationID:    conversationID,
-						UserID:            subject.UserID,
-						APIKeyID:          apiKey.ID,
-						AccountID:         account.ID,
-						Model:             reqModel,
-						UpstreamModel:     res.UpstreamModel,
-						RequestPath:       inboundEndpoint,
-						Stream:            reqStream,
-						Usage:             res.Usage,
-						ActualCost:        res.ActualCost,
-						RequestBody:       append([]byte(nil), body...),
-						ClientDisconnect:  res.ClientDisconnect,
-					})
 				}
 			})
 		}
@@ -470,13 +445,4 @@ func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account, res
 		return EndpointChatCompletions
 	}
 	return GetUpstreamEndpoint(c, account.Platform)
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }

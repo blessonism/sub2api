@@ -111,7 +111,7 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
 		nil,
 		nil,
-		nil, nil,
+		nil,
 		nil,
 		cfg,
 	)

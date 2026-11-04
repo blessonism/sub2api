@@ -550,9 +550,6 @@ const (
 
 	TokenLeaderboardTierTooltipMaxLength = 500
 
-	// SettingKeyConversationCaptureConfig stores JSON config for OpenAI conversation capture.
-	SettingKeyConversationCaptureConfig = "conversation_capture_config"
-
 	// SettingKeySubscriptionEnabled is a DB-backed soft switch for the user-facing
 	// subscription surface: sidebar entries, purchase-page subscription tab, header
 	// progress badge, usage billing-type filter and the /subscriptions route. When

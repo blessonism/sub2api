@@ -29,9 +29,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/conversationexportjob"
-	"github.com/Wei-Shaw/sub2api/ent/conversationsession"
-	"github.com/Wei-Shaw/sub2api/ent/conversationturn"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -134,9 +131,6 @@ func checkColumn(t, c string) error {
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,
 			channelmonitorrequesttemplate.Table: channelmonitorrequesttemplate.ValidColumn,
 			compositemodelroute.Table:           compositemodelroute.ValidColumn,
-			conversationexportjob.Table:         conversationexportjob.ValidColumn,
-			conversationsession.Table:           conversationsession.ValidColumn,
-			conversationturn.Table:              conversationturn.ValidColumn,
 			errorpassthroughrule.Table:          errorpassthroughrule.ValidColumn,
 			group.Table:                         group.ValidColumn,
 			idempotencyrecord.Table:             idempotencyrecord.ValidColumn,

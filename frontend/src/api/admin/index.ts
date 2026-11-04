@@ -36,7 +36,6 @@ import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import tokenUsagePoliciesAPI from './tokenUsagePolicies'
 import upstreamRelayGroupMonitorsAPI from './upstreamRelayGroupMonitors'
-import conversationsAPI from './conversations'
 import campaignsAPI from './campaigns'
 import lotteryCampaignsAPI from './lotteryCampaigns'
 import accountCollectionsAPI from './accountCollections'
@@ -82,7 +81,6 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   tokenUsagePolicies: tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitors: upstreamRelayGroupMonitorsAPI,
-  conversations: conversationsAPI,
   campaigns: campaignsAPI,
   lotteryCampaigns: lotteryCampaignsAPI,
   accountCollections: accountCollectionsAPI,
@@ -124,7 +122,6 @@ export {
   adminComplianceAPI,
   tokenUsagePoliciesAPI,
   upstreamRelayGroupMonitorsAPI,
-  conversationsAPI,
   campaignsAPI,
   lotteryCampaignsAPI,
   accountCollectionsAPI,
