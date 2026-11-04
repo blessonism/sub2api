@@ -1,0 +1,34 @@
+{
+  "id": "remove-conversation-history",
+  "name": "remove-conversation-history",
+  "title": "完整拆除对话历史功能",
+  "description": "本地分两阶段完整移除对话历史功能并验证备份、清理、恢复与真实网关计费",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "Edom",
+  "assignee": "Edom",
+  "createdAt": "2026-11-04",
+  "completedAt": "2026-11-05",
+  "branch": "fix/remove-conversation-history",
+  "base_branch": "custom/main",
+  "worktree_path": "/Users/suki/code/sub2api-remove-conversation-history",
+  "commit": "4d421688a9bc79b188b8332f8f935388de9c50cf",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "实现及本地验收完成，review 通过，应用拆除和专属数据清理已分别提交。提交哈希及验证边界见 verification.md。",
+  "meta": {
+    "quality_gate_passed": true,
+    "verification": "verification.md",
+    "commits": {
+      "phase1": "16f596878f36397ae4350145c062a935a600a1b2",
+      "phase2": "4d421688a9bc79b188b8332f8f935388de9c50cf"
+    },
+    "review_passed": true
+  }
+}
