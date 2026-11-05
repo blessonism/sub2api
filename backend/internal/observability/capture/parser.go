@@ -190,3 +190,24 @@ func jsonContentText(value any) string {
 		return ""
 	}
 }
+
+// textFromSSELine 从单行 SSE（data: {...} / event: ...）里抽正文片段。
+func textFromSSELine(line []byte) string {
+	trimmed := strings.TrimSpace(string(line))
+	if !strings.HasPrefix(trimmed, "data:") {
+		return ""
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return ""
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return ""
+	}
+	piece, ok := textFromEvent(event)
+	if !ok {
+		return ""
+	}
+	return piece
+}

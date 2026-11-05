@@ -182,3 +182,44 @@ func TestTruncateKeepsValidUTF8(t *testing.T) {
 		t.Fatal("被截断却没标记")
 	}
 }
+
+// TestIncrementalExtractionSurvivesLargePreamble 是这次线上问题的回归：
+// Responses 流的 response.created 前导可能几十 KB，正文 delta 排在后面；
+// 只靠末尾统一解析会在触发缓冲上限后永远抽不到正文。
+func TestIncrementalExtractionSurvivesLargePreamble(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8 * 1024})
+
+	// 4KB 前导，超过上限的一半但仍在小 buffer 内
+	rec.AppendResponse([]byte(`event: response.created` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.created","response":{"id":"resp_1","padding":"` +
+		strings.Repeat("x", 4096) + `"}}` + "\n"))
+
+	// 正文 delta 逐块到达，且故意从半行切开
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.delta","del`))
+	rec.AppendResponse([]byte(`ta":"你好，`))
+	rec.AppendResponse([]byte(`我是 assistant"}` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.delta","delta":"。"}` + "\n"))
+
+	if got := rec.ResponseText(); got != "你好，我是 assistant。" {
+		t.Fatalf("正文 = %q, want 你好，我是 assistant。", got)
+	}
+}
+
+// TestIncrementalExtractionHandlesChatSSE 覆盖 chat completions 增量。
+func TestIncrementalExtractionHandlesChatSSE(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 4096})
+	rec.AppendResponse([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"第一段\"}}]}\n"))
+	rec.AppendResponse([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"第二段\"}}]}\n"))
+	if got := rec.ResponseText(); got != "第一段第二段" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// TestJSONResponseStillParsed 覆盖非流式 JSON：没有 data: 行时走整体解析。
+func TestJSONResponseStillParsed(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8192})
+	rec.AppendResponse([]byte(`{"choices":[{"message":{"role":"assistant","content":"整体答案"}}]}`))
+	if got := rec.ResponseText(); got != "整体答案" {
+		t.Fatalf("got %q", got)
+	}
+}
