@@ -1,0 +1,122 @@
+name: langfuse
+
+x-langfuse-env: &langfuse-env
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+  NEXTAUTH_URL: ${LANGFUSE_PUBLIC_URL}
+  NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+  SALT: ${SALT}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_CONNECTION_STRING: redis://redis:6379
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${S3_BUCKET}
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: ${S3_REGION}
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${S3_ENDPOINT}
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "langfuse/events/"
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${S3_BUCKET}
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${S3_REGION}
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${S3_ENDPOINT}
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: "langfuse/media/"
+  LANGFUSE_DEFAULT_ORG_ID: "sub2api-org"
+  LANGFUSE_DEFAULT_ORG_NAME: "sub2api"
+  LANGFUSE_DEFAULT_PROJECT_ID: "sub2api-obs"
+  LANGFUSE_DEFAULT_PROJECT_NAME: "sub2api-observability"
+  LANGFUSE_INIT_ORG_ID: "sub2api-org"
+  LANGFUSE_INIT_ORG_NAME: "sub2api"
+  LANGFUSE_INIT_PROJECT_ID: "sub2api-obs"
+  LANGFUSE_INIT_PROJECT_NAME: "sub2api-observability"
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LF_PUBLIC_KEY}
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LF_SECRET_KEY}
+  LANGFUSE_INIT_USER_EMAIL: admin@sub2api.local
+  LANGFUSE_INIT_USER_NAME: admin
+  LANGFUSE_INIT_USER_PASSWORD: ${INIT_USER_PASSWORD}
+
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      # 只绑到 docker 网关，供同宿主上的反向代理访问；不对公网监听。
+      - "${LANGFUSE_BIND_IP}:3000:3000"
+    environment:
+      <<: *langfuse-env
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      <<: *langfuse-env
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - ch_data:/var/lib/clickhouse
+      - ch_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user clickhouse --password $${CLICKHOUSE_PASSWORD} --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pg_data:
+  ch_data:
+  ch_logs:

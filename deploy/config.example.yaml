@@ -1338,3 +1338,31 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# 外部观测层（Langfuse）。默认关闭：enabled=false 或地址/密钥缺失时整体 no-op，
+# 业务侧不建队列、不起 goroutine、零出网。
+# 配置不完整或地址非法时自动降级为 no-op，不会阻断服务启动。
+# 默认只承载元数据（userId/sessionId 检索键、用量、实扣费用、状态）。
+# capture_prompt / capture_response 打开后，才会额外上报提示词与响应正文。
+observability:
+  langfuse:
+    enabled: false
+    # Langfuse 基地址，不带 /api/public 路径（如 http://10.0.0.5:3000）
+    host: ""
+    # project 级 API 密钥，用于 Basic 认证
+    public_key: ""
+    secret_key: ""
+    # 业务侧投递队列容量，满即静默丢弃（不阻塞请求）
+    queue_size: 4096
+    # 单批调用条数上限（一条调用展开成 trace + generation 两条事件）
+    batch_size: 64
+    # 定时冲刷周期（秒）
+    flush_interval_seconds: 5
+    # 单次上报超时（秒）
+    timeout_seconds: 10
+    # 正文层开关：默认关闭。打开后请求提示词与响应 assistant 文本会进入观测层
+    # （Langfuse 的 input/output 字段），并随事件对象落到外部 S3。
+    capture_prompt: false
+    capture_response: false
+    # 单侧正文的字节上限，超出截断并在 metadata 打 *_truncated 标记
+    capture_max_bytes: 32768

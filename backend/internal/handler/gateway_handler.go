@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/observability/capture"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -162,6 +163,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+
+	// 正文采集：只在观测层开启 capture 时安装；未开启时不包 writer、零开销。
+	captureRec, restoreCapture := capture.Install(c, captureOptions(h.cfg))
+	defer restoreCapture()
+	captureRec.SetRequest(string(body))
 
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
@@ -2605,7 +2611,7 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 			).Error("gateway.usage_record_task_panic_recovered")
 		}
 	}()
-	task(ctx)
+	task(usageRecordContext(parent, ctx))
 }
 
 // submitMandatoryUsageRecordTask never silently drops billing work on pool overflow.

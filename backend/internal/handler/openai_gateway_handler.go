@@ -18,6 +18,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/observability/capture"
+	"github.com/Wei-Shaw/sub2api/internal/observability/langfuse"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -245,6 +247,23 @@ func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFu
 	}
 }
 
+// captureOptions 汇总正文采集开关。
+//
+// 观测层整体不可用时一律返回零值：否则会照样缓冲正文却送不出去，白占请求内存。
+// handler 拿到的 cfg 与 main 里的 cfg 不是同一个实例（wire 会再 Load 一次），
+// 因此不能只靠启动期改写兜底，这里以 langfuse.Active() 为准。
+func captureOptions(cfg *config.Config) capture.Options {
+	if cfg == nil || !langfuse.Active() {
+		return capture.Options{}
+	}
+	lf := cfg.Observability.Langfuse
+	return capture.Options{
+		Prompt:   lf.CapturePrompt,
+		Response: lf.CaptureResponse,
+		MaxBytes: lf.CaptureMaxBytes,
+	}
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -257,6 +276,11 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	}
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
+	}
+	// 正文采集器随计费任务一起转移：异步 worker 用的是新 base ctx，
+	// 不显式搬运的话观测层永远拿不到提示词与响应正文。
+	if rec := capture.From(parent); rec != nil {
+		base = capture.With(base, rec)
 	}
 	return base
 }
@@ -463,6 +487,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+
+	// 正文采集：只在观测层开启 capture 时安装；未开启时不包 writer、零开销。
+	// 请求体取客户端原始报文（sessionHashBody），不取归一化之后的版本，
+	// 保证观测层看到的是用户真正发来的内容。
+	captureRec, restoreCapture := capture.Install(c, captureOptions(h.cfg))
+	defer restoreCapture()
+	captureRec.SetRequest(string(sessionHashBody))
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -1222,6 +1253,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+
+	// 正文采集：只在观测层开启 capture 时安装；未开启时不包 writer、零开销。
+	captureRec, restoreCapture := capture.Install(c, captureOptions(h.cfg))
+	defer restoreCapture()
+	captureRec.SetRequest(string(body))
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
@@ -3512,7 +3548,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 			).Error("openai.usage_record_task_panic_recovered")
 		}
 	}()
-	task(ctx)
+	task(usageRecordContext(parent, ctx))
 }
 
 func (h *OpenAIGatewayHandler) submitOpenAIUsageRecordTask(parent context.Context, result *service.OpenAIForwardResult, task service.UsageRecordTask) {
@@ -3548,7 +3584,7 @@ func (h *OpenAIGatewayHandler) submitMandatoryUsageRecordTask(parent context.Con
 			).Error("openai.usage_record_task_panic_recovered")
 		}
 	}()
-	task(ctx)
+	task(usageRecordContext(parent, ctx))
 }
 
 func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, streamStarted bool) (func(), bool) {

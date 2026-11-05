@@ -106,6 +106,7 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Observability           ObservabilityConfig           `mapstructure:"observability"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
@@ -1466,6 +1467,75 @@ type GatewayUsageRecordConfig struct {
 	AutoScaleCooldownSeconds int `mapstructure:"auto_scale_cooldown_seconds"`
 }
 
+// maxObservabilityQueueWithCapture 是开启正文采集时的队列条数上限。
+const maxObservabilityQueueWithCapture = 1024
+
+// ObservabilityConfig 外部观测层配置。
+//
+// 默认关闭：enabled=false，或 host/公钥/私钥任一缺失时整体 no-op，
+// 业务侧不建队列、不起 goroutine、零出网。观测层只承载元数据
+// （检索键、用量、实扣费用、状态），不承载提示词正文——正文取证归
+// securityaudit 审查台，两侧不重复落正文。
+type ObservabilityConfig struct {
+	Langfuse LangfuseConfig `mapstructure:"langfuse"`
+}
+
+// LangfuseConfig 是 Langfuse ingestion 接入参数。
+type LangfuseConfig struct {
+	// Enabled 是观测上报总开关，默认 false。
+	Enabled bool `mapstructure:"enabled"`
+	// Host 是 Langfuse 基地址（如 http://10.0.0.5:3000），不含 /api/public 路径。
+	Host string `mapstructure:"host"`
+	// PublicKey / SecretKey 是 project 级 API 密钥，用于 Basic 认证。
+	PublicKey string `mapstructure:"public_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	// QueueSize 是业务侧投递队列容量，满即静默丢弃。
+	QueueSize int `mapstructure:"queue_size"`
+	// BatchSize 是单批调用条数上限（按调用计，一条调用展开成 2 条事件）。
+	BatchSize int `mapstructure:"batch_size"`
+	// FlushIntervalSeconds 是定时冲刷周期（秒）。
+	FlushIntervalSeconds int `mapstructure:"flush_interval_seconds"`
+	// TimeoutSeconds 是单次上报超时（秒）。
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+
+	// CapturePrompt 控制是否上报请求提示词正文，默认 false。
+	CapturePrompt bool `mapstructure:"capture_prompt"`
+	// CaptureResponse 控制是否上报响应 assistant 正文，默认 false。
+	CaptureResponse bool `mapstructure:"capture_response"`
+	// CaptureMaxBytes 是单侧正文的字节上限，超出即截断并打标记。
+	CaptureMaxBytes int `mapstructure:"capture_max_bytes"`
+}
+
+// Usable 报告观测上报是否具备全部装配条件。
+func (c LangfuseConfig) Usable() bool {
+	return c.Enabled && c.Host != "" && c.PublicKey != "" && c.SecretKey != ""
+}
+
+// validateObservability 只在显式开启时校验，默认关闭路径不受影响。
+func (c *Config) validateObservability() error {
+	lf := &c.Observability.Langfuse
+	if !lf.Enabled {
+		return nil
+	}
+	// 观测层是旁路能力：配置不完整或地址非法时降级为 no-op，绝不阻断启动。
+	// 一个观测配置的笔误不该让整个网关起不来。
+	if lf.Host == "" || lf.PublicKey == "" || lf.SecretKey == "" {
+		lf.Enabled = false
+		return nil
+	}
+	if err := ValidateAbsoluteHTTPURL(lf.Host); err != nil {
+		lf.Enabled = false
+		return nil
+	}
+	// 开了正文采集后，队列里每条记录会带最多 2×capture_max_bytes 的字符串，
+	// 按默认 32KB 计，queue_size=4096 的最坏驻留会到 256MB。
+	// 采集开启时把队列收紧，把最坏值压到 64MB 量级。
+	if (lf.CapturePrompt || lf.CaptureResponse) && lf.QueueSize > maxObservabilityQueueWithCapture {
+		lf.QueueSize = maxObservabilityQueueWithCapture
+	}
+	return nil
+}
+
 // TLSFingerprintConfig TLS指纹伪装配置
 // 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
 type TLSFingerprintConfig struct {
@@ -2597,6 +2667,22 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	// Observability（Langfuse）：默认关闭；关闭时不建队列、不起 goroutine、零出网。
+	viper.SetDefault("observability.langfuse.enabled", false)
+	// 空默认值也要注册：viper 只对已登记的 key 读环境变量，
+	// 缺一条就会让对应的环境变量被静默忽略。
+	viper.SetDefault("observability.langfuse.host", "")
+	viper.SetDefault("observability.langfuse.public_key", "")
+	viper.SetDefault("observability.langfuse.secret_key", "")
+	viper.SetDefault("observability.langfuse.queue_size", 4096)
+	viper.SetDefault("observability.langfuse.batch_size", 64)
+	viper.SetDefault("observability.langfuse.flush_interval_seconds", 5)
+	viper.SetDefault("observability.langfuse.timeout_seconds", 10)
+	// 正文采集默认关闭：只上报元数据时，观测层不含任何提示词内容。
+	viper.SetDefault("observability.langfuse.capture_prompt", false)
+	viper.SetDefault("observability.langfuse.capture_response", false)
+	viper.SetDefault("observability.langfuse.capture_max_bytes", 32768)
+
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
 	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)
@@ -2740,6 +2826,9 @@ func setEnvReachableDefaults() {
 func (c *Config) Validate() error {
 	if c.Gateway.MinOutputTokens < 16 {
 		return fmt.Errorf("gateway.min_output_tokens must be at least 16")
+	}
+	if err := c.validateObservability(); err != nil {
+		return err
 	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {

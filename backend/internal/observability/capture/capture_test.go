@@ -1,0 +1,184 @@
+package capture
+
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
+)
+
+func TestExtractOpenAIChatSSE(t *testing.T) {
+	raw := []byte(`data: {"choices":[{"delta":{"role":"assistant"}}]}
+
+data: {"choices":[{"delta":{"content":"你好"}}]}
+
+data: {"choices":[{"delta":{"content":"，世界"}}]}
+
+data: [DONE]
+`)
+	got, ok := ExtractAssistantText(raw)
+	if !ok || got != "你好，世界" {
+		t.Fatalf("got=%q ok=%v, want 你好，世界", got, ok)
+	}
+}
+
+func TestExtractOpenAIResponsesSSE(t *testing.T) {
+	raw := []byte(`event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"第一段"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"第二段"}
+`)
+	got, ok := ExtractAssistantText(raw)
+	if !ok || got != "第一段第二段" {
+		t.Fatalf("got=%q ok=%v", got, ok)
+	}
+}
+
+func TestExtractAnthropicSSE(t *testing.T) {
+	raw := []byte(`event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hel"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"lo"}}
+`)
+	got, ok := ExtractAssistantText(raw)
+	if !ok || got != "Hello" {
+		t.Fatalf("got=%q ok=%v", got, ok)
+	}
+}
+
+func TestExtractJSONVariants(t *testing.T) {
+	cases := map[string]struct {
+		raw  string
+		want string
+	}{
+		"openai chat": {`{"choices":[{"message":{"role":"assistant","content":"答案"}}]}`, "答案"},
+		"anthropic":   {`{"content":[{"type":"text","text":"答案A"},{"type":"text","text":"答案B"}]}`, "答案A答案B"},
+		"responses":   {`{"output":[{"type":"message","content":[{"type":"output_text","text":"responses 正文"}]}]}`, "responses 正文"},
+		"output_text": {`{"output_text":"纯文本字段"}`, "纯文本字段"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, ok := ExtractAssistantText([]byte(tc.raw))
+			if !ok || got != tc.want {
+				t.Fatalf("got=%q ok=%v, want %q", got, ok, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractUnknownShapeFails(t *testing.T) {
+	if _, ok := ExtractAssistantText([]byte(`{"foo":"bar"}`)); ok {
+		t.Fatal("未知结构必须返回 ok=false，由调用方决定是否落原始字节")
+	}
+}
+
+func TestRecorderTruncates(t *testing.T) {
+	rec := New(Options{Prompt: true, Response: true, MaxBytes: 8})
+	rec.SetRequest(strings.Repeat("a", 20))
+	if got := len(rec.RequestText()); got != 8 {
+		t.Fatalf("请求正文长度 = %d, want 8", got)
+	}
+	rec.AppendResponse([]byte(strings.Repeat("b", 20)))
+	if !rec.ResponseTruncated() {
+		t.Fatal("响应超限必须标记 truncated")
+	}
+	if got := len(rec.ResponseRaw()); got != 8 {
+		t.Fatalf("响应缓冲长度 = %d, want 8", got)
+	}
+}
+
+func TestResponseTextFallsBackToRaw(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 1024})
+	rec.AppendResponse([]byte("不是结构化响应，但必须留存"))
+	if got := rec.ResponseText(); got != "不是结构化响应，但必须留存" {
+		t.Fatalf("回退原文失败: %q", got)
+	}
+}
+
+func TestTogglesOffRecordNothing(t *testing.T) {
+	rec := New(Options{Prompt: false, Response: false})
+	rec.SetRequest("不该被记录")
+	rec.AppendResponse([]byte("也不该被记录"))
+	if rec.RequestText() != "" || rec.ResponseText() != "" {
+		t.Fatal("两项开关关闭时不得记录任何正文")
+	}
+	if rec.ResponseTruncated() {
+		t.Fatal("未采集时不应有截断标记")
+	}
+}
+
+func TestInstallWrapsWriter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"x"}`))
+
+	rec, restore := Install(c, Options{Prompt: true, Response: true, MaxBytes: 1024})
+	if rec == nil {
+		t.Fatal("开启采集时必须返回 recorder")
+	}
+	rec.SetRequest(`{"messages":[{"role":"user","content":"hi"}]}`)
+	_, _ = c.Writer.WriteString(`data: {"choices":[{"delta":{"content":"ok"}}]}`)
+	restore()
+
+	if got := rec.RequestText(); !strings.Contains(got, `"hi"`) {
+		t.Fatalf("请求正文未记录: %q", got)
+	}
+	if got := rec.ResponseText(); got != "ok" {
+		t.Fatalf("响应正文 = %q, want ok", got)
+	}
+	// restore 之后 writer 应回到原实现，再写不再进入 recorder。
+	_, _ = c.Writer.WriteString("after-restore")
+	if strings.Contains(rec.ResponseText(), "after-restore") {
+		t.Fatal("restore 后仍在校验 recorder，说明包装泄漏")
+	}
+}
+
+func TestInstallDisabledReturnsNil(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/messages", strings.NewReader("{}"))
+	rec, restore := Install(c, Options{})
+	defer restore()
+	if rec != nil {
+		t.Fatal("关闭态不得安装 recorder")
+	}
+	if From(c.Request.Context()) != nil {
+		t.Fatal("关闭态不应把 recorder 挂到 ctx")
+	}
+}
+
+// TestRequestTruncatedUsesConfiguredLimit 覆盖截断标记：上限来自配置，
+// 不能用内置默认值判断，否则调小上限后标记永远不亮。
+func TestRequestTruncatedUsesConfiguredLimit(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 16})
+	rec.SetRequest(strings.Repeat("a", 64))
+	if !rec.RequestTruncated() {
+		t.Fatal("配置上限 16 字节、写入 64 字节时必须标记截断")
+	}
+
+	small := New(Options{Prompt: true, MaxBytes: 1024})
+	small.SetRequest("短")
+	if small.RequestTruncated() {
+		t.Fatal("未超限不得标记截断")
+	}
+}
+
+// TestTruncateKeepsValidUTF8 覆盖按字节截断时的 rune 边界回退。
+func TestTruncateKeepsValidUTF8(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 7}) // 每个汉字 3 字节，7 会落在字符中间
+	rec.SetRequest("一二三四五")
+	got := rec.RequestText()
+	if !utf8.ValidString(got) {
+		t.Fatalf("截断产出了非法 UTF-8: %q", got)
+	}
+	if got != "一二" {
+		t.Fatalf("got=%q, want 一二（回退到 rune 边界）", got)
+	}
+	if !rec.RequestTruncated() {
+		t.Fatal("被截断却没标记")
+	}
+}

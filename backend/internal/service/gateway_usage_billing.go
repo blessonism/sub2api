@@ -884,6 +884,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		// simple 模式不计费，实扣恒为 0。纯存储费行不是模型调用，不上报。
+		if !isCacheStorageOnlyResult(result) {
+			observeModelCall(ctx, usageLog, 0, observeStatusUnbilled, "")
+		}
 		return nil
 	}
 
@@ -915,9 +919,17 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		// 扣费失败即未实际扣款，实扣口径上报 0。
+		if !isCacheStorageOnlyResult(result) {
+			observeModelCall(ctx, usageLog, 0, observeStatusBillingError, observeErrorBillingFailed)
+		}
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	// 实扣金额直接取落库值，观测层不重算价格。
+	if !isCacheStorageOnlyResult(result) {
+		observeModelCall(ctx, usageLog, usageLog.ActualCost, observeStatusOK, "")
+	}
 
 	return nil
 }

@@ -505,6 +505,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		// simple 模式不计费，实扣恒为 0，仍上报一条观测记录以便用量可检索。
+		observeModelCall(ctx, usageLog, 0, observeStatusUnbilled, "")
 		return nil
 	}
 
@@ -532,9 +534,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		// 扣费失败即未实际扣款，实扣口径上报 0，并标记固定错误类别（不带原始错误文本）。
+		observeModelCall(ctx, usageLog, 0, observeStatusBillingError, observeErrorBillingFailed)
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	// 实扣金额直接取落库值，观测层不重算价格。
+	observeModelCall(ctx, usageLog, usageLog.ActualCost, observeStatusOK, "")
 
 	return nil
 }

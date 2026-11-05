@@ -18,6 +18,7 @@ import (
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/observability/langfuse"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
@@ -139,6 +140,7 @@ func runMainServer() {
 	if err := logger.Init(logger.OptionsFromConfig(cfg.Log)); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
+	initObservability(cfg)
 	if cfg.RunMode == config.RunModeSimple {
 		log.Println("⚠️  WARNING: Running in SIMPLE mode - billing and quota checks are DISABLED")
 	}
@@ -191,5 +193,38 @@ func runMainServer() {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
 
+	// 观测通道优雅退出：停收新记录并冲刷剩余批次。
+	// 单独给 2s：观测层不可达时不能把进程退出拖到 server 的 5s 预算里。
+	obsCtx, obsCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer obsCancel()
+	if err := langfuse.Shutdown(obsCtx); err != nil {
+		log.Printf("Observability flush incomplete: %v", err)
+	}
+
 	log.Println("Server exited")
+}
+
+// initObservability 装配外部观测上报端。
+//
+// 默认关闭：配置缺失或 enabled=false 时 New 返回 no-op sink，
+// 不建队列、不起 goroutine、不持有 HTTP 客户端。观测层只承载元数据，
+// 不承载提示词正文（正文取证归 securityaudit 审查台）。
+func initObservability(cfg *config.Config) {
+	lf := cfg.Observability.Langfuse
+	// 观测层整体关闭时一并关掉正文采集：避免采了却送不出去，白白占用请求内存。
+	if !lf.Usable() {
+		lf.CapturePrompt = false
+		lf.CaptureResponse = false
+	}
+	langfuse.SetDefault(langfuse.New(langfuse.Options{
+		Enabled:       lf.Enabled,
+		Host:          lf.Host,
+		PublicKey:     lf.PublicKey,
+		SecretKey:     lf.SecretKey,
+		QueueSize:     lf.QueueSize,
+		BatchSize:     lf.BatchSize,
+		FlushInterval: time.Duration(lf.FlushIntervalSeconds) * time.Second,
+		Timeout:       time.Duration(lf.TimeoutSeconds) * time.Second,
+		Release:       Version,
+	}))
 }
