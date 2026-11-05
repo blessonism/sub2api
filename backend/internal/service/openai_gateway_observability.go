@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/observability/capture"
 	"github.com/Wei-Shaw/sub2api/internal/observability/langfuse"
@@ -37,7 +38,9 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 
 	// 正文层：只有请求上装了 recorder 才带 input/output，未安装时两者为空串。
 	var input, output, inputUser string
-	var inputTruncated, outputTruncated bool
+	var inputTruncated, outputTruncated, rawTruncated bool
+	var outputChars int
+	var finishReason string
 	var userTurns int
 	var promptProtocol, promptStatus string
 	var firstUser, requestFP string
@@ -46,7 +49,11 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		output = rec.ResponseText()
 		inputUser, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
 		inputTruncated = rec.RequestTruncated()
-		outputTruncated = rec.ResponseTruncated()
+		// 只有正文触顶才算"输出不全"；原始字节被截是另一件事。
+		outputTruncated = rec.TextTruncated()
+		rawTruncated = rec.RawTruncated()
+		finishReason = rec.FinishReason()
+		outputChars = utf8.RuneCountInString(output)
 		firstUser = rec.FirstUserPrompt()
 		requestFP = rec.RequestFingerprint()
 		// 图片/视频类响应的正文是 base64 载荷，不是可读文本，落进观测层只是噪声。
@@ -96,16 +103,19 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		APIKeyID:  usageLog.APIKeyID,
 		GroupID:   derefInt64(usageLog.GroupID),
 
-		Input:              input,
-		InputUser:          inputUser,
-		FirstUserPrompt:    firstUser,
-		RequestFingerprint: requestFP,
-		UserTurns:          userTurns,
-		PromptProtocol:     promptProtocol,
-		PromptStatus:       promptStatus,
-		Output:             output,
-		InputTruncated:     inputTruncated,
-		OutputTruncated:    outputTruncated,
+		Input:                input,
+		InputUser:            inputUser,
+		FirstUserPrompt:      firstUser,
+		RequestFingerprint:   requestFP,
+		UserTurns:            userTurns,
+		PromptProtocol:       promptProtocol,
+		PromptStatus:         promptStatus,
+		Output:               output,
+		OutputChars:          outputChars,
+		FinishReason:         finishReason,
+		InputTruncated:       inputTruncated,
+		OutputTruncated:      outputTruncated,
+		RawResponseTruncated: rawTruncated,
 	})
 }
 

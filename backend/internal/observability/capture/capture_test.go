@@ -83,8 +83,11 @@ func TestRecorderTruncates(t *testing.T) {
 		t.Fatalf("请求正文长度 = %d, want 8", got)
 	}
 	rec.AppendResponse([]byte(strings.Repeat("b", 20)))
-	if !rec.ResponseTruncated() {
-		t.Fatal("响应超限必须标记 truncated")
+	if !rec.RawTruncated() {
+		t.Fatal("原始字节超限必须标记 raw truncated")
+	}
+	if rec.TextTruncated() {
+		t.Fatal("原始字节被截不等于正文被截：非 SSE 正文没有增量文本")
 	}
 	if got := len(rec.ResponseRaw()); got != 8 {
 		t.Fatalf("响应缓冲长度 = %d, want 8", got)
@@ -106,7 +109,7 @@ func TestTogglesOffRecordNothing(t *testing.T) {
 	if rec.RequestText() != "" || rec.ResponseText() != "" {
 		t.Fatal("两项开关关闭时不得记录任何正文")
 	}
-	if rec.ResponseTruncated() {
+	if rec.TextTruncated() || rec.RawTruncated() {
 		t.Fatal("未采集时不应有截断标记")
 	}
 }
@@ -364,5 +367,80 @@ func TestJSONBodyWithDataWordStaysJSON(t *testing.T) {
 	rec.AppendResponse([]byte(`{"choices":[{"message":{"role":"assistant","content":"hi data: not sse"}}]}`))
 	if got := rec.ResponseText(); got != "hi data: not sse" {
 		t.Fatalf("ResponseText = %q", got)
+	}
+}
+
+// TestTrailingLineWithoutNewlineIsKept 覆盖流末尾没有换行符的情况：
+// 这一段曾经固定被丢掉，表现为"回答结尾少一截"。
+func TestTrailingLineWithoutNewlineIsKept(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 64 * 1024})
+	rec.AppendResponse([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"前半\"}\n\n"))
+	rec.AppendResponse([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"尾巴\"}"))
+	if got := rec.ResponseText(); got != "前半尾巴" {
+		t.Fatalf("ResponseText = %q，最后一段不得丢", got)
+	}
+}
+
+// TestTextTruncationCutsOnRuneBoundary 覆盖中文被截时不能切出半个字。
+func TestTextTruncationCutsOnRuneBoundary(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 100})
+	chunk := strings.Repeat("汉", 40) // 120 字节，超过上限
+	rec.AppendResponse([]byte(`event: response.output_text.delta` + "\n" + `data: {"type":"response.output_text.delta","delta":"` + chunk + `"}` + "\n\n"))
+	got := rec.ResponseText()
+	if !rec.TextTruncated() {
+		t.Fatal("正文超过上限必须标记 text truncated")
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("截断后出现非法 UTF-8：%q", got)
+	}
+	if utf8.RuneCountInString(got)*3 != len(got) {
+		t.Fatalf("截断位置不在汉字边界：%q", got)
+	}
+}
+
+// TestRawTruncationDoesNotImplyTextTruncation 保证"原始字节被截"不污染"正文被截"。
+func TestRawTruncationDoesNotImplyTextTruncation(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 512})
+	// 大量前导（无正文）把原始缓冲撑满，正文只有最后一小段。
+	for i := 0; i < 20; i++ {
+		rec.AppendResponse([]byte("event: response.created\ndata: {\"type\":\"response.created\",\"pad\":\"" + strings.Repeat("x", 200) + "\"}\n\n"))
+	}
+	rec.AppendResponse([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"答案\"}\n\n"))
+	if got := rec.ResponseText(); got != "答案" {
+		t.Fatalf("正文 = %q", got)
+	}
+	if !rec.RawTruncated() {
+		t.Fatal("原始字节应该已被截断")
+	}
+	if rec.TextTruncated() {
+		t.Fatal("正文没触顶就不该标 text truncated")
+	}
+}
+
+func TestFinishReasonFromSSE(t *testing.T) {
+	cases := map[string]string{
+		`data: {"choices":[{"delta":{},"finish_reason":"length"}]}`:                                            "length",
+		`data: {"type":"response.incomplete","response":{"status":"incomplete"}}`:                              "incomplete",
+		`data: {"type":"response.completed","response":{"status":"completed"}}`:                                "stop",
+		`data: {"type":"response.completed","response":{"incomplete_details":{"reason":"max_output_tokens"}}}`: "incomplete:max_output_tokens",
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}`:                                    "end_turn",
+	}
+	for line, want := range cases {
+		rec := New(Options{Response: true, MaxBytes: 4096})
+		rec.AppendResponse([]byte(line + "\n\n"))
+		if got := rec.FinishReason(); got != want {
+			t.Fatalf("%s → finish = %q, want %q", line, got, want)
+		}
+	}
+}
+
+func TestFinishReasonFromNonStreamJSON(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 4096})
+	rec.AppendResponse([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
+	if got := rec.ResponseText(); got != "ok" {
+		t.Fatalf("正文 = %q", got)
+	}
+	if got := rec.FinishReason(); got != "stop" {
+		t.Fatalf("非流式响应的 finish_reason 未补上：%q", got)
 	}
 }

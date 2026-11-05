@@ -1394,4 +1394,4 @@ observability:
     capture_prompt: false
     capture_response: false
     # 单侧正文的字节上限，超出截断并在 metadata 打 *_truncated 标记
-    capture_max_bytes: 32768
+    capture_max_bytes: 65536

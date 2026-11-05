@@ -165,3 +165,40 @@ func TestTraceNameFallsBackWhenNoGroup(t *testing.T) {
 		t.Fatalf("无归组时不该有 tags：%v", body["tags"])
 	}
 }
+
+func TestOutputCompletenessMetadata(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-out", "看看输出", "fp")
+	call.Output = "完整答案"
+	call.OutputChars = 4
+	call.FinishReason = "length"
+	call.RawResponseTruncated = true
+
+	meta := metaOf(t, traceBodyOf(t, buildBatch([]Call{call}, ""), 0))
+	if meta["output_chars"] != 4 {
+		t.Fatalf("output_chars = %v", meta["output_chars"])
+	}
+	if meta["finish_reason"] != "length" {
+		t.Fatalf("finish_reason = %v", meta["finish_reason"])
+	}
+	if meta["raw_stream_truncated"] != true {
+		t.Fatalf("raw_stream_truncated = %v", meta["raw_stream_truncated"])
+	}
+	// 关键：原始字节被截，但正文没触顶 → 不能出现 output_truncated。
+	if _, ok := meta["output_truncated"]; ok {
+		t.Fatalf("原始字节截断不得冒充正文截断：%v", meta["output_truncated"])
+	}
+}
+
+func TestOutputTruncatedOnlyWhenTextHitsCap(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-out2", "看看输出", "fp")
+	call.Output = "被切的答案"
+	call.OutputChars = 5
+	call.OutputTruncated = true
+
+	meta := metaOf(t, traceBodyOf(t, buildBatch([]Call{call}, ""), 0))
+	if meta["output_truncated"] != true {
+		t.Fatalf("正文触顶必须标记：%v", meta)
+	}
+}

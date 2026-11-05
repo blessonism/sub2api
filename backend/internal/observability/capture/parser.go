@@ -247,3 +247,77 @@ func textFromSSELine(line []byte) (string, bool) {
 	}
 	return piece, false
 }
+
+// finishFromSSELine 从一条 SSE data 行里抽上游的收尾原因。
+//
+// 目的：把"模型自己停/被 max tokens 截"和"观测层缓冲截断"区分开。
+// 只保留有限的短标识，不外发原文。
+func finishFromSSELine(line []byte) string {
+	trimmed := strings.TrimSpace(string(line))
+	if !strings.HasPrefix(trimmed, "data:") {
+		return ""
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return ""
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return ""
+	}
+	return finishFromEvent(event)
+}
+
+func finishFromEvent(event map[string]any) string {
+	// OpenAI responses：`response.incomplete` 优先，它比 completed 更能说明原因。
+	if resp, ok := event["response"].(map[string]any); ok {
+		if inc, ok := resp["incomplete_details"].(map[string]any); ok {
+			if reason, ok := inc["reason"].(string); ok && reason != "" {
+				return "incomplete:" + reason
+			}
+		}
+	}
+	if choices, ok := event["choices"].([]any); ok {
+		for _, item := range choices {
+			choice, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
+				return reason
+			}
+		}
+	}
+	if reason, ok := event["stop_reason"].(string); ok && reason != "" {
+		return reason
+	}
+	if delta, ok := event["delta"].(map[string]any); ok {
+		if reason, ok := delta["stop_reason"].(string); ok && reason != "" {
+			return reason
+		}
+	}
+	if msg, ok := event["message"].(map[string]any); ok {
+		if reason, ok := msg["stop_reason"].(string); ok && reason != "" {
+			return reason
+		}
+	}
+	switch event["type"] {
+	case "response.incomplete":
+		return "incomplete"
+	case "response.completed", "message_stop":
+		return "stop"
+	}
+	return ""
+}
+
+// FinishReasonFromJSON 从非流式响应体里抽收尾原因，补上 SSE 之外的那条路径。
+func FinishReasonFromJSON(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var root map[string]any
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return ""
+	}
+	return finishFromEvent(root)
+}

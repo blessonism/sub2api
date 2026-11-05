@@ -63,8 +63,12 @@ type Recorder struct {
 	reqFP      string
 	protocol   string
 	promptStat string
-	// respTruncated 标记响应字节已达到上限被截断。
+	// respTruncated 标记**原始响应字节**达到上限被截；它与正文是否被截是两件事：
+	// 流里有 response.created 这类大 JSON，原始字节几乎必然超上限，
+	// 但正文往往远未触顶。两者混用会把每一条都标成"输出被截"。
 	respTruncated bool
+	// finishReason 记录上游给出的收尾原因，用来区分"模型自己截断"和"我们截断"。
+	finishReason string
 }
 
 // New 按选项构造 recorder。MaxBytes<=0 时用默认值。
@@ -170,6 +174,9 @@ func (r *Recorder) AppendResponse(p []byte) {
 		}
 		line := r.pending[:idx]
 		r.pending = r.pending[idx+1:]
+		if reason := finishFromSSELine(line); reason != "" {
+			r.finishReason = reason
+		}
 		piece, fullText := textFromSSELine(line)
 		if piece == "" {
 			continue
@@ -191,6 +198,31 @@ func (r *Recorder) AppendResponse(p []byte) {
 	}
 }
 
+// flushPendingLocked 把还没等到换行符的最后一段解析掉。
+// 流结束时上游不一定补换行，留在 pending 里的那一行就是正文的最后一段，
+// 不解析等于固定丢掉结尾。调用方必须持锁。
+func (r *Recorder) flushPendingLocked() {
+	if len(r.pending) == 0 {
+		return
+	}
+	line := r.pending
+	r.pending = nil
+	if reason := finishFromSSELine(line); reason != "" {
+		r.finishReason = reason
+	}
+	piece, fullText := textFromSSELine(line)
+	if piece == "" {
+		return
+	}
+	if fullText && (r.sawDelta || len(r.text) > 0) {
+		return
+	}
+	if !fullText {
+		r.sawDelta = true
+	}
+	r.appendTextLocked(piece)
+}
+
 // appendTextLocked 追加抽到的正文片段，超过上限即标记并停止累积。
 func (r *Recorder) appendTextLocked(piece string) {
 	if piece == "" || r.textFull {
@@ -199,7 +231,13 @@ func (r *Recorder) appendTextLocked(piece string) {
 	if len(r.text)+len(piece) > r.limit {
 		remain := r.limit - len(r.text)
 		if remain > 0 {
-			r.text = append(r.text, piece[:remain]...)
+			// 按字节硬切会切掉半个汉字，JSON 编码后变成 U+FFFD；
+			// 回退到 rune 边界再拼。
+			cut := remain
+			for cut > 0 && !utf8.RuneStart(piece[cut]) {
+				cut--
+			}
+			r.text = append(r.text, piece[:cut]...)
 		}
 		r.textFull = true
 		return
@@ -217,14 +255,36 @@ func (r *Recorder) ResponseRaw() []byte {
 	return append([]byte(nil), r.resp...)
 }
 
-// ResponseTruncated 报告响应是否被截断。
-func (r *Recorder) ResponseTruncated() bool {
+// TextTruncated 报告**正文**是否因为缓冲上限被截断。
+// 只有它才代表"输出不全"；原始字节被截不算。
+func (r *Recorder) TextTruncated() bool {
 	if r == nil {
 		return false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.respTruncated || r.textFull
+	return r.textFull
+}
+
+// RawTruncated 报告**原始响应字节**是否被截断（用于排查解析兜底是否还能用）。
+func (r *Recorder) RawTruncated() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.respTruncated
+}
+
+// FinishReason 返回上游给的收尾原因（stop / length / tool_calls / incomplete:*）。
+// 空串表示没抓到，调用方不要把空串当成"正常结束"。
+func (r *Recorder) FinishReason() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.finishReason
 }
 
 type ctxKey struct{}
@@ -278,16 +338,20 @@ func (r *Recorder) ResponseText() string {
 		return ""
 	}
 	r.mu.Lock()
+	// 流结束时上游不一定补换行，pending 里那一行就是正文的最后一段。
+	r.flushPendingLocked()
 	text := string(r.text)
+	raw := append([]byte(nil), r.resp...)
 	r.mu.Unlock()
 	if text != "" {
 		return text
 	}
 
-	raw := r.ResponseRaw()
 	if len(raw) == 0 {
 		return ""
 	}
+	// 非流式响应没有 SSE 收尾事件，只能从这里补 finish reason。
+	r.finalize(raw)
 	if parsed, ok := ExtractAssistantText(raw); ok && parsed != "" {
 		return parsed
 	}
@@ -297,6 +361,24 @@ func (r *Recorder) ResponseText() string {
 		return ""
 	}
 	return string(raw)
+}
+
+// finalize 在响应读取完成后补最后一件事：非流式响应体里的收尾原因。
+func (r *Recorder) finalize(raw []byte) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	missing := r.finishReason == ""
+	r.mu.Unlock()
+	if !missing {
+		return
+	}
+	if reason := FinishReasonFromJSON(raw); reason != "" {
+		r.mu.Lock()
+		r.finishReason = reason
+		r.mu.Unlock()
+	}
 }
 
 // requestFingerprint 计算请求体的短指纹，用于观测层区分「同一步的重复尝试」
