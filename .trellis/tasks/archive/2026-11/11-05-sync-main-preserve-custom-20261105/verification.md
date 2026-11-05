@@ -5,6 +5,7 @@
 - 二开基线：`ae2e47d03937dd5f50aa81dfd4a4c78bdada683f`，保留其中 5 个未推送提交。
 - 用户确认的官方目标：`8e92c892b47f3f934f18ce63da4c4dcb75f0b6bd`；新增 110 个官方提交，VERSION 为 `0.2.19`。
 - 工作分支：`sync/upstream-20261105`；采用保留双方历史的 merge commit，两个输入分别为上述二开基线与官方目标。
+- 本地同步提交：`19d51cf3929a8f8bb4ba3905cb5b648c0bcd237b`；已核对第一、第二父提交依次为二开基线与官方目标，双方均为同步结果的祖先。
 - 20 个冲突文件均已解决；未解决索引项为 0；`git diff --check` 与 `git diff --cached --check` 均通过。
 - 已验证的代码/spec tree：`bcc80d13dbbfe0fbff6ec96895e97ef14a8fa40b`（不含随后落盘的任务记录）。
 
