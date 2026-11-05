@@ -87,8 +87,12 @@ type Call struct {
 	// FinishReason 是上游给的收尾原因：stop / length / tool_calls / incomplete:*。
 	// 它与 OutputTruncated 配合，才能区分"模型自己截断"和"我们缓冲截断"。
 	FinishReason string
-	// InputTruncated / OutputTruncated 标记**正文**达到缓冲上限被截断。
-	InputTruncated  bool
+	// RawRequestTruncated 标记**原始请求样本**被截断（只影响 metadata 里的
+	// request_body 抽样，不代表用户消息缺失）。
+	RawRequestTruncated bool
+	// PromptTruncated 标记**展示用的用户消息**被截断（这才是 input 不全）。
+	PromptTruncated bool
+	// OutputTruncated 标记 assistant 正文被截断。
 	OutputTruncated bool
 	// RawResponseTruncated 标记**原始响应字节**被截断（仅影响解析兜底，不代表正文缺失）。
 	RawResponseTruncated bool

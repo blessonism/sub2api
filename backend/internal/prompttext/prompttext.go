@@ -31,6 +31,8 @@ type Result struct {
 	// HistoryBytes 是拼接后完整用户历史的字节数（截断前），
 	// 用来表达"这次请求带了多少上下文"，与实际展示的 LatestUser 区分开。
 	HistoryBytes int
+	// LatestTruncated 标记 LatestUser 是否因为上限被截断。
+	LatestTruncated bool
 	// LatestUser 是最新一条「用户真正说的话」。
 	// 长会话里最后一条 user 消息经常是客户端追加的工具/审批块（Codex 会写
 	// ">>> APPROVAL REQUEST START"），直接取末尾会把用户真正的问题埋掉甚至顶掉，
@@ -97,14 +99,16 @@ func build(protocol string, texts []string, limit int) Result {
 	if limit > 0 {
 		text = tailRunes(text, limit)
 	}
+	latest := latestUserMessage(cleaned)
 	return Result{
-		Text:         text,
-		Turns:        len(cleaned),
-		FirstUser:    truncateRunes(anchorMessage(cleaned), anchorLimit),
-		LatestUser:   truncateRunes(latestUserMessage(cleaned), anchorLimit),
-		HistoryBytes: len(full),
-		Protocol:     protocol,
-		Status:       "ok",
+		Text:            text,
+		Turns:           len(cleaned),
+		FirstUser:       truncateRunes(anchorMessage(cleaned), anchorLimit),
+		LatestUser:      truncateLimited(latest, limit),
+		LatestTruncated: exceedsLimit(latest, limit),
+		HistoryBytes:    len(full),
+		Protocol:        protocol,
+		Status:          "ok",
 	}
 }
 
@@ -159,11 +163,72 @@ var requestSectionMarkers = []string{
 // 找不到（整段都是客户端追加的块）时退回最后一条，保持"总有内容可看"。
 func latestUserMessage(texts []string) string {
 	for i := len(texts) - 1; i >= 0; i-- {
-		if !isClientMetaBlock(texts[i]) {
+		if !isMachineBlock(texts[i]) {
 			return texts[i]
 		}
 	}
 	return texts[len(texts)-1]
+}
+
+// machineBlockPrefixes 是明确的机器生成前缀。这里刻意不复用
+// isInjectedFraming 的"以 < 开头且含闭合标签"这类宽判据：
+// 用户完全可能把一段 XML/HTML 当问题贴进来，那时它就是他真正的话。
+var machineBlockPrefixes = []string{
+	"<environment_context",
+	"<user_info",
+	"<rules",
+	"<system-reminder",
+	"# agents.md instructions",
+	"# files mentioned by the user",
+	"# context from my ide setup",
+}
+
+// isMachineBlock 判断一条消息是否是客户端机器人化追加的块（不是用户写的）。
+func isMachineBlock(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	head := lower
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	for _, prefix := range machineBlockPrefixes {
+		if strings.HasPrefix(head, prefix) {
+			return true
+		}
+	}
+	for _, marker := range clientMetaMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	if strings.Contains(lower, compactionSignature) {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		if end := strings.IndexByte(trimmed, ']'); end > 0 && end < 12 {
+			rest := strings.ToLower(trimmed[end+1:])
+			if strings.HasPrefix(rest, " tool exec call") || strings.HasPrefix(rest, " tool call") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// truncateLimited 按上限截断；limit<=0 表示不截断。
+func truncateLimited(s string, limit int) string {
+	if limit <= 0 {
+		return s
+	}
+	return truncateRunes(s, limit)
+}
+
+// exceedsLimit 报告 s 是否超过上限（limit<=0 视为不限制）。
+func exceedsLimit(s string, limit int) bool {
+	return limit > 0 && len(s) > limit
 }
 
 // clientMetaMarkers 是客户端写进 user 消息里的结构化块特征：
@@ -174,33 +239,6 @@ var clientMetaMarkers = []string{
 	">>> parent turn permission context",
 	">>> tool call",
 	"tool exec call:",
-}
-
-// isClientMetaBlock 判断一条消息是否是客户端追加的工具/审批块。
-func isClientMetaBlock(text string) bool {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return true
-	}
-	if isInjectedFraming(trimmed) {
-		return true
-	}
-	lower := strings.ToLower(trimmed)
-	for _, marker := range clientMetaMarkers {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	// "[153] tool exec call: ..." 这种带序号前缀的工具回显。
-	if strings.HasPrefix(trimmed, "[") {
-		if end := strings.IndexByte(trimmed, ']'); end > 0 && end < 12 {
-			rest := strings.ToLower(trimmed[end+1:])
-			if strings.HasPrefix(rest, " tool exec call") || strings.HasPrefix(rest, " tool call") {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // isInjectedFraming 判断一条消息是否是客户端注入的上下文块。

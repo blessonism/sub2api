@@ -38,7 +38,7 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 
 	// 正文层：只有请求上装了 recorder 才带 input/output，未安装时两者为空串。
 	var input, output, inputUser string
-	var inputTruncated, outputTruncated, rawTruncated bool
+	var rawRequestTruncated, promptTruncated, outputTruncated, rawTruncated bool
 	var outputChars int
 	var finishReason string
 	var userPromptHistoryBytes int
@@ -51,7 +51,8 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		_, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
 		inputUser = rec.LatestUserPrompt()
 		userPromptHistoryBytes = rec.UserPromptHistoryBytes()
-		inputTruncated = rec.RequestTruncated()
+		rawRequestTruncated = rec.RequestTruncated()
+		promptTruncated = rec.LatestUserTruncated()
 		// 只有正文触顶才算"输出不全"；原始字节被截是另一件事。
 		outputTruncated = rec.TextTruncated()
 		rawTruncated = rec.RawTruncated()
@@ -117,7 +118,8 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		Output:                 output,
 		OutputChars:            outputChars,
 		FinishReason:           finishReason,
-		InputTruncated:         inputTruncated,
+		RawRequestTruncated:    rawRequestTruncated,
+		PromptTruncated:        promptTruncated,
 		OutputTruncated:        outputTruncated,
 		RawResponseTruncated:   rawTruncated,
 	})

@@ -486,3 +486,31 @@ func TestRecorderExposesLatestUserPrompt(t *testing.T) {
 		t.Fatalf("完整历史仍要保留：turns=%d text=%q", turns, text)
 	}
 }
+
+// TestSSELineParsedOnce 保证同一行只解析一次（正文 + finish 共用）。
+func TestSSELineParsedOnce(t *testing.T) {
+	line := []byte(`data: {"type":"response.completed","response":{"status":"completed"},"choices":[]}`)
+	piece, full, finish := parseSSELine(line)
+	if piece != "" || full {
+		t.Fatalf("completed 事件不应产出正文：%q full=%v", piece, full)
+	}
+	if finish != "stop" {
+		t.Fatalf("finish = %q", finish)
+	}
+	text, _, finish2 := parseSSELine([]byte(`data: {"type":"response.output_text.delta","delta":"嗨"}`))
+	if text != "嗨" || finish2 != "" {
+		t.Fatalf("text=%q finish=%q", text, finish2)
+	}
+}
+
+// TestLatestUserTruncationIsReported 覆盖展示用 prompt 的截断标记。
+func TestLatestUserTruncationIsReported(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 64 * 1024, PromptMaxBytes: 200})
+	rec.SetRequest(`{"messages":[{"role":"user","content":"` + strings.Repeat("问", 300) + `"}]}`)
+	if !rec.LatestUserTruncated() {
+		t.Fatal("超过 PromptMaxBytes 必须标记")
+	}
+	if got := rec.LatestUserPrompt(); len(got) > 200+len("…（前文已省略）\n\n") {
+		t.Fatalf("LatestUserPrompt 长度 %d 超上限", len(got))
+	}
+}
