@@ -207,23 +207,28 @@ func jsonContentText(value any) string {
 	}
 }
 
-// textFromSSELine 从单行 SSE（data: {...} / event: ...）里抽正文片段。
-func textFromSSELine(line []byte) string {
+// textFromSSELine 从单行 SSE 里抽正文片段。
+// fullText 为 true 表示这条事件携带的是整段文本（done/completed），
+// 调用方据此避免与增量事件重复累加。
+func textFromSSELine(line []byte) (string, bool) {
 	trimmed := strings.TrimSpace(string(line))
 	if !strings.HasPrefix(trimmed, "data:") {
-		return ""
+		return "", false
 	}
 	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 	if payload == "" || payload == "[DONE]" {
-		return ""
+		return "", false
 	}
 	var event map[string]any
 	if err := json.Unmarshal([]byte(payload), &event); err != nil {
-		return ""
+		return "", false
 	}
 	piece, ok := textFromEvent(event)
 	if !ok {
-		return ""
+		return "", false
 	}
-	return piece
+	if event["type"] == "response.output_text.done" {
+		return piece, true
+	}
+	return piece, false
 }

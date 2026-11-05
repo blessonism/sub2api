@@ -44,6 +44,7 @@ type Recorder struct {
 	pending  []byte
 	text     []byte
 	textFull bool
+	sawDelta bool
 	// respTruncated 标记响应字节已达到上限被截断。
 	respTruncated bool
 }
@@ -116,7 +117,20 @@ func (r *Recorder) AppendResponse(p []byte) {
 		}
 		line := r.pending[:idx]
 		r.pending = r.pending[idx+1:]
-		r.appendTextLocked(textFromSSELine(line))
+		piece, fullText := textFromSSELine(line)
+		if piece == "" {
+			continue
+		}
+		// 同一个流里两种事件可能带同一段文本（delta 增量 + done 全文），
+		// 已经用增量拼出来之后，全文事件直接丢弃，避免正文出现两份。
+		if fullText {
+			if r.sawDelta || len(r.text) > 0 {
+				continue
+			}
+		} else {
+			r.sawDelta = true
+		}
+		r.appendTextLocked(piece)
 	}
 	// 单行异常巨大（无换行的巨型 JSON）时丢弃尾巴，避免 pending 无界增长。
 	if len(r.pending) > maxPendingBytes {

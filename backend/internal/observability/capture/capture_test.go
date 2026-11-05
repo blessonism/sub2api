@@ -244,3 +244,25 @@ func TestSSEWithoutTextYieldsEmpty(t *testing.T) {
 		t.Fatalf("SSE 无正文时应留空，实际 %q", got)
 	}
 }
+
+// TestNoDuplicateWhenDeltaAndDoneBothArrive 覆盖线上看到的重复正文：
+// 增量事件拼出文本后，done 事件携带的全文必须被丢弃。
+func TestNoDuplicateWhenDeltaAndDoneBothArrive(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8192})
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.delta","delta":"后端已扩展"}` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.delta","delta":"到 9 个节点"}` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.done","text":"后端已扩展到 9 个节点"}` + "\n"))
+	if got := rec.ResponseText(); got != "后端已扩展到 9 个节点" {
+		t.Fatalf("正文重复或缺失: %q", got)
+	}
+}
+
+// TestDoneOnlyStreamStillWorks 覆盖只有 done、没有 delta 的实现。
+func TestDoneOnlyStreamStillWorks(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8192})
+	rec.AppendResponse([]byte(`data: {"type":"response.created","response":{"id":"r"}}` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.done","text":"只有全文"}` + "\n"))
+	if got := rec.ResponseText(); got != "只有全文" {
+		t.Fatalf("got %q", got)
+	}
+}
