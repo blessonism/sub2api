@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/observability/sessiongroup"
 )
@@ -200,5 +201,38 @@ func TestOutputTruncatedOnlyWhenTextHitsCap(t *testing.T) {
 	meta := metaOf(t, traceBodyOf(t, buildBatch([]Call{call}, ""), 0))
 	if meta["output_truncated"] != true {
 		t.Fatalf("正文触顶必须标记：%v", meta)
+	}
+}
+
+func TestClampCapturedKeepsPayloadUnderIngestionLimit(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-big", strings.Repeat("问", 3*1024*1024/3), "fp")
+	call.Output = strings.Repeat("答", 3*1024*1024/3)
+	call.Input = strings.Repeat("b", 512*1024)
+	clamped := clampCaptured(call)
+
+	total := len(clamped.Input) + len(clamped.InputUser) + len(clamped.Output)
+	if total > maxCapturedPerCall+(1<<10) {
+		t.Fatalf("单条调用正文 %d 字节，超过 %d 的载荷上限", total, maxCapturedPerCall)
+	}
+	if !clamped.OutputTruncated || !clamped.InputTruncated {
+		t.Fatalf("截断必须打标记：out=%v in=%v", clamped.OutputTruncated, clamped.InputTruncated)
+	}
+	if !strings.Contains(clamped.InputUser, "前文已省略") {
+		t.Fatal("用户 prompt 截断应保留尾部并带省略标记")
+	}
+	if !utf8.ValidString(clamped.InputUser) || !utf8.ValidString(clamped.Output) {
+		t.Fatal("截断后必须是合法 UTF-8")
+	}
+}
+
+func TestClampCapturedLeavesSmallCallsAlone(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-small", "普通提问", "fp")
+	call.Output = "普通回答"
+	clamped := clampCaptured(call)
+	if clamped.InputUser != call.InputUser || clamped.Output != call.Output ||
+		clamped.InputTruncated || clamped.OutputTruncated {
+		t.Fatalf("小载荷不该被动过：%+v", clamped)
 	}
 }

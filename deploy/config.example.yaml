@@ -1393,5 +1393,7 @@ observability:
     # （Langfuse 的 input/output 字段），并随事件对象落到外部 S3。
     capture_prompt: false
     capture_response: false
-    # 单侧正文的字节上限，超出截断并在 metadata 打 *_truncated 标记
-    capture_max_bytes: 65536
+    # 请求样本 / 响应正文的单侧上限（硬顶 2MB），超出截断并在 metadata 打标记
+    capture_max_bytes: 262144
+    # 「用户消息」文本的单侧上限：决定 UI 上 input 有多完整（硬顶 2MB）
+    capture_prompt_max_bytes: 524288

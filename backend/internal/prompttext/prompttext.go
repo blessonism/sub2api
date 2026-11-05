@@ -34,11 +34,15 @@ type Result struct {
 	Status string
 }
 
-// Extract 自动识别协议并从请求体里抽取用户文本。
+// Extract 用默认上限抽取用户文本。
+func Extract(body []byte) Result { return ExtractWithLimit(body, DefaultMaxBytes) }
+
+// ExtractWithLimit 按指定上限抽取用户文本。limit<=0 表示不截断
+// （硬顶由调用方按 ingestion 载荷上限钳制）。
 //
 // 识别顺序：contents（Gemini）→ input[]（Responses）→ messages[]（Chat/Anthropic）→
 // 顶层 input 字符串（少数 Responses 客户端）。
-func Extract(body []byte) Result {
+func ExtractWithLimit(body []byte, limit int) Result {
 	if len(body) == 0 {
 		return Result{}
 	}
@@ -52,24 +56,24 @@ func Extract(body []byte) Result {
 
 	if contents, ok := root["contents"].([]any); ok {
 		texts := geminiUserTexts(contents)
-		return build("gemini", texts)
+		return build("gemini", texts, limit)
 	}
 	if items, ok := root["input"].([]any); ok {
 		texts := responsesUserTexts(items)
-		return build("openai_responses", texts)
+		return build("openai_responses", texts, limit)
 	}
 	if items, ok := root["messages"].([]any); ok {
 		texts := chatUserTexts(items)
-		return build("openai_chat", texts)
+		return build("openai_chat", texts, limit)
 	}
 	// Responses 允许 input 直接是字符串。
 	if raw, ok := root["input"].(string); ok && strings.TrimSpace(raw) != "" {
-		return build("openai_responses_text", []string{raw})
+		return build("openai_responses_text", []string{raw}, limit)
 	}
 	return Result{Status: "unrecognized"}
 }
 
-func build(protocol string, texts []string) Result {
+func build(protocol string, texts []string, limit int) Result {
 	cleaned := make([]string, 0, len(texts))
 	for _, t := range texts {
 		t = strings.TrimSpace(t)
@@ -80,8 +84,12 @@ func build(protocol string, texts []string) Result {
 	if len(cleaned) == 0 {
 		return Result{Protocol: protocol, Status: "no_user"}
 	}
+	text := strings.Join(cleaned, "\n\n")
+	if limit > 0 {
+		text = tailRunes(text, limit)
+	}
 	return Result{
-		Text:      tailRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
+		Text:      text,
 		Turns:     len(cleaned),
 		FirstUser: truncateRunes(anchorMessage(cleaned), anchorLimit),
 		Protocol:  protocol,

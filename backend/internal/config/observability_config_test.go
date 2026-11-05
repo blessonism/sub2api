@@ -64,7 +64,12 @@ func TestObservabilityQueueClampedWhenCaptureOn(t *testing.T) {
 
 	cfg.Observability.Langfuse.CaptureResponse = true
 	require.NoError(t, cfg.validateObservability())
-	require.Equal(t, maxObservabilityQueueWithCapture, cfg.Observability.Langfuse.QueueSize)
+	lf := cfg.Observability.Langfuse
+	require.LessOrEqual(t, lf.QueueSize, maxObservabilityQueueWithCapture)
+	perRecord := lf.CaptureMaxBytes + lf.CapturePromptMaxBytes + 4*1024
+	require.LessOrEqual(t, lf.QueueSize*perRecord, observabilityCaptureMemoryBudget,
+		"队列驻留必须落在正文字节预算内")
+	require.GreaterOrEqual(t, lf.QueueSize, 64, "预算不会把队列压到无法工作")
 }
 
 // TestObservabilityDefaultsRegistered 覆盖 setDefaults 里注册的默认值。
@@ -77,4 +82,34 @@ func TestObservabilityDefaultsRegistered(t *testing.T) {
 	require.Equal(t, 64, viper.GetInt("observability.langfuse.batch_size"))
 	require.Equal(t, 5, viper.GetInt("observability.langfuse.flush_interval_seconds"))
 	require.Equal(t, 10, viper.GetInt("observability.langfuse.timeout_seconds"))
+}
+
+// TestObservabilityCaptureBytesClamped 覆盖正文上限的钳制与缺省值。
+func TestObservabilityCaptureBytesClamped(t *testing.T) {
+	base := func() *Config {
+		cfg := &Config{}
+		cfg.Observability.Langfuse = LangfuseConfig{
+			Enabled: true, Host: "http://10.0.0.5:3000", PublicKey: "pk", SecretKey: "sk",
+			CapturePrompt: true, CaptureResponse: true,
+		}
+		return cfg
+	}
+
+	cfg := base()
+	require.NoError(t, cfg.validateObservability())
+	require.Equal(t, 65536, cfg.Observability.Langfuse.CaptureMaxBytes, "未配置时用缺省值")
+	require.Equal(t, 524288, cfg.Observability.Langfuse.CapturePromptMaxBytes)
+
+	cfg = base()
+	cfg.Observability.Langfuse.CaptureMaxBytes = 1 << 30
+	cfg.Observability.Langfuse.CapturePromptMaxBytes = 1 << 30
+	require.NoError(t, cfg.validateObservability())
+	require.Equal(t, maxCaptureSideBytes, cfg.Observability.Langfuse.CaptureMaxBytes,
+		"超过 2MB 的配置必须被钳住，否则一条调用的载荷会撞上 ingestion 的 4.5MB 上限")
+	require.Equal(t, maxCaptureSideBytes, cfg.Observability.Langfuse.CapturePromptMaxBytes)
+
+	cfg = base()
+	cfg.Observability.Langfuse.CaptureMaxBytes = 100
+	require.NoError(t, cfg.validateObservability())
+	require.Equal(t, minCaptureSideBytes, cfg.Observability.Langfuse.CaptureMaxBytes, "过小值抬到下限")
 }

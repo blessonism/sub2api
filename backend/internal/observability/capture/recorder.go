@@ -31,11 +31,18 @@ const (
 // DefaultMaxBytes 是单侧（请求/响应）正文的默认上限。
 const DefaultMaxBytes = 32 * 1024
 
+// defaultPromptMaxBytes 是用户消息文本的默认上限。零值 Options 不能等于"无上限"，
+// 否则一个漏配的调用点会把整份请求体留在内存里再发出去。
+const defaultPromptMaxBytes = 512 * 1024
+
 // Options 是采集开关。两项都关时不安装 recorder，链路零开销。
 type Options struct {
-	Prompt   bool
-	Response bool
-	MaxBytes int
+	Prompt bool
+	// PromptMaxBytes 是「用户消息文本」的上限；<=0 表示不截断（由配置层钳制）。
+	// 它与 MaxBytes 分开：请求体里塞满了工具输出，正文往往比 body 小两个数量级。
+	PromptMaxBytes int
+	Response       bool
+	MaxBytes       int
 }
 
 // Enabled 报告是否需要安装采集。
@@ -45,6 +52,7 @@ func (o Options) Enabled() bool { return o.Prompt || o.Response }
 type Recorder struct {
 	mu           sync.Mutex
 	limit        int
+	promptCap    int
 	wantReq      bool
 	wantResp     bool
 	request      string
@@ -76,7 +84,15 @@ func New(opts Options) *Recorder {
 	if opts.MaxBytes <= 0 {
 		opts.MaxBytes = DefaultMaxBytes
 	}
-	return &Recorder{limit: opts.MaxBytes, wantReq: opts.Prompt, wantResp: opts.Response}
+	if opts.PromptMaxBytes <= 0 {
+		opts.PromptMaxBytes = defaultPromptMaxBytes
+	}
+	return &Recorder{
+		limit:     opts.MaxBytes,
+		promptCap: opts.PromptMaxBytes,
+		wantReq:   opts.Prompt,
+		wantResp:  opts.Response,
+	}
 }
 
 // SetRequest 记录请求正文（已按上限截断）。
@@ -92,7 +108,7 @@ func (r *Recorder) SetRequest(text string) {
 
 	// 单独抽一份「用户说的话」：观测层默认展示这一份，
 	// 原始请求体退到 metadata 里备查。
-	extracted := prompttext.Extract([]byte(text))
+	extracted := prompttext.ExtractWithLimit([]byte(text), r.promptCap)
 	r.mu.Lock()
 	r.protocol = extracted.Protocol
 	r.promptStat = extracted.Status

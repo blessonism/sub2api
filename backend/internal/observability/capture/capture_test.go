@@ -444,3 +444,28 @@ func TestFinishReasonFromNonStreamJSON(t *testing.T) {
 		t.Fatalf("非流式响应的 finish_reason 未补上：%q", got)
 	}
 }
+
+// TestPromptCapDefaultsWhenUnset 保证零值 Options 不会变成"无上限"。
+func TestPromptCapDefaultsWhenUnset(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 4096})
+	if rec.promptCap != defaultPromptMaxBytes {
+		t.Fatalf("promptCap = %d, want %d", rec.promptCap, defaultPromptMaxBytes)
+	}
+}
+
+// TestPromptCapAppliesToUserText 覆盖用户消息上限独立于请求体上限。
+func TestPromptCapAppliesToUserText(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"` + strings.Repeat("问", 400) + `"}]}`
+	rec := New(Options{Prompt: true, MaxBytes: 64 * 1024, PromptMaxBytes: 300})
+	rec.SetRequest(body)
+	text, _, _, status := rec.UserPrompt()
+	if status != "ok" {
+		t.Fatalf("status = %q", status)
+	}
+	if len(text) > 300+len("…（前文已省略）\n\n") {
+		t.Fatalf("用户文本长度 %d，未按 PromptMaxBytes 截断", len(text))
+	}
+	if !utf8.ValidString(text) {
+		t.Fatal("截断后必须是合法 UTF-8")
+	}
+}

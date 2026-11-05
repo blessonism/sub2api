@@ -258,9 +258,10 @@ func captureOptions(cfg *config.Config) capture.Options {
 	}
 	lf := cfg.Observability.Langfuse
 	return capture.Options{
-		Prompt:   lf.CapturePrompt,
-		Response: lf.CaptureResponse,
-		MaxBytes: lf.CaptureMaxBytes,
+		Prompt:         lf.CapturePrompt,
+		Response:       lf.CaptureResponse,
+		MaxBytes:       lf.CaptureMaxBytes,
+		PromptMaxBytes: lf.CapturePromptMaxBytes,
 	}
 }
 
