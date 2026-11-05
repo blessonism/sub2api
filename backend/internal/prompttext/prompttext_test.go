@@ -212,3 +212,54 @@ func TestExtractFirstUserSkipsCompactionSummary(t *testing.T) {
 		t.Fatalf("FirstUser = %q，压缩摘要不是用户说的话", got.FirstUser)
 	}
 }
+
+func TestLatestUserSkipsApprovalBlocks(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"帮我看下这个报错"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"好的"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"[153] tool exec call: tools.exec_command({cmd:\"ls\"})\n>>> APPROVAL REQUEST END"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":">>> PARENT TURN PERMISSION CONTEXT START\nThe active permission profile ...\n>>> APPROVAL REQUEST START\nAssess the exact planned action"}]}
+	]}`)
+	got := Extract(body)
+	if got.LatestUser != "帮我看下这个报错" {
+		t.Fatalf("LatestUser = %q，末尾的工具/审批块必须被跳过", got.LatestUser)
+	}
+	if got.Turns != 3 {
+		t.Fatalf("turns = %d, want 3", got.Turns)
+	}
+}
+
+func TestLatestUserFallsBackWhenAllMeta(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":">>> APPROVAL REQUEST START\nonly meta"}]}`)
+	got := Extract(body)
+	if got.LatestUser == "" {
+		t.Fatal("整段都是客户端块时也要退回最后一条，不能空")
+	}
+}
+
+func TestLatestUserIsTheNewestRealMessage(t *testing.T) {
+	body := []byte(`{"messages":[
+		{"role":"user","content":"第一轮问题"},
+		{"role":"assistant","content":"回答"},
+		{"role":"user","content":"第二轮：这一句才是最新的"}
+	]}`)
+	got := Extract(body)
+	if got.LatestUser != "第二轮：这一句才是最新的" {
+		t.Fatalf("LatestUser = %q", got.LatestUser)
+	}
+	if !strings.Contains(got.Text, "第一轮问题") {
+		t.Fatal("完整历史仍要留在 Text 里（用于字节统计与归档）")
+	}
+}
+
+func TestHistoryBytesIgnoresTruncation(t *testing.T) {
+	long := strings.Repeat("历", 500)
+	body := []byte(`{"messages":[{"role":"user","content":"` + long + `"},{"role":"user","content":"最新"}]}`)
+	got := ExtractWithLimit(body, 200)
+	if got.HistoryBytes < 500*3 {
+		t.Fatalf("HistoryBytes = %d，必须是截断前的真实历史字节数", got.HistoryBytes)
+	}
+	if len(got.Text) > 200+len("…（前文已省略）\n\n") {
+		t.Fatalf("Text 仍应按上限截断：%d", len(got.Text))
+	}
+}

@@ -278,6 +278,9 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.UserTurns > 0 {
 		meta["user_prompt_turns"] = c.UserTurns
 	}
+	if c.UserPromptHistoryBytes > 0 {
+		meta["user_prompt_history_bytes"] = c.UserPromptHistoryBytes
+	}
 	if c.PromptStatus != "" {
 		meta["user_prompt_status"] = c.PromptStatus
 	}
