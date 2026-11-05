@@ -2751,7 +2751,7 @@ func setDefaults() {
 	// 正文采集默认关闭：只上报元数据时，观测层不含任何提示词内容。
 	viper.SetDefault("observability.langfuse.capture_prompt", false)
 	viper.SetDefault("observability.langfuse.capture_response", false)
-	viper.SetDefault("observability.langfuse.capture_max_bytes", 32768)
+	viper.SetDefault("observability.langfuse.capture_max_bytes", 65536)
 
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)

@@ -79,9 +79,16 @@ type Call struct {
 	// PromptProtocol / PromptStatus 记录抽取结果，便于排查为什么没抽到。
 	PromptProtocol string
 	PromptStatus   string
-	// InputTruncated / OutputTruncated 标记正文达到缓冲上限被截断。
+	// OutputChars 是响应正文字符数（rune），用于事后判断"这段回答是不是被切了"。
+	OutputChars int
+	// FinishReason 是上游给的收尾原因：stop / length / tool_calls / incomplete:*。
+	// 它与 OutputTruncated 配合，才能区分"模型自己截断"和"我们缓冲截断"。
+	FinishReason string
+	// InputTruncated / OutputTruncated 标记**正文**达到缓冲上限被截断。
 	InputTruncated  bool
 	OutputTruncated bool
+	// RawResponseTruncated 标记**原始响应字节**被截断（仅影响解析兜底，不代表正文缺失）。
+	RawResponseTruncated bool
 
 	// Metadata 是可选的附加检索维度，值必须是已脱敏的短字符串。
 	Metadata map[string]string

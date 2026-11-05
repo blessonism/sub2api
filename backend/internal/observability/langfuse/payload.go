@@ -245,8 +245,19 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.PromptProtocol != "" {
 		meta["user_prompt_protocol"] = c.PromptProtocol
 	}
+	// 只有正文真的触顶才标 output_truncated；原始字节被截只影响解析兜底，
+	// 之前两者混用导致每条 trace 都带 output_truncated=true，反而看不出真截断。
 	if c.OutputTruncated {
 		meta["output_truncated"] = true
+	}
+	if c.RawResponseTruncated {
+		meta["raw_stream_truncated"] = true
+	}
+	if c.OutputChars > 0 {
+		meta["output_chars"] = c.OutputChars
+	}
+	if c.FinishReason != "" {
+		meta["finish_reason"] = c.FinishReason
 	}
 	if c.AccountID != 0 {
 		meta["account_id"] = strconv.FormatInt(c.AccountID, 10)

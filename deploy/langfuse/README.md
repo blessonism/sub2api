@@ -101,6 +101,21 @@ ingestion 时把这批 trace 归到同一个 `sessionId`，并配上会话内的
 已知边界：客户端不带会话头、且提示词采集关闭时无法归组；同一用户用完全相同的开场白
 在 30 分钟内开两个会话会被并成一个（锚点相同即视为同一会话）。
 
+## 输出完整性标记
+
+正文采集有上限（`observability.langfuse.capture_max_bytes`，默认 64KB），超过就只留前 64KB。
+为了事后能判断"这段回答是不是被切了"，trace/generation 的 metadata 里带四个字段：
+
+| 字段 | 含义 |
+|---|---|
+| `output_chars` | 响应正文字符数（rune），和客户端看到的字数直接对得上 |
+| `finish_reason` | 上游收尾原因：`stop` / `length` / `tool_calls` / `incomplete:max_output_tokens`（responses）/ `end_turn`（anthropic） |
+| `output_truncated` | **只在正文触顶时出现**，表示回答被截断 |
+| `raw_stream_truncated` | 原始 SSE 字节被截（流里 `response.created` 这类大 JSON 很容易超限），**不代表正文缺失** |
+
+判读：`finish_reason=length` 是模型自己停的；`output_truncated=true` 才是观测层切掉的。
+两者都没有而回答明显短，说明这一轮本来就没有 assistant 正文（纯工具调用步）。
+
 ## 验证
 
 ```bash
