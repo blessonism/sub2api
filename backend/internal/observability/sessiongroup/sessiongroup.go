@@ -134,7 +134,7 @@ func (r *Registry) Resolve(in Input) Group {
 		now = time.Now()
 	}
 
-	anchor := fingerprint(in.FirstUserPrompt)
+	anchor := anchorKey(in.FirstUserPrompt)
 	base := identityKey(in)
 
 	source := SourceNone
@@ -261,6 +261,16 @@ func title(prompt string) string {
 		cut--
 	}
 	return strings.TrimSpace(trimmed[:cut]) + "…"
+}
+
+// anchorKey 是线程指纹：优先取「真实请求」段落。
+// 客户端在上游做上下文压缩时会改写首条消息的注入部分，
+// 但用户那句话不变；只按整条消息取指纹会把同一段对话切成两条线程。
+func anchorKey(firstUser string) string {
+	if section := prompttext.ExtractRequestSection(firstUser); section != "" {
+		return fingerprint(section)
+	}
+	return fingerprint(firstUser)
 }
 
 // fingerprint 是锚点消息的短指纹；空消息返回空串。
