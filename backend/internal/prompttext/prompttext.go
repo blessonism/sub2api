@@ -175,6 +175,7 @@ func latestUserMessage(texts []string) string {
 // 用户完全可能把一段 XML/HTML 当问题贴进来，那时它就是他真正的话。
 var machineBlockPrefixes = []string{
 	"<environment_context",
+	"<heartbeat",
 	"<user_info",
 	"<rules",
 	"<system-reminder",
@@ -234,6 +235,7 @@ func exceedsLimit(s string, limit int) bool {
 // clientMetaMarkers 是客户端写进 user 消息里的结构化块特征：
 // 审批请求、转录增量、工具调用回显。它们不是用户说的话。
 var clientMetaMarkers = []string{
+	"another language model started to solve this problem",
 	">>> approval request",
 	">>> transcript delta",
 	">>> parent turn permission context",
