@@ -1401,7 +1401,10 @@ observability:
     # 启动时会为这种组合打一条警告。
     capture_prompt: false
     capture_response: false
-    # 请求样本 / 响应正文的单侧上限（硬顶 2MB），超出截断并在 metadata 打标记
-    capture_max_bytes: 262144
-    # 「用户消息」文本的单侧上限：决定 UI 上 input 有多完整（硬顶 2MB）
+    # 请求样本 / 响应正文的单侧上限（硬顶 1MB，与发送层 clampCaptured 对齐）。
+    # 配到硬顶之后不再有第二层静默截断；超出部分由 Langfuse 的
+    # LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED 自动外置到 S3，行内只留引用。
+    capture_max_bytes: 1048576
+    # 「用户消息」文本的单侧上限：决定 UI 上 input 有多完整（硬顶 1MB）。
+    # 超限时保留**尾部**（一句话的落点在末尾），并在 metadata 打 turn_input_truncated。
     capture_prompt_max_bytes: 524288
