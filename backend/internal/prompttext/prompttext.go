@@ -14,9 +14,10 @@ import (
 // DefaultMaxBytes 是抽取结果的字节上限（按 rune 边界回退）。
 const DefaultMaxBytes = 16 * 1024
 
-// anchorLimit 是锚点消息的字节上限：它只用于会话归组和标题，
-// 不参与展示正文，取够区分即可。
-const anchorLimit = 480
+// anchorLimit 是锚点消息的字节上限：它只用于会话归组与标题，
+// 不参与展示正文。取 4KB 是为了能在同一条消息里看到
+// "## My request:" 这类段落标记之后真正的请求内容。
+const anchorLimit = 4096
 
 // Result 是一次抽取的结果。
 type Result struct {
@@ -95,25 +96,86 @@ func build(protocol string, texts []string) Result {
 // 同一客户端的所有会话会塌成同一个锚点、进而被并进同一个会话。
 func anchorMessage(texts []string) string {
 	for _, t := range texts {
-		if !isInjectedFraming(t) {
+		// 纯注入上下文（没有请求段落）跳过；带请求段落的整条保留，
+		// 因为用户真正说的话就在同一条消息的后半段。
+		if !isInjectedFraming(t) || ExtractRequestSection(t) != "" {
 			return t
 		}
 	}
 	return texts[0]
 }
 
-// isInjectedFraming 判断一条消息是否是 XML 风格的客户端注入块。
-// 判定刻意保守：必须以 '<' 开头，且在前 512 字节内出现闭合标记。
+// injectedMarkers 是客户端注入的上下文块特征。命中即视为「不是用户说的话」，
+// 只影响锚点选择与标题，不影响展示正文。
+var injectedMarkers = []string{
+	"<environment_context",
+	"<user_instructions",
+	"<instructions",
+	"<user_info",
+	"<rules",
+	"<system-reminder",
+	"# agents.md instructions",
+	"# files mentioned by the user",
+	"# context from my ide setup",
+}
+
+// compactionSignature 是上下文压缩摘要的特征：它出现在 user 角色里，
+// 但内容是模型自己写的摘要，不是用户这一轮说的话。
+const compactionSignature = "in this summary to assist with your own analysis"
+
+// requestSectionMarkers 是「真实请求」段落标记：客户端会把用户原话包在
+// 一大段上下文后面，用这些标题分隔。取最后一个标记之后的内容作为标题。
+var requestSectionMarkers = []string{
+	"## my request",
+	"## user request",
+	"## 我的请求",
+	"## 需求",
+	"## task",
+	"## 任务",
+	"## goal",
+	"## 目标",
+}
+
+// isInjectedFraming 判断一条消息是否是客户端注入的上下文块。
+// 判定刻意保守：只看开头特征，命中即视为注入。
 func isInjectedFraming(text string) bool {
-	trimmed := strings.TrimSpace(text)
-	if !strings.HasPrefix(trimmed, "<") {
+	trimmed := strings.ToLower(strings.TrimSpace(text))
+	if trimmed == "" {
 		return false
 	}
 	head := trimmed
 	if len(head) > 512 {
 		head = head[:512]
 	}
-	return strings.Contains(head, "</") || strings.Contains(head, "/>")
+	for _, marker := range injectedMarkers {
+		if strings.HasPrefix(head, marker) {
+			return true
+		}
+	}
+	if strings.HasPrefix(head, "<") && (strings.Contains(head, "</") || strings.Contains(head, "/>")) {
+		return true
+	}
+	return strings.Contains(trimmed, compactionSignature)
+}
+
+// ExtractRequestSection 返回消息里「真实请求」段落之后的正文。
+// 没有命中段落标记时返回空串。
+func ExtractRequestSection(text string) string {
+	lower := strings.ToLower(text)
+	best := -1
+	bestLen := 0
+	for _, marker := range requestSectionMarkers {
+		if idx := strings.LastIndex(lower, marker); idx > best {
+			best = idx
+			bestLen = len(marker)
+		}
+	}
+	if best < 0 {
+		return ""
+	}
+	rest := text[best+bestLen:]
+	rest = strings.TrimLeft(rest, " \t:：\r\n")
+	return strings.TrimSpace(rest)
 }
 
 // chatUserTexts 处理 OpenAI chat 与 Anthropic messages：role=="user" 的 content。

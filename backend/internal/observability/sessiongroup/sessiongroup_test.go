@@ -158,3 +158,10 @@ func TestTitleKeepsFirstLine(t *testing.T) {
 		t.Fatalf("长标题未截断：len=%d", len(got))
 	}
 }
+
+func TestTitlePrefersRequestSection(t *testing.T) {
+	got := title("# Files mentioned by the user:\n- a.svg\n\n## My request:\n看下这张图对应哪组实验数据")
+	if !strings.HasPrefix(got, "看下这张图") {
+		t.Fatalf("title = %q，应取 ## My request 之后的内容", got)
+	}
+}
