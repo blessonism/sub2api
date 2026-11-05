@@ -18,8 +18,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/prompttext"
 )
 
-// maxPendingBytes 是未成行 SSE 尾巴的上限，防止巨型无换行载荷撑爆缓冲。
-const maxPendingBytes = 64 * 1024
+// maxPendingBytes 是未成行 SSE 尾巴的上限。
+// 取值必须容得下 response.completed 这类整对象事件（长回答时可达数百 KB）：
+// 线上实测 83% 的"有正文却没 finish_reason"就是这些事件被 64KB 上限丢掉导致的。
+const maxPendingBytes = 4 << 20
 
 // 请求指纹只取首尾定长片段：会话里每一步的差异都落在尾部（追加的工具结果），
 // 头部（system/工具定义）逐轮不变。这样指纹成本是常数级，不受请求体大小影响。
@@ -61,13 +63,15 @@ type Recorder struct {
 	// pending 保存尚未成行的 SSE 尾巴；text 是边写边抽出来的 assistant 文本。
 	// 之所以要增量抽取：Responses 的正文 delta 排在几十 KB 的 response.created
 	// 前导之后，只靠缓冲末尾统一解析，一旦触发上限就永远看不到正文。
-	pending             []byte
-	text                []byte
-	textFull            bool
-	sawDelta            bool
-	userText            string
-	userTurns           int
-	userFirst           string
+	pending   []byte
+	text      []byte
+	textFull  bool
+	sawDelta  bool
+	userText  string
+	userTurns int
+	userFirst string
+	// skipLine 标记正在丢弃一条超长 SSE 行，等下一个换行恢复解析。
+	skipLine            bool
 	userLatest          string
 	userLatestTruncated bool
 	userHistoryBytes    int
@@ -218,6 +222,16 @@ func (r *Recorder) AppendResponse(p []byte) {
 		r.respTruncated = true
 	}
 
+	// 上一块把某条超长行丢到一半：先跳到本块里的行尾，避免半截 JSON 干扰后续解析。
+	if r.skipLine {
+		idx := bytes.IndexByte(p, '\n')
+		if idx < 0 {
+			return
+		}
+		p = p[idx+1:]
+		r.skipLine = false
+	}
+
 	// 增量抽取：按行切，逐条 data: 事件取正文。
 	r.pending = append(r.pending, p...)
 	for {
@@ -245,9 +259,11 @@ func (r *Recorder) AppendResponse(p []byte) {
 		}
 		r.appendTextLocked(piece)
 	}
-	// 单行异常巨大（无换行的巨型 JSON）时丢弃尾巴，避免 pending 无界增长。
+	// 单行超过上限：丢掉这一行并进入跳过模式，等下一个换行再继续解析，
+	// 不能像以前那样清空后继续当整行解析（会把后续事件一起吃掉）。
 	if len(r.pending) > maxPendingBytes {
 		r.pending = r.pending[:0]
+		r.skipLine = true
 	}
 }
 
@@ -255,6 +271,11 @@ func (r *Recorder) AppendResponse(p []byte) {
 // 流结束时上游不一定补换行，留在 pending 里的那一行就是正文的最后一段，
 // 不解析等于固定丢掉结尾。调用方必须持锁。
 func (r *Recorder) flushPendingLocked() {
+	if r.skipLine {
+		r.pending = nil
+		r.skipLine = false
+		return
+	}
 	if len(r.pending) == 0 {
 		return
 	}

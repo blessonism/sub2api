@@ -514,3 +514,29 @@ func TestLatestUserTruncationIsReported(t *testing.T) {
 		t.Fatalf("LatestUserPrompt 长度 %d 超上限", len(got))
 	}
 }
+
+// TestLargeCompletedEventStillYieldsFinishReason 覆盖线上主因：
+// response.completed 整对象事件在长回答时可达数百 KB，被 64KB 上限丢掉后
+// finish_reason 就永远缺失。
+func TestLargeCompletedEventStillYieldsFinishReason(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 64 * 1024})
+	pad := strings.Repeat("x", 300*1024)
+	rec.AppendResponse([]byte(`event: response.completed` + "\n" +
+		`data: {"type":"response.completed","response":{"status":"completed","pad":"` + pad + `"}}` + "\n\n"))
+	if got := rec.FinishReason(); got != "stop" {
+		t.Fatalf("finish = %q，300KB 的 completed 事件必须仍能解析", got)
+	}
+}
+
+// TestOversizedLineDoesNotSwallowFollowingEvents 保证超长行只丢自己。
+func TestOversizedLineDoesNotSwallowFollowingEvents(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 64 * 1024})
+	huge := strings.Repeat("y", maxPendingBytes+1024)
+	rec.AppendResponse([]byte(`event: response.metadata` + "\n" + `data: {"pad":"` + huge))
+	rec.AppendResponse([]byte(`"}` + "\n\n"))
+	rec.AppendResponse([]byte(`event: response.output_text.delta` + "\n" +
+		`data: {"type":"response.output_text.delta","delta":"后续正文"}` + "\n\n"))
+	if got := rec.ResponseText(); got != "后续正文" {
+		t.Fatalf("ResponseText = %q，超长行之后的正文不得被吃掉", got)
+	}
+}
