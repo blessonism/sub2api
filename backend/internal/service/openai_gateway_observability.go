@@ -46,6 +46,7 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 	var userTurns int
 	var promptProtocol, promptStatus string
 	var firstUser, requestFP string
+	var stepInput, stepInputKind string
 	if rec := capture.From(ctx); rec != nil {
 		input = rec.RequestText()
 		output = rec.ResponseText()
@@ -116,6 +117,8 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 
 		Input:                  input,
 		InputUser:              inputUser,
+		StepInput:              stepInput,
+		StepInputKind:          stepInputKind,
 		FirstUserPrompt:        firstUser,
 		RequestFingerprint:     requestFP,
 		UserTurns:              userTurns,

@@ -281,22 +281,56 @@ func TestExpiredTurnReopensAsNewCard(t *testing.T) {
 	}
 }
 
-// TestGenerationOmitsDuplicatedInput：每步的 input 是完全相同的一句话，
-// 重复发几十份正是要修的冗余，所以 generation 侧不再带 input。
-func TestGenerationOmitsDuplicatedInput(t *testing.T) {
+// TestGenerationCarriesStepInput：步骤面板不能空着。
+// 有工具结果就展示工具结果（每步不同，有信息量），
+// 没有就退回该轮的用户消息，而不是留一个 null 让 UI 渲染成 undefined。
+func TestGenerationCarriesStepInput(t *testing.T) {
 	b := newTestBuffer(t)
 	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
 	c := stepCall("sess-h", "同一句话", 1, "fp-1", base)
+	c.StepInput = "README.md: 120 行，含安装说明"
+	c.StepInputKind = "tool_result"
 	c.Output = "这一步的产出"
 	evs := b.add(c)
 	if len(evs) != 1 || evs[0].Type != eventTypeGenerationCreate {
 		t.Fatalf("期望恰好 1 条 generation，实际 %d", len(evs))
 	}
-	if _, ok := evs[0].Body["input"]; ok {
-		t.Fatalf("generation 不该再带 input：%v", evs[0].Body["input"])
+	if got := evs[0].Body["input"]; got != "README.md: 120 行，含安装说明" {
+		t.Fatalf("generation.input = %v，应优先展示工具结果", got)
 	}
 	if evs[0].Body["output"] != "这一步的产出" {
 		t.Fatalf("generation 必须保留本步输出：%v", evs[0].Body["output"])
+	}
+	if metaOfEvent(t, evs[0])["step_input_kind"] != "tool_result" {
+		t.Fatalf("step_input_kind = %v", metaOfEvent(t, evs[0])["step_input_kind"])
+	}
+}
+
+// TestGenerationInputFallsBackToUserPrompt：首步没有工具结果，
+// 退回该轮的用户消息，而不是空着。
+func TestGenerationInputFallsBackToUserPrompt(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	evs := b.add(stepCall("sess-h2", "把观测改成一轮一张卡", 1, "fp-1", base))
+	if got := evs[0].Body["input"]; got != "把观测改成一轮一张卡" {
+		t.Fatalf("generation.input = %v，应退回用户消息", got)
+	}
+}
+
+// TestGenerationInputIsCapped：工具结果动辄几十 KB，步骤面板只需要看清楚
+// "这一步拿到了什么"，按 4KB 收口。
+func TestGenerationInputIsCapped(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	c := stepCall("sess-h3", "看一个很大的文件", 1, "fp-1", base)
+	c.StepInput = strings.Repeat("x", 64<<10)
+	evs := b.add(c)
+	got, _ := evs[0].Body["input"].(string)
+	if len(got) > stepInputLimit {
+		t.Fatalf("generation.input = %d 字节，超过 %d 的上限", len(got), stepInputLimit)
 	}
 }
 

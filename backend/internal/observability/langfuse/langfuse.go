@@ -78,6 +78,13 @@ type Call struct {
 	// InputUser 是从请求体里单独抽出的用户消息文本，作为这一轮卡片的 input。
 	// 同一轮里每步都一样，所以取首个非空值即可。
 	InputUser string
+	// StepInput 是「这一步新加进来的内容」——agentic 循环里通常是上一步之后的
+	// 工具执行结果。它填在 generation 的 input 上：同一轮每条步骤的用户消息
+	// 完全相同，重复发几十份没有信息量，而工具结果每步都不一样。
+	// 为空（首步、纯文本对话）时退回展示 InputUser。
+	StepInput string
+	// StepInputKind 标记 StepInput 的来源，仅用于排查。
+	StepInputKind string
 	// FirstUserPrompt 是请求里第一条「用户真正说的话」（已跳过 <environment_context>
 	// 这类客户端注入块），只用于会话归组与标题，不单独展示。
 	FirstUserPrompt string

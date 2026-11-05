@@ -191,9 +191,10 @@ func TestBatchCarriesTraceAndGenerationWithActualCost(t *testing.T) {
 	if meta["request_id"] != "req-1" {
 		t.Fatalf("metadata.request_id = %v, want req-1", meta["request_id"])
 	}
-	// 正文分层：用户消息只挂在卡片上，步骤侧不再重复发一份。
-	if _, ok := gen.Body["input"]; ok {
-		t.Fatalf("generation 不该再带 input（每步都一样的冗余）：%v", gen.Body["input"])
+	// 正文分层：卡片放该轮的用户消息；步骤放「这一步新加进来的内容」，
+	// 没有工具结果时退回用户消息 —— 总之不能留空让 UI 渲染成 undefined。
+	if got := gen.Body["input"]; got != "你好" {
+		t.Fatalf("generation.input = %v, want 你好（首步没有工具结果，退回用户消息）", got)
 	}
 	if got := gen.Body["output"]; got != "世界，你好" {
 		t.Fatalf("generation.output = %v", got)

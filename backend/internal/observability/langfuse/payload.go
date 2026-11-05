@@ -95,11 +95,11 @@ func tailBytes(s string, limit int) string {
 	return marker + s[cut:]
 }
 
-// generationBody 是单步的观测投影：模型、用量、实扣、耗时，以及这一步自己的输出。
+// generationBody 是单步的观测投影：模型、用量、实扣、耗时，以及这一步的输入输出。
 //
-// 刻意不再带 input：同一轮里每一步的「用户最新消息」完全相同，
-// 之前每步都发一份，在 Langfuse 上表现为几十条一模一样的输入，
-// 既没有增量信息，又把 payload 撑大一倍。用户消息由轮次卡片统一承载。
+// input 取「这一步新加进来的内容」（工具结果优先），而不是每步重复的整段用户消息：
+// 后者在同一轮里几十份一模一样，既是冗余又让步骤面板看起来像坏数据。
+// 首步没有工具结果时退回该轮的用户消息，保证这块不会空着。
 func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[string]any {
 	end := c.StartedAt.Add(c.Duration)
 	body := map[string]any{
@@ -121,12 +121,31 @@ func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[s
 	if c.Status == "billing_error" && c.ErrorKind != "" {
 		body["statusMessage"] = c.ErrorKind
 	}
+	if input := c.stepInput(); input != "" {
+		body["input"] = input
+	}
 	// 这一步说了什么，只有它自己知道：卡片只保留整轮最后一条，
 	// 中间过程（尤其是被后续步骤覆盖掉的解释性文字）必须挂在 generation 上。
 	if c.Output != "" {
 		body["output"] = c.Output
 	}
 	return body
+}
+
+// stepInputLimit 是步骤 input 的字节上限。
+// agentic 的工具结果动辄几十 KB（一次 grep 或一次文件读取），全发既撑载荷
+// 也没人读；4KB 足够看清"这一步拿到了什么"。
+const stepInputLimit = 4 << 10
+
+// stepInput 选择步骤 input：工具结果优先，没有则退回该轮的用户消息。
+func (c Call) stepInput() string {
+	if c.StepInput != "" {
+		return truncateBytes(c.StepInput, stepInputLimit)
+	}
+	if c.InputUser != "" {
+		return truncateBytes(c.InputUser, stepInputLimit)
+	}
+	return truncateBytes(c.Input, stepInputLimit)
 }
 
 func usageDetails(c Call) map[string]any {
@@ -158,6 +177,11 @@ func stepMetadata(c Call, grp sessiongroup.Group) map[string]any {
 	}
 	if c.RequestID != "" {
 		meta["request_id"] = c.RequestID
+	}
+	if c.StepInputKind != "" {
+		// 步骤 input 的来源：tool_result 表示"这一步拿到的是工具返回"，
+		// 没有这个键则说明展示的是该轮用户消息（首步或纯文本对话）。
+		meta["step_input_kind"] = c.StepInputKind
 	}
 	if c.Currency != "" {
 		meta["cost_currency"] = c.Currency

@@ -76,9 +76,14 @@ type Recorder struct {
 	userLatestTruncated bool
 	userLatestFallback  bool
 	userHistoryBytes    int
-	reqFP               string
-	protocol            string
-	promptStat          string
+	// stepInput 是「这一步新加进来的内容」（通常是工具执行结果），
+	// 观测层把它放在步骤 input 上：同一轮每条步骤的用户消息完全相同，
+	// 只有工具结果每步不同，那才是"这一步模型看到了什么"。
+	stepInput     string
+	stepInputKind string
+	reqFP         string
+	protocol      string
+	promptStat    string
 	// respTruncated 标记**原始响应字节**达到上限被截；它与正文是否被截是两件事：
 	// 流里有 response.created 这类大 JSON，原始字节几乎必然超上限，
 	// 但正文往往远未触顶。两者混用会把每一条都标成"输出被截"。
@@ -136,6 +141,8 @@ func (r *Recorder) SetRequest(text string) {
 		r.userText = extracted.Text
 		r.userTurns = extracted.Turns
 	}
+	r.stepInput = extracted.StepInput
+	r.stepInputKind = extracted.StepInputKind
 	r.mu.Unlock()
 }
 
@@ -188,6 +195,27 @@ func (r *Recorder) UserPromptHistoryBytes() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.userHistoryBytes
+}
+
+// StepInput 返回这一步新加进来的内容（通常是工具执行结果）。
+// 观测层用它填步骤的 input；为空时上层退回展示该轮的用户消息。
+func (r *Recorder) StepInput() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stepInput
+}
+
+// StepInputKind 标记 StepInput 的来源，仅用于排查（目前只有 tool_result）。
+func (r *Recorder) StepInputKind() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stepInputKind
 }
 
 // RequestFingerprint 返回请求体指纹，供观测层识别「同一步的重复尝试」。

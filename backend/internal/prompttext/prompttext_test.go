@@ -332,3 +332,73 @@ func TestLatestUserFallbackIsCappedAndFlagged(t *testing.T) {
 		t.Fatalf("turns = %d", got.Turns)
 	}
 }
+
+// TestStepInputExtractsToolResult 覆盖「这一步新加进来的内容」：
+// agentic 循环里每步的请求体都是「历史 + 工具结果」，只有工具结果是新的。
+func TestStepInputExtractsToolResult(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "openai chat tool role",
+			body: `{"messages":[
+				{"role":"user","content":"看下 README"},
+				{"role":"assistant","content":null,"tool_calls":[{"id":"c1"}]},
+				{"role":"tool","tool_call_id":"c1","content":"# Sub2API\n安装说明…"}]}`,
+			want: "# Sub2API\n安装说明…",
+		},
+		{
+			name: "anthropic tool_result block",
+			body: `{"messages":[
+				{"role":"user","content":"看下 README"},
+				{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"read"}]},
+				{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"文件内容在此"}]}]}`,
+			want: "文件内容在此",
+		},
+		{
+			name: "responses function_call_output",
+			body: `{"input":[
+				{"type":"message","role":"user","content":"看下 README"},
+				{"type":"function_call_output","call_id":"f1","output":"命令输出：ok"}]}`,
+			want: "命令输出：ok",
+		},
+		{
+			name: "first step has no tool result",
+			body: `{"messages":[{"role":"user","content":"第一次提问"}]}`,
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ExtractWithLimit([]byte(tc.body), DefaultMaxBytes)
+			if got.StepInput != tc.want {
+				t.Fatalf("StepInput = %q, want %q", got.StepInput, tc.want)
+			}
+			if tc.want != "" && got.StepInputKind != "tool_result" {
+				t.Fatalf("StepInputKind = %q, want tool_result", got.StepInputKind)
+			}
+		})
+	}
+}
+
+// TestCompactionPromptIsNotUserText 覆盖线上实测到的一类误判：
+// Codex 的上下文压缩指令以 role=user 发出，但它是机器指令，不是用户说的话。
+// 不排除的话，压缩轮次的卡片 input 会显示那句英文，读起来像"用户要求做摘要"。
+func TestCompactionPromptIsNotUserText(t *testing.T) {
+	body := `{"messages":[
+		{"role":"user","content":"把观测改成一轮一张卡"},
+		{"role":"user","content":"You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for the next model."}
+	]}`
+	got := ExtractWithLimit([]byte(body), DefaultMaxBytes)
+	if got.LatestUser != "把观测改成一轮一张卡" {
+		t.Fatalf("LatestUser = %q，压缩指令不该冒充用户消息", got.LatestUser)
+	}
+	if got.LatestIsFallback {
+		t.Fatal("还有真实用户文本时不该标 fallback")
+	}
+	if got.Turns != 2 {
+		t.Fatalf("Turns = %d，压缩指令仍算一条 user 消息（轮次识别要用）", got.Turns)
+	}
+}

@@ -48,6 +48,12 @@ type Result struct {
 	Protocol string
 	// Status 说明抽取结果：ok / no_user / invalid_json / unrecognized。
 	Status string
+	// StepInput 是「这一步新加进来的东西」：agentic 循环里通常是上一次模型输出
+	// 之后的工具执行结果。它填在观测层的步骤 input 上 —— 同一轮每条步骤的用户
+	// 消息完全相同，重复发几十份没有信息量，而工具结果每步都不一样。
+	StepInput string
+	// StepInputKind 标记 StepInput 的来源：tool_result / ""（没有新增内容）。
+	StepInputKind string
 }
 
 // Extract 用默认上限抽取用户文本。
@@ -72,15 +78,21 @@ func ExtractWithLimit(body []byte, limit int) Result {
 
 	if contents, ok := root["contents"].([]any); ok {
 		texts := geminiUserTexts(contents)
-		return build("gemini", texts, limit)
+		out := build("gemini", texts, limit)
+		out.StepInput, out.StepInputKind = stepInput(contents, "gemini", limit)
+		return out
 	}
 	if items, ok := root["input"].([]any); ok {
 		texts := responsesUserTexts(items)
-		return build("openai_responses", texts, limit)
+		out := build("openai_responses", texts, limit)
+		out.StepInput, out.StepInputKind = stepInput(items, "openai_responses", limit)
+		return out
 	}
 	if items, ok := root["messages"].([]any); ok {
 		texts := chatUserTexts(items)
-		return build("openai_chat", texts, limit)
+		out := build("openai_chat", texts, limit)
+		out.StepInput, out.StepInputKind = stepInput(items, "openai_chat", limit)
+		return out
 	}
 	// Responses 允许 input 直接是字符串。
 	if raw, ok := root["input"].(string); ok && strings.TrimSpace(raw) != "" {
@@ -195,6 +207,11 @@ var machineBlockPrefixes = []string{
 	"# agents.md instructions",
 	"# files mentioned by the user",
 	"# context from my ide setup",
+	// Codex 的上下文压缩指令：它以 role=user 发出，但内容完全是机器指令。
+	// 不排除的话，压缩轮次的卡片 input 会显示这句英文，读起来像"用户要求做摘要"。
+	"you are performing a context checkpoint compaction",
+	// Claude Code 的 /compact 提示词。
+	"your task is to create a detailed summary of the conversation so far",
 }
 
 // isMachineBlock 判断一条消息是否是客户端机器人化追加的块（不是用户写的）。
@@ -430,4 +447,115 @@ func truncateRunes(s string, limit int) string {
 		cut--
 	}
 	return s[:cut]
+}
+
+// stepInput 从请求体里找「这一步新加进来的内容」。
+//
+// agentic 客户端的一次提问会拆成几十次上游调用：每一步的请求体都是
+// 「历史 + 上一步模型输出 + 新的工具结果」。历史与用户消息在整轮里不变，
+// 真正每步不同的只有工具结果 —— 把它放到观测层的步骤 input 上，
+// 步骤才有可读的"这一步模型看到了什么"。
+//
+// 找不到（首步、纯文本对话、或客户端不按标准放工具结果）时返回空，
+// 观测层会退回展示该轮的用户消息。
+func stepInput(items []any, protocol string, limit int) (string, string) {
+	for i := len(items) - 1; i >= 0; i-- {
+		msg, ok := items[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(stringValue(msg["role"])))
+		kind := strings.ToLower(strings.TrimSpace(stringValue(msg["type"])))
+
+		switch protocol {
+		case "openai_responses":
+			// function_call_output / custom_tool_call_output / computer_call_output …
+			if strings.HasSuffix(kind, "_output") {
+				if text := firstText(msg["output"], msg["content"]); text != "" {
+					return truncateLimited(text, limit), "tool_result"
+				}
+			}
+		case "gemini":
+			if text := geminiFunctionText(msg); text != "" {
+				return truncateLimited(text, limit), "tool_result"
+			}
+		default:
+			// OpenAI chat / Anthropic：工具结果有独立 role。
+			if role == "tool" || role == "function" {
+				if text := contentText(msg["content"]); text != "" {
+					return truncateLimited(text, limit), "tool_result"
+				}
+			}
+			// Anthropic 更常见：role=user 里塞 tool_result 块。
+			if role == "user" {
+				if text := toolResultBlocks(msg["content"]); text != "" {
+					return truncateLimited(text, limit), "tool_result"
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+// firstText 取第一个非空的文本形态值。
+func firstText(values ...any) string {
+	for _, v := range values {
+		if text := contentText(v); text != "" {
+			return text
+		}
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+// toolResultBlocks 从 Anthropic 的 content 数组里抽 tool_result 块的文本。
+func toolResultBlocks(value any) string {
+	blocks, ok := value.([]any)
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	for _, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(stringValue(block["type"]))) != "tool_result" {
+			continue
+		}
+		if text := contentText(block["content"]); text != "" {
+			b.WriteString(text)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// geminiFunctionText 抽 Gemini 的 functionResponse.parts[].functionResponse.response。
+func geminiFunctionText(msg map[string]any) string {
+	parts, ok := msg["parts"].([]any)
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	for _, item := range parts {
+		part, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		resp, ok := part["functionResponse"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if text := contentText(resp["response"]); text != "" {
+			b.WriteString(text)
+			continue
+		}
+		// response 常是对象：退一步把整体序列化出来。
+		if raw, err := json.Marshal(resp["response"]); err == nil {
+			b.Write(raw)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
