@@ -246,31 +246,56 @@ func title(prompt string) string {
 	if section := prompttext.ExtractRequestSection(trimmed); section != "" {
 		trimmed = section
 	}
-	if idx := strings.IndexAny(trimmed, "\r\n"); idx >= 0 {
-		trimmed = trimmed[:idx]
-	}
-	trimmed = strings.TrimSpace(trimmed)
-	if trimmed == "" {
+	line, truncated := titleLine(trimmed)
+	if line == "" {
 		return ""
 	}
-	if len(trimmed) <= titleLimit {
-		return trimmed
+	if truncated {
+		return line + "…"
 	}
-	cut := titleLimit
-	for cut > 0 && !utf8.RuneStart(trimmed[cut]) {
+	return line
+}
+
+// titleLine 取第一条非空行，并按 titleLimit 截断。
+// 它同时是会话标题与线程指纹的来源：人能读的那句话就该决定归组。
+func titleLine(text string) (string, bool) {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" {
+			continue
+		}
+		if len(line) > titleLimit {
+			return truncateRunes(line, titleLimit), true
+		}
+		return line, false
+	}
+	return "", false
+}
+
+// truncateRunes 按字节上限截断并回退到 rune 边界。
+func truncateRunes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
-	return strings.TrimSpace(trimmed[:cut]) + "…"
+	return s[:cut]
 }
 
 // anchorKey 是线程指纹：优先取「真实请求」段落。
 // 客户端在上游做上下文压缩时会改写首条消息的注入部分，
 // 但用户那句话不变；只按整条消息取指纹会把同一段对话切成两条线程。
 func anchorKey(firstUser string) string {
-	if section := prompttext.ExtractRequestSection(firstUser); section != "" {
-		return fingerprint(section)
+	text := strings.TrimSpace(firstUser)
+	if section := prompttext.ExtractRequestSection(text); section != "" {
+		text = section
 	}
-	return fingerprint(firstUser)
+	// 只取首行：上游压缩上下文时会重写首条消息的后续部分，
+	// 但"这件事是什么"那句话不变；按整条取指纹会把一段对话切成几节。
+	line, _ := titleLine(text)
+	return fingerprint(line)
 }
 
 // fingerprint 是锚点消息的短指纹；空消息返回空串。
