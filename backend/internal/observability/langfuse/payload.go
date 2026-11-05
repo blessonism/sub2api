@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -115,8 +116,8 @@ func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[stri
 // 全都叫 sub2api.model-call 时，卡片列表没法扫。
 func traceDisplayName(grp sessiongroup.Group) string {
 	name := traceName
-	if grp.ThreadID != "" {
-		name += " · " + grp.ThreadID
+	if short := shortThreadID(grp.ThreadID); short != "" {
+		name += " · " + short
 	}
 	if grp.StepIndex > 0 {
 		name += " · #" + strconv.Itoa(grp.StepIndex)
@@ -125,6 +126,16 @@ func traceDisplayName(grp sessiongroup.Group) string {
 		name += "·try" + strconv.Itoa(grp.AttemptIndex)
 	}
 	return name
+}
+
+// shortThreadID 把 th-7d0b4011 压成 7d0b：trace 名在每个卡片上都要显示，
+// 全量线程 id 会把名字撑长；4 位足够在单个会话内区分线程。
+func shortThreadID(threadID string) string {
+	trimmed := strings.TrimPrefix(threadID, "th-")
+	if len(trimmed) <= 4 {
+		return trimmed
+	}
+	return trimmed[:4]
 }
 
 func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[string]any {

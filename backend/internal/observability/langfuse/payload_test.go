@@ -1,6 +1,7 @@
 package langfuse
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -141,8 +142,8 @@ func TestTraceNameCarriesThreadAndStep(t *testing.T) {
 	if !strings.HasPrefix(name, traceName) || !strings.Contains(name, "#1") {
 		t.Fatalf("trace 名必须带步骤，实际 = %q", name)
 	}
-	if strings.Contains(name, "th-") == false {
-		t.Fatalf("trace 名必须带线程，实际 = %q", name)
+	if !regexp.MustCompile(` · [0-9a-f]{4} · #1$`).MatchString(name) {
+		t.Fatalf("trace 名必须带短线程与步骤，实际 = %q", name)
 	}
 	if retryName, _ := second["name"].(string); !strings.Contains(retryName, "try2") {
 		t.Fatalf("重试要标出来，实际 = %q", retryName)
