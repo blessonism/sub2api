@@ -183,3 +183,27 @@ func TestThreadAnchorSurvivesInjectedContextRewrite(t *testing.T) {
 		t.Fatalf("step = %d, want 2", b.StepIndex)
 	}
 }
+
+func TestThreadAnchorUsesTitleLine(t *testing.T) {
+	reg := NewRegistry(0, 0)
+	now := baseNow()
+	// 同一任务：上游改写首条消息后续内容，首行不变。
+	a := reg.Resolve(Input{ClientSessionID: "s10", UserID: 4, FirstUserPrompt: "# Codex 任务：PP 审计\n\n第一版上下文", Now: now})
+	b := reg.Resolve(Input{
+		ClientSessionID: "s10", UserID: 4,
+		FirstUserPrompt: "# Codex 任务：PP 审计\n\n压缩后的上下文，内容完全不同",
+		Now:             now.Add(time.Minute),
+	})
+	if a.ThreadID != b.ThreadID {
+		t.Fatalf("首行相同必须仍是同一线程：%s vs %s", a.ThreadID, b.ThreadID)
+	}
+	if b.StepIndex != 2 {
+		t.Fatalf("step = %d, want 2", b.StepIndex)
+	}
+}
+
+func TestTitleDoesNotAddEllipsisForLaterLines(t *testing.T) {
+	if got := title("第一行标题\n第二行正文"); got != "第一行标题" {
+		t.Fatalf("title = %q，多行正文不该加省略号", got)
+	}
+}
