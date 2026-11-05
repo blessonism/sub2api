@@ -5,7 +5,7 @@
 - 管理员分组 CRUD：`model_group_routes: [{model, target_group_id, mode, enabled}]`，更新省略时保持，`[]` 清空。普通用户分组 DTO 不暴露规则。
 - `mode` 为 `target_only`（默认）或 `prefer_local`；精确匹配客户端模型名，不支持通配符，同一模型只允许一条规则。禁止自指，仅 OpenAI standard 分组之间允许配置。
 - `groups.model_group_routes` JSONB NOT NULL DEFAULT `[]`；migration `247_model_group_routes.sql` 不包含任何生产分组 ID 或业务启用逻辑。
-- 规则须贯穿 Ent、repo、admin DTO、复制与 auth snapshot（版本 26）。专用 SQL trigger 将规则变更写入 `auth_cache_invalidation_outbox`；没有变化不发事件。
+- 规则须贯穿 Ent、repo、admin DTO、复制与 auth snapshot（合并图片按张计费后的版本为 27）。专用 SQL trigger 将规则变更写入 `auth_cache_invalidation_outbox`；没有变化不发事件。
 
 ## 请求与计费
 

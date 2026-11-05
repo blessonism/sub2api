@@ -1,0 +1,453 @@
+{
+  "schema_version": 1,
+  "base": "ae2e47d03937dd5f50aa81dfd4a4c78bdada683f",
+  "upstream": "8e92c892b47f3f934f18ce63da4c4dcb75f0b6bd",
+  "selected_checks": [
+    "announcement-email-backend",
+    "announcement-email-frontend",
+    "announcement-email-integration",
+    "backend-ent-compile",
+    "backend-handler-compile",
+    "backend-repository-compile",
+    "backend-server-compile",
+    "backend-service-compile",
+    "dashboard-handler",
+    "dashboard-repository-integration",
+    "dashboard-view",
+    "frontend-typecheck",
+    "group-time-rate-backend",
+    "group-time-rate-frontend",
+    "i18n-overlay",
+    "latency-health",
+    "upstream-sync-tool-tests",
+    "user-group-account-binding-backend",
+    "user-group-account-binding-frontend",
+    "user-usage-view"
+  ],
+  "results": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/service",
+        "-run",
+        "AnnouncementEmail|DeliverableAnnouncementEmail",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "公告邮件渲染、收件人过滤与 Worker 投递回归",
+      "duration_seconds": 14.601,
+      "id": "announcement-email-backend",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t6.475s\n",
+      "reasons": [
+        "capability:announcement-email-broadcast"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "id": "announcement-email-frontend",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "Test(AnnouncementEmailBroadcastRepositoryDeliveryLifecycle|MigrationsRunner_IsIdempotent_AndSchemaIsUpToDate)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "公告邮件仓储生命周期与迁移结构回归",
+      "duration_seconds": 21.385,
+      "id": "announcement-email-integration",
+      "lane": "integration",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t13.424s\n",
+      "reasons": [
+        "capability:announcement-email-broadcast"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./ent/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 Ent 生成代码交叉变更的通用编译门禁",
+      "duration_seconds": 59.209,
+      "id": "backend-ent-compile",
+      "lane": "backend",
+      "output": "?   \tgithub.com/Wei-Shaw/sub2api/ent\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/account\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/accountgroup\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/announcement\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/announcementemailbroadcast\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/announcementemaildelivery\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/announcementread\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/apikey\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/authidentity\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/authidentitychannel\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/batchimageevent\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/batchimageitem\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/batchimagejob\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/channelmonitor\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/channelmonitorhistory\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/compositemodelroute\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/enttest\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/errorpassthroughrule\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/group\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/hook\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/idempotencyrecord\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/identityadoptiondecision\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/intercept\t[no test files]\nok  \tgithub.com/Wei-Shaw/sub2api/ent/migrate\t4.220s [no tests to run]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/modeliqproberesult\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/paymentauditlog\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/paymentorder\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/paymentproviderinstance\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/pendingauthsession\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/predicate\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/promocode\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/promocodeusage\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/proxy\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/redeemcode\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/runtime\t[no test files]\nok  \tgithub.com/Wei-Shaw/sub2api/ent/schema\t3.902s [no tests to run]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/schema/mixins\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/securitysecret\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/setting\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/subscriptionplan\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/usagecleanuptask\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/usagelog\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/user\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/userallowedgroup\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/userattributedefinition\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/userattributevalue\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/userplatformquota\t[no test files]\n?   \tgithub.com/Wei-Shaw/sub2api/ent/usersubscription\t[no test files]\n",
+      "reasons": [
+        "fallback:backend/ent/migrate/schema.go",
+        "fallback:backend/ent/mutation.go",
+        "fallback:backend/ent/runtime/runtime.go",
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 handler 交叉变更的通用编译门禁",
+      "duration_seconds": 10.551,
+      "id": "backend-handler-compile",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler\t3.191s [no tests to run]\nok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/admin\t2.194s [no tests to run]\nok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/dto\t0.618s [no tests to run]\nok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/quotaview\t1.182s [no tests to run]\n",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/handler/admin/account_handler.go",
+        "fallback:backend/internal/handler/admin/admin_service_stub_test.go",
+        "fallback:backend/internal/handler/admin/setting_handler_update.go",
+        "fallback:backend/internal/handler/dto/account_mapper_redact_test.go",
+        "fallback:backend/internal/handler/dto/mappers.go",
+        "fallback:backend/internal/handler/dto/settings.go",
+        "fallback:backend/internal/handler/dto/types.go",
+        "fallback:backend/internal/handler/gateway_handler.go",
+        "fallback:backend/internal/handler/gateway_models_test.go",
+        "fallback:backend/internal/handler/gemini_mixed_models_test.go",
+        "fallback:backend/internal/handler/grok_media.go",
+        "fallback:backend/internal/handler/handler.go",
+        "fallback:backend/internal/handler/openai_chat_completions.go",
+        "fallback:backend/internal/handler/openai_gateway_count_tokens.go",
+        "fallback:backend/internal/handler/openai_gateway_handler.go",
+        "fallback:backend/internal/handler/ops_error_logger.go",
+        "fallback:backend/internal/handler/ops_error_logger_test.go",
+        "fallback:backend/internal/handler/setting_handler.go",
+        "fallback:backend/internal/handler/wire.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/repository",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 repository 交叉变更的通用编译门禁",
+      "duration_seconds": 26.662,
+      "id": "backend-repository-compile",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t2.636s [no tests to run]\n",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/repository/account_repo.go",
+        "fallback:backend/internal/repository/account_repo_opencode_go_usage_test.go",
+        "fallback:backend/internal/repository/account_repo_upstream_billing_probe_update_test.go",
+        "fallback:backend/internal/repository/api_key_repo.go",
+        "fallback:backend/internal/repository/http_upstream.go",
+        "fallback:backend/internal/repository/user_repo.go",
+        "fallback:backend/internal/repository/wire.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/server/...",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 server 交叉变更的通用编译门禁",
+      "duration_seconds": 27.573,
+      "id": "backend-server-compile",
+      "lane": "backend",
+      "output": "?   \tgithub.com/Wei-Shaw/sub2api/internal/server\t[no test files]\nok  \tgithub.com/Wei-Shaw/sub2api/internal/server/middleware\t0.802s [no tests to run]\nok  \tgithub.com/Wei-Shaw/sub2api/internal/server/routes\t3.669s [no tests to run]\n",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/server/api_contract_test.go",
+        "fallback:backend/internal/server/router.go",
+        "fallback:backend/internal/server/routes/admin.go",
+        "fallback:backend/internal/server/routes/gateway.go",
+        "fallback:backend/internal/server/routes/user.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/service",
+        "-run",
+        "^$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "未映射 service 交叉变更的通用编译门禁",
+      "duration_seconds": 48.733,
+      "id": "backend-service-compile",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t3.792s [no tests to run]\n",
+      "reasons": [
+        "fallback:backend/go.mod",
+        "fallback:backend/go.sum",
+        "fallback:backend/internal/service/account_test_service.go",
+        "fallback:backend/internal/service/account_usage_service.go",
+        "fallback:backend/internal/service/admin_account.go",
+        "fallback:backend/internal/service/admin_group.go",
+        "fallback:backend/internal/service/admin_group_duplicate.go",
+        "fallback:backend/internal/service/admin_service.go",
+        "fallback:backend/internal/service/admin_user.go",
+        "fallback:backend/internal/service/antigravity_gateway_compat.go",
+        "fallback:backend/internal/service/antigravity_gateway_gemini.go",
+        "fallback:backend/internal/service/antigravity_gateway_upstream.go",
+        "fallback:backend/internal/service/api_key_auth_cache.go",
+        "fallback:backend/internal/service/api_key_auth_cache_impl.go",
+        "fallback:backend/internal/service/api_key_service.go",
+        "fallback:backend/internal/service/auth_service.go",
+        "fallback:backend/internal/service/domain_constants.go",
+        "fallback:backend/internal/service/gateway_forward_as_chat_completions.go",
+        "fallback:backend/internal/service/gateway_forward_as_responses.go",
+        "fallback:backend/internal/service/gateway_service.go",
+        "fallback:backend/internal/service/gemini_cached_content_hardening_test.go",
+        "fallback:backend/internal/service/gemini_chat_completions_compat_service.go",
+        "fallback:backend/internal/service/gemini_models_endpoints.go",
+        "fallback:backend/internal/service/group.go",
+        "fallback:backend/internal/service/group_service.go",
+        "fallback:backend/internal/service/openai_codex_transform.go",
+        "fallback:backend/internal/service/openai_gateway_cc_pipeline.go",
+        "fallback:backend/internal/service/openai_gateway_chat_completions.go",
+        "fallback:backend/internal/service/openai_gateway_forward.go",
+        "fallback:backend/internal/service/openai_gateway_grok.go",
+        "fallback:backend/internal/service/openai_gateway_messages.go",
+        "fallback:backend/internal/service/openai_gateway_messages_anthropic_native.go",
+        "fallback:backend/internal/service/openai_gateway_passthrough.go",
+        "fallback:backend/internal/service/openai_gateway_service.go",
+        "fallback:backend/internal/service/openai_ws_http_bridge.go",
+        "fallback:backend/internal/service/setting_public.go",
+        "fallback:backend/internal/service/setting_service.go",
+        "fallback:backend/internal/service/setting_service_public_test.go",
+        "fallback:backend/internal/service/settings_view.go",
+        "fallback:backend/internal/service/wire.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "./internal/handler/admin",
+        "-run",
+        "^TestDashboardHandler_GetStats_IncludesOperationalMetrics$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "Dashboard handler 运营指标序列化回归",
+      "duration_seconds": 3.083,
+      "id": "dashboard-handler",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/admin\t0.968s\n",
+      "reasons": [
+        "capability:dashboard-operational-metrics"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "^TestUsageLogRepoSuite/(TestDashboardStats_TodayTotalsAndPerformance|TestDashboardStats_OperationalMetrics|TestDashboardStatsWithRange_Fallback|TestDashboardAggregationConsistency)$",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "Dashboard 真实 SQL 聚合与 fallback 运营指标回归",
+      "duration_seconds": 28.285,
+      "id": "dashboard-repository-integration",
+      "lane": "integration",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t18.604s\n",
+      "reasons": [
+        "capability:dashboard-operational-metrics"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "id": "dashboard-view",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "id": "frontend-typecheck",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "pnpm typecheck"
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/handler/admin",
+        "./internal/service",
+        "./migrations",
+        "-run",
+        "TimeRate|MigratedPeakRate",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "分时倍率边界、计费优先级、迁移与管理员输入回归",
+      "duration_seconds": 6.967,
+      "id": "group-time-rate-backend",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/handler/admin\t1.151s\nok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t1.735s\nok  \tgithub.com/Wei-Shaw/sub2api/migrations\t0.422s\n",
+      "reasons": [
+        "capability:group-time-rate-strategy",
+        "path:backend/ent/schema/group.go",
+        "path:backend/internal/handler/admin/group_handler.go",
+        "path:backend/internal/repository/group_repo.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "id": "group-time-rate-frontend",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "id": "i18n-overlay",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "id": "latency-health",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/tests",
+        "-p",
+        "test_upstream_sync.py"
+      ],
+      "cwd": ".",
+      "description": "上游同步 CLI、矩阵和集成入口回归",
+      "duration_seconds": 9.637,
+      "id": "upstream-sync-tool-tests",
+      "lane": "backend",
+      "output": ".........................\n----------------------------------------------------------------------\nRan 25 tests in 9.276s\n\nOK\n",
+      "reasons": [
+        "path:.github/workflows/backend-ci.yml"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/repository",
+        "./internal/service",
+        "-run",
+        "UserGroupAccountBinding|AccountBinding",
+        "-count=1",
+        "-timeout=60s"
+      ],
+      "cwd": "backend",
+      "description": "用户公开分组账号绑定仓储、校验与多平台调度回归",
+      "duration_seconds": 5.537,
+      "id": "user-group-account-binding-backend",
+      "lane": "backend",
+      "output": "ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t1.099s\nok  \tgithub.com/Wei-Shaw/sub2api/internal/service\t2.302s\n",
+      "reasons": [
+        "capability:user-public-group-account-binding",
+        "path:backend/internal/service/gemini_messages_compat_service.go",
+        "path:backend/internal/service/openai_account_scheduler.go",
+        "path:backend/internal/service/openai_gateway_scheduling.go"
+      ],
+      "returncode": 0,
+      "status": "passed",
+      "timed_out": false
+    },
+    {
+      "id": "user-group-account-binding-frontend",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    },
+    {
+      "id": "user-usage-view",
+      "lane": "frontend",
+      "status": "passed",
+      "evidence": "frontend full suite"
+    }
+  ],
+  "initial_failed_or_timed_out": [
+    "announcement-email-backend",
+    "announcement-email-integration",
+    "backend-handler-compile",
+    "group-time-rate-backend",
+    "user-group-account-binding-backend"
+  ],
+  "retry_reason": "冷构建超时；补齐下游构造器参数后仅重跑失败/超时项"
+}

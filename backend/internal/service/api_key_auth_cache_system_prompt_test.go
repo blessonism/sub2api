@@ -14,7 +14,7 @@ func TestAPIKeyAuthSnapshotGroupSystemPromptInjectionRoundtrip(t *testing.T) {
 	apiKey := &APIKey{
 		ID: 92, UserID: 46, GroupID: &groupID, Key: "sk-system-prompt-roundtrip", Status: StatusActive,
 		User:  &User{ID: 46, Status: StatusActive},
-		Group: &Group{ID: groupID, Name: "system-prompt", Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, SystemPromptInjection: config},
+		Group: &Group{ID: groupID, Name: "system-prompt", Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, SystemPromptInjection: config, ImageCountBilling: true},
 	}
 	svc := &APIKeyService{}
 	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), apiKey)})
@@ -25,11 +25,15 @@ func TestAPIKeyAuthSnapshotGroupSystemPromptInjectionRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, used)
 	require.Equal(t, config, materialized.Group.SystemPromptInjection)
+	require.True(t, materialized.Group.ImageCountBilling)
 	require.Equal(t, apiKeyAuthSnapshotVersion, cached.Snapshot.Version)
+	require.GreaterOrEqual(t, cached.Snapshot.Version, 27, "合并后的缓存必须区别于双方各自发布的快照")
 
-	cached.Snapshot.Version = 24
-	materialized, used, err = svc.applyAuthCacheEntry(apiKey.Key, &cached)
-	require.NoError(t, err)
-	require.False(t, used, "旧缓存不含配置，必须回源")
-	require.Nil(t, materialized)
+	for _, version := range []int{24, 25, 26} {
+		cached.Snapshot.Version = version
+		materialized, used, err = svc.applyAuthCacheEntry(apiKey.Key, &cached)
+		require.NoError(t, err)
+		require.False(t, used, "旧缓存不含合并后的完整配置，必须回源：v%d", version)
+		require.Nil(t, materialized)
+	}
 }

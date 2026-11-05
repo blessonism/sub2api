@@ -102,6 +102,7 @@ SUM(redeem_codes.value) FILTER (WHERE status = 'used' AND type = 'balance' AND v
 - Insert columns, argument types, prepared arguments, and static placeholders must have the same count and order.
 - Select columns, scan destinations, and `service.UsageLog` assignments must have the same count and order.
 - After merging schema fields, regenerate Ent with `go generate ./ent`; do not hand-edit generated files.
+- 若生成器因半合并的生成文件互相引用缺失字段而无法启动，保留合并后的 schema，将生成文件临时恢复到同一已验证提交的完整版本，再重新生成；只恢复发生冲突的文件会留下不一致的生成器输入。
 
 #### 4. Validation & Error Matrix
 - Insert count/order mismatch -> fail repository tests before commit; never rely on PostgreSQL to expose it in production.
@@ -326,14 +327,32 @@ if subscription.Status == SubscriptionStatusActive && subscription.ExpiresAt.Aft
 #### 1. Scope / Trigger
 - Trigger: adding, removing, or changing fields serialized in `APIKeyAuthSnapshot` or its nested user/group snapshots.
 
-#### 2. Contracts
+#### 2. Signatures
+- `apiKeyAuthSnapshotVersion`、`APIKeyAuthSnapshot` / `APIKeyAuthGroupSnapshot`、`snapshotFromAPIKey`、`applyAuthCacheEntry`。
+
+#### 3. Contracts
 - Every serialized schema change must increment `apiKeyAuthSnapshotVersion`, so an older L1/L2 entry cannot be accepted with silently missing authorization or billing fields.
 - When merging branches that independently used the same next version for different fields, the combined schema must advance to a new version rather than keeping either branch's number.
 - Snapshot construction and restoration must carry the same field set in both directions.
+- 合并上游 `image_count_billing` 与下游 `system_prompt_injection` / `model_group_routes` 后使用版本 27；缓存 JSON 往返必须同时保留这些字段。
 
-#### 3. Tests Required
+#### 4. Validation & Error Matrix
+- 缓存版本不是当前版本 -> 不使用旧快照，回源重建；不得将缺失的授权或计费字段静默当成关闭。
+- 当前版本 -> 保留原有缓存命中及 materialize 行为。
+
+#### 5. Good/Base/Bad Cases
+- Good：分组提示词和图片按张计费同时开启，JSON 往返后均为开启。
+- Base：旧版本 24/25/26 均被淘汰；未启用的新字段保留默认值。
+- Bad：保留任意一方旧版本号，继续接收不含另一方配置的缓存。
+
+#### 6. Tests Required
 - Snapshot round-trip tests cover new fields.
 - Cache lookup tests reject entries whose version predates the combined schema.
+- `TestAPIKeyAuthSnapshotGroupSystemPromptInjectionRoundtrip` 同时断言提示词与图片计费保真，并拒绝 24/25/26 版快照。
+
+#### 7. Wrong vs Correct
+- Wrong：合并多个独立 schema 后保留版本 26，仅验证新字段能编译。
+- Correct：版本升至 27，同时验证持久化认证投影、JSON 往返及旧版本拒绝。
 
 ### Scenario: Persistent lottery campaign visibility and winner disclosure
 
