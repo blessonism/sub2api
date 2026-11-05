@@ -1383,14 +1383,22 @@ observability:
     secret_key: ""
     # 业务侧投递队列容量，满即静默丢弃（不阻塞请求）
     queue_size: 4096
-    # 单批调用条数上限（一条调用展开成 trace + generation 两条事件）
+    # 单批事件条数上限。一轮对话会产出「每步一条 generation + 轮末一条 trace」，
+    # 所以 64 条事件大约对应 30 次上游调用。
     batch_size: 64
     # 定时冲刷周期（秒）
     flush_interval_seconds: 5
     # 单次上报超时（秒）
     timeout_seconds: 10
+    # 轮次收尾的空闲阈值（秒）：一轮对话最后一次上游步骤结束这么久之后，
+    # 才在 Langfuse 上落这张卡。太小会把一轮切成几张卡，太大则卡片出现得慢。
+    # 实测依据：60s 切断 7/38 轮，120s 切 2/38，300s 只切 1/38。
+    turn_idle_seconds: 300
     # 正文层开关：默认关闭。打开后请求提示词与响应 assistant 文本会进入观测层
     # （Langfuse 的 input/output 字段），并随事件对象落到外部 S3。
+    # 注意：capture_prompt 同时是「一轮对话一张卡」的前置条件 —— 轮次身份取自
+    # 用户消息条数，关掉它就只能退化成「一次上游调用一张卡」，且卡片没有正文。
+    # 启动时会为这种组合打一条警告。
     capture_prompt: false
     capture_response: false
     # 请求样本 / 响应正文的单侧上限（硬顶 2MB），超出截断并在 metadata 打标记

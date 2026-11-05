@@ -82,6 +82,33 @@ func TestObservabilityDefaultsRegistered(t *testing.T) {
 	require.Equal(t, 64, viper.GetInt("observability.langfuse.batch_size"))
 	require.Equal(t, 5, viper.GetInt("observability.langfuse.flush_interval_seconds"))
 	require.Equal(t, 10, viper.GetInt("observability.langfuse.timeout_seconds"))
+	require.Equal(t, 300, viper.GetInt("observability.langfuse.turn_idle_seconds"))
+}
+
+// TestObservabilityTurnIdleClamped 覆盖轮次空闲阈值的钳制：
+// 太小会把一轮切成几张卡，太大则卡片迟迟不出现。
+func TestObservabilityTurnIdleClamped(t *testing.T) {
+	cases := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{"未配置用缺省值", 0, 300},
+		{"过小抬到下限", 1, 30},
+		{"正常值原样保留", 120, 120},
+		{"过大压到上限", 99999, 3600},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{}
+			cfg.Observability.Langfuse = LangfuseConfig{
+				Enabled: true, Host: "http://10.0.0.5:3000", PublicKey: "pk", SecretKey: "sk",
+				TurnIdleSeconds: tc.in,
+			}
+			require.NoError(t, cfg.validateObservability())
+			require.Equal(t, tc.want, cfg.Observability.Langfuse.TurnIdleSeconds)
+		})
+	}
 }
 
 // TestObservabilityCaptureBytesClamped 覆盖正文上限的钳制与缺省值。

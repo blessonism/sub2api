@@ -2,10 +2,10 @@ package langfuse
 
 import (
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/hex"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -16,8 +16,9 @@ const (
 	eventTypeTraceCreate      = "trace-create"
 	eventTypeGenerationCreate = "generation-create"
 
-	// traceName 是所有观测 trace 的固定名，便于在 UI 上按 name 过滤。
-	traceName = "sub2api.model-call"
+	// traceName 是所有观测 trace 的固定前缀，便于在 UI 上按 name 过滤。
+	// 一条 trace = 一轮对话（用户提问 → 若干步骤 → 回答），不是一次上游调用。
+	traceName = "sub2api.turn"
 
 	// tsLayout 是 Langfuse ingestion 接受的时间格式（毫秒精度，UTC）。
 	tsLayout = "2006-01-02T15:04:05.000Z"
@@ -27,6 +28,9 @@ const (
 
 	levelDefault = "DEFAULT"
 	levelError   = "ERROR"
+
+	// rawBodyMetaLimit 是 metadata 里原始请求体的字节上限。
+	rawBodyMetaLimit = 8 * 1024
 )
 
 // event 是 ingestion 批量里的单条事件。
@@ -42,81 +46,11 @@ type batch struct {
 	Batch []event `json:"batch"`
 }
 
-// buildBatch 把 N 条 Call 展开成 2N 条事件：每条形如 trace-create + generation-create。
-//
-// 归组在这里完成而不是在业务侧：worker 是单消费者，会话/线程/步骤的推进天然
-// 串行，业务同步路径仍然只有一次 channel send。
-func buildBatch(calls []Call, release string) batch {
-	out := batch{Batch: make([]event, 0, len(calls)*2)}
-	for _, c := range calls {
-		c = clampCaptured(c)
-		id := newID()
-		traceID := "tr-" + id
-		genID := "gn-" + id
-		ts := formatTime(c.StartedAt)
-		grp := sessiongroup.Resolve(sessiongroup.Input{
-			ClientSessionID:    c.SessionID,
-			UserID:             c.UserID,
-			APIKeyID:           c.APIKeyID,
-			FirstUserPrompt:    c.FirstUserPrompt,
-			RequestFingerprint: c.RequestFingerprint,
-			Now:                c.StartedAt,
-		})
-		out.Batch = append(out.Batch,
-			event{
-				ID:        "ev-" + id + "-trace",
-				Type:      eventTypeTraceCreate,
-				Timestamp: ts,
-				Body:      traceBody(c, traceID, release, grp),
-			},
-			event{
-				ID:        "ev-" + id + "-generation",
-				Type:      eventTypeGenerationCreate,
-				Timestamp: ts,
-				Body:      generationBody(c, traceID, genID, grp),
-			},
-		)
-	}
-	return out
-}
-
-func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[string]any {
-	body := map[string]any{
-		"id":        traceID,
-		"name":      traceDisplayName(grp),
-		"timestamp": formatTime(c.StartedAt),
-		"metadata":  metadata(c, grp),
-	}
-	// 会话视图里每张卡片只显示 trace 名，靠 tag 才能过滤；
-	// 线程做成 tag 之后可以在 traces 表里按线程筛。
-	if grp.ThreadID != "" {
-		body["tags"] = []string{"thread:" + grp.ThreadID}
-	}
-	// Langfuse 的检索维度是字符串；userId 用十进制串落位，空值不落键。
-	if c.UserID != 0 {
-		body["userId"] = strconv.FormatInt(c.UserID, 10)
-	}
-	// 会话聚合键：客户端显式给的就用它，没给时用推导值，
-	// 两者都没有则不落 sessionId（Langfuse 侧即不聚合）。
-	if grp.SessionID != "" {
-		body["sessionId"] = grp.SessionID
-	}
-	if release != "" {
-		body["release"] = release
-	}
-	if display := c.displayInput(); display != "" {
-		body["input"] = display
-	}
-	if c.Output != "" {
-		body["output"] = c.Output
-	}
-	return body
-}
-
 // maxCapturedPerCall 是单条调用可外发的正文总量上限。
 //
-// 一条调用会展开成 trace + generation 两条事件，正文要发两遍；Langfuse
-// ingestion 的单请求上限是 4.5MB，所以这里按 2MB 收口，留足余量。
+// Langfuse ingestion 的单请求上限是 4.5MB；一条调用现在只外发
+// generation 一份正文（卡片在轮末单独发），所以这条闸门主要防的是
+// 单步响应异常巨大。2MB 留足余量。
 const maxCapturedPerCall = 2 << 20
 
 // clampCaptured 是载荷侧的最后一道闸：配置写多大都不能把 ingestion 撑爆。
@@ -124,9 +58,8 @@ func clampCaptured(c Call) Call {
 	const (
 		outputBudget = maxCapturedPerCall / 2 // 1MB
 		rawBudget    = 256 << 10              // metadata 抽样，不需要更多
-		promptFloor  = 256 << 10
 	)
-	// 原始请求样本先收口：它只是取证抽样，不该挤占正文预算。
+	// 原始请求样本只是取证抽样，不该挤占正文预算。
 	if len(c.Input) > rawBudget {
 		c.Input = truncateBytes(c.Input, rawBudget)
 		c.RawRequestTruncated = true
@@ -136,14 +69,9 @@ func clampCaptured(c Call) Call {
 		c.OutputTruncated = true
 		c.OutputChars = utf8.RuneCountInString(c.Output)
 	}
-	// 剩下的预算给用户消息，且保证三者之和不超过 maxCapturedPerCall。
-	remaining := maxCapturedPerCall - len(c.Input) - len(c.Output)
-	if remaining < promptFloor {
-		remaining = promptFloor
-	}
-	if len(c.InputUser) > remaining {
-		// 用户 prompt 保留最近的部分：多轮对话里最新那句才是真正被回答的。
-		c.InputUser = tailBytes(c.InputUser, remaining)
+	// 用户消息是卡片的 input，只需够读完整一次追问。
+	if len(c.InputUser) > turnInputLimit {
+		c.InputUser = tailBytes(c.InputUser, turnInputLimit)
 		c.PromptTruncated = true
 	}
 	return c
@@ -167,34 +95,41 @@ func tailBytes(s string, limit int) string {
 	return marker + s[cut:]
 }
 
-// traceDisplayName 让会话视图里的每张卡片可区分：同一个会话有几十上百次调用，
-// 全都叫 sub2api.model-call 时，卡片列表没法扫。
-func traceDisplayName(grp sessiongroup.Group) string {
-	name := traceName
-	if short := shortThreadID(grp.ThreadID); short != "" {
-		name += " · " + short
-	}
-	if grp.StepIndex > 0 {
-		name += " · #" + strconv.Itoa(grp.StepIndex)
-	}
-	if grp.AttemptIndex > 1 {
-		name += "·try" + strconv.Itoa(grp.AttemptIndex)
-	}
-	return name
-}
-
-// shortThreadID 把 th-7d0b4011 压成 7d0b：trace 名在每个卡片上都要显示，
-// 全量线程 id 会把名字撑长；4 位足够在单个会话内区分线程。
-func shortThreadID(threadID string) string {
-	trimmed := strings.TrimPrefix(threadID, "th-")
-	if len(trimmed) <= 4 {
-		return trimmed
-	}
-	return trimmed[:4]
-}
-
+// generationBody 是单步的观测投影：模型、用量、实扣、耗时，以及这一步自己的输出。
+//
+// 刻意不再带 input：同一轮里每一步的「用户最新消息」完全相同，
+// 之前每步都发一份，在 Langfuse 上表现为几十条一模一样的输入，
+// 既没有增量信息，又把 payload 撑大一倍。用户消息由轮次卡片统一承载。
 func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[string]any {
 	end := c.StartedAt.Add(c.Duration)
+	body := map[string]any{
+		"id":      genID,
+		"traceId": traceID,
+		"name":    c.Model,
+		"model":   c.Model,
+		// costDetails 是 Langfuse 的权威费用字段：给了它就不再按价格表推算，
+		// 这正是"cost 等于实扣而非标价"的落地方式。
+		"costDetails": map[string]any{
+			"total": clampFloat(c.Cost),
+		},
+		"usageDetails": usageDetails(c),
+		"startTime":    formatTime(c.StartedAt),
+		"endTime":      formatTime(end),
+		"level":        level(c.Status),
+		"metadata":     stepMetadata(c, grp),
+	}
+	if c.Status == "billing_error" && c.ErrorKind != "" {
+		body["statusMessage"] = c.ErrorKind
+	}
+	// 这一步说了什么，只有它自己知道：卡片只保留整轮最后一条，
+	// 中间过程（尤其是被后续步骤覆盖掉的解释性文字）必须挂在 generation 上。
+	if c.Output != "" {
+		body["output"] = c.Output
+	}
+	return body
+}
+
+func usageDetails(c Call) map[string]any {
 	usage := map[string]any{
 		"input":  c.InputTokens,
 		"output": c.OutputTokens,
@@ -212,37 +147,11 @@ func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[s
 	if c.ImageOutputTokens > 0 {
 		usage["image_output"] = c.ImageOutputTokens
 	}
-
-	body := map[string]any{
-		"id":      genID,
-		"traceId": traceID,
-		"name":    c.Model,
-		"model":   c.Model,
-		// costDetails 是 Langfuse 的权威费用字段：给了它就不再按价格表推算，
-		// 这正是"cost 等于实扣而非标价"的落地方式。
-		"costDetails": map[string]any{
-			"total": clampFloat(c.Cost),
-		},
-		"usageDetails": usage,
-		"startTime":    formatTime(c.StartedAt),
-		"endTime":      formatTime(end),
-		"level":        level(c.Status),
-		"metadata":     metadata(c, grp),
-	}
-	if c.Status == "billing_error" && c.ErrorKind != "" {
-		body["statusMessage"] = c.ErrorKind
-	}
-	// 正文挂在 generation 上：UI 的输入/输出面板与全文检索都走这两个字段。
-	if display := c.displayInput(); display != "" {
-		body["input"] = display
-	}
-	if c.Output != "" {
-		body["output"] = c.Output
-	}
-	return body
+	return usage
 }
 
-func metadata(c Call, grp sessiongroup.Group) map[string]any {
+// stepMetadata 是单步 metadata：只放与这一步有关的维度。
+func stepMetadata(c Call, grp sessiongroup.Group) map[string]any {
 	meta := map[string]any{
 		"cost_source": costSourceActual,
 		"status":      c.Status,
@@ -250,17 +159,20 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.RequestID != "" {
 		meta["request_id"] = c.RequestID
 	}
-	// 会话结构：一个会话 = 多条 trace；会话内按 thread 分线程、按 thread_step 排序、
-	// 按 step_attempt 标记同一步的重试。三者配合才能在 session 视图里把
-	// "一次对话的多次请求"读成一条有序时间线。
+	if c.Currency != "" {
+		meta["cost_currency"] = c.Currency
+	}
+	// 轮内定位：thread_id + turn_index 定到哪一轮，thread_step 定到轮内第几步，
+	// step_attempt 标记同一步的重试。四者配合才能在 session 视图里把
+	// "一次提问的几十次调用"读成一条有序时间线。
 	if grp.SessionSource != "" && grp.SessionSource != sessiongroup.SourceNone {
 		meta["session_source"] = grp.SessionSource
 	}
-	if grp.Title != "" {
-		meta["session_title"] = grp.Title
-	}
 	if grp.ThreadID != "" {
 		meta["thread_id"] = grp.ThreadID
+	}
+	if grp.TurnIndex > 0 {
+		meta["turn_index"] = grp.TurnIndex
 	}
 	if grp.StepIndex > 0 {
 		meta["thread_step"] = grp.StepIndex
@@ -289,11 +201,6 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.PromptTruncated {
 		meta["user_prompt_truncated"] = true
 	}
-	// 原始请求体退到 metadata 备查，避免把 system/tools 顶到 UI 首屏。
-	if c.InputUser != "" && c.Input != "" {
-		meta["request_body"] = truncateBytes(c.Input, rawBodyMetaLimit)
-		meta["request_body_truncated"] = len(c.Input) > rawBodyMetaLimit
-	}
 	if c.UserTurns > 0 {
 		meta["user_prompt_turns"] = c.UserTurns
 	}
@@ -305,9 +212,6 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	}
 	if c.PromptFallback {
 		meta["user_prompt_fallback"] = true
-	}
-	if c.PromptProtocol != "" {
-		meta["user_prompt_protocol"] = c.PromptProtocol
 	}
 	// 只有正文真的触顶才标 output_truncated；原始字节被截只影响解析兜底，
 	// 之前两者混用导致每条 trace 都带 output_truncated=true，反而看不出真截断。
@@ -366,7 +270,9 @@ func clampFloat(v float64) float64 {
 }
 
 func formatTime(t time.Time) string {
-	if t.IsZero() {
+	// 零值之外还要挡「零值 + Duration」这种伪时间：它不满足 IsZero，
+	// 但年份是 0001，Langfuse 会算出负 latency 甚至判为非法事件。
+	if t.IsZero() || t.Year() < 1970 {
 		t = time.Now()
 	}
 	return t.UTC().Format(tsLayout)
@@ -381,17 +287,6 @@ func newID() string {
 	return hex.EncodeToString(buf[:])
 }
 
-// rawBodyMetaLimit 是 metadata 里原始请求体的字节上限。
-const rawBodyMetaLimit = 8 * 1024
-
-// displayInput 选择展示用 input：抽到用户文本就用它，否则退回原始请求体。
-func (c Call) displayInput() string {
-	if c.InputUser != "" {
-		return c.InputUser
-	}
-	return c.Input
-}
-
 func truncateBytes(s string, limit int) string {
 	if len(s) <= limit {
 		return s
@@ -401,4 +296,88 @@ func truncateBytes(s string, limit int) string {
 		cut--
 	}
 	return s[:cut]
+}
+
+// shortHash 是 4 字节短指纹，用于把轮次键压成可读的 trace id 片段。
+func shortHash(s string) string {
+	sum := sha1.Sum([]byte(s))
+	return hex.EncodeToString(sum[:4])
+}
+
+// eventBytes 估一条事件在 ingestion 请求体里占的字节数。
+//
+// 必须按 **JSON 转义后**的口径估：Go 的 encoder 默认把 `<` `>` `&` 编成
+// `\u003c` 这类 6 字节转义，控制字符同理。按原始字节估会让「估 1MB、实发 6MB」
+// 的批次直接撞上 Langfuse 的 4.5MB 上限，整批（含卡片）被 413 掉。
+func eventBytes(e event) int {
+	const overhead = 512
+	n := overhead + len(e.ID) + len(e.Type) + len(e.Timestamp)
+	n += bodyBytes(e.Body)
+	return n
+}
+
+// jsonStrBytes 是字符串在 JSON 编码后的字节数（含两侧引号）。
+//
+// 必须覆盖 encoding/json 的全部转义：`"` `\` `\n` `\r` `\t` 编成 2 字节；
+// `<` `>` `&`（HTML 安全）、`<0x20`、以及 U+2028/U+2029（JSONP 防护）编成 6 字节；
+// 非法 UTF-8 每个坏字节变成一个 6 字节的 \ufffd。
+func jsonStrBytes(s string) int {
+	if !utf8.ValidString(s) {
+		// 整串按最坏情况算：每个字节都可能被替换成 6 字节。
+		return 2 + 6*len(s)
+	}
+	n := 2
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t':
+			n += 2
+		case c < 0x20 || c == '<' || c == '>' || c == '&':
+			n += 6
+		case c == 0xe2 && i+2 < len(s) && s[i+1] == 0x80 && (s[i+2] == 0xa8 || s[i+2] == 0xa9):
+			n += 6 // U+2028 / U+2029
+			i += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+func bodyBytes(v any) int {
+	switch t := v.(type) {
+	case nil:
+		return 4
+	case string:
+		return jsonStrBytes(t)
+	case map[string]any:
+		n := 2
+		for k, item := range t {
+			n += jsonStrBytes(k) + 2 + bodyBytes(item)
+		}
+		return n
+	case []any:
+		n := 2
+		for _, item := range t {
+			n += bodyBytes(item) + 1
+		}
+		return n
+	case []string:
+		n := 2
+		for _, item := range t {
+			n += jsonStrBytes(item) + 1
+		}
+		return n
+	default:
+		return 16
+	}
+}
+
+// eventsBytes 汇总一批事件的估算字节数。
+func eventsBytes(evs []event) int {
+	n := 0
+	for _, e := range evs {
+		n += eventBytes(e)
+	}
+	return n
 }

@@ -337,12 +337,21 @@ func TestRequestFingerprintTracksTailGrowth(t *testing.T) {
 	}
 }
 
-// TestRequestFingerprintSkipsWorkWhenDisabled 保证未开启采集时零开销。
-func TestRequestFingerprintSkipsWorkWhenDisabled(t *testing.T) {
+// TestRequestIdentitySkipsWorkWhenPromptDisabled 覆盖"关掉提示词采集就整体退化"：
+// 不解析、不留指纹、不留锚点 —— 半开状态（解析后丢正文）会让每个请求白付
+// 一次完整 JSON 解析，换来的却是没有正文的空卡片，不如明确退化。
+func TestRequestIdentitySkipsWorkWhenPromptDisabled(t *testing.T) {
 	rec := New(Options{Response: true, MaxBytes: 4096})
 	rec.SetRequest(`{"messages":[{"role":"user","content":"hi"}]}`)
-	if rec.RequestFingerprint() != "" || rec.FirstUserPrompt() != "" {
-		t.Fatal("关闭提示词采集时不该记录任何锚点信息")
+
+	if rec.RequestFingerprint() != "" {
+		t.Fatal("关闭提示词采集时不该再算请求指纹")
+	}
+	if _, turns, _, _ := rec.UserPrompt(); turns != 0 {
+		t.Fatalf("用户消息条数 = %d, want 0（未采集）", turns)
+	}
+	if rec.FirstUserPrompt() != "" || rec.LatestUserPrompt() != "" || rec.RequestText() != "" {
+		t.Fatal("关闭提示词采集时不得留存任何正文")
 	}
 }
 

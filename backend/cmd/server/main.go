@@ -193,9 +193,11 @@ func runMainServer() {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
 
-	// 观测通道优雅退出：停收新记录并冲刷剩余批次。
-	// 单独给 2s：观测层不可达时不能把进程退出拖到 server 的 5s 预算里。
-	obsCtx, obsCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// 观测通道优雅退出：停收新记录，先把未收尾的轮次卡片发掉，再冲刷剩余批次。
+	// 给 6s：worker 内部按 4s 收口（退出时把单请求超时压到剩余预算），
+	// 留 2s 余量。给太少的话，第一张卡片还没发出去进程就没了 —— 而卡片
+	// 正是这套观测层的产出物，丢在这里等于白改。
+	obsCtx, obsCancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer obsCancel()
 	if err := langfuse.Shutdown(obsCtx); err != nil {
 		log.Printf("Observability flush incomplete: %v", err)
@@ -216,6 +218,12 @@ func initObservability(cfg *config.Config) {
 		lf.CapturePrompt = false
 		lf.CaptureResponse = false
 	}
+	// 「一轮对话一张卡」依赖用户消息条数做轮次身份。capture_prompt=false 时
+	// 解析不出条数，卡片会静默退化成「一次上游调用一张」—— 启动时说一次，
+	// 免得运维对着一屏空卡片排查。
+	if lf.Usable() && !lf.CapturePrompt {
+		log.Printf("Observability: capture_prompt=false —— 无法识别轮次，Langfuse 卡片将退化为「一次上游调用一张」，且不含用户消息正文")
+	}
 	langfuse.SetDefault(langfuse.New(langfuse.Options{
 		Enabled:       lf.Enabled,
 		Host:          lf.Host,
@@ -226,5 +234,7 @@ func initObservability(cfg *config.Config) {
 		FlushInterval: time.Duration(lf.FlushIntervalSeconds) * time.Second,
 		Timeout:       time.Duration(lf.TimeoutSeconds) * time.Second,
 		Release:       Version,
+		// 一轮对话一张卡：轮次空闲这么久之后才落卡。
+		TurnIdle: time.Duration(lf.TurnIdleSeconds) * time.Second,
 	}))
 }

@@ -1584,6 +1584,14 @@ type LangfuseConfig struct {
 	// 显示多完整，与 CaptureMaxBytes 分开，因为请求体里绝大部分是工具输出。
 	// 缺省 512KB —— 实测用户消息远小于这个量级；任何一侧的硬顶都是 2MB。
 	CapturePromptMaxBytes int `mapstructure:"capture_prompt_max_bytes"`
+
+	// TurnIdleSeconds 是轮次收尾的空闲阈值（秒）。
+	//
+	// 观测层按「一轮对话」成卡，而轮次结束没有可靠的显式信号（客户端不发），
+	// 只能用空闲判定：该轮最后一次上游步骤结束这么久之后落卡。
+	// 300s 的依据是 300 条真实 trace 的实测：60s 会切断 7/38 轮，120s 切 2/38，
+	// 300s 只切 1/38。
+	TurnIdleSeconds int `mapstructure:"turn_idle_seconds"`
 }
 
 // Usable 报告观测上报是否具备全部装配条件。
@@ -1610,6 +1618,17 @@ func (c *Config) validateObservability() error {
 	// 上限钳制：任何一侧都不能突破 ingestion 载荷约束。
 	lf.CaptureMaxBytes = clampCaptureBytes(lf.CaptureMaxBytes, 65536)
 	lf.CapturePromptMaxBytes = clampCaptureBytes(lf.CapturePromptMaxBytes, 524288)
+
+	// 轮次空闲阈值：下限 30s（再小会把一轮切成几张卡），上限 1h（再大卡片迟迟不出现）。
+	if lf.TurnIdleSeconds <= 0 {
+		lf.TurnIdleSeconds = 300
+	}
+	if lf.TurnIdleSeconds < 30 {
+		lf.TurnIdleSeconds = 30
+	}
+	if lf.TurnIdleSeconds > 3600 {
+		lf.TurnIdleSeconds = 3600
+	}
 
 	// 开了正文采集后，队列里每条记录会带最多 2×capture_max_bytes 的字符串。
 	// 上限放宽到 256KB 后，queue_size=1024 的最坏驻留会到 512MB —— 必须按预算收紧。
@@ -2787,6 +2806,7 @@ func setDefaults() {
 	viper.SetDefault("observability.langfuse.capture_response", false)
 	viper.SetDefault("observability.langfuse.capture_prompt_max_bytes", 524288)
 	viper.SetDefault("observability.langfuse.capture_max_bytes", 262144)
+	viper.SetDefault("observability.langfuse.turn_idle_seconds", 300)
 
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)

@@ -16,9 +16,15 @@ import (
 
 // Call 是一次模型调用在观测层的投影。
 //
-// 一条 Call 会展开成 Langfuse 上的 1 条 trace + 1 条 generation：
-//   - trace 承载 userId / sessionId 检索键与请求级元数据；
-//   - generation 承载模型、用量、实扣费用与状态。
+// 它不再一对一站到 Langfuse 的 trace 上。一次上游调用只是**一轮对话里的一步**，
+// 展开方式是：
+//   - 每步立刻产出 1 条 generation：模型、用量、实扣费用、耗时、这一步自己的输出；
+//   - 整轮结束时产出 1 条 trace：该轮的用户消息作为 input、最后一条非空回答
+//     作为 output、各步 generation 挂在其下。
+//
+// 这样一张卡片对应"用户问了一次"，而不是"上游被调了一次"。判据见 sessiongroup：
+// 客户端在一轮里只让用户开口一次，后续步骤全是工具结果，所以「用户消息条数」
+// 就是轮次身份。
 type Call struct {
 	// UserID 是计费用户 ID，作为 trace 的 userId 维度。
 	UserID int64
@@ -64,10 +70,13 @@ type Call struct {
 
 	// Input / Output 是正文层：请求提示词与响应 assistant 文本。
 	// 为空表示本次调用未采集正文（采集开关关闭或未安装 recorder）。
+	//
+	// Input 只作为卡片 metadata 里的排障抽样；展示用的用户消息是 InputUser。
+	// Output 挂在各自的 generation 上 —— 中间步骤说了什么，只有它自己知道。
 	Input  string
 	Output string
-	// InputUser 是从请求体里单独抽出的用户消息文本；非空时作为展示用 input，
-	// Input 退居 metadata 备查。
+	// InputUser 是从请求体里单独抽出的用户消息文本，作为这一轮卡片的 input。
+	// 同一轮里每步都一样，所以取首个非空值即可。
 	InputUser string
 	// FirstUserPrompt 是请求里第一条「用户真正说的话」（已跳过 <environment_context>
 	// 这类客户端注入块），只用于会话归组与标题，不单独展示。

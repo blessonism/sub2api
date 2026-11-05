@@ -104,11 +104,18 @@ func New(opts Options) *Recorder {
 }
 
 // SetRequest 记录请求正文（已按上限截断）。
+//
+// 只在 capture_prompt=true 时工作。这会连带决定观测层能否按「一轮对话」聚合：
+// 轮次身份来自用户消息条数，而它是这里解析出来的。关掉提示词采集就认不出轮次，
+// 卡片会退化成「一次上游调用一张」——启动日志与 README 都写明了这一点，
+// 不做"解析但丢弃正文"的半开状态：那样每个请求都要白付一次完整 JSON 解析
+// （实测 2.9MB 请求体约 8ms + 11MB 临时分配），换来的却是没有正文的空卡片。
 func (r *Recorder) SetRequest(text string) {
 	if r == nil || !r.wantReq {
 		return
 	}
 	fp := requestFingerprint(text)
+
 	r.mu.Lock()
 	r.request, r.reqTruncated = truncate(text, r.limit)
 	r.reqFP = fp
