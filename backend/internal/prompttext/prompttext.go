@@ -14,6 +14,9 @@ import (
 // DefaultMaxBytes 是抽取结果的字节上限（按 rune 边界回退）。
 const DefaultMaxBytes = 16 * 1024
 
+// fallbackBlockLimit 是"整段没有用户文本"时兜底展示的字节上限。
+const fallbackBlockLimit = 2 * 1024
+
 // anchorLimit 是锚点消息的字节上限：它只用于会话归组与标题，
 // 不参与展示正文。取 4KB 是为了能在同一条消息里看到
 // "## My request:" 这类段落标记之后真正的请求内容。
@@ -33,6 +36,9 @@ type Result struct {
 	HistoryBytes int
 	// LatestTruncated 标记 LatestUser 是否因为上限被截断。
 	LatestTruncated bool
+	// LatestIsFallback 表示整段里没有用户写的文本，LatestUser 退回了客户端机器块
+	// （典型场景：上下文压缩后，客户端只发摘要 + 工具块）。
+	LatestIsFallback bool
 	// LatestUser 是最新一条「用户真正说的话」。
 	// 长会话里最后一条 user 消息经常是客户端追加的工具/审批块（Codex 会写
 	// ">>> APPROVAL REQUEST START"），直接取末尾会把用户真正的问题埋掉甚至顶掉，
@@ -99,16 +105,22 @@ func build(protocol string, texts []string, limit int) Result {
 	if limit > 0 {
 		text = tailRunes(text, limit)
 	}
-	latest := latestUserMessage(cleaned)
+	latest, latestFallback := latestUserMessage(cleaned)
+	latestLimit := limit
+	if latestFallback {
+		// 兜底展示的是机器生成的摘要，只留开头一段，别让它把整屏占满。
+		latestLimit = fallbackBlockLimit
+	}
 	return Result{
-		Text:            text,
-		Turns:           len(cleaned),
-		FirstUser:       truncateRunes(anchorMessage(cleaned), anchorLimit),
-		LatestUser:      truncateLimited(latest, limit),
-		LatestTruncated: exceedsLimit(latest, limit),
-		HistoryBytes:    len(full),
-		Protocol:        protocol,
-		Status:          "ok",
+		Text:             text,
+		Turns:            len(cleaned),
+		FirstUser:        truncateRunes(anchorMessage(cleaned), anchorLimit),
+		LatestUser:       truncateLimited(latest, latestLimit),
+		LatestTruncated:  exceedsLimit(latest, latestLimit),
+		LatestIsFallback: latestFallback,
+		HistoryBytes:     len(full),
+		Protocol:         protocol,
+		Status:           "ok",
 	}
 }
 
@@ -161,13 +173,14 @@ var requestSectionMarkers = []string{
 
 // latestUserMessage 从后往前找最新一条真正的用户文本。
 // 找不到（整段都是客户端追加的块）时退回最后一条，保持"总有内容可看"。
-func latestUserMessage(texts []string) string {
+func latestUserMessage(texts []string) (string, bool) {
 	for i := len(texts) - 1; i >= 0; i-- {
 		if !isMachineBlock(texts[i]) {
-			return texts[i]
+			return texts[i], false
 		}
 	}
-	return texts[len(texts)-1]
+	// 整段都是机器块：退回最后一条，并告诉调用方这是兜底值。
+	return texts[len(texts)-1], true
 }
 
 // machineBlockPrefixes 是明确的机器生成前缀。这里刻意不复用

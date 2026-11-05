@@ -313,3 +313,22 @@ func TestLatestUserSkipsHeartbeatAndCompactionSummary(t *testing.T) {
 		}
 	}
 }
+
+// TestLatestUserFallbackIsCappedAndFlagged 覆盖线上真实场景：
+// 上下文压缩后客户端只发摘要 + 工具块，此时不能把 15KB 摘要当成用户原话。
+func TestLatestUserFallbackIsCappedAndFlagged(t *testing.T) {
+	summary := "Another language model started to solve this problem and produced a summary of its thinking process. " + strings.Repeat("摘要正文", 2000)
+	body := []byte(`{"messages":[
+		{"role":"user","content":"<environment_context><cwd>/tmp</cwd></environment_context>"},
+		{"role":"user","content":"` + summary + `"}]}`)
+	got := Extract(body)
+	if !got.LatestIsFallback {
+		t.Fatal("整段都是机器块时必须标记 fallback")
+	}
+	if len(got.LatestUser) > fallbackBlockLimit {
+		t.Fatalf("兜底展示长度 %d 超过 %d", len(got.LatestUser), fallbackBlockLimit)
+	}
+	if got.Turns != 2 {
+		t.Fatalf("turns = %d", got.Turns)
+	}
+}

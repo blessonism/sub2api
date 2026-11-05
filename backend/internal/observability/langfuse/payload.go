@@ -303,6 +303,9 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.PromptStatus != "" {
 		meta["user_prompt_status"] = c.PromptStatus
 	}
+	if c.PromptFallback {
+		meta["user_prompt_fallback"] = true
+	}
 	if c.PromptProtocol != "" {
 		meta["user_prompt_protocol"] = c.PromptProtocol
 	}
