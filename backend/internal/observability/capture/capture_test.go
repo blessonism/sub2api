@@ -469,3 +469,20 @@ func TestPromptCapAppliesToUserText(t *testing.T) {
 		t.Fatal("截断后必须是合法 UTF-8")
 	}
 }
+
+// TestRecorderExposesLatestUserPrompt 覆盖 input 只展示最新那条用户消息。
+func TestRecorderExposesLatestUserPrompt(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 64 * 1024})
+	rec.SetRequest(`{"messages":[
+		{"role":"user","content":"第一轮很长很长的历史"},
+		{"role":"assistant","content":"回答"},
+		{"role":"user","content":"最新的一句"}
+	]}`)
+	if got := rec.LatestUserPrompt(); got != "最新的一句" {
+		t.Fatalf("LatestUserPrompt = %q", got)
+	}
+	text, turns, _, _ := rec.UserPrompt()
+	if turns != 2 || !strings.Contains(text, "第一轮") {
+		t.Fatalf("完整历史仍要保留：turns=%d text=%q", turns, text)
+	}
+}

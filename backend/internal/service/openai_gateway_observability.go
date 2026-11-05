@@ -41,13 +41,16 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 	var inputTruncated, outputTruncated, rawTruncated bool
 	var outputChars int
 	var finishReason string
+	var userPromptHistoryBytes int
 	var userTurns int
 	var promptProtocol, promptStatus string
 	var firstUser, requestFP string
 	if rec := capture.From(ctx); rec != nil {
 		input = rec.RequestText()
 		output = rec.ResponseText()
-		inputUser, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
+		_, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
+		inputUser = rec.LatestUserPrompt()
+		userPromptHistoryBytes = rec.UserPromptHistoryBytes()
 		inputTruncated = rec.RequestTruncated()
 		// 只有正文触顶才算"输出不全"；原始字节被截是另一件事。
 		outputTruncated = rec.TextTruncated()
@@ -103,19 +106,20 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		APIKeyID:  usageLog.APIKeyID,
 		GroupID:   derefInt64(usageLog.GroupID),
 
-		Input:                input,
-		InputUser:            inputUser,
-		FirstUserPrompt:      firstUser,
-		RequestFingerprint:   requestFP,
-		UserTurns:            userTurns,
-		PromptProtocol:       promptProtocol,
-		PromptStatus:         promptStatus,
-		Output:               output,
-		OutputChars:          outputChars,
-		FinishReason:         finishReason,
-		InputTruncated:       inputTruncated,
-		OutputTruncated:      outputTruncated,
-		RawResponseTruncated: rawTruncated,
+		Input:                  input,
+		InputUser:              inputUser,
+		FirstUserPrompt:        firstUser,
+		RequestFingerprint:     requestFP,
+		UserTurns:              userTurns,
+		UserPromptHistoryBytes: userPromptHistoryBytes,
+		PromptProtocol:         promptProtocol,
+		PromptStatus:           promptStatus,
+		Output:                 output,
+		OutputChars:            outputChars,
+		FinishReason:           finishReason,
+		InputTruncated:         inputTruncated,
+		OutputTruncated:        outputTruncated,
+		RawResponseTruncated:   rawTruncated,
 	})
 }
 

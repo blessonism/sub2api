@@ -76,6 +76,9 @@ type Call struct {
 	RequestFingerprint string
 	// UserTurns 是用户消息条数。
 	UserTurns int
+	// UserPromptHistoryBytes 是这次请求里完整用户历史的字节数。
+	// InputUser 只放最新那句，剩下的历史量用这个数字表达。
+	UserPromptHistoryBytes int
 	// PromptProtocol / PromptStatus 记录抽取结果，便于排查为什么没抽到。
 	PromptProtocol string
 	PromptStatus   string

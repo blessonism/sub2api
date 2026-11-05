@@ -28,6 +28,14 @@ type Result struct {
 	// FirstUser 是用于会话归组的锚点消息：第一条「用户真正说的话」，
 	// 跳过客户端注入的包装块（如 <environment_context>），已按 anchorLimit 截断。
 	FirstUser string
+	// HistoryBytes 是拼接后完整用户历史的字节数（截断前），
+	// 用来表达"这次请求带了多少上下文"，与实际展示的 LatestUser 区分开。
+	HistoryBytes int
+	// LatestUser 是最新一条「用户真正说的话」。
+	// 长会话里最后一条 user 消息经常是客户端追加的工具/审批块（Codex 会写
+	// ">>> APPROVAL REQUEST START"），直接取末尾会把用户真正的问题埋掉甚至顶掉，
+	// 所以这里从后往前找第一条真正的用户文本。
+	LatestUser string
 	// Protocol 是识别出的协议形态，仅用于排查。
 	Protocol string
 	// Status 说明抽取结果：ok / no_user / invalid_json / unrecognized。
@@ -84,16 +92,19 @@ func build(protocol string, texts []string, limit int) Result {
 	if len(cleaned) == 0 {
 		return Result{Protocol: protocol, Status: "no_user"}
 	}
-	text := strings.Join(cleaned, "\n\n")
+	full := strings.Join(cleaned, "\n\n")
+	text := full
 	if limit > 0 {
 		text = tailRunes(text, limit)
 	}
 	return Result{
-		Text:      text,
-		Turns:     len(cleaned),
-		FirstUser: truncateRunes(anchorMessage(cleaned), anchorLimit),
-		Protocol:  protocol,
-		Status:    "ok",
+		Text:         text,
+		Turns:        len(cleaned),
+		FirstUser:    truncateRunes(anchorMessage(cleaned), anchorLimit),
+		LatestUser:   truncateRunes(latestUserMessage(cleaned), anchorLimit),
+		HistoryBytes: len(full),
+		Protocol:     protocol,
+		Status:       "ok",
 	}
 }
 
@@ -142,6 +153,54 @@ var requestSectionMarkers = []string{
 	"## 任务",
 	"## goal",
 	"## 目标",
+}
+
+// latestUserMessage 从后往前找最新一条真正的用户文本。
+// 找不到（整段都是客户端追加的块）时退回最后一条，保持"总有内容可看"。
+func latestUserMessage(texts []string) string {
+	for i := len(texts) - 1; i >= 0; i-- {
+		if !isClientMetaBlock(texts[i]) {
+			return texts[i]
+		}
+	}
+	return texts[len(texts)-1]
+}
+
+// clientMetaMarkers 是客户端写进 user 消息里的结构化块特征：
+// 审批请求、转录增量、工具调用回显。它们不是用户说的话。
+var clientMetaMarkers = []string{
+	">>> approval request",
+	">>> transcript delta",
+	">>> parent turn permission context",
+	">>> tool call",
+	"tool exec call:",
+}
+
+// isClientMetaBlock 判断一条消息是否是客户端追加的工具/审批块。
+func isClientMetaBlock(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return true
+	}
+	if isInjectedFraming(trimmed) {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	for _, marker := range clientMetaMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	// "[153] tool exec call: ..." 这种带序号前缀的工具回显。
+	if strings.HasPrefix(trimmed, "[") {
+		if end := strings.IndexByte(trimmed, ']'); end > 0 && end < 12 {
+			rest := strings.ToLower(trimmed[end+1:])
+			if strings.HasPrefix(rest, " tool exec call") || strings.HasPrefix(rest, " tool call") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isInjectedFraming 判断一条消息是否是客户端注入的上下文块。

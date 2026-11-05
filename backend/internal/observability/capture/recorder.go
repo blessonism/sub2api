@@ -61,16 +61,18 @@ type Recorder struct {
 	// pending 保存尚未成行的 SSE 尾巴；text 是边写边抽出来的 assistant 文本。
 	// 之所以要增量抽取：Responses 的正文 delta 排在几十 KB 的 response.created
 	// 前导之后，只靠缓冲末尾统一解析，一旦触发上限就永远看不到正文。
-	pending    []byte
-	text       []byte
-	textFull   bool
-	sawDelta   bool
-	userText   string
-	userTurns  int
-	userFirst  string
-	reqFP      string
-	protocol   string
-	promptStat string
+	pending          []byte
+	text             []byte
+	textFull         bool
+	sawDelta         bool
+	userText         string
+	userTurns        int
+	userFirst        string
+	userLatest       string
+	userHistoryBytes int
+	reqFP            string
+	protocol         string
+	promptStat       string
 	// respTruncated 标记**原始响应字节**达到上限被截；它与正文是否被截是两件事：
 	// 流里有 response.created 这类大 JSON，原始字节几乎必然超上限，
 	// 但正文往往远未触顶。两者混用会把每一条都标成"输出被截"。
@@ -113,6 +115,8 @@ func (r *Recorder) SetRequest(text string) {
 	r.protocol = extracted.Protocol
 	r.promptStat = extracted.Status
 	r.userFirst = extracted.FirstUser
+	r.userLatest = extracted.LatestUser
+	r.userHistoryBytes = extracted.HistoryBytes
 	if extracted.Text != "" {
 		r.userText = extracted.Text
 		r.userTurns = extracted.Turns
@@ -128,6 +132,27 @@ func (r *Recorder) FirstUserPrompt() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.userFirst
+}
+
+// LatestUserPrompt 返回最新一条真正的用户消息：观测层的 input 用它，
+// 否则长会话下 input 会被几十轮历史占满，真正被回答的那句反而沉到底部。
+func (r *Recorder) LatestUserPrompt() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userLatest
+}
+
+// UserPromptHistoryBytes 返回本次请求携带的完整用户历史字节数（截断前）。
+func (r *Recorder) UserPromptHistoryBytes() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userHistoryBytes
 }
 
 // RequestFingerprint 返回请求体指纹，供观测层识别「同一步的重复尝试」。

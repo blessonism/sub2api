@@ -105,9 +105,15 @@ ingestion 时把这批 trace 归到同一个 `sessionId`，并配上会话内的
 
 | 值 | 来源 | 缺省上限 | 说明 |
 |---|---|---|---|
-| `input` | 用户消息（跳过 system/developer 与工具结果） | `capture_prompt_max_bytes` = 512KB | 超限保留最近尾部并加 `…（前文已省略）` |
+| `input` | **最新一条**用户消息（跳过 system/developer、工具结果、审批块） | `capture_prompt_max_bytes` = 512KB | 超限保留尾部并加 `…（前文已省略）` |
 | `output` | assistant 正文 | `capture_max_bytes` = 256KB | 超限保留头部并打 `output_truncated` |
 | `metadata.request_body` | 原始请求体样本 | 8KB | 只作取证抽样，不是全文 |
+
+长会话的输入处理：每条上游调用都会重发完整历史，如果把整段历史塞进 `input`，
+真正被回答的那句会被几十轮上下文淹没。所以 `input` 只放最新一条用户消息，
+历史规模用 `metadata.user_prompt_history_bytes` 表达，轮次数用
+`metadata.user_prompt_turns`。Codex 会把工具审批块（`>>> APPROVAL REQUEST`）写进
+user 消息，这类块不算用户原话，会被跳过。
 
 硬顶：任何一侧最多 2MB，单条调用正文合计最多 2MB —— 因为一条调用会展开成
 trace + generation 两条事件、正文要发两遍，而 Langfuse ingestion 单请求上限是
