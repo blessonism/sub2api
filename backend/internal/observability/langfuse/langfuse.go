@@ -71,6 +71,9 @@ type Call struct {
 	InputUser string
 	// UserTurns 是用户消息条数。
 	UserTurns int
+	// PromptProtocol / PromptStatus 记录抽取结果，便于排查为什么没抽到。
+	PromptProtocol string
+	PromptStatus   string
 	// InputTruncated / OutputTruncated 标记正文达到缓冲上限被截断。
 	InputTruncated  bool
 	OutputTruncated bool

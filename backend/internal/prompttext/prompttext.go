@@ -22,6 +22,8 @@ type Result struct {
 	Turns int
 	// Protocol 是识别出的协议形态，仅用于排查。
 	Protocol string
+	// Status 说明抽取结果：ok / no_user / invalid_json / unrecognized。
+	Status string
 }
 
 // Extract 自动识别协议并从请求体里抽取用户文本。
@@ -32,9 +34,12 @@ func Extract(body []byte) Result {
 	if len(body) == 0 {
 		return Result{}
 	}
+	if !utf8.Valid(body) {
+		return Result{Status: "invalid_utf8"}
+	}
 	var root map[string]any
 	if err := json.Unmarshal(body, &root); err != nil {
-		return Result{}
+		return Result{Status: "invalid_json"}
 	}
 
 	if contents, ok := root["contents"].([]any); ok {
@@ -53,7 +58,7 @@ func Extract(body []byte) Result {
 	if raw, ok := root["input"].(string); ok && strings.TrimSpace(raw) != "" {
 		return build("openai_responses_text", []string{raw})
 	}
-	return Result{}
+	return Result{Status: "unrecognized"}
 }
 
 func build(protocol string, texts []string) Result {
@@ -65,12 +70,13 @@ func build(protocol string, texts []string) Result {
 		}
 	}
 	if len(cleaned) == 0 {
-		return Result{Protocol: protocol}
+		return Result{Protocol: protocol, Status: "no_user"}
 	}
 	return Result{
 		Text:     truncateRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
 		Turns:    len(cleaned),
 		Protocol: protocol,
+		Status:   "ok",
 	}
 }
 

@@ -278,7 +278,7 @@ func TestRecorderExtractsUserPrompt(t *testing.T) {
 		{"role":"user","content":"是超时"}
 	]}`)
 
-	text, turns, protocol := rec.UserPrompt()
+	text, turns, protocol, _ := rec.UserPrompt()
 	if protocol != "openai_chat" {
 		t.Fatalf("protocol = %q", protocol)
 	}
@@ -297,7 +297,7 @@ func TestRecorderExtractsUserPrompt(t *testing.T) {
 func TestRecorderUserPromptEmptyForNonUserBody(t *testing.T) {
 	rec := New(Options{Prompt: true, MaxBytes: 4096})
 	rec.SetRequest(`{"messages":[{"role":"system","content":"only"}]}`)
-	if text, turns, _ := rec.UserPrompt(); text != "" || turns != 0 {
+	if text, turns, _, _ := rec.UserPrompt(); text != "" || turns != 0 {
 		t.Fatalf("got text=%q turns=%d", text, turns)
 	}
 }

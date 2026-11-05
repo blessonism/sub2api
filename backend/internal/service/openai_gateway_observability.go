@@ -36,11 +36,14 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 	}
 
 	// 正文层：只有请求上装了 recorder 才带 input/output，未安装时两者为空串。
-	var input, output string
+	var input, output, inputUser string
 	var inputTruncated, outputTruncated bool
+	var userTurns int
+	var promptProtocol, promptStatus string
 	if rec := capture.From(ctx); rec != nil {
 		input = rec.RequestText()
 		output = rec.ResponseText()
+		inputUser, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
 		inputTruncated = rec.RequestTruncated()
 		outputTruncated = rec.ResponseTruncated()
 		// 图片/视频类响应的正文是 base64 载荷，不是可读文本，落进观测层只是噪声。
@@ -91,6 +94,10 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		GroupID:   derefInt64(usageLog.GroupID),
 
 		Input:           input,
+		InputUser:       inputUser,
+		UserTurns:       userTurns,
+		PromptProtocol:  promptProtocol,
+		PromptStatus:    promptStatus,
 		Output:          output,
 		InputTruncated:  inputTruncated,
 		OutputTruncated: outputTruncated,

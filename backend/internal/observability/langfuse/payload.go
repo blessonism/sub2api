@@ -174,6 +174,12 @@ func metadata(c Call) map[string]any {
 	if c.UserTurns > 0 {
 		meta["user_prompt_turns"] = c.UserTurns
 	}
+	if c.PromptStatus != "" {
+		meta["user_prompt_status"] = c.PromptStatus
+	}
+	if c.PromptProtocol != "" {
+		meta["user_prompt_protocol"] = c.PromptProtocol
+	}
 	if c.OutputTruncated {
 		meta["output_truncated"] = true
 	}

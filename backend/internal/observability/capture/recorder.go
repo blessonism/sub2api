@@ -43,13 +43,14 @@ type Recorder struct {
 	// pending 保存尚未成行的 SSE 尾巴；text 是边写边抽出来的 assistant 文本。
 	// 之所以要增量抽取：Responses 的正文 delta 排在几十 KB 的 response.created
 	// 前导之后，只靠缓冲末尾统一解析，一旦触发上限就永远看不到正文。
-	pending   []byte
-	text      []byte
-	textFull  bool
-	sawDelta  bool
-	userText  string
-	userTurns int
-	protocol  string
+	pending    []byte
+	text       []byte
+	textFull   bool
+	sawDelta   bool
+	userText   string
+	userTurns  int
+	protocol   string
+	promptStat string
 	// respTruncated 标记响应字节已达到上限被截断。
 	respTruncated bool
 }
@@ -73,13 +74,15 @@ func (r *Recorder) SetRequest(text string) {
 
 	// 单独抽一份「用户说的话」：观测层默认展示这一份，
 	// 原始请求体退到 metadata 里备查。
-	if extracted := prompttext.Extract([]byte(text)); extracted.Text != "" {
-		r.mu.Lock()
+	extracted := prompttext.Extract([]byte(text))
+	r.mu.Lock()
+	r.protocol = extracted.Protocol
+	r.promptStat = extracted.Status
+	if extracted.Text != "" {
 		r.userText = extracted.Text
 		r.userTurns = extracted.Turns
-		r.protocol = extracted.Protocol
-		r.mu.Unlock()
 	}
+	r.mu.Unlock()
 }
 
 // RequestTruncated 报告请求正文是否被截断。
@@ -222,13 +225,13 @@ func truncate(s string, limit int) (string, bool) {
 }
 
 // UserPrompt 返回抽取出的用户消息文本、条数与识别到的协议。
-func (r *Recorder) UserPrompt() (text string, turns int, protocol string) {
+func (r *Recorder) UserPrompt() (text string, turns int, protocol, status string) {
 	if r == nil {
-		return "", 0, ""
+		return "", 0, "", ""
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.userText, r.userTurns, r.protocol
+	return r.userText, r.userTurns, r.protocol, r.promptStat
 }
 
 // ResponseText 返回响应正文的 assistant 文本。
