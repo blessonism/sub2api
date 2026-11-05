@@ -165,3 +165,21 @@ func TestTitlePrefersRequestSection(t *testing.T) {
 		t.Fatalf("title = %q，应取 ## My request 之后的内容", got)
 	}
 }
+
+func TestThreadAnchorSurvivesInjectedContextRewrite(t *testing.T) {
+	reg := NewRegistry(0, 0)
+	now := baseNow()
+	// 同一段对话：上游压缩上下文后，注入部分变了，用户那句话没变。
+	a := reg.Resolve(Input{ClientSessionID: "s9", UserID: 3, FirstUserPrompt: "## My request:\n把登录修好", Now: now})
+	b := reg.Resolve(Input{
+		ClientSessionID: "s9", UserID: 3,
+		FirstUserPrompt: "# Files mentioned by the user:\n- a.go\n\n## My request:\n把登录修好",
+		Now:             now.Add(time.Minute),
+	})
+	if a.ThreadID != b.ThreadID {
+		t.Fatalf("请求段落相同必须仍是同一线程：%s vs %s", a.ThreadID, b.ThreadID)
+	}
+	if b.StepIndex != 2 {
+		t.Fatalf("step = %d, want 2", b.StepIndex)
+	}
+}
