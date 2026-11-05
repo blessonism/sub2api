@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/prompttext"
 )
 
 const (
@@ -234,10 +236,15 @@ func autoSessionID(threadKey string, now time.Time) string {
 }
 
 // title 取锚点消息首行作为会话标题。
+// 客户端常把用户原话包在上下文块（AGENTS.md / IDE 开着的文件）后面，
+// 这时取「真实请求」段落，否则标题会被注入内容占满。
 func title(prompt string) string {
 	trimmed := strings.TrimSpace(prompt)
 	if trimmed == "" {
 		return ""
+	}
+	if section := prompttext.ExtractRequestSection(trimmed); section != "" {
+		trimmed = section
 	}
 	if idx := strings.IndexAny(trimmed, "\r\n"); idx >= 0 {
 		trimmed = trimmed[:idx]

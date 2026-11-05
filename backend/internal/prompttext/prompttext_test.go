@@ -167,3 +167,48 @@ func TestExtractFirstUserIsHeadTruncated(t *testing.T) {
 		t.Fatalf("FirstUser len = %d，应受 anchorLimit=%d 约束", len(got.FirstUser), anchorLimit)
 	}
 }
+
+func TestExtractFirstUserSkipsMarkdownContextBlocks(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"<user_info>\nOS Version: windows\n</user_info>\n\n<rules>\n<user_rule>只说中文</user_rule>\n</rules>"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"把会话聚合补上"}]}
+	]}`)
+	got := Extract(body)
+	if got.FirstUser != "把会话聚合补上" {
+		t.Fatalf("FirstUser = %q，<user_info>/<rules> 属于注入上下文", got.FirstUser)
+	}
+}
+
+func TestExtractFirstUserKeepsBlockThatCarriesRequest(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n- a.svg\n\n## My request:\n看下这张图对应哪组实验数据"}]}
+	]}`)
+	got := Extract(body)
+	if !strings.Contains(got.FirstUser, "看下这张图") {
+		t.Fatalf("带 ## My request 的消息必须保留，否则真实请求被丢掉：%q", got.FirstUser)
+	}
+}
+
+func TestExtractRequestSection(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"# Files mentioned by the user:\n- a.svg\n\n## My request:\n看下这张图", "看下这张图"},
+		{"上下文\n## 我的请求：\n把登录修好", "把登录修好"},
+		{"没有段落标记的普通消息", ""},
+	}
+	for _, c := range cases {
+		if got := ExtractRequestSection(c.in); got != c.want {
+			t.Fatalf("ExtractRequestSection(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestExtractFirstUserSkipsCompactionSummary(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"...continue with the summary in this summary to assist with your own analysis:\n## Identity"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"继续"}]}
+	]}`)
+	got := Extract(body)
+	if got.FirstUser != "继续" {
+		t.Fatalf("FirstUser = %q，压缩摘要不是用户说的话", got.FirstUser)
+	}
+}
