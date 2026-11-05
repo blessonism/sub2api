@@ -342,3 +342,27 @@ func TestRequestFingerprintSkipsWorkWhenDisabled(t *testing.T) {
 		t.Fatal("关闭提示词采集时不该记录任何锚点信息")
 	}
 }
+
+// TestSSEWithLeadingCommentIsRecognized 覆盖以 SSE 注释行开头的流：
+// 这类流曾被误判成非 SSE，回复正文退化成 "event: ... data: ..." 噪声。
+func TestSSEWithLeadingCommentIsRecognized(t *testing.T) {
+	rec := New(Options{Prompt: false, Response: true, MaxBytes: 64 * 1024})
+	stream := ": ping\n\n" +
+		"event: codex.response.metadata\n" +
+		"data: {\"type\":\"codex.response.metadata\"}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"修好了\"}\n\n"
+	rec.AppendResponse([]byte(stream))
+	if got := rec.ResponseText(); got != "修好了" {
+		t.Fatalf("ResponseText = %q，不能回退成原始 SSE 字节", got)
+	}
+}
+
+// TestJSONBodyWithDataWordStaysJSON 保证首字符判定不会把 JSON 误判成 SSE。
+func TestJSONBodyWithDataWordStaysJSON(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 32 * 1024})
+	rec.AppendResponse([]byte(`{"choices":[{"message":{"role":"assistant","content":"hi data: not sse"}}]}`))
+	if got := rec.ResponseText(); got != "hi data: not sse" {
+		t.Fatalf("ResponseText = %q", got)
+	}
+}
