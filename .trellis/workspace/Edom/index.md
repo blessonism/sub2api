@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-11-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~403 | Active |
+| `journal-1.md` | ~436 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-11-05 | 同步官方 0.2.19 并保留本地二开 | `19d51cf3929a8f8bb4ba3905cb5b648c0bcd237b` | `sync/upstream-20261105` |
 | 11 | 2026-11-05 | 对话历史完整拆除与 Review | `16f596878f36397ae4350145c062a935a600a1b2`, `4d421688a9bc79b188b8332f8f935388de9c50cf` | `fix/remove-conversation-history` |
 | 10 | 2026-10-26 | 分组模型转发修复并合并 custom/main | `c9335e5358df44d026ae597aaf680bae6e6c4da2`, `c387b6d8ac2df8134090a3f8e95e32f5151016cd` | `custom/main` |
 | 9 | 2026-10-17 | 全平台 System Prompt 注入修复与 OVH 部署 | `10f2f9a00dca` | `custom/main` |

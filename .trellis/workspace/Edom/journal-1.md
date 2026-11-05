@@ -401,3 +401,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 同步官方 0.2.19 并保留本地二开
+
+**Date**: 2026-11-05
+**Task**: 同步官方 0.2.19 并保留本地二开
+**Branch**: `sync/upstream-20261105`
+
+### Summary
+
+按用户授权，在 sync/upstream-20261105 合并官方 upstream/main 8e92c892b47f，保留 ae2e47d03937 的全部二开和 5 个未推送提交。解决 20 个冲突，保留 Langfuse、计费与账号绑定能力，对话历史仍保持移除。20 项同步检查、后端 unit/integration（真实 PostgreSQL）、go vet、前端 typecheck/3465 例测试/变更文件 ESLint/构建均通过。golangci-lint 本地未安装，远端 CI 未运行。已归档本任务；本轮仅执行同步、归档和 journal 共 3 个本地提交，未推送，custom/main 未移动。收尾期间 deploy/langfuse/.env.example 与 deploy/langfuse/docker-compose.yml 出现新的并行修改，已保留且未纳入本次提交。详细记录：.trellis/tasks/archive/2026-11/11-05-sync-main-preserve-custom-20261105/verification.md。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `19d51cf3929a8f8bb4ba3905cb5b648c0bcd237b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
