@@ -126,3 +126,44 @@ func TestExtractInvalidJSON(t *testing.T) {
 		t.Fatalf("非法 JSON 应返回空结果: %+v", got)
 	}
 }
+
+func TestExtractFirstUserSkipsInjectedFraming(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-6-astra",
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context><cwd>/Users/suki/code/sub2api</cwd></environment_context>"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"把观测层的会话聚合补上"}]}
+		]}`)
+	got := Extract(body)
+	if got.Status != "ok" {
+		t.Fatalf("status = %q", got.Status)
+	}
+	if got.Turns != 2 {
+		t.Fatalf("turns = %d, want 2（注入块仍算一轮，只影响锚点选择）", got.Turns)
+	}
+	if got.FirstUser != "把观测层的会话聚合补上" {
+		t.Fatalf("FirstUser = %q，包装块必须被跳过", got.FirstUser)
+	}
+}
+
+func TestExtractFirstUserFallsBackToFirstWhenAllFraming(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"<user_instructions>只用中文</user_instructions>"}]}
+	]}`)
+	got := Extract(body)
+	if got.FirstUser == "" {
+		t.Fatal("全是包装块时也要给出锚点，否则会话拿不到标题")
+	}
+	if !strings.Contains(got.FirstUser, "只用中文") {
+		t.Fatalf("FirstUser = %q", got.FirstUser)
+	}
+}
+
+func TestExtractFirstUserIsHeadTruncated(t *testing.T) {
+	long := strings.Repeat("会", 2000)
+	body := []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"` + long + `"}]}]}`)
+	got := Extract(body)
+	if len(got.FirstUser) > anchorLimit {
+		t.Fatalf("FirstUser len = %d，应受 anchorLimit=%d 约束", len(got.FirstUser), anchorLimit)
+	}
+}

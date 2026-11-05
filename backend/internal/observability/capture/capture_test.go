@@ -301,3 +301,44 @@ func TestRecorderUserPromptEmptyForNonUserBody(t *testing.T) {
 		t.Fatalf("got text=%q turns=%d", text, turns)
 	}
 }
+
+// TestRecorderExposesSessionAnchor 覆盖会话归组需要的两个事实：
+// 锚点消息（跳过客户端注入块）与请求体指纹。
+func TestRecorderExposesSessionAnchor(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 4096})
+	rec.SetRequest(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context><cwd>/tmp</cwd></environment_context>"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"把会话聚合补上"}]}
+	]}`)
+
+	if got := rec.FirstUserPrompt(); got != "把会话聚合补上" {
+		t.Fatalf("FirstUserPrompt = %q，注入块必须被跳过", got)
+	}
+	if rec.RequestFingerprint() == "" {
+		t.Fatal("请求指纹为空，重试折叠就没依据了")
+	}
+}
+
+// TestRequestFingerprintTracksTailGrowth 覆盖"会话推进落在尾部"的现实：
+// 超大请求体只有尾部变化，指纹必须随之变化。
+func TestRequestFingerprintTracksTailGrowth(t *testing.T) {
+	head := strings.Repeat("H", 200*1024)
+	a := head + `{"tail":"call-1"}`
+	b := head + `{"tail":"call-1","more":"call-2"}`
+
+	if requestFingerprint(a) == requestFingerprint(b) {
+		t.Fatal("尾部变化必须改变指纹，否则每一步都会被当成同一步的重试")
+	}
+	if requestFingerprint(b) != requestFingerprint(head+`{"tail":"call-1","more":"call-2"}`) {
+		t.Fatal("同一请求体的指纹必须稳定")
+	}
+}
+
+// TestRequestFingerprintSkipsWorkWhenDisabled 保证未开启采集时零开销。
+func TestRequestFingerprintSkipsWorkWhenDisabled(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 4096})
+	rec.SetRequest(`{"messages":[{"role":"user","content":"hi"}]}`)
+	if rec.RequestFingerprint() != "" || rec.FirstUserPrompt() != "" {
+		t.Fatal("关闭提示词采集时不该记录任何锚点信息")
+	}
+}

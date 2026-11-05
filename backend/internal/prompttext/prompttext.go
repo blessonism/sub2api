@@ -14,12 +14,19 @@ import (
 // DefaultMaxBytes 是抽取结果的字节上限（按 rune 边界回退）。
 const DefaultMaxBytes = 16 * 1024
 
+// anchorLimit 是锚点消息的字节上限：它只用于会话归组和标题，
+// 不参与展示正文，取够区分即可。
+const anchorLimit = 480
+
 // Result 是一次抽取的结果。
 type Result struct {
 	// Text 是按出现顺序拼接的用户消息文本。
 	Text string
 	// Turns 是用户消息条数（用于判断这是单轮还是多轮）。
 	Turns int
+	// FirstUser 是用于会话归组的锚点消息：第一条「用户真正说的话」，
+	// 跳过客户端注入的包装块（如 <environment_context>），已按 anchorLimit 截断。
+	FirstUser string
 	// Protocol 是识别出的协议形态，仅用于排查。
 	Protocol string
 	// Status 说明抽取结果：ok / no_user / invalid_json / unrecognized。
@@ -73,11 +80,40 @@ func build(protocol string, texts []string) Result {
 		return Result{Protocol: protocol, Status: "no_user"}
 	}
 	return Result{
-		Text:     tailRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
-		Turns:    len(cleaned),
-		Protocol: protocol,
-		Status:   "ok",
+		Text:      tailRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
+		Turns:     len(cleaned),
+		FirstUser: truncateRunes(anchorMessage(cleaned), anchorLimit),
+		Protocol:  protocol,
+		Status:    "ok",
 	}
+}
+
+// anchorMessage 选用于会话归组的锚点消息。
+//
+// 跳过前面所有「客户端注入的包装块」：Codex 会把 <environment_context>、
+// <user_instructions> 这类结构性内容塞进 role=user，若直接取第一条，
+// 同一客户端的所有会话会塌成同一个锚点、进而被并进同一个会话。
+func anchorMessage(texts []string) string {
+	for _, t := range texts {
+		if !isInjectedFraming(t) {
+			return t
+		}
+	}
+	return texts[0]
+}
+
+// isInjectedFraming 判断一条消息是否是 XML 风格的客户端注入块。
+// 判定刻意保守：必须以 '<' 开头，且在前 512 字节内出现闭合标记。
+func isInjectedFraming(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "<") {
+		return false
+	}
+	head := trimmed
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	return strings.Contains(head, "</") || strings.Contains(head, "/>")
 }
 
 // chatUserTexts 处理 OpenAI chat 与 Anthropic messages：role=="user" 的 content。

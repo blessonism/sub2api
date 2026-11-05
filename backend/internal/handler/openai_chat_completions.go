@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/observability/capture"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -72,6 +73,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+
+	// 正文采集：只在观测层开启 capture 时安装；未开启时不包 writer、零开销。
+	// Chat Completions 的客户端（OpenAI SDK）通常不带任何会话头，
+	// 采集是它们唯一的会话归组依据。
+	captureRec, restoreCapture := capture.Install(c, captureOptions(h.cfg))
+	defer restoreCapture()
+	captureRec.SetRequest(string(body))
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {

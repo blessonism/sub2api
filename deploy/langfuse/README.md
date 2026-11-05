@@ -77,6 +77,30 @@ observability:
 
 关闭状态（`enabled: false` 或密钥缺失）下业务侧不建队列、不起 goroutine、零出网。
 
+## 会话聚合（同一会话的多次请求）
+
+一次对话在业务侧是「多条上游请求」，在 Langfuse 里默认也是「多条 trace」。业务侧在
+ingestion 时把这批 trace 归到同一个 `sessionId`，并配上会话内的结构字段，让 session
+视图能读成一条有序时间线。
+
+| 字段 | 位置 | 含义 |
+|---|---|---|
+| `sessionId` | trace 顶层 | 会话聚合键。客户端给了 `session_id` / `X-Session-Id` / `X-Claude-Code-Session-Id` 就用它；没给时用 `auto-<hash>-<首次出现时间>` 推导 |
+| `session_source` | metadata | `client` / `auto` / absent（无法归组，与历史行为一致） |
+| `session_title` | metadata | 会话标题，取首条真实用户消息首行（跳过 `<environment_context>` 这类客户端注入块） |
+| `thread_id` | metadata | 会话内的逻辑线程：同一 sessionId 下起点不同的对话流各自一条 |
+| `thread_step` | metadata | 线程内第几次上游请求，从 1 开始 |
+| `step_attempt` | metadata | 同一步的第几次尝试；`>1` 表示客户端重试/并行重发，真实对话只读一次 |
+
+归组在 worker 侧完成（单消费者串行），业务同步路径仍只有一次 channel send；状态表是
+纯内存的有界表（TTL 30 分钟、上限 4096 条），不产生 I/O、不写日志、不落盘。
+
+读法：先按 `sessionId` 进 session，再按 `thread_id` 分成几条流，每条流按 `thread_step`
+排序，`step_attempt=1` 的那条就是这个会话真正走过的一步。
+
+已知边界：客户端不带会话头、且提示词采集关闭时无法归组；同一用户用完全相同的开场白
+在 30 分钟内开两个会话会被并成一个（锚点相同即视为同一会话）。
+
 ## 验证
 
 ```bash

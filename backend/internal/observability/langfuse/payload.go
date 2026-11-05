@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/observability/sessiongroup"
 )
 
 const (
@@ -40,6 +42,9 @@ type batch struct {
 }
 
 // buildBatch 把 N 条 Call 展开成 2N 条事件：每条形如 trace-create + generation-create。
+//
+// 归组在这里完成而不是在业务侧：worker 是单消费者，会话/线程/步骤的推进天然
+// 串行，业务同步路径仍然只有一次 channel send。
 func buildBatch(calls []Call, release string) batch {
 	out := batch{Batch: make([]event, 0, len(calls)*2)}
 	for _, c := range calls {
@@ -47,37 +52,47 @@ func buildBatch(calls []Call, release string) batch {
 		traceID := "tr-" + id
 		genID := "gn-" + id
 		ts := formatTime(c.StartedAt)
+		grp := sessiongroup.Resolve(sessiongroup.Input{
+			ClientSessionID:    c.SessionID,
+			UserID:             c.UserID,
+			APIKeyID:           c.APIKeyID,
+			FirstUserPrompt:    c.FirstUserPrompt,
+			RequestFingerprint: c.RequestFingerprint,
+			Now:                c.StartedAt,
+		})
 		out.Batch = append(out.Batch,
 			event{
 				ID:        "ev-" + id + "-trace",
 				Type:      eventTypeTraceCreate,
 				Timestamp: ts,
-				Body:      traceBody(c, traceID, release),
+				Body:      traceBody(c, traceID, release, grp),
 			},
 			event{
 				ID:        "ev-" + id + "-generation",
 				Type:      eventTypeGenerationCreate,
 				Timestamp: ts,
-				Body:      generationBody(c, traceID, genID),
+				Body:      generationBody(c, traceID, genID, grp),
 			},
 		)
 	}
 	return out
 }
 
-func traceBody(c Call, traceID, release string) map[string]any {
+func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[string]any {
 	body := map[string]any{
 		"id":        traceID,
 		"name":      traceName,
 		"timestamp": formatTime(c.StartedAt),
-		"metadata":  metadata(c),
+		"metadata":  metadata(c, grp),
 	}
 	// Langfuse 的检索维度是字符串；userId 用十进制串落位，空值不落键。
 	if c.UserID != 0 {
 		body["userId"] = strconv.FormatInt(c.UserID, 10)
 	}
-	if c.SessionID != "" {
-		body["sessionId"] = c.SessionID
+	// 会话聚合键：客户端显式给的就用它，没给时用推导值，
+	// 两者都没有则不落 sessionId（Langfuse 侧即不聚合）。
+	if grp.SessionID != "" {
+		body["sessionId"] = grp.SessionID
 	}
 	if release != "" {
 		body["release"] = release
@@ -91,7 +106,7 @@ func traceBody(c Call, traceID, release string) map[string]any {
 	return body
 }
 
-func generationBody(c Call, traceID, genID string) map[string]any {
+func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[string]any {
 	end := c.StartedAt.Add(c.Duration)
 	usage := map[string]any{
 		"input":  c.InputTokens,
@@ -125,7 +140,7 @@ func generationBody(c Call, traceID, genID string) map[string]any {
 		"startTime":    formatTime(c.StartedAt),
 		"endTime":      formatTime(end),
 		"level":        level(c.Status),
-		"metadata":     metadata(c),
+		"metadata":     metadata(c, grp),
 	}
 	if c.Status == "billing_error" && c.ErrorKind != "" {
 		body["statusMessage"] = c.ErrorKind
@@ -140,13 +155,31 @@ func generationBody(c Call, traceID, genID string) map[string]any {
 	return body
 }
 
-func metadata(c Call) map[string]any {
+func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	meta := map[string]any{
 		"cost_source": costSourceActual,
 		"status":      c.Status,
 	}
 	if c.RequestID != "" {
 		meta["request_id"] = c.RequestID
+	}
+	// 会话结构：一个会话 = 多条 trace；会话内按 thread 分线程、按 thread_step 排序、
+	// 按 step_attempt 标记同一步的重试。三者配合才能在 session 视图里把
+	// "一次对话的多次请求"读成一条有序时间线。
+	if grp.SessionSource != "" && grp.SessionSource != sessiongroup.SourceNone {
+		meta["session_source"] = grp.SessionSource
+	}
+	if grp.Title != "" {
+		meta["session_title"] = grp.Title
+	}
+	if grp.ThreadID != "" {
+		meta["thread_id"] = grp.ThreadID
+	}
+	if grp.StepIndex > 0 {
+		meta["thread_step"] = grp.StepIndex
+	}
+	if grp.AttemptIndex > 0 {
+		meta["step_attempt"] = grp.AttemptIndex
 	}
 	if c.Endpoint != "" {
 		meta["endpoint"] = c.Endpoint

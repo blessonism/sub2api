@@ -69,6 +69,11 @@ type Call struct {
 	// InputUser 是从请求体里单独抽出的用户消息文本；非空时作为展示用 input，
 	// Input 退居 metadata 备查。
 	InputUser string
+	// FirstUserPrompt 是请求里第一条「用户真正说的话」（已跳过 <environment_context>
+	// 这类客户端注入块），只用于会话归组与标题，不单独展示。
+	FirstUserPrompt string
+	// RequestFingerprint 是请求体短指纹：同线程内指纹相同 = 同一步的重试/并行。
+	RequestFingerprint string
 	// UserTurns 是用户消息条数。
 	UserTurns int
 	// PromptProtocol / PromptStatus 记录抽取结果，便于排查为什么没抽到。
