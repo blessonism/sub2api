@@ -71,11 +71,15 @@ type turnCard struct {
 	// 只能靠空闲超时切分，卡片有可能把连续几轮串在一起。
 	turnSigUnknown bool
 
-	// output 取该轮**最后一条非空**的 assistant 文本。
-	// 不能用「最后一步」：实测 38 个真实轮次里有 20 个以空文本收尾
-	// （最后一步只是工具调用），按最后一步取会让一半卡片没有回答。
+	// output 是该轮**全部非空** assistant 文本的拼接。
+	//
+	// 不能只留最后一条：实测一个 40 步的轮次有 15 步带正文，最后一条 1749 字节，
+	// 其余 14 段共 1785 字节全是过程性结论 —— 只留最后一条等于丢掉一半内容，
+	// 卡片读起来就是"输入输出都很少"。
 	output          string
 	outputTruncated bool
+	// outputParts 记录这一轮一共有几段非空输出（不管是否拼接得下）。
+	outputParts int
 
 	startTs time.Time
 	lastTs  time.Time
@@ -95,6 +99,8 @@ type turnCard struct {
 	requestBody    string
 	requestBodyCut bool
 	historyBytes   int
+	// promptTurns 是该轮携带的用户消息条数，只用于给短消息补一句上下文说明。
+	promptTurns    int
 	promptStatus   string
 	promptProtocol string
 	promptFallback bool
@@ -239,6 +245,7 @@ func (b *turnBuffer) touch(c Call, grp sessiongroup.Group, start, wall time.Time
 			apiKeyID:       c.APIKeyID,
 			groupID:        c.GroupID,
 			historyBytes:   c.UserPromptHistoryBytes,
+			promptTurns:    c.UserTurns,
 			promptStatus:   c.PromptStatus,
 			promptProtocol: c.PromptProtocol,
 			promptFallback: c.PromptFallback,
@@ -274,10 +281,25 @@ func (b *turnBuffer) touch(c Call, grp sessiongroup.Group, start, wall time.Time
 			card.inputTruncated = c.PromptTruncated || len(user) > turnInputLimit
 		}
 	}
-	// 回答取最后一条非空文本：轮次常常以「只有工具调用、没有正文」的一步收尾。
+	// 回答累积该轮全部非空文本：一轮里过程性结论往往分散在多步，
+	// 只留最后一条会把大半内容丢掉。
 	if c.Output != "" {
-		card.output = truncateBytes(c.Output, turnOutputLimit)
-		card.outputTruncated = c.OutputTruncated || len(c.Output) > turnOutputLimit
+		card.outputParts++
+		if len(card.output) >= turnOutputLimit {
+			card.outputTruncated = true
+		} else {
+			if card.output != "" {
+				card.output += "\n\n"
+			}
+			card.output += c.Output
+			if len(card.output) > turnOutputLimit {
+				card.output = truncateBytes(card.output, turnOutputLimit)
+				card.outputTruncated = true
+			}
+		}
+		if c.OutputTruncated {
+			card.outputTruncated = true
+		}
 	}
 	if c.FinishReason != "" {
 		card.lastFinish = c.FinishReason
@@ -363,6 +385,27 @@ func (b *turnBuffer) pending() int { return len(b.cards) }
 // 纯工具轮（模型自己发起的后续调用）会出现这种情况，属于正常。
 func (c *turnCard) inputMissing() bool { return c.input == "" }
 
+// shortInputBytes 是"用户只说了几个字"的判定线（"继续"、"好"、"再试一次"）。
+const shortInputBytes = 120
+
+// inputWithContext 返回卡片的 input。
+//
+// agentic 会话里用户经常只说"继续"两个字，卡片上就只剩这一点内容，
+// 读起来像采集不全。这里给短消息补一行上下文规模说明：用户能看出
+// "不是抓漏了，是我这轮就说了这几个字"，也能判断携带了多少历史。
+func (c *turnCard) inputWithContext() string {
+	if len(c.input) > shortInputBytes || c.historyBytes <= 0 {
+		return c.input
+	}
+	turns := c.promptTurns
+	if turns <= 0 {
+		turns = 1
+	}
+	return c.input + "\n\n——（本轮用户消息；请求携带 " +
+		strconv.Itoa(turns) + " 条历史、" +
+		strconv.Itoa(c.historyBytes/1024) + " KB 上下文，系统提示与工具定义不在卡片上）"
+}
+
 // cardKey 是卡片的聚合键。
 //
 // 优先用归组算出的 TurnID（会话 + 线程 + 轮次签名），这样并发的多个子代理
@@ -404,7 +447,7 @@ func (b *turnBuffer) closeCard(card *turnCard) event {
 		body["release"] = b.release
 	}
 	if card.input != "" {
-		body["input"] = card.input
+		body["input"] = card.inputWithContext()
 	}
 	if card.output != "" {
 		body["output"] = card.output
@@ -507,6 +550,11 @@ func cardMetadata(card *turnCard) map[string]any {
 	}
 	if card.inputTruncated {
 		meta["turn_input_truncated"] = true
+	}
+	if card.outputParts > 0 {
+		// 这一轮的输出由几段拼成：段数远大于 1 说明答案分散在多步里，
+		// 只读卡片容易漏掉过程，需要展开下面的步骤。
+		meta["turn_output_parts"] = card.outputParts
 	}
 	if card.outputTruncated {
 		meta["turn_output_truncated"] = true

@@ -121,9 +121,10 @@ func TestTurnProducesOneCardForManySteps(t *testing.T) {
 	}
 }
 
-// TestCardTakesLastNonEmptyAnswer：轮次常常以「纯工具调用」的一步收尾，
-// 回答必须取最后一条**非空**文本，否则一半卡片没有 output。
-func TestCardTakesLastNonEmptyAnswer(t *testing.T) {
+// TestCardConcatenatesAllAnswerParts 覆盖「卡片内容太少」的根因：
+// 一轮 40 步里可能 15 步带正文，只留最后一条会丢掉一半内容。
+// 现在按顺序拼接全部非空文本，空步骤自动跳过。
+func TestCardConcatenatesAllAnswerParts(t *testing.T) {
 	b := newTestBuffer(t)
 	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
@@ -135,8 +136,11 @@ func TestCardTakesLastNonEmptyAnswer(t *testing.T) {
 	}
 
 	card := b.drain()[0]
-	if card.Body["output"] != "改完再跑测试" {
-		t.Fatalf("卡片 output = %v，应取最后一条非空回答", card.Body["output"])
+	if want := "先看一下仓库结构\n\n改完再跑测试"; card.Body["output"] != want {
+		t.Fatalf("卡片 output = %q, want %q（全部非空文本按顺序拼接）", card.Body["output"], want)
+	}
+	if got := metaInt(t, card, "turn_output_parts"); got != 2 {
+		t.Fatalf("turn_output_parts = %d, want 2", got)
 	}
 	if card.Body["input"] != "修一下观测" {
 		t.Fatalf("卡片 input = %v", card.Body["input"])
@@ -560,5 +564,67 @@ func TestTurnBufferStaysWithinByteBudget(t *testing.T) {
 		if seen[card.traceID] {
 			t.Fatalf("卡片 %s 既已落卡又还在缓冲里", card.traceID)
 		}
+	}
+}
+
+// TestShortUserInputGetsContextNote 覆盖「卡片 input 只有几个字」的困惑：
+// agentic 会话里用户常说"继续"，卡片上就只剩两个字，看起来像采集不全。
+func TestShortUserInputGetsContextNote(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	c := stepCall("sess-note", "继续", 12, "fp-1", base)
+	c.UserPromptHistoryBytes = 480 << 10
+	b.add(c)
+
+	card := b.drain()[0]
+	input, _ := card.Body["input"].(string)
+	if !strings.HasPrefix(input, "继续") || !strings.Contains(input, "12 条历史") || !strings.Contains(input, "480 KB") {
+		t.Fatalf("卡片 input = %q，短消息应补上下文规模说明", input)
+	}
+	if !strings.Contains(input, "不在卡片上") {
+		t.Fatalf("说明要讲清楚有哪些内容没展示：%q", input)
+	}
+}
+
+// TestLongUserInputKeepsNoNoise：用户真的写了一大段时不要再补说明。
+func TestLongUserInputKeepsNoNoise(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	long := strings.Repeat("这是一段很长的需求描述。", 30)
+	c := stepCall("sess-note2", long, 3, "fp-1", base)
+	c.UserPromptHistoryBytes = 900 << 10
+	b.add(c)
+
+	card := b.drain()[0]
+	if got, _ := card.Body["input"].(string); got != long {
+		t.Fatalf("长消息不该被追加说明：len=%d", len(got))
+	}
+}
+
+// TestOutputStopsAtLimitAndFlags 覆盖超长轮次：拼接必须在上限处收口并打标记。
+func TestOutputStopsAtLimitAndFlags(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	chunk := strings.Repeat("答", 20<<10) // 每步 20KB
+	for i := 0; i < 6; i++ {             // 合计 120KB > 64KB 上限
+		c := stepCall("sess-limit", "很长的回答", 1, fmt.Sprintf("fp-%d", i), base.Add(time.Duration(i)*time.Second))
+		c.Output = chunk
+		b.add(c)
+	}
+
+	card := b.drain()[0]
+	out, _ := card.Body["output"].(string)
+	if len(out) > turnOutputLimit {
+		t.Fatalf("卡片 output = %d 字节，超过 %d 上限", len(out), turnOutputLimit)
+	}
+	meta := metaOfEvent(t, card)
+	if meta["turn_output_truncated"] != true {
+		t.Fatal("拼接触顶必须标记 turn_output_truncated")
+	}
+	if got := metaInt(t, card, "turn_output_parts"); got != 6 {
+		t.Fatalf("turn_output_parts = %d, want 6（段数要如实记录，即使拼不下）", got)
 	}
 }
