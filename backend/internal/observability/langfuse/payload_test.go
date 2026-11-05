@@ -127,3 +127,40 @@ func TestGenerationCarriesSessionMetaToo(t *testing.T) {
 		t.Fatal("generation 侧也要带会话结构，UI 从任一侧都要能读")
 	}
 }
+
+func TestTraceNameCarriesThreadAndStep(t *testing.T) {
+	sessiongroup.Reset()
+	b := buildBatch([]Call{
+		sampleCall("sess-z", "把会话聚合补上", "fp-a"),
+		sampleCall("sess-z", "把会话聚合补上", "fp-a"),
+	}, "")
+	first := b.Batch[0].Body
+	second := b.Batch[2].Body
+
+	name, _ := first["name"].(string)
+	if !strings.HasPrefix(name, traceName) || !strings.Contains(name, "#1") {
+		t.Fatalf("trace 名必须带步骤，实际 = %q", name)
+	}
+	if strings.Contains(name, "th-") == false {
+		t.Fatalf("trace 名必须带线程，实际 = %q", name)
+	}
+	if retryName, _ := second["name"].(string); !strings.Contains(retryName, "try2") {
+		t.Fatalf("重试要标出来，实际 = %q", retryName)
+	}
+
+	tags, ok := first["tags"].([]string)
+	if !ok || len(tags) != 1 || !strings.HasPrefix(tags[0], "thread:th-") {
+		t.Fatalf("tags = %v", first["tags"])
+	}
+}
+
+func TestTraceNameFallsBackWhenNoGroup(t *testing.T) {
+	sessiongroup.Reset()
+	body := traceBodyOf(t, buildBatch([]Call{sampleCall("", "", "")}, ""), 0)
+	if body["name"] != traceName {
+		t.Fatalf("无归组时 trace 名应保持原样：%v", body["name"])
+	}
+	if _, ok := body["tags"]; ok {
+		t.Fatalf("无归组时不该有 tags：%v", body["tags"])
+	}
+}
