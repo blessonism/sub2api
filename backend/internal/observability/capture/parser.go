@@ -92,9 +92,25 @@ func textFromEvent(event map[string]any) (string, bool) {
 			return b.String(), true
 		}
 	}
-	// OpenAI responses 流式：response.output_text.delta。
+	// OpenAI responses 流式：增量与收尾两种形态都要收。
 	if event["type"] == "response.output_text.delta" {
 		if s, ok := event["delta"].(string); ok && s != "" {
+			return s, true
+		}
+	}
+	if event["type"] == "response.output_text.done" {
+		if s, ok := event["text"].(string); ok && s != "" {
+			return s, true
+		}
+	}
+	// 部分实现把文本放在 content_part 的 delta 里。
+	if event["type"] == "response.content_part.delta" {
+		if delta, ok := event["delta"].(map[string]any); ok {
+			if s, ok := delta["text"].(string); ok && s != "" {
+				return s, true
+			}
+		}
+		if s, ok := event["text"].(string); ok && s != "" {
 			return s, true
 		}
 	}

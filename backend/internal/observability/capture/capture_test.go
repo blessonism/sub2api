@@ -223,3 +223,24 @@ func TestJSONResponseStillParsed(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestResponsesDoneEventCarriesText 覆盖 response.output_text.done 形态。
+func TestResponsesDoneEventCarriesText(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8192})
+	rec.AppendResponse([]byte("event: response.created\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.created","response":{"id":"r"}}` + "\n"))
+	rec.AppendResponse([]byte(`data: {"type":"response.output_text.done","text":"完整答案"}` + "\n"))
+	if got := rec.ResponseText(); got != "完整答案" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// TestSSEWithoutTextYieldsEmpty 覆盖纯工具调用轮次：不得把 SSE 前导当正文。
+func TestSSEWithoutTextYieldsEmpty(t *testing.T) {
+	rec := New(Options{Response: true, MaxBytes: 8192})
+	rec.AppendResponse([]byte("event: codex.response.metadata\n"))
+	rec.AppendResponse([]byte(`data: {"type":"codex.response.metadata","headers":{"etag":"x"}}` + "\n"))
+	if got := rec.ResponseText(); got != "" {
+		t.Fatalf("SSE 无正文时应留空，实际 %q", got)
+	}
+}

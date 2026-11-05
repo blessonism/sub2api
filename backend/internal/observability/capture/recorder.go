@@ -214,5 +214,10 @@ func (r *Recorder) ResponseText() string {
 	if parsed, ok := ExtractAssistantText(raw); ok && parsed != "" {
 		return parsed
 	}
+	// 已经是 SSE 流却没抽到文本：说明这一轮没有 assistant 文本（例如纯工具调用），
+	// 此时回退原始字节只会把 event:/data: 前导当成正文，宁可留空。
+	if looksLikeSSE(string(raw)) {
+		return ""
+	}
 	return string(raw)
 }
