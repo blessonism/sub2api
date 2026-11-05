@@ -42,6 +42,7 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 	var outputChars int
 	var finishReason string
 	var userPromptHistoryBytes int
+	var promptFallback bool
 	var userTurns int
 	var promptProtocol, promptStatus string
 	var firstUser, requestFP string
@@ -50,6 +51,12 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		output = rec.ResponseText()
 		_, userTurns, promptProtocol, promptStatus = rec.UserPrompt()
 		inputUser = rec.LatestUserPrompt()
+		promptFallback = rec.LatestUserIsFallback()
+		if promptFallback && promptStatus == "ok" {
+			// 整段里没有用户写的文本（上下文压缩后的摘要/工具块），
+			// 状态要如实标出来，否则这条 trace 看起来像"用户说了摘要"。
+			promptStatus = "no_user_text"
+		}
 		userPromptHistoryBytes = rec.UserPromptHistoryBytes()
 		rawRequestTruncated = rec.RequestTruncated()
 		promptTruncated = rec.LatestUserTruncated()
@@ -115,6 +122,7 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		UserPromptHistoryBytes: userPromptHistoryBytes,
 		PromptProtocol:         promptProtocol,
 		PromptStatus:           promptStatus,
+		PromptFallback:         promptFallback,
 		Output:                 output,
 		OutputChars:            outputChars,
 		FinishReason:           finishReason,

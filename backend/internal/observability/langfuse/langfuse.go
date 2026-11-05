@@ -82,6 +82,8 @@ type Call struct {
 	// PromptProtocol / PromptStatus 记录抽取结果，便于排查为什么没抽到。
 	PromptProtocol string
 	PromptStatus   string
+	// PromptFallback 表示 InputUser 只是机器块兜底（本轮没有用户文本）。
+	PromptFallback bool
 	// OutputChars 是响应正文字符数（rune），用于事后判断"这段回答是不是被切了"。
 	OutputChars int
 	// FinishReason 是上游给的收尾原因：stop / length / tool_calls / incomplete:*。

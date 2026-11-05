@@ -281,3 +281,14 @@ func TestTruncationFlagsAreSeparated(t *testing.T) {
 		t.Fatal("用户消息被截不能冒充原始样本被截")
 	}
 }
+
+func TestPromptFallbackIsMarked(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-fb", "摘要兜底", "fp")
+	call.PromptFallback = true
+	call.PromptStatus = "no_user_text"
+	meta := metaOf(t, traceBodyOf(t, buildBatch([]Call{call}, ""), 0))
+	if meta["user_prompt_fallback"] != true || meta["user_prompt_status"] != "no_user_text" {
+		t.Fatalf("兜底标记缺失：%v", meta)
+	}
+}

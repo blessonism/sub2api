@@ -74,6 +74,7 @@ type Recorder struct {
 	skipLine            bool
 	userLatest          string
 	userLatestTruncated bool
+	userLatestFallback  bool
 	userHistoryBytes    int
 	reqFP               string
 	protocol            string
@@ -122,6 +123,7 @@ func (r *Recorder) SetRequest(text string) {
 	r.userFirst = extracted.FirstUser
 	r.userLatest = extracted.LatestUser
 	r.userLatestTruncated = extracted.LatestTruncated
+	r.userLatestFallback = extracted.LatestIsFallback
 	r.userHistoryBytes = extracted.HistoryBytes
 	if extracted.Text != "" {
 		r.userText = extracted.Text
@@ -149,6 +151,16 @@ func (r *Recorder) LatestUserPrompt() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.userLatest
+}
+
+// LatestUserIsFallback 报告 LatestUser 是否只是客户端机器块兜底（本轮无用户文本）。
+func (r *Recorder) LatestUserIsFallback() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userLatestFallback
 }
 
 // LatestUserTruncated 报告展示用的用户消息是否被上限截断。
