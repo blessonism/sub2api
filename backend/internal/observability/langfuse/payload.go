@@ -81,9 +81,14 @@ func buildBatch(calls []Call, release string) batch {
 func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[string]any {
 	body := map[string]any{
 		"id":        traceID,
-		"name":      traceName,
+		"name":      traceDisplayName(grp),
 		"timestamp": formatTime(c.StartedAt),
 		"metadata":  metadata(c, grp),
+	}
+	// 会话视图里每张卡片只显示 trace 名，靠 tag 才能过滤；
+	// 线程做成 tag 之后可以在 traces 表里按线程筛。
+	if grp.ThreadID != "" {
+		body["tags"] = []string{"thread:" + grp.ThreadID}
 	}
 	// Langfuse 的检索维度是字符串；userId 用十进制串落位，空值不落键。
 	if c.UserID != 0 {
@@ -104,6 +109,22 @@ func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[stri
 		body["output"] = c.Output
 	}
 	return body
+}
+
+// traceDisplayName 让会话视图里的每张卡片可区分：同一个会话有几十上百次调用，
+// 全都叫 sub2api.model-call 时，卡片列表没法扫。
+func traceDisplayName(grp sessiongroup.Group) string {
+	name := traceName
+	if grp.ThreadID != "" {
+		name += " · " + grp.ThreadID
+	}
+	if grp.StepIndex > 0 {
+		name += " · #" + strconv.Itoa(grp.StepIndex)
+	}
+	if grp.AttemptIndex > 1 {
+		name += "·try" + strconv.Itoa(grp.AttemptIndex)
+	}
+	return name
 }
 
 func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[string]any {
