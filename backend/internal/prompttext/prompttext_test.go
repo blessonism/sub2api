@@ -299,3 +299,17 @@ func TestLatestUserKeepsUserPastedXML(t *testing.T) {
 		t.Fatalf("LatestUser = %q，用户贴的 XML 不能被当成注入块跳过", got.LatestUser)
 	}
 }
+
+// TestLatestUserSkipsHeartbeatAndCompactionSummary 覆盖线上真实噪声：
+// Codex 的 <heartbeat> 自动化块和"另一个模型接手"的压缩摘要都不是用户原话。
+func TestLatestUserSkipsHeartbeatAndCompactionSummary(t *testing.T) {
+	cases := []string{
+		`{"messages":[{"role":"user","content":"真问题"},{"role":"user","content":"<heartbeat>\r\n  <automation_id>automation</automation_id>\r\n</heartbeat>"}]}`,
+		`{"messages":[{"role":"user","content":"真问题"},{"role":"user","content":"Another language model started to solve this problem and produced a summary of it."}]}`,
+	}
+	for _, body := range cases {
+		if got := Extract([]byte(body)).LatestUser; got != "真问题" {
+			t.Fatalf("LatestUser = %q，机器块必须被跳过", got)
+		}
+	}
+}
