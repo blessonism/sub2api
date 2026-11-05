@@ -1532,6 +1532,20 @@ type GatewayUsageRecordConfig struct {
 // maxObservabilityQueueWithCapture 是开启正文采集时的队列条数上限。
 const maxObservabilityQueueWithCapture = 1024
 
+// 正文采集的内存与载荷边界。
+//
+// 硬约束：Langfuse ingestion 单请求体上限 4.5MB（实测 8MB 直接 413
+// "Body exceeded 4.5mb limit"），一条调用会展开成 trace + generation 两条事件，
+// 同样的正文要发两遍，所以单条调用的正文合计必须明显低于 2.2MB。
+const (
+	// maxCaptureSideBytes 是单侧正文（请求样本 / 响应正文 / 用户消息）的硬顶。
+	maxCaptureSideBytes = 2 << 20
+	// minCaptureSideBytes 是单侧正文的下限，避免误配成极小值导致什么都看不到。
+	minCaptureSideBytes = 16 << 10
+	// observabilityCaptureMemoryBudget 是采集队列允许占用的正文字节预算。
+	observabilityCaptureMemoryBudget = 128 << 20
+)
+
 // ObservabilityConfig 外部观测层配置。
 //
 // 默认关闭：enabled=false，或 host/公钥/私钥任一缺失时整体 no-op，
@@ -1564,8 +1578,12 @@ type LangfuseConfig struct {
 	CapturePrompt bool `mapstructure:"capture_prompt"`
 	// CaptureResponse 控制是否上报响应 assistant 正文，默认 false。
 	CaptureResponse bool `mapstructure:"capture_response"`
-	// CaptureMaxBytes 是单侧正文的字节上限，超出即截断并打标记。
+	// CaptureMaxBytes 是请求样本与响应正文的单侧字节上限，超出即截断并打标记。
 	CaptureMaxBytes int `mapstructure:"capture_max_bytes"`
+	// CapturePromptMaxBytes 是「用户消息文本」的单侧字节上限：它决定 UI 上 input
+	// 显示多完整，与 CaptureMaxBytes 分开，因为请求体里绝大部分是工具输出。
+	// 缺省 512KB —— 实测用户消息远小于这个量级；任何一侧的硬顶都是 2MB。
+	CapturePromptMaxBytes int `mapstructure:"capture_prompt_max_bytes"`
 }
 
 // Usable 报告观测上报是否具备全部装配条件。
@@ -1589,11 +1607,27 @@ func (c *Config) validateObservability() error {
 		lf.Enabled = false
 		return nil
 	}
-	// 开了正文采集后，队列里每条记录会带最多 2×capture_max_bytes 的字符串，
-	// 按默认 32KB 计，queue_size=4096 的最坏驻留会到 256MB。
-	// 采集开启时把队列收紧，把最坏值压到 64MB 量级。
-	if (lf.CapturePrompt || lf.CaptureResponse) && lf.QueueSize > maxObservabilityQueueWithCapture {
-		lf.QueueSize = maxObservabilityQueueWithCapture
+	// 上限钳制：任何一侧都不能突破 ingestion 载荷约束。
+	lf.CaptureMaxBytes = clampCaptureBytes(lf.CaptureMaxBytes, 65536)
+	lf.CapturePromptMaxBytes = clampCaptureBytes(lf.CapturePromptMaxBytes, 524288)
+
+	// 开了正文采集后，队列里每条记录会带最多 2×capture_max_bytes 的字符串。
+	// 上限放宽到 256KB 后，queue_size=1024 的最坏驻留会到 512MB —— 必须按预算收紧。
+	if lf.CapturePrompt || lf.CaptureResponse {
+		perRecord := lf.CaptureMaxBytes + lf.CapturePromptMaxBytes + 4*1024
+		if perRecord <= 0 {
+			perRecord = minCaptureSideBytes
+		}
+		limit := observabilityCaptureMemoryBudget / perRecord
+		if limit < 64 {
+			limit = 64
+		}
+		if limit > maxObservabilityQueueWithCapture {
+			limit = maxObservabilityQueueWithCapture
+		}
+		if lf.QueueSize > limit {
+			lf.QueueSize = limit
+		}
 	}
 	return nil
 }
@@ -2751,7 +2785,8 @@ func setDefaults() {
 	// 正文采集默认关闭：只上报元数据时，观测层不含任何提示词内容。
 	viper.SetDefault("observability.langfuse.capture_prompt", false)
 	viper.SetDefault("observability.langfuse.capture_response", false)
-	viper.SetDefault("observability.langfuse.capture_max_bytes", 65536)
+	viper.SetDefault("observability.langfuse.capture_prompt_max_bytes", 524288)
+	viper.SetDefault("observability.langfuse.capture_max_bytes", 262144)
 
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
@@ -4143,4 +4178,18 @@ func warnIfInsecureURL(field, raw string) {
 	if strings.EqualFold(u.Scheme, "http") {
 		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 	}
+}
+
+// clampCaptureBytes 把单侧正文上限钳到 [min, max]；非正值取缺省值。
+func clampCaptureBytes(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if value < minCaptureSideBytes {
+		return minCaptureSideBytes
+	}
+	if value > maxCaptureSideBytes {
+		return maxCaptureSideBytes
+	}
+	return value
 }

@@ -101,6 +101,19 @@ ingestion 时把这批 trace 归到同一个 `sessionId`，并配上会话内的
 已知边界：客户端不带会话头、且提示词采集关闭时无法归组；同一用户用完全相同的开场白
 在 30 分钟内开两个会话会被并成一个（锚点相同即视为同一会话）。
 
+## 正文采集范围（input / output 有多完整）
+
+| 值 | 来源 | 缺省上限 | 说明 |
+|---|---|---|---|
+| `input` | 用户消息（跳过 system/developer 与工具结果） | `capture_prompt_max_bytes` = 512KB | 超限保留最近尾部并加 `…（前文已省略）` |
+| `output` | assistant 正文 | `capture_max_bytes` = 256KB | 超限保留头部并打 `output_truncated` |
+| `metadata.request_body` | 原始请求体样本 | 8KB | 只作取证抽样，不是全文 |
+
+硬顶：任何一侧最多 2MB，单条调用正文合计最多 2MB —— 因为一条调用会展开成
+trace + generation 两条事件、正文要发两遍，而 Langfuse ingestion 单请求上限是
+4.5MB（实测 8MB 返回 `413 Body exceeded 4.5mb limit`）。开启采集后队列条数会按
+128MB 正文字节预算自动收紧，避免大上限把内存吃穿。
+
 ## 输出完整性标记
 
 正文采集有上限（`observability.langfuse.capture_max_bytes`，默认 64KB），超过就只留前 64KB。

@@ -49,6 +49,7 @@ type batch struct {
 func buildBatch(calls []Call, release string) batch {
 	out := batch{Batch: make([]event, 0, len(calls)*2)}
 	for _, c := range calls {
+		c = clampCaptured(c)
 		id := newID()
 		traceID := "tr-" + id
 		genID := "gn-" + id
@@ -110,6 +111,44 @@ func traceBody(c Call, traceID, release string, grp sessiongroup.Group) map[stri
 		body["output"] = c.Output
 	}
 	return body
+}
+
+// maxCapturedPerCall 是单条调用可外发的正文总量上限。
+//
+// 一条调用会展开成 trace + generation 两条事件，正文要发两遍；Langfuse
+// ingestion 的单请求上限是 4.5MB，所以这里按 2MB 收口，留足余量。
+const maxCapturedPerCall = 2 << 20
+
+// clampCaptured 是载荷侧的最后一道闸：配置写多大都不能把 ingestion 撑爆。
+func clampCaptured(c Call) Call {
+	half := maxCapturedPerCall / 2
+	if len(c.Output) > half {
+		c.Output = truncateBytes(c.Output, half)
+		c.OutputTruncated = true
+		c.OutputChars = utf8.RuneCountInString(c.Output)
+	}
+	remaining := maxCapturedPerCall - len(c.Output) - len(c.Input)
+	if remaining < 256<<10 {
+		remaining = 256 << 10
+	}
+	if len(c.InputUser) > remaining {
+		// 用户 prompt 保留最近的部分：多轮对话里最新那句才是真正被回答的。
+		c.InputUser = tailBytes(c.InputUser, remaining)
+		c.InputTruncated = true
+	}
+	return c
+}
+
+// tailBytes 保留尾部并回退到 rune 边界。
+func tailBytes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := len(s) - limit
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	return "…（前文已省略）\n\n" + s[cut:]
 }
 
 // traceDisplayName 让会话视图里的每张卡片可区分：同一个会话有几十上百次调用，
