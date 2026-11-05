@@ -386,7 +386,8 @@ func (b *turnBuffer) pending() int { return len(b.cards) }
 func (c *turnCard) inputMissing() bool { return c.input == "" }
 
 // shortInputBytes 是"用户只说了几个字"的判定线（"继续"、"好"、"再试一次"）。
-const shortInputBytes = 120
+// 60 字节约等于 20 个汉字：一句话说完整就超过它了，别再补说明占地方。
+const shortInputBytes = 60
 
 // inputWithContext 返回卡片的 input。
 //
@@ -403,7 +404,21 @@ func (c *turnCard) inputWithContext() string {
 	}
 	return c.input + "\n\n——（本轮用户消息；请求携带 " +
 		strconv.Itoa(turns) + " 条历史、" +
-		strconv.Itoa(c.historyBytes/1024) + " KB 上下文，系统提示与工具定义不在卡片上）"
+		formatKB(c.historyBytes) + " 上下文，系统提示与工具定义不在卡片上）"
+}
+
+// formatKB 把字节数写成人读的规模；不足 1KB 时保留一位小数，避免出现"0 KB"。
+func formatKB(n int) string {
+	if n >= 1<<20 {
+		return strconv.FormatFloat(float64(n)/(1<<20), 'f', 1, 64) + " MB"
+	}
+	if n >= 1<<10 {
+		return strconv.Itoa(n>>10) + " KB"
+	}
+	if n <= 0 {
+		return "0 B"
+	}
+	return strconv.Itoa(n) + " B"
 }
 
 // cardKey 是卡片的聚合键。
