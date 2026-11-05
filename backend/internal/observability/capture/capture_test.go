@@ -266,3 +266,38 @@ func TestDoneOnlyStreamStillWorks(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestRecorderExtractsUserPrompt 覆盖采集器侧的接线：
+// SetRequest 时就把用户消息单独抽出来，供观测层展示。
+func TestRecorderExtractsUserPrompt(t *testing.T) {
+	rec := New(Options{Prompt: true, Response: true, MaxBytes: 8192})
+	rec.SetRequest(`{"model":"gpt-5.2","messages":[
+		{"role":"system","content":"你是助手"},
+		{"role":"user","content":"帮我看看这个报错"},
+		{"role":"assistant","content":"好的"},
+		{"role":"user","content":"是超时"}
+	]}`)
+
+	text, turns, protocol := rec.UserPrompt()
+	if protocol != "openai_chat" {
+		t.Fatalf("protocol = %q", protocol)
+	}
+	if turns != 2 {
+		t.Fatalf("turns = %d, want 2", turns)
+	}
+	if !strings.Contains(text, "报错") || !strings.Contains(text, "超时") {
+		t.Fatalf("text = %q", text)
+	}
+	if strings.Contains(text, "你是助手") {
+		t.Fatal("system 内容混进了用户 prompt")
+	}
+}
+
+// TestRecorderUserPromptEmptyForNonUserBody 覆盖没有用户消息的请求。
+func TestRecorderUserPromptEmptyForNonUserBody(t *testing.T) {
+	rec := New(Options{Prompt: true, MaxBytes: 4096})
+	rec.SetRequest(`{"messages":[{"role":"system","content":"only"}]}`)
+	if text, turns, _ := rec.UserPrompt(); text != "" || turns != 0 {
+		t.Fatalf("got text=%q turns=%d", text, turns)
+	}
+}

@@ -61,7 +61,9 @@ func TestLiveIngestionReachesLangfuse(t *testing.T) {
 		BillingType:     "balance",
 		BillingMode:     "token",
 		Stream:          true,
-		Input:           `{"model":"sub2api-live-probe","messages":[{"role":"user","content":"帮我写个快排"}]}`,
+		Input:           `{"model":"sub2api-live-probe","messages":[{"role":"system","content":"你是助手"},{"role":"user","content":"帮我写个快排"}]}`,
+		InputUser:       "帮我写个快排",
+		UserTurns:       1,
 		Output:          "好的，下面是快排实现：func quickSort(...)",
 		AccountID:       77,
 		APIKeyID:        88,
@@ -122,8 +124,8 @@ func TestLiveIngestionReachesLangfuse(t *testing.T) {
 				}
 				time.Sleep(3 * time.Second)
 			}
-			if !strings.Contains(string(gen.Input), "帮我写个快排") {
-				t.Fatalf("generation.input 未携带请求正文: %s", string(gen.Input))
+			if got := strings.Trim(string(gen.Input), `"`); got != "帮我写个快排" {
+				t.Fatalf("generation.input 应为用户 prompt，实际 %q", got)
 			}
 			if !strings.Contains(string(gen.Output), "下面是快排实现") {
 				t.Fatalf("generation.output 未携带响应正文: %s", string(gen.Output))

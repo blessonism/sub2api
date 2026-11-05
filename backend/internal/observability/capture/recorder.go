@@ -11,6 +11,8 @@ import (
 	"context"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/prompttext"
 )
 
 // maxPendingBytes 是未成行 SSE 尾巴的上限，防止巨型无换行载荷撑爆缓冲。
@@ -41,10 +43,13 @@ type Recorder struct {
 	// pending 保存尚未成行的 SSE 尾巴；text 是边写边抽出来的 assistant 文本。
 	// 之所以要增量抽取：Responses 的正文 delta 排在几十 KB 的 response.created
 	// 前导之后，只靠缓冲末尾统一解析，一旦触发上限就永远看不到正文。
-	pending  []byte
-	text     []byte
-	textFull bool
-	sawDelta bool
+	pending   []byte
+	text      []byte
+	textFull  bool
+	sawDelta  bool
+	userText  string
+	userTurns int
+	protocol  string
 	// respTruncated 标记响应字节已达到上限被截断。
 	respTruncated bool
 }
@@ -65,6 +70,16 @@ func (r *Recorder) SetRequest(text string) {
 	r.mu.Lock()
 	r.request, r.reqTruncated = truncate(text, r.limit)
 	r.mu.Unlock()
+
+	// 单独抽一份「用户说的话」：观测层默认展示这一份，
+	// 原始请求体退到 metadata 里备查。
+	if extracted := prompttext.Extract([]byte(text)); extracted.Text != "" {
+		r.mu.Lock()
+		r.userText = extracted.Text
+		r.userTurns = extracted.Turns
+		r.protocol = extracted.Protocol
+		r.mu.Unlock()
+	}
 }
 
 // RequestTruncated 报告请求正文是否被截断。
@@ -204,6 +219,16 @@ func truncate(s string, limit int) (string, bool) {
 		cut--
 	}
 	return s[:cut], true
+}
+
+// UserPrompt 返回抽取出的用户消息文本、条数与识别到的协议。
+func (r *Recorder) UserPrompt() (text string, turns int, protocol string) {
+	if r == nil {
+		return "", 0, ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userText, r.userTurns, r.protocol
 }
 
 // ResponseText 返回响应正文的 assistant 文本。

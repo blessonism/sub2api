@@ -88,7 +88,9 @@ func TestBatchCarriesTraceAndGenerationWithActualCost(t *testing.T) {
 		CacheReadTokens:       30,
 		CacheWriteTokens:      5,
 		Cost:                  0.1234, // 实扣值：与 token×标价无关，必须原样上报
-		Input:                 `{"messages":[{"role":"user","content":"你好"}]}`,
+		Input:                 `{"model":"gpt-5.2","messages":[{"role":"system","content":"sys"},{"role":"user","content":"你好"}]}`,
+		InputUser:             "你好",
+		UserTurns:             1,
 		Output:                "世界，你好",
 		Currency:              "USD",
 		RateMultiplier:        0.8,
@@ -187,9 +189,19 @@ func TestBatchCarriesTraceAndGenerationWithActualCost(t *testing.T) {
 	if meta["request_id"] != "req-1" {
 		t.Fatalf("metadata.request_id = %v, want req-1", meta["request_id"])
 	}
-	// 正文层：input/output 必须原样落到 trace 与 generation。
-	if got := gen.Body["input"]; got != `{"messages":[{"role":"user","content":"你好"}]}` {
-		t.Fatalf("generation.input = %v", got)
+	// 正文层：抽到用户文本时 input 展示用户文本，原始 body 退到 metadata。
+	if got := gen.Body["input"]; got != "你好" {
+		t.Fatalf("generation.input = %v, want 你好", got)
+	}
+	if got := gen.Body["output"]; got != "世界，你好" {
+		t.Fatalf("generation.output = %v", got)
+	}
+	if raw, ok := meta["request_body"].(string); !ok || !strings.Contains(raw, `"system"`) {
+		t.Fatalf("metadata.request_body 未保留原始请求体: %v", meta["request_body"])
+	}
+	// JSON 往返后数字是 float64。
+	if turns, ok := meta["user_prompt_turns"].(float64); !ok || turns != 1 {
+		t.Fatalf("metadata.user_prompt_turns = %v", meta["user_prompt_turns"])
 	}
 	if got := gen.Body["output"]; got != "世界，你好" {
 		t.Fatalf("generation.output = %v", got)

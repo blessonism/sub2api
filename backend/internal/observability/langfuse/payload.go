@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -81,8 +82,8 @@ func traceBody(c Call, traceID, release string) map[string]any {
 	if release != "" {
 		body["release"] = release
 	}
-	if c.Input != "" {
-		body["input"] = c.Input
+	if display := c.displayInput(); display != "" {
+		body["input"] = display
 	}
 	if c.Output != "" {
 		body["output"] = c.Output
@@ -130,8 +131,8 @@ func generationBody(c Call, traceID, genID string) map[string]any {
 		body["statusMessage"] = c.ErrorKind
 	}
 	// 正文挂在 generation 上：UI 的输入/输出面板与全文检索都走这两个字段。
-	if c.Input != "" {
-		body["input"] = c.Input
+	if display := c.displayInput(); display != "" {
+		body["input"] = display
 	}
 	if c.Output != "" {
 		body["output"] = c.Output
@@ -164,6 +165,14 @@ func metadata(c Call) map[string]any {
 	}
 	if c.InputTruncated {
 		meta["input_truncated"] = true
+	}
+	// 原始请求体退到 metadata 备查，避免把 system/tools 顶到 UI 首屏。
+	if c.InputUser != "" && c.Input != "" {
+		meta["request_body"] = truncateBytes(c.Input, rawBodyMetaLimit)
+		meta["request_body_truncated"] = len(c.Input) > rawBodyMetaLimit
+	}
+	if c.UserTurns > 0 {
+		meta["user_prompt_turns"] = c.UserTurns
 	}
 	if c.OutputTruncated {
 		meta["output_truncated"] = true
@@ -224,4 +233,26 @@ func newID() string {
 		return strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
 	return hex.EncodeToString(buf[:])
+}
+
+// rawBodyMetaLimit 是 metadata 里原始请求体的字节上限。
+const rawBodyMetaLimit = 8 * 1024
+
+// displayInput 选择展示用 input：抽到用户文本就用它，否则退回原始请求体。
+func (c Call) displayInput() string {
+	if c.InputUser != "" {
+		return c.InputUser
+	}
+	return c.Input
+}
+
+func truncateBytes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }

@@ -66,6 +66,11 @@ type Call struct {
 	// 为空表示本次调用未采集正文（采集开关关闭或未安装 recorder）。
 	Input  string
 	Output string
+	// InputUser 是从请求体里单独抽出的用户消息文本；非空时作为展示用 input，
+	// Input 退居 metadata 备查。
+	InputUser string
+	// UserTurns 是用户消息条数。
+	UserTurns int
 	// InputTruncated / OutputTruncated 标记正文达到缓冲上限被截断。
 	InputTruncated  bool
 	OutputTruncated bool

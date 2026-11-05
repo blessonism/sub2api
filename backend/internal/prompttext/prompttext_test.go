@@ -1,0 +1,122 @@
+package prompttext
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestExtractOpenAIChat(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.2",
+		"messages":[
+			{"role":"system","content":"You are a coding agent."},
+			{"role":"user","content":"帮我把这个函数改成尾递归"},
+			{"role":"assistant","content":"好的，先看下当前实现"},
+			{"role":"user","content":[{"type":"text","text":"顺便补个单测"}]}
+		]}`)
+	got := Extract(body)
+	if got.Protocol != "openai_chat" {
+		t.Fatalf("protocol = %q", got.Protocol)
+	}
+	if got.Turns != 2 {
+		t.Fatalf("turns = %d, want 2", got.Turns)
+	}
+	if !strings.Contains(got.Text, "尾递归") || !strings.Contains(got.Text, "补个单测") {
+		t.Fatalf("text = %q", got.Text)
+	}
+	if strings.Contains(got.Text, "coding agent") {
+		t.Fatal("system 消息不得混入用户文本")
+	}
+}
+
+func TestExtractOpenAIResponses(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-6-astra","stream":true,
+		"input":[
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"You are Codex"}]},
+			{"type":"additional_tools","id":"at_1","role":"developer"},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"这个报错怎么修"}]},
+			{"type":"function_call_output","call_id":"c1","output":"ok"}
+		]}`)
+	got := Extract(body)
+	if got.Protocol != "openai_responses" {
+		t.Fatalf("protocol = %q", got.Protocol)
+	}
+	if got.Turns != 1 || got.Text != "这个报错怎么修" {
+		t.Fatalf("turns=%d text=%q", got.Turns, got.Text)
+	}
+}
+
+func TestExtractAnthropic(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-sonnet-4",
+		"system":"You are Claude",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"text","text":"读一下这个文件"},
+				{"type":"image","source":{"type":"base64","data":"AAA"}}
+			]},
+			{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"read"}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"file body"}]}
+		]}`)
+	got := Extract(body)
+	if got.Turns != 1 {
+		t.Fatalf("turns = %d, want 1（tool_result 不算用户发言）", got.Turns)
+	}
+	if got.Text != "读一下这个文件" {
+		t.Fatalf("text = %q", got.Text)
+	}
+}
+
+func TestExtractGemini(t *testing.T) {
+	body := []byte(`{
+		"contents":[
+			{"role":"user","parts":[{"text":"总结这段日志"}]},
+			{"role":"model","parts":[{"text":"好的"}]},
+			{"parts":[{"text":"只保留结论"}]}
+		]}`)
+	got := Extract(body)
+	if got.Protocol != "gemini" {
+		t.Fatalf("protocol = %q", got.Protocol)
+	}
+	if got.Turns != 2 {
+		t.Fatalf("turns = %d, want 2（缺省 role 视为 user）", got.Turns)
+	}
+	if !strings.Contains(got.Text, "总结这段日志") || !strings.Contains(got.Text, "只保留结论") {
+		t.Fatalf("text = %q", got.Text)
+	}
+}
+
+func TestExtractResponsesStringInput(t *testing.T) {
+	got := Extract([]byte(`{"model":"m","input":"一句话提问"}`))
+	if got.Text != "一句话提问" || got.Turns != 1 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestExtractTruncatesOnRuneBoundary(t *testing.T) {
+	long := strings.Repeat("汉", DefaultMaxBytes) // 远超上限
+	body := []byte(`{"messages":[{"role":"user","content":"` + long + `"}]}`)
+	got := Extract(body)
+	if len(got.Text) > DefaultMaxBytes {
+		t.Fatalf("长度 %d 超过上限", len(got.Text))
+	}
+	for _, r := range got.Text {
+		if r == '\uFFFD' {
+			t.Fatal("截断产生了替换字符，说明切坏了 rune")
+		}
+	}
+}
+
+func TestExtractEmptyWhenNoUserTurn(t *testing.T) {
+	got := Extract([]byte(`{"messages":[{"role":"system","content":"only system"}]}`))
+	if got.Text != "" || got.Turns != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestExtractInvalidJSON(t *testing.T) {
+	if got := Extract([]byte("{not json")); got.Text != "" || got.Turns != 0 {
+		t.Fatalf("非法 JSON 应返回空结果: %+v", got)
+	}
+}
