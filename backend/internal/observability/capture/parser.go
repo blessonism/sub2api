@@ -24,12 +24,27 @@ func ExtractAssistantText(raw []byte) (string, bool) {
 }
 
 func looksLikeSSE(text string) bool {
+	// JSON 响应体一定以容器开头，先按首字符排除，避免把正文里的 "data:" 误当 SSE。
+	trimmed := strings.TrimLeft(text, " \t\r\n")
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		return false
+	}
+	// 流式响应常以 SSE 注释行（": ping"）或空事件开头，
+	// 只看第一行会把整条流误判成非 SSE，随后回退原始字节，
+	// 正文就变成 "event: xxx data: ..." 的噪声。
+	scanned := 0
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		return strings.HasPrefix(line, "data:") || strings.HasPrefix(line, "event:")
+		if strings.HasPrefix(line, "data:") || strings.HasPrefix(line, "event:") || strings.HasPrefix(line, ":") {
+			return true
+		}
+		scanned++
+		if scanned >= 64 {
+			break
+		}
 	}
 	return false
 }
