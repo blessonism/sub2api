@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/observability/sessiongroup"
 )
 
 func sampleCall(sessionID, firstUser, fp string) Call {
@@ -205,5 +207,62 @@ func TestEventBytesCoversJSONEscaping(t *testing.T) {
 				t.Fatalf("估算 %d 字节 < 实际 %d 字节：低估会让批次越过 ingestion 上限", est, len(real))
 			}
 		})
+	}
+}
+
+// TestStepInputNeverRawJSON：抽不到用户消息时，步骤 input 必须是空的，
+// 不能退到 metadata 里的原始请求体样本。
+//
+// 那个样本是 8KB JSON 片段，排障用的；Codex 的上下文压缩轮、纯机器块轮
+// 抽不到用户文本，之前会把 `{"model":...` 直接印在 Langfuse 步骤面板上。
+func TestStepInputNeverRawJSON(t *testing.T) {
+	c := Call{
+		Input: `{"model":"gpt-6","messages":[{"role":"system","content":"你是助手"}]}`,
+	}
+	if got, _ := c.stepInput(); got != "" {
+		t.Fatalf("stepInput = %q，原始请求体不该当展示内容", got)
+	}
+	body := generationBody(c, "tr-raw", "gn-raw", sessiongroup.Group{})
+	if _, ok := body["input"]; ok {
+		t.Fatalf("generation 不该带 input：%v", body["input"])
+	}
+}
+
+// TestStepInputTruncationFlagged：4KB 收口截断必须可见。
+// 卡片侧 32KB 有 turn_input_truncated，步骤侧之前什么都没写。
+func TestStepInputTruncationFlagged(t *testing.T) {
+	c := Call{StepInput: strings.Repeat("工具返回的一行结果\n", 600)}
+
+	in, cut := c.stepInput()
+	if !cut {
+		t.Fatal("超过 4KB 必须报告截断")
+	}
+	if len(in) > stepInputLimit {
+		t.Fatalf("stepInput 长度 = %d，超过 %d 上限", len(in), stepInputLimit)
+	}
+
+	body := generationBody(c, "tr-cut", "gn-cut", sessiongroup.Group{})
+	meta, ok := body["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata 缺失：%T", body["metadata"])
+	}
+	if meta["step_input_truncated"] != true {
+		t.Fatalf("必须标记 step_input_truncated，metadata = %v", meta)
+	}
+	if _, ok := meta["step_input_kind"]; ok {
+		t.Fatalf("没有工具结果来源时不该写 step_input_kind：%v", meta["step_input_kind"])
+	}
+}
+
+// TestStepInputFallsBackToUserMessage：首步没有工具结果时退回该轮用户消息，
+// 保证步骤面板不空着。
+func TestStepInputFallsBackToUserMessage(t *testing.T) {
+	c := Call{InputUser: "把观测改成一轮一张卡", Input: `{"raw":"body"}`}
+	got, cut := c.stepInput()
+	if got != "把观测改成一轮一张卡" {
+		t.Fatalf("stepInput = %q，应退回用户消息", got)
+	}
+	if cut {
+		t.Fatal("未超限不该报告截断")
 	}
 }

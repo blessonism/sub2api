@@ -402,3 +402,35 @@ func TestCompactionPromptIsNotUserText(t *testing.T) {
 		t.Fatalf("Turns = %d，压缩指令仍算一条 user 消息（轮次识别要用）", got.Turns)
 	}
 }
+
+// TestLatestUserKeepsTail：用户消息超限时必须保留尾部。
+//
+// 一句话的落点在末尾（"……所以帮我改一下这个函数"），留头部等于把真正的
+// 诉求切掉。而观测层 clampCaptured 用的也是保留尾部，两处方向必须一致 ——
+// 之前 LatestUser 留头部、下游再留这前半段的尾部，最后既不是原头也不是原尾。
+func TestLatestUserKeepsTail(t *testing.T) {
+	// 超长的是**最后一条**用户消息本身：截断判据看的是 latest 是否越限。
+	long := strings.Repeat("需求描述。", 2000) + "最后这句话才是要问的"
+	body := `{"messages":[` +
+		`{"role":"user","content":"先前的背景"},` +
+		`{"role":"assistant","content":"收到"},` +
+		`{"role":"user","content":"` + long + `"}]}`
+
+	got := ExtractWithLimit([]byte(body), 4<<10)
+	if !strings.Contains(got.LatestUser, "最后这句话才是要问的") {
+		t.Fatalf("LatestUser 丢了尾部诉求：%q", got.LatestUser)
+	}
+	if !got.LatestTruncated {
+		t.Fatal("超限必须标记 LatestTruncated")
+	}
+}
+
+// TestLatestUserNoLimitKeepsWhole：limit<=0 表示不截断，
+// 不能被省略标记（26 字节）反算出负的切点、把整段替换成一个标记。
+func TestLatestUserNoLimitKeepsWhole(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"完整的一句话"}]}`
+	got := ExtractWithLimit([]byte(body), 0)
+	if got.LatestUser != "完整的一句话" {
+		t.Fatalf("LatestUser = %q，limit<=0 应原样返回", got.LatestUser)
+	}
+}

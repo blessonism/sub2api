@@ -121,10 +121,11 @@ func TestTurnProducesOneCardForManySteps(t *testing.T) {
 	}
 }
 
-// TestCardConcatenatesAllAnswerParts 覆盖「卡片内容太少」的根因：
-// 一轮 40 步里可能 15 步带正文，只留最后一条会丢掉一半内容。
-// 现在按顺序拼接全部非空文本，空步骤自动跳过。
-func TestCardConcatenatesAllAnswerParts(t *testing.T) {
+// TestConclusionLeadsThenProcess 覆盖「卡片内容太少」的根因，并锁住渲染顺序：
+// 一轮里 15 步可能都带正文，只留最后一条会丢掉过程；但按到达顺序拼又会让
+// 结论沉到卡片末尾，而 Langfuse 列表页只显示 output 前约 100 字符。
+// 现在的顺序是「末段（结论）→ 分隔说明 → 过程段（时间正序）」。
+func TestConclusionLeadsThenProcess(t *testing.T) {
 	b := newTestBuffer(t)
 	base := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
@@ -136,8 +137,11 @@ func TestCardConcatenatesAllAnswerParts(t *testing.T) {
 	}
 
 	card := b.drain()[0]
-	if want := "先看一下仓库结构\n\n改完再跑测试"; card.Body["output"] != want {
-		t.Fatalf("卡片 output = %q, want %q（全部非空文本按顺序拼接）", card.Body["output"], want)
+	want := "改完再跑测试" +
+		"\n\n——（以下为过程，本轮共 2 段）——\n\n" +
+		"先看一下仓库结构"
+	if card.Body["output"] != want {
+		t.Fatalf("卡片 output = %q, want %q（结论在前，过程在后）", card.Body["output"], want)
 	}
 	if got := metaInt(t, card, "turn_output_parts"); got != 2 {
 		t.Fatalf("turn_output_parts = %d, want 2", got)
@@ -627,4 +631,113 @@ func TestOutputStopsAtLimitAndFlags(t *testing.T) {
 	if got := metaInt(t, card, "turn_output_parts"); got != 6 {
 		t.Fatalf("turn_output_parts = %d, want 6（段数要如实记录，即使拼不下）", got)
 	}
+}
+
+// TestRetryDoesNotDuplicateOutput：同一步的重试不能让卡片出现两份回答。
+//
+// sessiongroup 对同一 RequestFingerprint 只把 AttemptIndex +1、StepIndex 不变，
+// 所以这里必须按步号覆盖而不是追加 —— 否则客户端 429 重发一次，卡片上就是
+// 「改完了 / 改完了」，正是这次改造要消灭的重复从 generation 层漏到卡片层。
+func TestRetryDoesNotDuplicateOutput(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+
+	first := stepCall("sess-retry", "改一下观测", 3, "fp-same", base)
+	first.Output = "改完了"
+	b.add(first)
+
+	retry := first
+	retry.StartedAt = base.Add(5 * time.Second)
+	retry.RequestID = "req-retry"
+	b.add(retry)
+
+	card := b.drain()[0]
+	if got := card.Body["output"]; got != "改完了" {
+		t.Fatalf("卡片 output = %q，重试不该让回答出现两次", got)
+	}
+	if got := metaInt(t, card, "turn_output_parts"); got != 1 {
+		t.Fatalf("turn_output_parts = %d, want 1（重试不算新的一段输出）", got)
+	}
+}
+
+// TestConclusionSurvivesBudget 覆盖「长轮次丢结论」：过程段再多，
+// 末段（结论）也必须出现在卡片上，且总长不超上限。
+//
+// 这是 e26ad1d4e 的正向补充：那个提交让卡片拼接全轮正文，但按到达顺序
+// 先到先得，实测 14 段 20KB 过程就能把 64KB 预算吃光、把结论挤掉。
+func TestConclusionSurvivesBudget(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+
+	const steps = 15
+	for i := 0; i < steps; i++ {
+		c := stepCall("sess-starve", "写个大功能", 3, fmt.Sprintf("fp-%d", i), base.Add(time.Duration(i)*time.Second))
+		if i == steps-1 {
+			c.Output = "【结论】全部改完，测试通过"
+		} else {
+			c.Output = strings.Repeat("过程", 10<<10) // 每段 20KB
+		}
+		b.add(c)
+	}
+
+	card := b.drain()[0]
+	out, _ := card.Body["output"].(string)
+	if !strings.Contains(out, "【结论】") {
+		t.Fatalf("结论被饿死了：output 前 64 字节 = %q", firstN(out, 64))
+	}
+	if !strings.HasPrefix(out, "【结论】") {
+		t.Fatalf("结论必须排在卡片最前（列表页只显示前约 100 字符）：%q", firstN(out, 64))
+	}
+	if len(out) > turnOutputLimit {
+		t.Fatalf("卡片 output = %d 字节，超过 %d 上限", len(out), turnOutputLimit)
+	}
+	if got := metaInt(t, card, "turn_output_parts"); got != steps {
+		t.Fatalf("turn_output_parts = %d, want %d（段数按到达次数如实记录）", got, steps)
+	}
+	if metaOfEvent(t, card)["turn_output_truncated"] != true {
+		t.Fatal("挤掉过程段必须标记 turn_output_truncated")
+	}
+}
+
+// TestStepOutputStaysWithinBudget：stepOutput 的内存占用必须封顶。
+//
+// clampCaptured 允许单步 output 到 1MB，一轮十几步就是十几 MB，
+// 乘上未收尾卡片的上限能把进程打穿。
+func TestStepOutputStaysWithinBudget(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+
+	for i := 0; i < 12; i++ {
+		c := stepCall("sess-mem", "跑长任务", 3, fmt.Sprintf("fp-%d", i), base.Add(time.Duration(i)*time.Second))
+		c.Output = strings.Repeat("答", 200<<10) // 每段 200KB
+		b.add(c)
+	}
+
+	// drain 之前读一张卡的内部状态。
+	var card *turnCard
+	for _, c := range b.cards {
+		card = c
+	}
+	if card == nil {
+		t.Fatal("没有待收尾的卡片")
+	}
+	if card.stepBytes > outputStoreLimit {
+		t.Fatalf("stepBytes = %d，超过 %d 上限", card.stepBytes, outputStoreLimit)
+	}
+	if !card.outputTruncated {
+		t.Fatal("因预算淘汰过段，必须标记 outputTruncated")
+	}
+	got := b.drain()[0]
+	out, _ := got.Body["output"].(string)
+	if out == "" {
+		t.Fatal("卡片 output 为空")
+	}
+}
+
+// firstN 取前 n 字节，用于错误信息里打印判据。
+func firstN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }

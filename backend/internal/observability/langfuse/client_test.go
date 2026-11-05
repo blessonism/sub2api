@@ -702,8 +702,10 @@ func TestMultiStepTurnProducesOneCard(t *testing.T) {
 	if traceBody["input"] != "把观测改成一轮一张卡" {
 		t.Fatalf("卡片 input = %v", traceBody["input"])
 	}
-	if want := "先看仓库结构\n\n改完了"; traceBody["output"] != want {
-		t.Fatalf("卡片 output = %q, want %q（该轮全部非空文本）", traceBody["output"], want)
+	// 结论在前、过程在后：Langfuse 列表页只显示 output 前约 100 字符，
+	// 那里必须是一轮的答案，不是「我先看仓库结构」。
+	if want := "改完了\n\n——（以下为过程，本轮共 2 段）——\n\n先看仓库结构"; traceBody["output"] != want {
+		t.Fatalf("卡片 output = %q, want %q（结论在前，过程在后）", traceBody["output"], want)
 	}
 	if traceBody["sessionId"] != "sess-e2e" {
 		t.Fatalf("卡片 sessionId = %v", traceBody["sessionId"])

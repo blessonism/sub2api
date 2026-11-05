@@ -1538,8 +1538,16 @@ const maxObservabilityQueueWithCapture = 1024
 // "Body exceeded 4.5mb limit"），一条调用会展开成 trace + generation 两条事件，
 // 同样的正文要发两遍，所以单条调用的正文合计必须明显低于 2.2MB。
 const (
-	// maxCaptureSideBytes 是单侧正文（请求样本 / 响应正文 / 用户消息）的硬顶。
-	maxCaptureSideBytes = 2 << 20
+	// maxCaptureSideBytes 是单侧正文（请求样本 / 响应正文）的硬顶。
+	//
+	// 取 1MB 而不是 2MB：发送侧 clampCaptured 的 outputBudget 是
+	// maxCapturedPerCall/2 = 1MB（langfuse/payload.go），配置层允许 2MB 会让
+	// 「配了 2MB、实际只得 1MB」成为静默行为 —— 截断标记虽然会打，但运维
+	// 对着一份配到上限却依然被切的内容排查很久。
+	//
+	// 反向做（把 outputBudget 抬到 2MB）会挤掉 4.5MB 请求体的余量：
+	// 一条 generation 是 output 2MB + input 4KB + metadata，还要给卡片留位置。
+	maxCaptureSideBytes = 1 << 20
 	// minCaptureSideBytes 是单侧正文的下限，避免误配成极小值导致什么都看不到。
 	minCaptureSideBytes = 16 << 10
 	// observabilityCaptureMemoryBudget 是采集队列允许占用的正文字节预算。

@@ -127,7 +127,7 @@ func build(protocol string, texts []string, limit int) Result {
 		Text:             text,
 		Turns:            len(cleaned),
 		FirstUser:        truncateRunes(anchorMessage(cleaned), anchorLimit),
-		LatestUser:       truncateLimited(latest, latestLimit),
+		LatestUser:       tailRunes(latest, latestLimit),
 		LatestTruncated:  exceedsLimit(latest, latestLimit),
 		LatestIsFallback: latestFallback,
 		HistoryBytes:     len(full),
@@ -426,12 +426,18 @@ func stringValue(value any) string {
 
 // tailRunes 超长时保留尾部：多轮会话里"最近说了什么"比开头更有价值，
 // 正序截断会把上限全耗在最早那几轮上。
+//
+// limit<=0 表示不限制，原样返回：省略标记本身占 26 字节，
+// 不挡这一条时 limit=0 会算出负的 cut，把整段正文替换成一个标记。
 func tailRunes(s string, limit int) string {
-	if len(s) <= limit {
+	if limit <= 0 || len(s) <= limit {
 		return s
 	}
 	const marker = "…（前文已省略）\n\n"
 	cut := len(s) - (limit - len(marker))
+	if cut < 0 {
+		cut = 0
+	}
 	for cut < len(s) && !utf8.RuneStart(s[cut]) {
 		cut++
 	}

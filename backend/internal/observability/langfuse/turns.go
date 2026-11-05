@@ -1,7 +1,10 @@
 package langfuse
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/observability/sessiongroup"
@@ -25,8 +28,9 @@ const (
 
 	// defaultMaxTurnBytes 是未收尾卡片占用的字节预算。
 	//
-	// 只按张数设上限是不够的：一张卡最多持有 input(32KB) + output(64KB) +
-	// request_body(8KB) ≈ 104KB，2048 张就是 213MB。这里按字节收口，
+	// 只按张数设上限是不够的：一张卡最多持有 input(32KB) +
+	// stepOutput(outputStoreLimit=96KB) + request_body(8KB) ≈ 136KB，
+	// 2048 张就是 278MB。这里按字节收口，
 	// 与 config 里队列的 128MB 正文字节预算相互独立、互不挤占。
 	defaultMaxTurnBytes = 32 << 20
 
@@ -40,8 +44,29 @@ const (
 	turnInputLimit = 32 << 10
 
 	// turnOutputLimit 是卡片上 assistant 回答的字节上限。
-	// 实测回答 p50=107 字节、max=23064 字节，64KB 留了三倍余量。
+	//
+	// 这一份预算要同时装下「结论」和「过程」两半：
+	// 实测一个 40 步的轮次有 15 段正文，单段 p50=107 字节、max=23064 字节，
+	// 15 段的上限量级是 345KB —— 64KB 只够放 2.8 段。所以不能按到达顺序先到先得，
+	// 那样最后一段（结论）必然被饿死，而 Langfuse 的 trace 列表页只显示
+	// output 前约 100 字符，那里必须是结论。分配见 renderOutput。
 	turnOutputLimit = 64 << 10
+
+	// outputConclusionLimit 是末段（结论）的保证预算。
+	// 取 turnOutputLimit 的一半：剩下的 32KB 留给过程段，
+	// 过程段按「就近保留」从后往前分配。
+	outputConclusionLimit = 32 << 10
+
+	// outputStoreLimit 是 stepOutput 在内存里允许保留的总字节。
+	//
+	// 必须封顶：clampCaptured 允许单步 output 到 1MB，一轮 15 步就是 15MB，
+	// 乘上未收尾卡片的上限能把进程打穿。96KB 是 turnOutputLimit 的 1.5 倍，
+	// 刚好放得下「末段 32KB + 过程 64KB」，收尾渲染时不会因为提前丢弃而失真。
+	// 超预算时从最早的步骤开始丢 —— 与 renderOutput 的分配方向一致。
+	outputStoreLimit = 96 << 10
+
+	// processHeaderFmt 是结论与过程之间的分隔说明，字节要从总预算里先扣。
+	processHeaderFmt = "\n\n——（以下为过程，本轮共 %d 段）——\n\n"
 
 	// turnNoAnswer 是一轮没有任何文本产出时卡片 output 的占位说明。
 	// 空 output 会被读成"上报坏了"，写清楚"本轮只有工具调用"才是有效信息。
@@ -71,14 +96,23 @@ type turnCard struct {
 	// 只能靠空闲超时切分，卡片有可能把连续几轮串在一起。
 	turnSigUnknown bool
 
-	// output 是该轮**全部非空** assistant 文本的拼接。
+	// stepOutput 按轮内步号保存该步的 assistant 正文，收尾时由 renderOutput
+	// 统一分配预算拼成卡面。
 	//
-	// 不能只留最后一条：实测一个 40 步的轮次有 15 步带正文，最后一条 1749 字节，
-	// 其余 14 段共 1785 字节全是过程性结论 —— 只留最后一条等于丢掉一半内容，
-	// 卡片读起来就是"输入输出都很少"。
-	output          string
+	// 不在 add 里即时拼接，两个原因：
+	//   - 同一步的重试会被重复拼接。sessiongroup 对同一 RequestFingerprint 只把
+	//     AttemptIndex +1、StepIndex 不变（sessiongroup.go:269-276），于是
+	//     「重试 2 次」在卡上出现 2 份一模一样的回答 —— 正是这次改造要消灭的
+	//     重复，只是从 generation 层漏到了卡片层。按步号存，重试自然覆盖。
+	//   - 即时拼接是「先到先得」，长轮次里最后一段（结论）必然被饿死。
+	stepOutput map[int]string
+	// stepBytes 是 stepOutput 里全部正文的字节数，供 size() 与预算淘汰用。
+	stepBytes int
+	// outputTruncated 标记卡面回答不完整：stepOutput 预算淘汰、渲染截断、
+	// 上游正文自身截断，三种来源都并进这一个标记。
 	outputTruncated bool
-	// outputParts 记录这一轮一共有几段非空输出（不管是否拼接得下）。
+	// outputParts 记录这一轮一共有几段非空输出，不管是否渲染得下。
+	// 它按到达次数累加，不受 stepOutput 淘汰影响。
 	outputParts int
 
 	startTs time.Time
@@ -151,7 +185,7 @@ func newTurnBuffer(release string, idle time.Duration, maxCards int) *turnBuffer
 // size 是这张卡片当前占用的字节数（可读正文字段 + 固定开销）。
 func (c *turnCard) size() int {
 	const fixed = 512
-	return fixed + len(c.input) + len(c.output) + len(c.requestBody) + len(c.title)
+	return fixed + len(c.input) + c.stepBytes + len(c.requestBody) + len(c.title)
 }
 
 // add 吸收一条调用记录，返回需要立即外发的事件。
@@ -250,6 +284,7 @@ func (b *turnBuffer) touch(c Call, grp sessiongroup.Group, start, wall time.Time
 			promptProtocol: c.PromptProtocol,
 			promptFallback: c.PromptFallback,
 			turnSigUnknown: c.UserTurns <= 0,
+			stepOutput:     make(map[int]string, 8),
 		}
 		b.cards[key] = card
 		// 固定开销在建卡时就计入，否则每张卡都会少算 512 字节，长期累积漂移。
@@ -281,21 +316,30 @@ func (b *turnBuffer) touch(c Call, grp sessiongroup.Group, start, wall time.Time
 			card.inputTruncated = c.PromptTruncated || len(user) > turnInputLimit
 		}
 	}
-	// 回答累积该轮全部非空文本：一轮里过程性结论往往分散在多步，
-	// 只留最后一条会把大半内容丢掉。
+	// 回答按步号存起来，收尾时统一分配预算（见 renderOutput）。
+	// 同一步的重试覆盖而不是追加 —— 这是「重复」在卡片层的最后一道闸。
 	if c.Output != "" {
-		card.outputParts++
-		if len(card.output) >= turnOutputLimit {
+		// 单段先截到结论预算：卡片侧的展示上限就是 outputConclusionLimit，
+		// 留更长的只会在淘汰循环之前白占内存。这一步的完整正文在它自己的
+		// generation 上，卡片不需要存第二份。
+		seg := truncateBytes(c.Output, outputConclusionLimit)
+		if len(seg) < len(c.Output) {
 			card.outputTruncated = true
+		}
+		if old, seen := card.stepOutput[grp.StepIndex]; seen {
+			// 重试：只换内容，不新增段数，也不让字节数双算。
+			card.stepBytes -= len(old)
 		} else {
-			if card.output != "" {
-				card.output += "\n\n"
-			}
-			card.output += c.Output
-			if len(card.output) > turnOutputLimit {
-				card.output = truncateBytes(card.output, turnOutputLimit)
-				card.outputTruncated = true
-			}
+			card.outputParts++
+		}
+		card.stepOutput[grp.StepIndex] = seg
+		card.stepBytes += len(seg)
+		// 多段累计仍会超：单段上限 32KB，三段就到 96KB。
+		// 淘汰从最早的步骤开始：renderOutput 也优先保留靠近结论的段，
+		// 两个方向一致，提前丢弃不会让卡面成色变差。
+		for card.stepBytes > outputStoreLimit && len(card.stepOutput) > 1 {
+			card.dropOldestStep()
+			card.outputTruncated = true
 		}
 		if c.OutputTruncated {
 			card.outputTruncated = true
@@ -385,6 +429,90 @@ func (b *turnBuffer) pending() int { return len(b.cards) }
 // 纯工具轮（模型自己发起的后续调用）会出现这种情况，属于正常。
 func (c *turnCard) inputMissing() bool { return c.input == "" }
 
+// dropOldestStep 丢掉步号最小的那段输出，返回是否真的丢了。
+//
+// 只在 stepOutput 超 outputStoreLimit 时调用。段数最多几十，
+// 线性找最小键足够，不值得为此维护一个堆。
+func (c *turnCard) dropOldestStep() bool {
+	if len(c.stepOutput) <= 1 {
+		return false
+	}
+	oldest, found := 0, false
+	for step := range c.stepOutput {
+		if !found || step < oldest {
+			oldest, found = step, true
+		}
+	}
+	if !found {
+		return false
+	}
+	c.stepBytes -= len(c.stepOutput[oldest])
+	delete(c.stepOutput, oldest)
+	return true
+}
+
+// renderOutput 把该轮各步输出拼成卡面正文，预算按「结论优先」分配。
+//
+// 不能按到达顺序先到先得：实测一轮 15 段正文、每段 20KB 时，64KB 上限只装得下
+// 前 3 段，而 agentic 轮的结论永远在最后一段 —— 卡片就变成「只有过程、没有答案」。
+// Langfuse 的 trace 列表页只显示 output 前约 100 字符，那里必须是结论。
+//
+// 分配顺序：
+//  1. 末段（结论）全额保留，上限 outputConclusionLimit；
+//  2. 剩余预算从后往前给过程段 —— 越靠近结论的越先拿到，越早的过程段越先丢；
+//  3. 一段都放不下时只留结论。
+//
+// 丢掉的段不是消失：展开下面的 generation 还能逐条读到，所以「早的过程段先丢」
+// 不损失可查性。
+func (c *turnCard) renderOutput() string {
+	if len(c.stepOutput) == 0 {
+		return ""
+	}
+	// 按步号升序：map 迭代顺序随机，不排序会让同一张卡每次渲染都不一样。
+	steps := make([]int, 0, len(c.stepOutput))
+	for step := range c.stepOutput {
+		steps = append(steps, step)
+	}
+	sort.Ints(steps)
+
+	lastSeg := c.stepOutput[steps[len(steps)-1]]
+	conclusion := truncateBytes(lastSeg, outputConclusionLimit)
+	if len(lastSeg) > outputConclusionLimit {
+		c.outputTruncated = true
+	}
+	if len(steps) == 1 {
+		return conclusion
+	}
+
+	// 段数用 outputParts 而不是 len(steps)：stepOutput 可能被预算淘汰过，
+	// 卡面上要写的是「这一轮原本有几段」，不是「还剩下几段」。
+	header := fmt.Sprintf(processHeaderFmt, c.outputParts)
+	budget := turnOutputLimit - len(conclusion) - len(header)
+
+	var tail []string
+	for i := len(steps) - 2; i >= 0; i-- {
+		seg := c.stepOutput[steps[i]]
+		sep := 0
+		if len(tail) > 0 {
+			sep = len("\n\n")
+		}
+		if len(seg)+sep > budget {
+			c.outputTruncated = true
+			break
+		}
+		budget -= len(seg) + sep
+		tail = append(tail, seg)
+	}
+	if len(tail) == 0 {
+		return conclusion
+	}
+	// tail 是倒序收集的，反转回时间正序再拼。
+	for i, j := 0, len(tail)-1; i < j; i, j = i+1, j-1 {
+		tail[i], tail[j] = tail[j], tail[i]
+	}
+	return conclusion + header + strings.Join(tail, "\n\n")
+}
+
 // shortInputBytes 是"用户只说了几个字"的判定线（"继续"、"好"、"再试一次"）。
 // 60 字节约等于 20 个汉字：一句话说完整就超过它了，别再补说明占地方。
 const shortInputBytes = 60
@@ -442,6 +570,9 @@ func cardKey(c Call, grp sessiongroup.Group) string {
 
 // closeCard 把一张卡面转成 trace-create 事件。
 func (b *turnBuffer) closeCard(card *turnCard) event {
+	// 先渲染正文再建 metadata：renderOutput 会补齐 outputTruncated
+	// （渲染时的预算截断只有它知道），而 cardMetadata 要读这个标记。
+	out := card.renderOutput()
 	body := map[string]any{
 		"id":        card.traceID,
 		"name":      turnDisplayName(card),
@@ -464,8 +595,8 @@ func (b *turnBuffer) closeCard(card *turnCard) event {
 	if card.input != "" {
 		body["input"] = card.inputWithContext()
 	}
-	if card.output != "" {
-		body["output"] = card.output
+	if out != "" {
+		body["output"] = out
 	} else {
 		body["output"] = turnNoAnswer
 	}
@@ -579,7 +710,11 @@ func cardMetadata(card *turnCard) map[string]any {
 	}
 	if card.requestBody != "" {
 		meta["request_body"] = card.requestBody
-		meta["request_body_truncated"] = card.requestBodyCut
+		// 只在真截断时写：这个键之前无条件写 false，与其他标记（只在 true 时出现）
+		// 风格不一致，查询侧得先判存在再判值，容易写成 two-step。
+		if card.requestBodyCut {
+			meta["request_body_truncated"] = true
+		}
 	}
 	if card.endpoint != "" {
 		meta["endpoint"] = card.endpoint
