@@ -94,12 +94,18 @@ func TestExtractResponsesStringInput(t *testing.T) {
 	}
 }
 
-func TestExtractTruncatesOnRuneBoundary(t *testing.T) {
-	long := strings.Repeat("汉", DefaultMaxBytes) // 远超上限
-	body := []byte(`{"messages":[{"role":"user","content":"` + long + `"}]}`)
+func TestExtractKeepsTailWhenOversized(t *testing.T) {
+	head := strings.Repeat("旧", DefaultMaxBytes) // 挤满上限的前文
+	body := []byte(`{"messages":[{"role":"user","content":"` + head + `"},{"role":"user","content":"这是最后一句提问"}]}`)
 	got := Extract(body)
 	if len(got.Text) > DefaultMaxBytes {
 		t.Fatalf("长度 %d 超过上限", len(got.Text))
+	}
+	if !strings.HasSuffix(got.Text, "这是最后一句提问") {
+		t.Fatalf("截断应保留最近的尾部，实际结尾: %q", got.Text[len(got.Text)-40:])
+	}
+	if !strings.Contains(got.Text, "前文已省略") {
+		t.Fatal("截断应带省略标记")
 	}
 	for _, r := range got.Text {
 		if r == '\uFFFD' {

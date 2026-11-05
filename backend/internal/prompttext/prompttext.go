@@ -73,7 +73,7 @@ func build(protocol string, texts []string) Result {
 		return Result{Protocol: protocol, Status: "no_user"}
 	}
 	return Result{
-		Text:     truncateRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
+		Text:     tailRunes(strings.Join(cleaned, "\n\n"), DefaultMaxBytes),
 		Turns:    len(cleaned),
 		Protocol: protocol,
 		Status:   "ok",
@@ -187,6 +187,20 @@ func stringValue(value any) string {
 		return s
 	}
 	return ""
+}
+
+// tailRunes 超长时保留尾部：多轮会话里"最近说了什么"比开头更有价值，
+// 正序截断会把上限全耗在最早那几轮上。
+func tailRunes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	const marker = "…（前文已省略）\n\n"
+	cut := len(s) - (limit - len(marker))
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	return marker + s[cut:]
 }
 
 func truncateRunes(s string, limit int) string {
