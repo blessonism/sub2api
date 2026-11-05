@@ -85,3 +85,46 @@ LF_HOST=http://127.0.0.1:3000 \
 LF_PUBLIC_KEY=pk-lf-... LF_SECRET_KEY=sk-lf-... \
 go test -tags langfuselive ./internal/observability/langfuse/ -run TestLiveIngestionReachesLangfuse -v
 ```
+
+## 版本与升级（v3 → v4）
+
+实测结论：v4 可以沿用现有客户端，但有两个硬前提。
+
+| 项 | 要求 | 说明 |
+|---|---|---|
+| ClickHouse | ≥ 26.x | 迁移 `0039_create_events_full` 使用全文索引 `TYPE text(tokenizer = splitByNonAlpha)`，24.12/25.8 解析失败：`Code: 80 INCORRECT_QUERY`，随后 `Dirty database version 39` 让 web 反复重启 |
+| 写模式 | `LANGFUSE_MIGRATION_V4_WRITE_MODE=dual` | 默认的 `events_only` 会停用 `POST /api/public/ingestion`，`/api/public/traces` 直接返回 "not available ... events_only mode"；只设 `legacy` 会让 worker 崩：`NATIVE_OTEL_BEHAVIOUR=direct requires WRITE_MODE in {dual, events_only}` |
+
+`dual` 同时写 legacy 表与 `events_full`：legacy ingestion 继续可用，存储占用约翻倍。
+v4 的方向是 OTel（`POST /api/public/otel/v1/traces`），切过去要改客户端，属独立改动。
+
+### 升级步骤
+
+```bash
+# 1. 备份（v4 会迁移 ClickHouse schema，旧版本读不回新 schema）
+docker exec langfuse-postgres-1 pg_dumpall -U postgres > backups/pg-$(date +%F).sql
+docker run --rm -v langfuse_ch_data:/data:ro -v "$PWD/backups":/backup alpine \
+  tar czf /backup/ch-$(date +%F).tgz -C /data .
+
+# 2. 改编排：langfuse :3 → :4（web + worker）、clickhouse 24.12 → 26.10、
+#    追加 LANGFUSE_MIGRATION_V4_WRITE_MODE=dual
+
+# 3. 重建（数据只有探针时可丢弃 ClickHouse 卷，走已验证的全新迁移路径）
+docker compose down && docker volume rm langfuse_ch_data langfuse_ch_logs
+docker compose up -d
+```
+
+### 验收判据
+
+```bash
+curl -sS http://<网关IP>:3000/api/public/health        # 期望 4.x
+LF_HOST=https://<域名> LF_PUBLIC_KEY=... LF_SECRET_KEY=... \
+  go test -tags langfuselive ./internal/observability/langfuse/ \
+  -run TestLiveIngestionReachesLangfuse -v              # trace/cost/正文全绿
+```
+
+v4 的 trace 级 `totalCost` 由聚合侧异步补齐，晚于 generation 落库；探针对它做了 45s 轮询。
+
+### 回滚
+
+镜像退回 `:3` 并**用备份恢复 ClickHouse 卷**——v4 迁移过 schema，旧版本无法直接读取。

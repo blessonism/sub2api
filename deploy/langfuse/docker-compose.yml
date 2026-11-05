@@ -7,6 +7,8 @@ x-langfuse-env: &langfuse-env
   SALT: ${SALT}
   ENCRYPTION_KEY: ${ENCRYPTION_KEY}
   TELEMETRY_ENABLED: "false"
+  # v4 默认 events_only 会停用 /api/public/ingestion，必须显式 dual 才能沿用现有客户端。
+  LANGFUSE_MIGRATION_V4_WRITE_MODE: ${V4_WRITE_MODE}
   CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
   CLICKHOUSE_URL: http://clickhouse:8123
   CLICKHOUSE_USER: clickhouse
@@ -43,7 +45,7 @@ x-langfuse-env: &langfuse-env
 
 services:
   langfuse-web:
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:4
     restart: unless-stopped
     depends_on:
       postgres:
@@ -59,7 +61,7 @@ services:
       <<: *langfuse-env
 
   langfuse-worker:
-    image: langfuse/langfuse-worker:3
+    image: langfuse/langfuse-worker:4
     restart: unless-stopped
     depends_on:
       postgres:
@@ -96,7 +98,7 @@ services:
       retries: 20
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24.12
+    image: clickhouse/clickhouse-server:26.10
     restart: unless-stopped
     environment:
       CLICKHOUSE_DB: default

@@ -5,6 +5,7 @@ package langfuse
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -105,8 +106,21 @@ func TestLiveIngestionReachesLangfuse(t *testing.T) {
 			if got := gen.cost(); got != charge {
 				t.Fatalf("generation cost = %v, want %v（实扣）", got, charge)
 			}
-			if trace.TotalCost == nil || *trace.TotalCost != charge {
-				t.Fatalf("trace.totalCost = %v, want %v", trace.TotalCost, charge)
+			// trace 级 totalCost 由聚合侧补齐，晚于 generation 落库；单独给一段轮询窗口。
+			costDeadline := time.Now().Add(45 * time.Second)
+			for {
+				refreshed := findTrace(t, host, pk, sk, sessionID)
+				if refreshed != nil && refreshed.TotalCost != nil && *refreshed.TotalCost == charge {
+					break
+				}
+				if time.Now().After(costDeadline) {
+					got := "nil"
+					if refreshed != nil && refreshed.TotalCost != nil {
+						got = fmt.Sprintf("%v", *refreshed.TotalCost)
+					}
+					t.Fatalf("trace.totalCost 45s 内未收敛到 %v（当前 %s）", charge, got)
+				}
+				time.Sleep(3 * time.Second)
 			}
 			if !strings.Contains(string(gen.Input), "帮我写个快排") {
 				t.Fatalf("generation.input 未携带请求正文: %s", string(gen.Input))
