@@ -215,8 +215,9 @@ func TestClampCapturedKeepsPayloadUnderIngestionLimit(t *testing.T) {
 	if total > maxCapturedPerCall+(1<<10) {
 		t.Fatalf("单条调用正文 %d 字节，超过 %d 的载荷上限", total, maxCapturedPerCall)
 	}
-	if !clamped.OutputTruncated || !clamped.InputTruncated {
-		t.Fatalf("截断必须打标记：out=%v in=%v", clamped.OutputTruncated, clamped.InputTruncated)
+	if !clamped.OutputTruncated || !clamped.PromptTruncated || !clamped.RawRequestTruncated {
+		t.Fatalf("截断必须分侧打标记：out=%v prompt=%v raw=%v",
+			clamped.OutputTruncated, clamped.PromptTruncated, clamped.RawRequestTruncated)
 	}
 	if !strings.Contains(clamped.InputUser, "前文已省略") {
 		t.Fatal("用户 prompt 截断应保留尾部并带省略标记")
@@ -232,7 +233,51 @@ func TestClampCapturedLeavesSmallCallsAlone(t *testing.T) {
 	call.Output = "普通回答"
 	clamped := clampCaptured(call)
 	if clamped.InputUser != call.InputUser || clamped.Output != call.Output ||
-		clamped.InputTruncated || clamped.OutputTruncated {
+		clamped.PromptTruncated || clamped.OutputTruncated || clamped.RawRequestTruncated {
 		t.Fatalf("小载荷不该被动过：%+v", clamped)
+	}
+}
+
+// TestClampCapturedWorstCaseStaysUnderPayloadLimit 覆盖 review 发现的预算漏洞：
+// 原始样本 2MB + 输出 2MB 时，旧算法会把合计推到 3.25MB（载荷 6.5MB → 413）。
+func TestClampCapturedWorstCaseStaysUnderPayloadLimit(t *testing.T) {
+	call := Call{
+		Input:     strings.Repeat("b", 2<<20),
+		Output:    strings.Repeat("答", (2<<20)/3),
+		InputUser: strings.Repeat("问", (2<<20)/3),
+	}
+	clamped := clampCaptured(call)
+	total := len(clamped.Input) + len(clamped.InputUser) + len(clamped.Output)
+	if total > maxCapturedPerCall {
+		t.Fatalf("合计 %d 字节超过 %d，载荷会被 ingestion 拒掉", total, maxCapturedPerCall)
+	}
+	if !clamped.RawRequestTruncated {
+		t.Fatal("原始样本超 256KB 应标记 raw_request_truncated")
+	}
+}
+
+func TestTruncationFlagsAreSeparated(t *testing.T) {
+	sessiongroup.Reset()
+	call := sampleCall("sess-trunc", "看一下", "fp")
+	call.RawRequestTruncated = true
+	call.Output = "答案"
+	meta := metaOf(t, traceBodyOf(t, buildBatch([]Call{call}, ""), 0))
+	if meta["raw_request_truncated"] != true {
+		t.Fatalf("raw_request_truncated 缺失：%v", meta)
+	}
+	if _, ok := meta["user_prompt_truncated"]; ok {
+		t.Fatal("原始样本被截不能冒充用户消息被截")
+	}
+
+	sessiongroup.Reset()
+	call2 := sampleCall("sess-trunc2", "看一下", "fp")
+	call2.PromptTruncated = true
+	call2.Output = "答案"
+	meta2 := metaOf(t, traceBodyOf(t, buildBatch([]Call{call2}, ""), 0))
+	if meta2["user_prompt_truncated"] != true {
+		t.Fatalf("user_prompt_truncated 缺失：%v", meta2)
+	}
+	if _, ok := meta2["raw_request_truncated"]; ok {
+		t.Fatal("用户消息被截不能冒充原始样本被截")
 	}
 }

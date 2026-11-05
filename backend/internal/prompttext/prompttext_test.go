@@ -3,6 +3,7 @@ package prompttext
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestExtractOpenAIChat(t *testing.T) {
@@ -261,5 +262,40 @@ func TestHistoryBytesIgnoresTruncation(t *testing.T) {
 	}
 	if len(got.Text) > 200+len("…（前文已省略）\n\n") {
 		t.Fatalf("Text 仍应按上限截断：%d", len(got.Text))
+	}
+}
+
+// TestLatestUserUsesPromptLimitNotAnchorLimit 覆盖 review 发现的回归：
+// LatestUser 曾被锚点上限（4KB）截断，比它替代的 16KB 展示还小。
+func TestLatestUserUsesPromptLimitNotAnchorLimit(t *testing.T) {
+	msg := strings.Repeat("问", 5000) // 15KB
+	body := []byte(`{"messages":[{"role":"user","content":"` + msg + `"}]}`)
+	got := ExtractWithLimit(body, 512*1024)
+	if len(got.LatestUser) < 10*1024 {
+		t.Fatalf("LatestUser 只有 %d 字节，被锚点上限截了", len(got.LatestUser))
+	}
+	if got.LatestTruncated {
+		t.Fatal("未超 512KB 上限时不应标截断")
+	}
+
+	small := ExtractWithLimit(body, 4096)
+	if !small.LatestTruncated {
+		t.Fatal("超过上限必须标 LatestTruncated")
+	}
+	if !utf8.ValidString(small.LatestUser) {
+		t.Fatal("截断后必须是合法 UTF-8")
+	}
+}
+
+// TestLatestUserKeepsUserPastedXML 覆盖宽判据误伤：用户自己贴的 XML 就是他真正的话。
+func TestLatestUserKeepsUserPastedXML(t *testing.T) {
+	body := []byte(`{"messages":[
+		{"role":"user","content":"先看这个"},
+		{"role":"assistant","content":"好"},
+		{"role":"user","content":"<config><host>10.0.0.1</host></config> 这个配置有问题吗"}
+	]}`)
+	got := Extract(body)
+	if !strings.HasPrefix(got.LatestUser, "<config>") {
+		t.Fatalf("LatestUser = %q，用户贴的 XML 不能被当成注入块跳过", got.LatestUser)
 	}
 }

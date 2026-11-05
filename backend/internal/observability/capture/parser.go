@@ -225,6 +225,32 @@ func jsonContentText(value any) string {
 // textFromSSELine 从单行 SSE 里抽正文片段。
 // fullText 为 true 表示这条事件携带的是整段文本（done/completed），
 // 调用方据此避免与增量事件重复累加。
+// parseSSELine 一次解析出正文与收尾原因。
+// 之前正文和 finish 各解析一遍同一行，流式响应每个事件都要多一次 json.Unmarshal。
+func parseSSELine(line []byte) (text string, fullText bool, finish string) {
+	trimmed := strings.TrimSpace(string(line))
+	if !strings.HasPrefix(trimmed, "data:") {
+		return "", false, ""
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return "", false, ""
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return "", false, ""
+	}
+	finish = finishFromEvent(event)
+	piece, ok := textFromEvent(event)
+	if !ok {
+		return "", false, finish
+	}
+	if event["type"] == "response.output_text.done" {
+		return piece, true, finish
+	}
+	return piece, false, finish
+}
+
 func textFromSSELine(line []byte) (string, bool) {
 	trimmed := strings.TrimSpace(string(line))
 	if !strings.HasPrefix(trimmed, "data:") {
@@ -253,19 +279,8 @@ func textFromSSELine(line []byte) (string, bool) {
 // 目的：把"模型自己停/被 max tokens 截"和"观测层缓冲截断"区分开。
 // 只保留有限的短标识，不外发原文。
 func finishFromSSELine(line []byte) string {
-	trimmed := strings.TrimSpace(string(line))
-	if !strings.HasPrefix(trimmed, "data:") {
-		return ""
-	}
-	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-	if payload == "" || payload == "[DONE]" {
-		return ""
-	}
-	var event map[string]any
-	if err := json.Unmarshal([]byte(payload), &event); err != nil {
-		return ""
-	}
-	return finishFromEvent(event)
+	_, _, finish := parseSSELine(line)
+	return finish
 }
 
 func finishFromEvent(event map[string]any) string {

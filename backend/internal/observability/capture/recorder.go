@@ -61,18 +61,19 @@ type Recorder struct {
 	// pending 保存尚未成行的 SSE 尾巴；text 是边写边抽出来的 assistant 文本。
 	// 之所以要增量抽取：Responses 的正文 delta 排在几十 KB 的 response.created
 	// 前导之后，只靠缓冲末尾统一解析，一旦触发上限就永远看不到正文。
-	pending          []byte
-	text             []byte
-	textFull         bool
-	sawDelta         bool
-	userText         string
-	userTurns        int
-	userFirst        string
-	userLatest       string
-	userHistoryBytes int
-	reqFP            string
-	protocol         string
-	promptStat       string
+	pending             []byte
+	text                []byte
+	textFull            bool
+	sawDelta            bool
+	userText            string
+	userTurns           int
+	userFirst           string
+	userLatest          string
+	userLatestTruncated bool
+	userHistoryBytes    int
+	reqFP               string
+	protocol            string
+	promptStat          string
 	// respTruncated 标记**原始响应字节**达到上限被截；它与正文是否被截是两件事：
 	// 流里有 response.created 这类大 JSON，原始字节几乎必然超上限，
 	// 但正文往往远未触顶。两者混用会把每一条都标成"输出被截"。
@@ -116,6 +117,7 @@ func (r *Recorder) SetRequest(text string) {
 	r.promptStat = extracted.Status
 	r.userFirst = extracted.FirstUser
 	r.userLatest = extracted.LatestUser
+	r.userLatestTruncated = extracted.LatestTruncated
 	r.userHistoryBytes = extracted.HistoryBytes
 	if extracted.Text != "" {
 		r.userText = extracted.Text
@@ -143,6 +145,16 @@ func (r *Recorder) LatestUserPrompt() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.userLatest
+}
+
+// LatestUserTruncated 报告展示用的用户消息是否被上限截断。
+func (r *Recorder) LatestUserTruncated() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userLatestTruncated
 }
 
 // UserPromptHistoryBytes 返回本次请求携带的完整用户历史字节数（截断前）。
@@ -215,10 +227,10 @@ func (r *Recorder) AppendResponse(p []byte) {
 		}
 		line := r.pending[:idx]
 		r.pending = r.pending[idx+1:]
-		if reason := finishFromSSELine(line); reason != "" {
+		piece, fullText, reason := parseSSELine(line)
+		if reason != "" {
 			r.finishReason = reason
 		}
-		piece, fullText := textFromSSELine(line)
 		if piece == "" {
 			continue
 		}
@@ -248,10 +260,10 @@ func (r *Recorder) flushPendingLocked() {
 	}
 	line := r.pending
 	r.pending = nil
-	if reason := finishFromSSELine(line); reason != "" {
+	piece, fullText, reason := parseSSELine(line)
+	if reason != "" {
 		r.finishReason = reason
 	}
-	piece, fullText := textFromSSELine(line)
 	if piece == "" {
 		return
 	}

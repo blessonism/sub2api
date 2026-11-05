@@ -121,34 +121,50 @@ const maxCapturedPerCall = 2 << 20
 
 // clampCaptured 是载荷侧的最后一道闸：配置写多大都不能把 ingestion 撑爆。
 func clampCaptured(c Call) Call {
-	half := maxCapturedPerCall / 2
-	if len(c.Output) > half {
-		c.Output = truncateBytes(c.Output, half)
+	const (
+		outputBudget = maxCapturedPerCall / 2 // 1MB
+		rawBudget    = 256 << 10              // metadata 抽样，不需要更多
+		promptFloor  = 256 << 10
+	)
+	// 原始请求样本先收口：它只是取证抽样，不该挤占正文预算。
+	if len(c.Input) > rawBudget {
+		c.Input = truncateBytes(c.Input, rawBudget)
+		c.RawRequestTruncated = true
+	}
+	if len(c.Output) > outputBudget {
+		c.Output = truncateBytes(c.Output, outputBudget)
 		c.OutputTruncated = true
 		c.OutputChars = utf8.RuneCountInString(c.Output)
 	}
-	remaining := maxCapturedPerCall - len(c.Output) - len(c.Input)
-	if remaining < 256<<10 {
-		remaining = 256 << 10
+	// 剩下的预算给用户消息，且保证三者之和不超过 maxCapturedPerCall。
+	remaining := maxCapturedPerCall - len(c.Input) - len(c.Output)
+	if remaining < promptFloor {
+		remaining = promptFloor
 	}
 	if len(c.InputUser) > remaining {
 		// 用户 prompt 保留最近的部分：多轮对话里最新那句才是真正被回答的。
 		c.InputUser = tailBytes(c.InputUser, remaining)
-		c.InputTruncated = true
+		c.PromptTruncated = true
 	}
 	return c
 }
 
-// tailBytes 保留尾部并回退到 rune 边界。
+// tailBytes 保留尾部并回退到 rune 边界。省略标记算在 limit 之内，
+// 否则截断后的长度会比预算多出标记本身的字节数，把载荷预算算穿。
 func tailBytes(s string, limit int) string {
+	const marker = "…（前文已省略）\n\n"
 	if len(s) <= limit {
 		return s
 	}
-	cut := len(s) - limit
+	keep := limit - len(marker)
+	if keep <= 0 {
+		return marker[:limit]
+	}
+	cut := len(s) - keep
 	for cut < len(s) && !utf8.RuneStart(s[cut]) {
 		cut++
 	}
-	return "…（前文已省略）\n\n" + s[cut:]
+	return marker + s[cut:]
 }
 
 // traceDisplayName 让会话视图里的每张卡片可区分：同一个会话有几十上百次调用，
@@ -267,8 +283,11 @@ func metadata(c Call, grp sessiongroup.Group) map[string]any {
 	if c.Stream {
 		meta["stream"] = true
 	}
-	if c.InputTruncated {
-		meta["input_truncated"] = true
+	if c.RawRequestTruncated {
+		meta["raw_request_truncated"] = true
+	}
+	if c.PromptTruncated {
+		meta["user_prompt_truncated"] = true
 	}
 	// 原始请求体退到 metadata 备查，避免把 system/tools 顶到 UI 首屏。
 	if c.InputUser != "" && c.Input != "" {
