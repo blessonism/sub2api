@@ -9,6 +9,9 @@ package capture
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"strconv"
 	"sync"
 	"unicode/utf8"
 
@@ -17,6 +20,13 @@ import (
 
 // maxPendingBytes 是未成行 SSE 尾巴的上限，防止巨型无换行载荷撑爆缓冲。
 const maxPendingBytes = 64 * 1024
+
+// 请求指纹只取首尾定长片段：会话里每一步的差异都落在尾部（追加的工具结果），
+// 头部（system/工具定义）逐轮不变。这样指纹成本是常数级，不受请求体大小影响。
+const (
+	fingerprintHeadBytes = 2 * 1024
+	fingerprintTailBytes = 8 * 1024
+)
 
 // DefaultMaxBytes 是单侧（请求/响应）正文的默认上限。
 const DefaultMaxBytes = 32 * 1024
@@ -49,6 +59,8 @@ type Recorder struct {
 	sawDelta   bool
 	userText   string
 	userTurns  int
+	userFirst  string
+	reqFP      string
 	protocol   string
 	promptStat string
 	// respTruncated 标记响应字节已达到上限被截断。
@@ -68,8 +80,10 @@ func (r *Recorder) SetRequest(text string) {
 	if r == nil || !r.wantReq {
 		return
 	}
+	fp := requestFingerprint(text)
 	r.mu.Lock()
 	r.request, r.reqTruncated = truncate(text, r.limit)
+	r.reqFP = fp
 	r.mu.Unlock()
 
 	// 单独抽一份「用户说的话」：观测层默认展示这一份，
@@ -78,11 +92,32 @@ func (r *Recorder) SetRequest(text string) {
 	r.mu.Lock()
 	r.protocol = extracted.Protocol
 	r.promptStat = extracted.Status
+	r.userFirst = extracted.FirstUser
 	if extracted.Text != "" {
 		r.userText = extracted.Text
 		r.userTurns = extracted.Turns
 	}
 	r.mu.Unlock()
+}
+
+// FirstUserPrompt 返回用于会话归组的锚点消息（首条真实用户消息）。
+func (r *Recorder) FirstUserPrompt() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.userFirst
+}
+
+// RequestFingerprint 返回请求体指纹，供观测层识别「同一步的重复尝试」。
+func (r *Recorder) RequestFingerprint() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reqFP
 }
 
 // RequestTruncated 报告请求正文是否被截断。
@@ -262,4 +297,21 @@ func (r *Recorder) ResponseText() string {
 		return ""
 	}
 	return string(raw)
+}
+
+// requestFingerprint 计算请求体的短指纹，用于观测层区分「同一步的重复尝试」
+// 与「新的一步」。取首尾定长片段 + 总长度，成本与请求体大小无关。
+func requestFingerprint(text string) string {
+	if text == "" {
+		return ""
+	}
+	h := sha1.New()
+	if len(text) <= fingerprintHeadBytes+fingerprintTailBytes {
+		_, _ = h.Write([]byte(text))
+	} else {
+		_, _ = h.Write([]byte(text[:fingerprintHeadBytes]))
+		_, _ = h.Write([]byte(text[len(text)-fingerprintTailBytes:]))
+	}
+	_, _ = h.Write([]byte(strconv.Itoa(len(text))))
+	return hex.EncodeToString(h.Sum(nil)[:8])
 }
