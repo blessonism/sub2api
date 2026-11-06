@@ -402,3 +402,142 @@ func TestCompactionPromptIsNotUserText(t *testing.T) {
 		t.Fatalf("Turns = %d，压缩指令仍算一条 user 消息（轮次识别要用）", got.Turns)
 	}
 }
+
+// TestLatestUserKeepsTail：用户消息超限时必须保留尾部。
+//
+// 一句话的落点在末尾（"……所以帮我改一下这个函数"），留头部等于把真正的
+// 诉求切掉。而观测层 clampCaptured 用的也是保留尾部，两处方向必须一致 ——
+// 之前 LatestUser 留头部、下游再留这前半段的尾部，最后既不是原头也不是原尾。
+func TestLatestUserKeepsTail(t *testing.T) {
+	// 超长的是**最后一条**用户消息本身：截断判据看的是 latest 是否越限。
+	long := strings.Repeat("需求描述。", 2000) + "最后这句话才是要问的"
+	body := `{"messages":[` +
+		`{"role":"user","content":"先前的背景"},` +
+		`{"role":"assistant","content":"收到"},` +
+		`{"role":"user","content":"` + long + `"}]}`
+
+	got := ExtractWithLimit([]byte(body), 4<<10)
+	if !strings.Contains(got.LatestUser, "最后这句话才是要问的") {
+		t.Fatalf("LatestUser 丢了尾部诉求：%q", got.LatestUser)
+	}
+	if !got.LatestTruncated {
+		t.Fatal("超限必须标记 LatestTruncated")
+	}
+}
+
+// TestLatestUserNoLimitKeepsWhole：limit<=0 表示不截断，
+// 不能被省略标记（26 字节）反算出负的切点、把整段替换成一个标记。
+func TestLatestUserNoLimitKeepsWhole(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"完整的一句话"}]}`
+	got := ExtractWithLimit([]byte(body), 0)
+	if got.LatestUser != "完整的一句话" {
+		t.Fatalf("LatestUser = %q，limit<=0 应原样返回", got.LatestUser)
+	}
+}
+
+// TestSystemPromptAcrossProtocols：四种协议的 system 落点都要能抽到。
+//
+// 它在一轮里恒定，之前完全没被单独抽出来，只以「请求体前 8KB 抽样」的形式
+// 部分存在 —— system 一旦不在 JSON 开头就整个看不到。
+func TestSystemPromptAcrossProtocols(t *testing.T) {
+	cases := map[string]string{
+		"openai_chat": `{"messages":[
+			{"role":"system","content":"你是严谨的工程师"},
+			{"role":"user","content":"改个 bug"}]}`,
+		"openai_responses": `{"instructions":"你是严谨的工程师",
+			"input":[{"role":"user","content":"改个 bug"}]}`,
+		"anthropic": `{"system":"你是严谨的工程师",
+			"messages":[{"role":"user","content":"改个 bug"}]}`,
+		"anthropic_blocks": `{"system":[{"type":"text","text":"你是严谨的工程师"}],
+			"messages":[{"role":"user","content":"改个 bug"}]}`,
+		"gemini": `{"systemInstruction":{"parts":[{"text":"你是严谨的工程师"}]},
+			"contents":[{"role":"user","parts":[{"text":"改个 bug"}]}]}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := Extract([]byte(body))
+			if got.System != "你是严谨的工程师" {
+				t.Fatalf("System = %q，want 你是严谨的工程师", got.System)
+			}
+			if got.SystemTruncated {
+				t.Fatal("未超限不该标记 SystemTruncated")
+			}
+		})
+	}
+}
+
+// TestDeveloperRoleCountsAsSystem：OpenAI 的 role=developer 是新版 system。
+func TestDeveloperRoleCountsAsSystem(t *testing.T) {
+	body := `{"messages":[
+		{"role":"developer","content":"遵守这些规则"},
+		{"role":"user","content":"开始"}]}`
+	got := Extract([]byte(body))
+	if got.System != "遵守这些规则" {
+		t.Fatalf("System = %q", got.System)
+	}
+	// developer 消息不该被当成用户说的话。
+	if strings.Contains(got.Text, "遵守这些规则") {
+		t.Fatalf("developer 消息混进了用户文本：%q", got.Text)
+	}
+}
+
+// TestToolDefinitionsCaptured：工具定义要原样留 JSON，含 schema 与枚举。
+func TestToolDefinitionsCaptured(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"读个文件"}],
+		"tools":[{"type":"function","function":{"name":"read_file",
+			"parameters":{"type":"object","properties":{"path":{"type":"string"}},
+			"required":["path"]}}}]}`
+	got := Extract([]byte(body))
+	if got.Tools == "" {
+		t.Fatal("Tools 为空，工具定义没被抽到")
+	}
+	if !strings.Contains(got.Tools, "read_file") {
+		t.Fatalf("Tools 丢了工具名：%q", got.Tools)
+	}
+	if !strings.Contains(got.Tools, `"required":["path"]`) {
+		t.Fatalf("Tools 丢了 schema 细节：%q", got.Tools)
+	}
+	if got.ToolsTruncated {
+		t.Fatal("未超限不该标记 ToolsTruncated")
+	}
+}
+
+// TestToolDefinitionsEmptyAndMissing：没有 tools 或空数组时返回空串，
+// 不要写一个 "[]" 让卡片看起来有内容。
+func TestToolDefinitionsEmptyAndMissing(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing": `{"messages":[{"role":"user","content":"hi"}]}`,
+		"empty":   `{"messages":[{"role":"user","content":"hi"}],"tools":[]}`,
+		"null":    `{"messages":[{"role":"user","content":"hi"}],"tools":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := Extract([]byte(body))
+			if got.Tools != "" {
+				t.Fatalf("Tools = %q，want 空", got.Tools)
+			}
+		})
+	}
+}
+
+// TestSystemAndToolsTruncationFlagged：超限必须报告，不能静默截断。
+func TestSystemAndToolsTruncationFlagged(t *testing.T) {
+	sys := strings.Repeat("规", 8000) // 24KB > 16KB
+	tools := `[{"type":"function","function":{"name":"x","description":"` +
+		strings.Repeat("描", 30000) + `"}}]` // 90KB > 64KB
+	body := `{"messages":[{"role":"system","content":"` + sys + `"},` +
+		`{"role":"user","content":"hi"}],"tools":` + tools + `}`
+
+	got := Extract([]byte(body))
+	if !got.SystemTruncated {
+		t.Fatal("system 超 16KB 必须标记 SystemTruncated")
+	}
+	if len(got.System) > systemLimit {
+		t.Fatalf("System 长度 = %d，超过 %d", len(got.System), systemLimit)
+	}
+	if !got.ToolsTruncated {
+		t.Fatal("tools 超 64KB 必须标记 ToolsTruncated")
+	}
+	if len(got.Tools) > toolsLimit {
+		t.Fatalf("Tools 长度 = %d，超过 %d", len(got.Tools), toolsLimit)
+	}
+}

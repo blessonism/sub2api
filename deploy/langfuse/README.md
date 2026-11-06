@@ -118,12 +118,19 @@ agentic 客户端的一次提问会拆成几十次上游调用（读文件、跑
 - **线程**：`sha1(身份 + 首条用户消息首行)`，跳过 `<environment_context>` 这类注入块；
 - **轮次**：**用户消息条数**。agentic 客户端在一轮里只让用户开口一次，后续步骤全是
   工具结果，条数恒定；用户再开口才 +1。实测同一线程内该值稳定（3,3,3 / 14,14,14）。
-- **注意**：不能用「条数是否前进」判断轮次前进。同一线程里并发的子代理会让条数在
+- **为什么不用「条数是否前进」判轮次前进**：同一线程里并发的子代理会让条数在
   3 和 14 之间来回跳，按「前进即关闭」会把卡片反复切碎。条数只做**键**，关闭只看空闲。
+  这个结论是实测出来的：交错的两路子代理每次交替都会被「前进」判据当成新的一轮，
+  结果一轮对话被切成若干张只有半截内容的卡。
 - **收尾**：该轮最后一次步骤之后空闲 `turn_idle_seconds`（默认 300s）落卡；进程退出时
-  由 `langfuse.Shutdown` 全量落卡。
-- **回答取值**：取该轮**最后一条非空**文本，不是「最后一步」—— 实测 38 个真实轮次里
-  有 20 个以纯工具调用收尾，按最后一步取会让一半卡片没有输出。
+  由 `langfuse.Shutdown` 全量落卡。阈值依据：60s 会切断 7/38 轮、120s 切 2/38、
+  300s 只切 1/38、600s 切 0 但卡片要多等 10 分钟，300s 是交点。
+- **回答取值**：不能取「最后一步」—— 实测 38 个真实轮次里有 20 个以纯工具调用收尾
+  （最后一步没有正文）。取「最后一条非空」会丢掉过程，取「全部拼接」又会让结论沉底，
+  所以现在是**末段优先 + 过程就近保留**，见上文「卡片 output 为什么不是按时间顺序拼接」。
+- **重试**：同一 `RequestFingerprint` 在 2 分钟内重复出现算「同一步的又一次尝试」，
+  `StepIndex` 不变、`AttemptIndex` +1。卡片按 `StepIndex` 保存输出，重试覆盖不追加 ——
+  否则客户端 429 重发一次，卡片上就会出现两份一模一样的回答。
 
 ### 会话内定位字段
 
@@ -167,10 +174,50 @@ Langfuse 对未知 trace 的 generation 会先暂存、trace 到达后自动挂�
 | 值 | 来源 | 缺省上限 | 说明 |
 |---|---|---|---|
 | trace `input` | **最新一条**用户消息（跳过 system/developer、工具结果、审批块） | 卡片侧 32KB | 超限保留尾部并加 `…（前文已省略）` |
-| trace `output` | 该轮**最后一条非空** assistant 正文 | 卡片侧 64KB | 超限打 `turn_output_truncated` |
-| generation `output` | 这一步自己的 assistant 正文 | `capture_max_bytes` = 256KB | 超限打 `output_truncated` |
-| generation `input` | 不发 | — | 同一轮每步的用户消息完全相同，重复发几十份正是要修的冗余 |
-| `metadata.request_body` | 原始请求体样本，**每轮只存首步一份** | 8KB | 取证抽样，不是全文 |
+| trace `output` | 该轮**末段（结论）优先**，其余过程段按「就近」从后往前填预算 | 卡片侧 64KB（结论占 32KB） | 超限打 `turn_output_truncated`；段数见 `turn_output_parts` |
+| generation `output` | 这一步自己的 assistant 正文 | `capture_max_bytes` = 1MB | 超限打 `output_truncated` |
+| generation `input` | **这一步新加进来的内容**（通常是工具执行结果） | 4KB | 同一轮每步的用户消息完全相同，只发增量；截断打 `step_input_truncated` |
+| `metadata.system_prompt` | system / developer 提示原文，**每轮只存首份** | 16KB | 超限打 `system_prompt_truncated` |
+| `metadata.tools_definition` | 工具定义原始 JSON（含 schema、枚举、默认值），**每轮只存首份** | 64KB | 超限打 `tools_definition_truncated` |
+| `metadata.request_body` | 原始请求体样本，**每轮只存首步一份** | 64KB | 客户端原始字节证据链，不是全文 |
+
+### system 与工具定义为什么单独抽
+
+它们在一轮对话里恒定，客户端每次上游调用都重发一遍。之前只以「请求体前 8KB
+抽样」的形式部分存在 —— system 与 tools 一旦排在 `messages` 之后，抽样里连一个
+字节都看不到，工具调用就成了无法复现的黑盒。
+
+现在 `prompttext` 按四种协议各自抽：OpenAI chat 取 `messages[].role=system|developer`，
+Responses 取顶层 `instructions`，Anthropic 取顶层 `system`（string 或 text block
+数组），Gemini 取 `systemInstruction.parts[].text`；工具定义取 `tools` 的原始 JSON。
+两者都只挂在卡片上，步骤侧一律不带 —— 一轮 20 步就是省下 20 份重复。
+
+跨轮不做内容寻址：system 16KB + tools 64KB 的每轮一份，量级远低于引入 blob
+引用层的代价，而外置后 UI 上要点开才能看，可读性反而下降。
+
+### 卡片 output 为什么不是「按时间顺序拼接」
+
+一轮 agentic 对话的正文散在多步里：结论在最后一段，过程在前面。按到达顺序拼，
+结论会沉到卡片末尾，而 Langfuse 的 trace 列表页只显示 `output` 前约 100 字符 ——
+那里会永远显示"我先看一下仓库结构"，真正的答案一个字都看不到。
+
+实测一轮 15 段、每段 20KB：先到先得只能装下前 3 段，**结论 100% 丢失**。
+现在的分配是：
+
+1. 末段（结论）全额保留，上限 32KB；
+2. 剩余预算从后往前给过程段 —— 越靠近结论的越先拿到；
+3. 一段都放不下时只留结论。
+
+丢掉的段不是消失：展开下面的 generation 还能逐条读到，所以「早的过程段先丢」
+不损失可查性。卡面形如：
+
+```
+<结论>
+
+——（以下为过程，本轮共 15 段）——
+
+<过程段…>
+```
 
 长会话的输入处理：每条上游调用都会重发完整历史，如果把整段历史塞进 `input`，
 真正被回答的那句会被几十轮上下文淹没。所以 `input` 只放最新一条用户消息，
@@ -178,9 +225,11 @@ Langfuse 对未知 trace 的 generation 会先暂存、trace 到达后自动挂�
 `metadata.user_prompt_turns`。Codex 会把工具审批块（`>>> APPROVAL REQUEST`）写进
 user 消息，这类块不算用户原话，会被跳过。
 
-硬顶：`capture_max_bytes` / `capture_prompt_max_bytes` 的单侧上限都是 2MB；单个
-generation 事件正文最多 1MB，单张卡片最多约 100KB。Langfuse ingestion 单请求上限是
-4.5MB（实测 8MB 返回 `413 Body exceeded 4.5mb limit`），上报侧再按 3MB 预算切包。
+硬顶：`capture_max_bytes` / `capture_prompt_max_bytes` 的单侧上限都是 1MB
+（配置层 `maxCaptureSideBytes` 与发送层 `clampCaptured.outputBudget` 已对齐，
+配 2MB 不会再出现「配了却只得 1MB」的静默截断）；单个 generation 事件正文
+最多 1MB，单张卡片最多约 136KB。Langfuse ingestion 单请求上限是 4.5MB
+（实测 8MB 返回 `413 Body exceeded 4.5mb limit`），上报侧再按 3MB 预算切包。
 开启采集后队列条数会按 128MB 正文字节预算自动收紧，避免大上限把内存吃穿。
 
 ## 输出完整性标记
@@ -194,13 +243,20 @@ generation 事件正文最多 1MB，单张卡片最多约 100KB。Langfuse inges
 | `finish_reason` | generation | 上游收尾原因：`stop` / `length` / `tool_calls` / `incomplete:max_output_tokens`（responses）/ `end_turn`（anthropic） |
 | `output_truncated` | generation | **只在正文触顶时出现**，表示这一步的回答被截断 |
 | `raw_stream_truncated` | generation | 原始 SSE 字节被截（流里 `response.created` 这类大 JSON 很容易超限），**不代表正文缺失** |
-| `turn_output_truncated` | trace | 卡片上的回答被 64KB 上限截断 |
+| `step_input_truncated` | generation | 这一步的工具结果被 4KB 上限截断 |
+| `system_prompt_truncated` | trace | 卡片上的 system 提示被 16KB 上限截断 |
+| `tools_definition_truncated` | trace | 卡片上的工具定义被 64KB 上限截断 |
+| `turn_output_parts` | trace | 这一轮一共有几段非空正文（按到达次数计，不受预算淘汰影响） |
+| `turn_output_truncated` | trace | 卡面上的回答不完整：过程段被挤掉、结论被 32KB 截断、或上游正文自身触顶 |
 | `turn_input_truncated` | trace | 卡片上的用户消息被 32KB 上限截断 |
 | `turn_input_missing` | trace | 这一轮没抽到用户文本（纯工具请求） |
 | `turn_no_answer` 占位 | trace `output` | 该轮确实没有 assistant 正文时，`output` 写「〔本轮无文本回答，仅工具调用/未产出〕」，**不是上报失败** |
 
 判读：`finish_reason=length` 是模型自己停的；`output_truncated=true` 才是观测层切掉的。
 两者都没有而回答明显短，说明这一轮本来就没有 assistant 正文（纯工具调用步）。
+
+`turn_output_parts` 远大于卡片上实际段数，说明过程段被预算挤掉了 —— 此时按
+`thread_step` 展开下面的 generation 逐条读，正文都在各自的 `output` 上。
 
 ## 读历史数据
 

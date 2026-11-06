@@ -30,7 +30,12 @@ const (
 	levelError   = "ERROR"
 
 	// rawBodyMetaLimit 是 metadata 里原始请求体的字节上限。
-	rawBodyMetaLimit = 8 * 1024
+	//
+	// 8KB 只够看到 model 与前两条消息：system 提示与工具定义一旦排在 messages
+	// 之后，抽样里一个字节都没有，工具调用就成了无法复现的黑盒。它们现在
+	// 由 systemPrompt / toolDefinitions 单独抽、单独占 metadata 字段，
+	// 这里提到 64KB 是为了保住「客户端原始字节」这条独立证据链。
+	rawBodyMetaLimit = 64 * 1024
 )
 
 // event 是 ingestion 批量里的单条事件。
@@ -121,8 +126,15 @@ func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[s
 	if c.Status == "billing_error" && c.ErrorKind != "" {
 		body["statusMessage"] = c.ErrorKind
 	}
-	if input := c.stepInput(); input != "" {
+	if input, cut := c.stepInput(); input != "" {
 		body["input"] = input
+		if cut {
+			// 步骤侧 4KB 收口是刻意的（工具结果动辄几十 KB），但截断要可见：
+			// 卡片侧 32KB 有 turn_input_truncated，步骤侧之前什么都没写。
+			if meta, ok := body["metadata"].(map[string]any); ok {
+				meta["step_input_truncated"] = true
+			}
+		}
 	}
 	// 这一步说了什么，只有它自己知道：卡片只保留整轮最后一条，
 	// 中间过程（尤其是被后续步骤覆盖掉的解释性文字）必须挂在 generation 上。
@@ -138,14 +150,20 @@ func generationBody(c Call, traceID, genID string, grp sessiongroup.Group) map[s
 const stepInputLimit = 4 << 10
 
 // stepInput 选择步骤 input：工具结果优先，没有则退回该轮的用户消息。
-func (c Call) stepInput() string {
-	if c.StepInput != "" {
-		return truncateBytes(c.StepInput, stepInputLimit)
+// 第二个返回值报告是否因为 4KB 收口被截断。
+//
+// 不往 c.Input 上兜底：那是 metadata 里的原始请求体样本（8KB JSON 片段），
+// 是排障用的，不是展示内容。抽不到用户消息的轮次（Codex 的上下文压缩轮、
+// 纯机器块轮）会把 `{"model":...` 直接印在步骤面板上，比空着更难读。
+// 空 input 本身也是有效信息：它说明这一步没有新增内容。
+func (c Call) stepInput() (string, bool) {
+	for _, cand := range []string{c.StepInput, c.InputUser} {
+		if cand == "" {
+			continue
+		}
+		return truncateBytes(cand, stepInputLimit), len(cand) > stepInputLimit
 	}
-	if c.InputUser != "" {
-		return truncateBytes(c.InputUser, stepInputLimit)
-	}
-	return truncateBytes(c.Input, stepInputLimit)
+	return "", false
 }
 
 func usageDetails(c Call) map[string]any {

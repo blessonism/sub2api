@@ -81,9 +81,16 @@ type Recorder struct {
 	// 只有工具结果每步不同，那才是"这一步模型看到了什么"。
 	stepInput     string
 	stepInputKind string
-	reqFP         string
-	protocol      string
-	promptStat    string
+	// systemText / toolsText 是这一轮恒定不变的两块：system 提示与工具定义。
+	// 它们由轮次卡片承载一份，不随每条 generation 重复上报 —— 客户端每次
+	// 上游调用都会重发，逐条上报就是几十份逐字相同的文本。
+	systemText      string
+	systemTruncated bool
+	toolsText       string
+	toolsTruncated  bool
+	reqFP           string
+	protocol        string
+	promptStat      string
 	// respTruncated 标记**原始响应字节**达到上限被截；它与正文是否被截是两件事：
 	// 流里有 response.created 这类大 JSON，原始字节几乎必然超上限，
 	// 但正文往往远未触顶。两者混用会把每一条都标成"输出被截"。
@@ -143,6 +150,10 @@ func (r *Recorder) SetRequest(text string) {
 	}
 	r.stepInput = extracted.StepInput
 	r.stepInputKind = extracted.StepInputKind
+	r.systemText = extracted.System
+	r.systemTruncated = extracted.SystemTruncated
+	r.toolsText = extracted.Tools
+	r.toolsTruncated = extracted.ToolsTruncated
 	r.mu.Unlock()
 }
 
@@ -216,6 +227,29 @@ func (r *Recorder) StepInputKind() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.stepInputKind
+}
+
+// SystemPrompt 返回 system / developer 提示的原文，第二个返回值报告是否被截断。
+//
+// 它在一轮对话里恒定，观测层只由卡片承载一份：之前完全没被单独抽出来，
+// 只以「请求体前 8KB 抽样」的形式部分存在，system 一旦不在 JSON 开头就看不到。
+func (r *Recorder) SystemPrompt() (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.systemText, r.systemTruncated
+}
+
+// ToolsDefinition 返回工具定义的原始 JSON，第二个返回值报告是否被截断。
+func (r *Recorder) ToolsDefinition() (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.toolsText, r.toolsTruncated
 }
 
 // RequestFingerprint 返回请求体指纹，供观测层识别「同一步的重复尝试」。

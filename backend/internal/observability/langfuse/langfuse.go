@@ -85,6 +85,18 @@ type Call struct {
 	StepInput string
 	// StepInputKind 标记 StepInput 的来源，仅用于排查。
 	StepInputKind string
+	// SystemPrompt 是 system / developer 提示的原文。
+	//
+	// 它在一轮对话里恒定，客户端每次上游调用都重发一遍。逐条上报就是几十份
+	// 逐字相同的文本 —— 这是「重复记录」里体积最大的一块，所以只由轮次卡片
+	// 承载一份（每个会话仍每轮一份；跨轮去重要靠内容寻址，代价大于收益）。
+	SystemPrompt string
+	// SystemPromptTruncated 标记 system 提示被 prompttext.systemLimit 截断。
+	SystemPromptTruncated bool
+	// ToolsDefinition 是工具定义的原始 JSON，同样只由卡片承载一份。
+	ToolsDefinition string
+	// ToolsDefinitionTruncated 标记工具定义被 prompttext.toolsLimit 截断。
+	ToolsDefinitionTruncated bool
 	// FirstUserPrompt 是请求里第一条「用户真正说的话」（已跳过 <environment_context>
 	// 这类客户端注入块），只用于会话归组与标题，不单独展示。
 	FirstUserPrompt string

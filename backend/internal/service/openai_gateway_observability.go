@@ -47,6 +47,10 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 	var promptProtocol, promptStatus string
 	var firstUser, requestFP string
 	var stepInput, stepInputKind string
+	// system 与 tools 在轮内恒定，只由卡片承载一份。它们不是「用户说的话」，
+	// 所以单独抽、单独传，不并进 Input/InputUser。
+	var systemPrompt, toolsDefinition string
+	var systemPromptCut, toolsDefinitionCut bool
 	if rec := capture.From(ctx); rec != nil {
 		input = rec.RequestText()
 		output = rec.ResponseText()
@@ -68,6 +72,13 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		outputChars = utf8.RuneCountInString(output)
 		firstUser = rec.FirstUserPrompt()
 		requestFP = rec.RequestFingerprint()
+		// 这一步新增的内容（通常是工具结果）。之前只声明没取值 ——
+		// Call.StepInput 恒为空，于是每个步骤面板显示的都是同一句用户消息，
+		// 「步骤 input 应为工具结果」那版修复在线上从未生效。
+		stepInput = rec.StepInput()
+		stepInputKind = rec.StepInputKind()
+		systemPrompt, systemPromptCut = rec.SystemPrompt()
+		toolsDefinition, toolsDefinitionCut = rec.ToolsDefinition()
 		// 图片/视频类响应的正文是 base64 载荷，不是可读文本，落进观测层只是噪声。
 		if usageLog.ImageCount > 0 || usageLog.VideoCount > 0 {
 			output = ""
@@ -115,24 +126,28 @@ func observeModelCall(ctx context.Context, usageLog *UsageLog, charged float64, 
 		APIKeyID:  usageLog.APIKeyID,
 		GroupID:   derefInt64(usageLog.GroupID),
 
-		Input:                  input,
-		InputUser:              inputUser,
-		StepInput:              stepInput,
-		StepInputKind:          stepInputKind,
-		FirstUserPrompt:        firstUser,
-		RequestFingerprint:     requestFP,
-		UserTurns:              userTurns,
-		UserPromptHistoryBytes: userPromptHistoryBytes,
-		PromptProtocol:         promptProtocol,
-		PromptStatus:           promptStatus,
-		PromptFallback:         promptFallback,
-		Output:                 output,
-		OutputChars:            outputChars,
-		FinishReason:           finishReason,
-		RawRequestTruncated:    rawRequestTruncated,
-		PromptTruncated:        promptTruncated,
-		OutputTruncated:        outputTruncated,
-		RawResponseTruncated:   rawTruncated,
+		Input:                    input,
+		InputUser:                inputUser,
+		StepInput:                stepInput,
+		StepInputKind:            stepInputKind,
+		SystemPrompt:             systemPrompt,
+		SystemPromptTruncated:    systemPromptCut,
+		ToolsDefinition:          toolsDefinition,
+		ToolsDefinitionTruncated: toolsDefinitionCut,
+		FirstUserPrompt:          firstUser,
+		RequestFingerprint:       requestFP,
+		UserTurns:                userTurns,
+		UserPromptHistoryBytes:   userPromptHistoryBytes,
+		PromptProtocol:           promptProtocol,
+		PromptStatus:             promptStatus,
+		PromptFallback:           promptFallback,
+		Output:                   output,
+		OutputChars:              outputChars,
+		FinishReason:             finishReason,
+		RawRequestTruncated:      rawRequestTruncated,
+		PromptTruncated:          promptTruncated,
+		OutputTruncated:          outputTruncated,
+		RawResponseTruncated:     rawTruncated,
 	})
 }
 

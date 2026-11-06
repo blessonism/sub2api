@@ -29,6 +29,18 @@ x-langfuse-env: &langfuse-env
   LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${S3_ENDPOINT}
   LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
   LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: "langfuse/media/"
+  # 超长正文字段外置：input/output/metadata 任一值超过阈值时，正文以 text/plain
+  # 上传到 media bucket，行内只留 @@@langfuseMedia:...@@@ 引用。
+  # 这个开关默认 false —— 不开的话 worker 不会做外置，4.5MB 的 ingestion 上限
+  # 就只能靠业务侧截断来绕，正文永远存不全。
+  # 结果分 uploaded/reused/failed，reused 即内容寻址命中（mediaId 由
+  # url-safe(SHA-256)[:22] 决定，唯一约束 projectId+sha256Hash），
+  # 同一份 system prompt / 工具定义只真正存一份。
+  LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED: "true"
+  LANGFUSE_OBSERVATION_FIELD_SIZE_LIMIT_BYTES: "2097152"
+  # OTel 入口的单请求上限（编码前后各算一次）。默认 512MiB，超过 16MiB 只记 warn。
+  # 业务侧切到 /api/public/otel/v1/traces 后，11MB 的 agentic 请求体连警告线都摸不到。
+  LANGFUSE_OTEL_INGESTION_MAX_BODY_BYTES: "134217728"
   LANGFUSE_DEFAULT_ORG_ID: "sub2api-org"
   LANGFUSE_DEFAULT_ORG_NAME: "sub2api"
   LANGFUSE_DEFAULT_PROJECT_ID: "sub2api-obs"
