@@ -30,7 +30,12 @@ const (
 	levelError   = "ERROR"
 
 	// rawBodyMetaLimit 是 metadata 里原始请求体的字节上限。
-	rawBodyMetaLimit = 8 * 1024
+	//
+	// 8KB 只够看到 model 与前两条消息：system 提示与工具定义一旦排在 messages
+	// 之后，抽样里一个字节都没有，工具调用就成了无法复现的黑盒。它们现在
+	// 由 systemPrompt / toolDefinitions 单独抽、单独占 metadata 字段，
+	// 这里提到 64KB 是为了保住「客户端原始字节」这条独立证据链。
+	rawBodyMetaLimit = 64 * 1024
 )
 
 // event 是 ingestion 批量里的单条事件。

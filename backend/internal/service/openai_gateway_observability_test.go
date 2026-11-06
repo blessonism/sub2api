@@ -248,3 +248,48 @@ func TestBillingTypeLabel(t *testing.T) {
 		t.Fatalf("未知标签 = %q, want 空", got)
 	}
 }
+
+// TestObserveModelCallCarriesSystemToolsAndStepInput 覆盖装配层：
+// recorder 抽到的 system / tools / 工具结果必须真的传进 Call。
+//
+// 0797e36b7 声明了 stepInput / stepInputKind 两个变量，却没从 recorder 取值 ——
+// Call.StepInput 恒为空，于每个步骤面板显示的都是同一句用户消息，
+// 「步骤 input 应为工具结果」那版修复在线上从未生效。
+// 那个提交的单测只覆盖 langfuse 包内的 stepInput() 函数（用构造的 Call 调用），
+// 装配这一环没有测试兜住，所以漏了。
+func TestObserveModelCallCarriesSystemToolsAndStepInput(t *testing.T) {
+	sink := installCaptureSink(t)
+
+	rec := capture.New(capture.Options{Prompt: true, Response: true, MaxBytes: 64 << 10})
+	rec.SetRequest(`{"model":"gpt-5.2",
+		"messages":[
+			{"role":"system","content":"你是严谨的工程师"},
+			{"role":"user","content":"读一下 a.go"},
+			{"role":"tool","content":"package a\nfunc Run() {}"}],
+		"tools":[{"type":"function","function":{"name":"read_file"}}]}`)
+
+	ctx := capture.With(context.Background(), rec)
+	observeModelCall(ctx, &UsageLog{UserID: 13, CreatedAt: time.Now()}, 0.1, observeStatusOK, "")
+
+	calls := sink.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("投递条数 = %d, want 1", len(calls))
+	}
+	got := calls[0]
+	if got.SystemPrompt != "你是严谨的工程师" {
+		t.Fatalf("SystemPrompt = %q，装配层没把 system 传下来", got.SystemPrompt)
+	}
+	if !strings.Contains(got.ToolsDefinition, "read_file") {
+		t.Fatalf("ToolsDefinition = %q，装配层没把工具定义传下来", got.ToolsDefinition)
+	}
+	if !strings.Contains(got.StepInput, "func Run()") {
+		t.Fatalf("StepInput = %q，装配层没把这一步的工具结果传下来", got.StepInput)
+	}
+	if got.StepInputKind != "tool_result" {
+		t.Fatalf("StepInputKind = %q, want tool_result", got.StepInputKind)
+	}
+	// system 与工具定义不是「用户说的话」，不能混进 InputUser。
+	if strings.Contains(got.InputUser, "你是严谨的工程师") {
+		t.Fatalf("system 混进了用户消息：%q", got.InputUser)
+	}
+}

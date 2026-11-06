@@ -177,7 +177,23 @@ Langfuse 对未知 trace 的 generation 会先暂存、trace 到达后自动挂�
 | trace `output` | 该轮**末段（结论）优先**，其余过程段按「就近」从后往前填预算 | 卡片侧 64KB（结论占 32KB） | 超限打 `turn_output_truncated`；段数见 `turn_output_parts` |
 | generation `output` | 这一步自己的 assistant 正文 | `capture_max_bytes` = 1MB | 超限打 `output_truncated` |
 | generation `input` | **这一步新加进来的内容**（通常是工具执行结果） | 4KB | 同一轮每步的用户消息完全相同，只发增量；截断打 `step_input_truncated` |
-| `metadata.request_body` | 原始请求体样本，**每轮只存首步一份** | 8KB | 取证抽样，不是全文 |
+| `metadata.system_prompt` | system / developer 提示原文，**每轮只存首份** | 16KB | 超限打 `system_prompt_truncated` |
+| `metadata.tools_definition` | 工具定义原始 JSON（含 schema、枚举、默认值），**每轮只存首份** | 64KB | 超限打 `tools_definition_truncated` |
+| `metadata.request_body` | 原始请求体样本，**每轮只存首步一份** | 64KB | 客户端原始字节证据链，不是全文 |
+
+### system 与工具定义为什么单独抽
+
+它们在一轮对话里恒定，客户端每次上游调用都重发一遍。之前只以「请求体前 8KB
+抽样」的形式部分存在 —— system 与 tools 一旦排在 `messages` 之后，抽样里连一个
+字节都看不到，工具调用就成了无法复现的黑盒。
+
+现在 `prompttext` 按四种协议各自抽：OpenAI chat 取 `messages[].role=system|developer`，
+Responses 取顶层 `instructions`，Anthropic 取顶层 `system`（string 或 text block
+数组），Gemini 取 `systemInstruction.parts[].text`；工具定义取 `tools` 的原始 JSON。
+两者都只挂在卡片上，步骤侧一律不带 —— 一轮 20 步就是省下 20 份重复。
+
+跨轮不做内容寻址：system 16KB + tools 64KB 的每轮一份，量级远低于引入 blob
+引用层的代价，而外置后 UI 上要点开才能看，可读性反而下降。
 
 ### 卡片 output 为什么不是「按时间顺序拼接」
 
@@ -228,6 +244,8 @@ user 消息，这类块不算用户原话，会被跳过。
 | `output_truncated` | generation | **只在正文触顶时出现**，表示这一步的回答被截断 |
 | `raw_stream_truncated` | generation | 原始 SSE 字节被截（流里 `response.created` 这类大 JSON 很容易超限），**不代表正文缺失** |
 | `step_input_truncated` | generation | 这一步的工具结果被 4KB 上限截断 |
+| `system_prompt_truncated` | trace | 卡片上的 system 提示被 16KB 上限截断 |
+| `tools_definition_truncated` | trace | 卡片上的工具定义被 64KB 上限截断 |
 | `turn_output_parts` | trace | 这一轮一共有几段非空正文（按到达次数计，不受预算淘汰影响） |
 | `turn_output_truncated` | trace | 卡面上的回答不完整：过程段被挤掉、结论被 32KB 截断、或上游正文自身触顶 |
 | `turn_input_truncated` | trace | 卡片上的用户消息被 32KB 上限截断 |

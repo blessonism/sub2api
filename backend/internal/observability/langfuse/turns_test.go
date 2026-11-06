@@ -741,3 +741,66 @@ func firstN(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// TestCardCarriesSystemAndToolsOnce：system 与工具定义只由卡片承载一份。
+//
+// 它们在轮内恒定，客户端每次上游调用都重发。之前完全没被单独抽出来，
+// 只以「请求体前 8KB 抽样」的形式部分存在 —— tools 一旦排在 messages 之后，
+// 抽样里一个字节都看不到。现在按卡取首份，步骤侧一律不带。
+func TestCardCarriesSystemAndToolsOnce(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+
+	const sys = "你是严谨的工程师"
+	const tools = `[{"type":"function","function":{"name":"read_file"}}]`
+	for i := 0; i < 3; i++ {
+		c := stepCall("sess-st", "读一下 a.go", 1, fmt.Sprintf("fp-%d", i), base.Add(time.Duration(i)*time.Second))
+		c.SystemPrompt = sys
+		c.ToolsDefinition = tools
+		b.add(c)
+	}
+
+	evs := b.drain()
+	card := evs[0]
+	meta := metaOfEvent(t, card)
+	if meta["system_prompt"] != sys {
+		t.Fatalf("system_prompt = %v", meta["system_prompt"])
+	}
+	if !strings.Contains(meta["tools_definition"].(string), "read_file") {
+		t.Fatalf("tools_definition = %v", meta["tools_definition"])
+	}
+
+	// 步骤侧不能各背一份：3 步各带一份就是 3 倍重复。
+	for _, e := range evs {
+		if e.Type != eventTypeGenerationCreate {
+			continue
+		}
+		stepMeta := metaOfEvent(t, e)
+		if _, ok := stepMeta["system_prompt"]; ok {
+			t.Fatal("generation 不该带 system_prompt")
+		}
+		if _, ok := stepMeta["tools_definition"]; ok {
+			t.Fatal("generation 不该带 tools_definition")
+		}
+	}
+}
+
+// TestCardKeepsFirstSystemWhenLaterStepsDiffer：轮内后面几步的 system 变化
+// （客户端压缩后会改写）不该覆盖首份 —— 卡片描述的是「这一轮开始时定的规矩」。
+func TestCardKeepsFirstSystemWhenLaterStepsDiffer(t *testing.T) {
+	b := newTestBuffer(t)
+	base := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+
+	first := stepCall("sess-sd", "开始", 1, "fp-1", base)
+	first.SystemPrompt = "第一版规矩"
+	b.add(first)
+
+	second := stepCall("sess-sd", "开始", 1, "fp-2", base.Add(time.Second))
+	second.SystemPrompt = "压缩后改写的第二版"
+	b.add(second)
+
+	meta := metaOfEvent(t, b.drain()[0])
+	if meta["system_prompt"] != "第一版规矩" {
+		t.Fatalf("system_prompt = %v，应保留首份", meta["system_prompt"])
+	}
+}

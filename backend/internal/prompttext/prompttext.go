@@ -54,6 +54,20 @@ type Result struct {
 	StepInput string
 	// StepInputKind 标记 StepInput 的来源：tool_result / ""（没有新增内容）。
 	StepInputKind string
+	// System 是 system / developer 提示的原文，只由轮次卡片承载一份。
+	//
+	// 它在一轮对话里恒定，客户端每次上游调用都重发一遍 —— 逐条上报就是
+	// 几十份逐字相同的文本，这是「重复记录」里体积最大的那一块。
+	System string
+	// SystemTruncated 标记 system 提示被 systemLimit 截断。
+	SystemTruncated bool
+	// Tools 是工具定义的原始 JSON，同样只由卡片承载一份。
+	//
+	// 它比 system 大一个量级（实测 20-60KB），而之前只以「请求体前 8KB 抽样」
+	// 的形式部分存在：tools 一旦排在 messages 之后，抽样里一个字节都看不到。
+	Tools string
+	// ToolsTruncated 标记工具定义被 toolsLimit 截断。
+	ToolsTruncated bool
 }
 
 // Extract 用默认上限抽取用户文本。
@@ -76,6 +90,20 @@ func ExtractWithLimit(body []byte, limit int) Result {
 		return Result{Status: "invalid_json"}
 	}
 
+	out := extractUserText(root, limit)
+	// system 与 tools 单独抽，不并进 Text：它们在轮内恒定，
+	// 由卡片承载一份即可，塞进每条 generation 就变成几十份重复。
+	// 抽取不依赖协议判定结果（各协议的落点不同，见 systemPrompt 注释）。
+	out.System, out.SystemTruncated = systemPrompt(root)
+	out.Tools, out.ToolsTruncated = toolDefinitions(root)
+	return out
+}
+
+// extractUserText 是原来按协议识别用户文本的分支逻辑，返回用户侧结果。
+//
+// 识别顺序：contents（Gemini）→ input[]（Responses）→ messages[]（Chat/Anthropic）→
+// 顶层 input 字符串（少数 Responses 客户端）。
+func extractUserText(root map[string]any, limit int) Result {
 	if contents, ok := root["contents"].([]any); ok {
 		texts := geminiUserTexts(contents)
 		out := build("gemini", texts, limit)
@@ -422,6 +450,121 @@ func stringValue(value any) string {
 		return s
 	}
 	return ""
+}
+
+const (
+	// systemLimit 是 system / developer 提示的上限。
+	// 实测 Codex 这类客户端在 8-15KB，16KB 能完整装下，
+	// 又不至于让每张卡多背一份大文本。
+	systemLimit = 16 << 10
+	// toolsLimit 是工具定义的上限。实测 20-60KB（工具数量决定），
+	// 64KB 覆盖常见规模；超出部分由 ToolsTruncated 表示。
+	toolsLimit = 64 << 10
+)
+
+// systemPrompt 抽出 system / developer 提示的原文。
+//
+// 它在一轮对话里恒定，客户端每次上游调用都重发一份 —— 观测层按卡只存一份，
+// 既省掉几十份重复，也让「这一轮的规矩是什么」能被直接读到。
+//
+// 四种协议的落点各不相同：
+//   - OpenAI chat：messages[] 里 role=system / developer 的项；
+//   - Responses：顶层 instructions；
+//   - Anthropic：顶层 system（string，或 text block 数组）；
+//   - Gemini：systemInstruction / system_instruction 里的 parts[].text。
+//
+// 探测顺序按「顶层字段优先」：顶层字段一旦存在就是权威落点，
+// 再去 messages 里找会把同一份内容读成两份。
+func systemPrompt(root map[string]any) (string, bool) {
+	if v, ok := root["system"]; ok {
+		if text := contentText(v); text != "" {
+			return truncateRunes(text, systemLimit), exceedsLimit(text, systemLimit)
+		}
+	}
+	if s, ok := root["instructions"].(string); ok && strings.TrimSpace(s) != "" {
+		return truncateRunes(s, systemLimit), exceedsLimit(s, systemLimit)
+	}
+	for _, key := range []string{"systemInstruction", "system_instruction"} {
+		if v, ok := root[key]; ok {
+			if text := geminiPartsText(v); text != "" {
+				return truncateRunes(text, systemLimit), exceedsLimit(text, systemLimit)
+			}
+		}
+	}
+	if items, ok := root["messages"].([]any); ok {
+		parts := make([]string, 0, 2)
+		for _, item := range items {
+			msg, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			role := strings.ToLower(strings.TrimSpace(stringValue(msg["role"])))
+			if role != "system" && role != "developer" {
+				continue
+			}
+			if text := contentText(msg["content"]); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		if len(parts) > 0 {
+			joined := strings.Join(parts, "\n\n")
+			return truncateRunes(joined, systemLimit), exceedsLimit(joined, systemLimit)
+		}
+	}
+	return "", false
+}
+
+// geminiPartsText 从 {"parts":[{"text":"..."}]} 里取文本；不是该形态时退回 contentText。
+//
+// parts 的元素是对象而非字符串：contentText 只认 string 与 []any，
+// 直接丢给它每个 part 会一个字节都取不到。
+func geminiPartsText(value any) string {
+	obj, ok := value.(map[string]any)
+	if !ok {
+		return contentText(value)
+	}
+	parts, ok := obj["parts"].([]any)
+	if !ok {
+		return contentText(value)
+	}
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		part, ok := p.(map[string]any)
+		if !ok {
+			if text := contentText(p); text != "" {
+				out = append(out, text)
+			}
+			continue
+		}
+		if s, ok := part["text"].(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
+// toolDefinitions 抽出工具定义的原始 JSON。
+//
+// 它同样在一轮里恒定，且体积比 system 大一个量级。之前它只以「请求体前 8KB
+// 抽样」的形式部分存在 —— tools 一旦排在 messages 之后，抽样里连一个字节都
+// 看不到，工具调用就成了无法复现的黑盒。
+//
+// 保留原始 JSON 而不是转成人读的列表：工具定义里有 schema、枚举、默认值，
+// 任何裁剪都会让「为什么模型选了那个参数」失去判据。
+func toolDefinitions(root map[string]any) (string, bool) {
+	raw, ok := root["tools"]
+	if !ok || raw == nil {
+		return "", false
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return "", false
+	}
+	s := string(b)
+	if s == "" || s == "[]" || s == "null" {
+		return "", false
+	}
+	return truncateRunes(s, toolsLimit), exceedsLimit(s, toolsLimit)
 }
 
 // tailRunes 超长时保留尾部：多轮会话里"最近说了什么"比开头更有价值，

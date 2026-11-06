@@ -29,10 +29,11 @@ const (
 	// defaultMaxTurnBytes 是未收尾卡片占用的字节预算。
 	//
 	// 只按张数设上限是不够的：一张卡最多持有 input(32KB) +
-	// stepOutput(outputStoreLimit=96KB) + request_body(8KB) ≈ 136KB，
-	// 2048 张就是 278MB。这里按字节收口，
-	// 与 config 里队列的 128MB 正文字节预算相互独立、互不挤占。
-	defaultMaxTurnBytes = 32 << 20
+	// stepOutput(outputStoreLimit=96KB) + request_body(64KB) +
+	// system(16KB) + tools(64KB) ≈ 272KB，2048 张就是 557MB。
+	// 这里按字节收口，与 config 里队列的 128MB 正文字节预算相互独立、互不挤占。
+	// 64MB 约合 235 张同时未收尾的卡，实测 300 次调用只有 38 轮，余量足够。
+	defaultMaxTurnBytes = 64 << 20
 
 	// maxStartSkew 是「业务开始时刻」与墙钟之间可接受的落后幅度。
 	// 超过它且拿不到耗时信息时，按墙钟算，避免 DB 时钟偏差把整站卡片时间戳拖偏。
@@ -138,7 +139,16 @@ type turnCard struct {
 	promptStatus   string
 	promptProtocol string
 	promptFallback bool
-	lastFinish     string
+
+	// systemPrompt / toolsDefinition 在轮内恒定：客户端每次上游调用都重发，
+	// 逐条上报就是几十份逐字相同的文本。取首份即可，跨轮不做内容寻址 ——
+	// 每轮一份的量级（system 16KB + tools 64KB）不值得引入 blob 引用层。
+	systemPrompt    string
+	systemPromptCut bool
+	toolsDefinition string
+	toolsCut        bool
+
+	lastFinish string
 }
 
 // turnBuffer 累积未收尾的轮次。
@@ -185,7 +195,8 @@ func newTurnBuffer(release string, idle time.Duration, maxCards int) *turnBuffer
 // size 是这张卡片当前占用的字节数（可读正文字段 + 固定开销）。
 func (c *turnCard) size() int {
 	const fixed = 512
-	return fixed + len(c.input) + c.stepBytes + len(c.requestBody) + len(c.title)
+	return fixed + len(c.input) + c.stepBytes + len(c.requestBody) +
+		len(c.systemPrompt) + len(c.toolsDefinition) + len(c.title)
 }
 
 // add 吸收一条调用记录，返回需要立即外发的事件。
@@ -349,6 +360,15 @@ func (b *turnBuffer) touch(c Call, grp sessiongroup.Group, start, wall time.Time
 		card.lastFinish = c.FinishReason
 	}
 	// 原始请求样本只留首步：它是排障用的抽样，每步都存会让卡片没有主次。
+	// system 与 tools 只取首份：轮内恒定，后面几步发的是同一份。
+	if card.systemPrompt == "" && c.SystemPrompt != "" {
+		card.systemPrompt = c.SystemPrompt
+		card.systemPromptCut = c.SystemPromptTruncated
+	}
+	if card.toolsDefinition == "" && c.ToolsDefinition != "" {
+		card.toolsDefinition = c.ToolsDefinition
+		card.toolsCut = c.ToolsDefinitionTruncated
+	}
 	if card.requestBody == "" && c.Input != "" {
 		card.requestBody = truncateBytes(c.Input, rawBodyMetaLimit)
 		card.requestBodyCut = len(c.Input) > rawBodyMetaLimit
@@ -707,6 +727,20 @@ func cardMetadata(card *turnCard) map[string]any {
 	}
 	if card.lastFinish != "" {
 		meta["turn_finish_reason"] = card.lastFinish
+	}
+	if card.systemPrompt != "" {
+		// system 与 tools 放在卡片上而不是每条 generation：它们描述这一轮的
+		// 规矩，与「这一步做了什么」不是一回事。
+		meta["system_prompt"] = card.systemPrompt
+		if card.systemPromptCut {
+			meta["system_prompt_truncated"] = true
+		}
+	}
+	if card.toolsDefinition != "" {
+		meta["tools_definition"] = card.toolsDefinition
+		if card.toolsCut {
+			meta["tools_definition_truncated"] = true
+		}
 	}
 	if card.requestBody != "" {
 		meta["request_body"] = card.requestBody
