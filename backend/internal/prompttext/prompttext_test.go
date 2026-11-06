@@ -541,3 +541,87 @@ func TestSystemAndToolsTruncationFlagged(t *testing.T) {
 		t.Fatalf("Tools 长度 = %d，超过 %d", len(got.Tools), toolsLimit)
 	}
 }
+
+// TestResponsesSystemInInputArray：Responses 协议把 system 写在 input[] 里，
+// 不在顶层 instructions 上。
+//
+// 线上主流量是 /v1/responses，真实请求形如
+//   {"include":["reasoning.encrypted_content"],
+//    "input":[{"type":"message","role":"system","content":"You are Grok ..."}, ...]}
+// 只查 messages[] 与顶层 instructions 会让 system_prompt 恒为空 ——
+// 部署后回读 Langfuse 时 15 张卡只有 1 张带 system，就是这个原因。
+func TestResponsesSystemInInputArray(t *testing.T) {
+	body := `{"include":["reasoning.encrypted_content"],
+		"input":[
+			{"type":"message","role":"system","content":"You are Grok released by xAI."},
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"额外规则"}]},
+			{"type":"message","role":"user","content":"帮我看下代码"}]}`
+
+	got := Extract([]byte(body))
+	if !strings.Contains(got.System, "You are Grok released by xAI.") {
+		t.Fatalf("System = %q，Responses 的 input[].system 没抽到", got.System)
+	}
+	if !strings.Contains(got.System, "额外规则") {
+		t.Fatalf("System = %q，developer 条目没并进来", got.System)
+	}
+	// 工具定义与推理块不能被当成 system 文本。
+	if strings.Contains(got.System, "帮我看下代码") {
+		t.Fatalf("system 混进了用户消息：%q", got.System)
+	}
+}
+
+// TestResponsesToolsInAdditionalTools：Responses 的工具定义在
+// input[{"type":"additional_tools","tools":[...]}] 里，不在顶层 tools 上。
+//
+// 真实样本：
+//   {"model":"gpt-6.1-sol","stream":true,
+//    "input":[{"type":"additional_tools","role":"developer",
+//              "tools":[{"type":"namespace","name":"functions",
+//                        "tools":[{"type":"custom","name":"exec"}]}]}]}
+func TestResponsesToolsInAdditionalTools(t *testing.T) {
+	body := `{"model":"gpt-6.1-sol","stream":true,
+		"input":[
+			{"type":"additional_tools","id":"at_01","role":"developer",
+			 "tools":[{"type":"namespace","name":"functions","description":"",
+			           "tools":[{"type":"custom","name":"exec","description":"跑命令"}]}]},
+			{"type":"message","role":"user","content":"跑一下测试"}]}`
+
+	got := Extract([]byte(body))
+	if got.Tools == "" {
+		t.Fatal("Tools 为空，additional_tools 没抽到")
+	}
+	if !strings.Contains(got.Tools, `"name":"exec"`) {
+		t.Fatalf("Tools 丢了工具名：%q", got.Tools)
+	}
+	if !strings.Contains(got.Tools, "跑一下测试") {
+		// 用户消息不该混进工具定义。
+	} else {
+		t.Fatalf("Tools 混进了用户消息：%q", got.Tools)
+	}
+}
+
+// TestResponsesTopLevelToolsWins：两处都有时以顶层 tools 为准。
+func TestResponsesTopLevelToolsWins(t *testing.T) {
+	body := `{"tools":[{"type":"function","function":{"name":"top_level"}}],
+		"input":[{"type":"additional_tools","tools":[{"type":"function","function":{"name":"nested"}}]}]}`
+	got := Extract([]byte(body))
+	if !strings.Contains(got.Tools, "top_level") {
+		t.Fatalf("Tools = %q，应以顶层为准", got.Tools)
+	}
+	if strings.Contains(got.Tools, "nested") {
+		t.Fatalf("Tools = %q，不该混入 additional_tools", got.Tools)
+	}
+}
+
+// TestRoleTextSkipsNonMessageTypes：input[] 是混合数组，
+// reasoning / function_call_output 不能当 system 文本读。
+func TestRoleTextSkipsNonMessageTypes(t *testing.T) {
+	body := `{"input":[
+		{"type":"reasoning","role":"system","content":"不该出现"},
+		{"type":"function_call_output","role":"developer","content":"也不该出现"},
+		{"type":"message","role":"system","content":"真正的系统提示"}]}`
+	got := Extract([]byte(body))
+	if got.System != "真正的系统提示" {
+		t.Fatalf("System = %q，非消息型条目被误读", got.System)
+	}
+}

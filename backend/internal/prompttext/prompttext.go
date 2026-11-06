@@ -491,27 +491,51 @@ func systemPrompt(root map[string]any) (string, bool) {
 			}
 		}
 	}
-	if items, ok := root["messages"].([]any); ok {
-		parts := make([]string, 0, 2)
-		for _, item := range items {
-			msg, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			role := strings.ToLower(strings.TrimSpace(stringValue(msg["role"])))
-			if role != "system" && role != "developer" {
-				continue
-			}
-			if text := contentText(msg["content"]); text != "" {
-				parts = append(parts, text)
-			}
+	// OpenAI chat 的 system/developer 在 messages[]，Responses 的在 input[]。
+	// 两处同构，用同一个取值函数，别再把 input[] 漏掉 —— 线上主流量是
+	// /v1/responses，system prompt 就写在 input[{"role":"system"}...] 里，
+	// 只查 messages[] 会让 system_prompt 恒为空。
+	for _, key := range []string{"messages", "input"} {
+		items, ok := root[key].([]any)
+		if !ok {
+			continue
 		}
-		if len(parts) > 0 {
-			joined := strings.Join(parts, "\n\n")
+		if joined := roleText(items, "system", "developer"); joined != "" {
 			return truncateRunes(joined, systemLimit), exceedsLimit(joined, systemLimit)
 		}
 	}
 	return "", false
+}
+
+// roleText 拼出 items 里指定角色的文本。
+//
+// 只认消息型条目：Responses 的 input[] 是混合数组，里面还有
+// {"type":"additional_tools"}、{"type":"reasoning"}、{"type":"function_call_output"}，
+// 不过滤 type 会把工具定义也当成 system 文本读进来。
+func roleText(items []any, roles ...string) string {
+	want := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		want[r] = true
+	}
+	parts := make([]string, 0, 2)
+	for _, item := range items {
+		msg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(stringValue(msg["type"])))
+		if kind != "" && kind != "message" {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(stringValue(msg["role"])))
+		if !want[role] {
+			continue
+		}
+		if text := contentText(msg["content"]); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // geminiPartsText 从 {"parts":[{"text":"..."}]} 里取文本；不是该形态时退回 contentText。
@@ -552,8 +576,18 @@ func geminiPartsText(value any) string {
 // 保留原始 JSON 而不是转成人读的列表：工具定义里有 schema、枚举、默认值，
 // 任何裁剪都会让「为什么模型选了那个参数」失去判据。
 func toolDefinitions(root map[string]any) (string, bool) {
-	raw, ok := root["tools"]
-	if !ok || raw == nil {
+	// 标准位置是顶层 tools；Responses 还会把工具定义塞进 input[] 里的
+	// {"type":"additional_tools","role":"developer","tools":[...]}。
+	// 只读顶层会让 /v1/responses 的工具调用完全看不到定义。
+	raw := root["tools"]
+	if raw == nil {
+		if items, ok := root["input"].([]any); ok {
+			if merged := collectInputTools(items); len(merged) > 0 {
+				raw = merged
+			}
+		}
+	}
+	if raw == nil {
 		return "", false
 	}
 	b, err := json.Marshal(raw)
@@ -565,6 +599,27 @@ func toolDefinitions(root map[string]any) (string, bool) {
 		return "", false
 	}
 	return truncateRunes(s, toolsLimit), exceedsLimit(s, toolsLimit)
+}
+
+// collectInputTools 收集 input[] 里 additional_tools 条目带的工具定义。
+func collectInputTools(items []any) []any {
+	out := make([]any, 0, 4)
+	for _, item := range items {
+		msg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(stringValue(msg["type"])))
+		if kind != "additional_tools" {
+			continue
+		}
+		tools, ok := msg["tools"].([]any)
+		if !ok {
+			continue
+		}
+		out = append(out, tools...)
+	}
+	return out
 }
 
 // tailRunes 超长时保留尾部：多轮会话里"最近说了什么"比开头更有价值，
